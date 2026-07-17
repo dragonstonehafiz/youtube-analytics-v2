@@ -15,9 +15,13 @@ body:
     id: acceptance-criteria
     attributes:
       label: Acceptance criteria
-      description: What must be true for this to be considered complete?
+      description: Add each verifiable completion condition as a Markdown checkbox.
+      placeholder: |
+        - [ ] First verifiable outcome
+        - [ ] Second verifiable outcome
+        - [ ] Relevant edge cases are handled
     validations:
-      required: false
+      required: true
 
   - type: textarea
     id: additional-context
