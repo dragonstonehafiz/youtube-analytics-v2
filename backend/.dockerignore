@@ -1,0 +1,7 @@
+**/__pycache__/
+**/.venv/
+**/data
+**/outputs
+**/secrets
+**/.env
+**/.env.example

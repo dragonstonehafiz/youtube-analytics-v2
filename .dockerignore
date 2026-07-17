@@ -1,0 +1,8 @@
+**/__pycache__/
+**/.venv/
+**/node_modules
+**/data
+**/outputs
+**/secrets
+**/.env
+**/.env.example

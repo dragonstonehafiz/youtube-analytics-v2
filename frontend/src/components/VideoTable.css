@@ -1,0 +1,5 @@
+.table-empty {
+  text-align: center;
+  padding: 3rem;
+  color: var(--text-secondary);
+}

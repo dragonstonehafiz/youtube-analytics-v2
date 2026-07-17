@@ -1,0 +1,135 @@
+name: Delete stale branches
+
+on:
+  schedule:
+    - cron: '17 3 * * 0'
+  workflow_dispatch:
+    inputs:
+      stale_after_days:
+        description: 'Delete branches with no commits in the last N days'
+        type: string
+        default: '90'
+        required: true
+      mode:
+        description: 'preview: report only, delete: actually delete branches'
+        type: choice
+        options:
+          - preview
+          - delete
+        default: preview
+
+permissions:
+  contents: write
+  pull-requests: read
+
+jobs:
+  cleanup:
+    runs-on: ubuntu-latest
+    env:
+      GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+      REPO: ${{ github.repository }}
+    steps:
+      - name: Resolve runtime settings
+        run: |
+          set -euo pipefail
+
+          if [ "${{ github.event_name }}" = "workflow_dispatch" ]; then
+            STALE_AFTER_DAYS="${{ inputs.stale_after_days }}"
+            if [ "${{ inputs.mode }}" = "delete" ]; then
+              DRY_RUN="false"
+            else
+              DRY_RUN="true"
+            fi
+          else
+            STALE_AFTER_DAYS="90"
+            DRY_RUN="false"
+          fi
+
+          if ! [[ "$STALE_AFTER_DAYS" =~ ^[1-9][0-9]*$ ]]; then
+            echo "::error::stale_after_days must be a positive integer, got '$STALE_AFTER_DAYS'"
+            exit 1
+          fi
+
+          echo "STALE_AFTER_DAYS=$STALE_AFTER_DAYS" >> "$GITHUB_ENV"
+          echo "DRY_RUN=$DRY_RUN" >> "$GITHUB_ENV"
+
+      - name: Delete stale merged branches
+        run: |
+          set -euo pipefail
+
+          echo "Mode: $([ "$DRY_RUN" = "true" ] && echo preview || echo delete)"
+          echo "Stale after: $STALE_AFTER_DAYS days"
+
+          default_branch="$(gh api "repos/${REPO}" --jq '.default_branch')"
+          echo "Default branch: $default_branch"
+
+          default_sha="$(gh api "repos/${REPO}/git/ref/heads/$default_branch" --jq '.object.sha')"
+          echo "Default branch SHA: $default_sha"
+
+          cutoff_epoch="$(date -u -d "-${STALE_AFTER_DAYS} days" +%s)"
+
+          page=1
+          any_branch=0
+          while :; do
+            branches_json="$(gh api "repos/${REPO}/branches?per_page=100&page=${page}")"
+            count="$(echo "$branches_json" | jq 'length')"
+            if [ "$count" -eq 0 ]; then
+              break
+            fi
+            any_branch=1
+
+            echo "$branches_json" | jq -c '.[]' | while IFS= read -r branch_entry; do
+              name="$(echo "$branch_entry" | jq -r '.name')"
+              sha="$(echo "$branch_entry" | jq -r '.commit.sha')"
+              protected="$(echo "$branch_entry" | jq -r '.protected')"
+
+              if [ "$name" = "$default_branch" ]; then
+                echo "SKIP '$name': is the default branch"
+                continue
+              fi
+
+              if [ "$protected" = "true" ]; then
+                echo "SKIP '$name': protected branch"
+                continue
+              fi
+
+              commit_date="$(gh api "repos/${REPO}/commits/${sha}" --jq '.commit.committer.date')"
+              commit_epoch="$(date -u -d "$commit_date" +%s)"
+              if [ "$commit_epoch" -gt "$cutoff_epoch" ]; then
+                echo "SKIP '$name': latest commit ($commit_date) newer than cutoff"
+                continue
+              fi
+
+              owner="${REPO%/*}"
+              open_pr_count="$(gh api "repos/${REPO}/pulls" \
+                --method GET \
+                -f state=open \
+                -f "head=${owner}:${name}" \
+                --jq 'length')"
+              if [ "$open_pr_count" -gt 0 ]; then
+                echo "SKIP '$name': has an open pull request"
+                continue
+              fi
+
+              compare="$(gh api "repos/${REPO}/compare/${default_branch}...${name}")"
+              merge_base_sha="$(echo "$compare" | jq -r '.merge_base_commit.sha')"
+
+              if [ "$merge_base_sha" != "$sha" ]; then
+                echo "SKIP '$name': head is not an ancestor of $default_branch (not merged)"
+                continue
+              fi
+
+              if [ "$DRY_RUN" = "true" ]; then
+                echo "PREVIEW: '$name' (last commit $commit_date) would be deleted"
+              else
+                echo "DELETE: '$name' (last commit $commit_date)"
+                gh api --method DELETE "repos/${REPO}/git/refs/heads/${name}"
+              fi
+            done
+
+            page=$((page + 1))
+          done
+
+          if [ "$any_branch" -eq 0 ]; then
+            echo "No branches found."
+          fi

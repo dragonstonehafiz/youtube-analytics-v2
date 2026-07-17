@@ -1,0 +1,45 @@
+.video-stats-bar {
+  display: flex;
+  align-items: stretch;
+  gap: 0;
+  padding: 1.25rem 1.5rem;
+  background: var(--surface-glass);
+  border: 1px solid var(--border-light);
+  border-radius: var(--radius-sm);
+  margin-bottom: 1rem;
+}
+
+.video-stats-sep {
+  width: 1px;
+  background: var(--border);
+  flex-shrink: 0;
+  margin: 0 1.25rem;
+}
+
+.video-stats-col {
+  display: flex;
+  flex-direction: column;
+  gap: 0.75rem;
+}
+
+.video-stats-item {
+  display: flex;
+  flex-direction: column;
+  gap: 0.1rem;
+}
+
+.video-stats-value {
+  font-size: 1.5rem;
+  font-weight: 700;
+  color: var(--text-heading);
+  line-height: 1.2;
+  font-family: 'Plus Jakarta Sans', sans-serif;
+}
+
+.video-stats-label {
+  font-size: 0.75rem;
+  font-variant: small-caps;
+  color: var(--text-secondary);
+  letter-spacing: 0.04em;
+  font-family: 'Plus Jakarta Sans', sans-serif;
+}

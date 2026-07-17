@@ -1,0 +1,39 @@
+.top-videos-section {
+  margin-top: 1.5rem;
+}
+
+.top-videos-table-wrap {
+  margin-top: 0.75rem;
+  overflow-x: auto;
+}
+
+.top-videos-table {
+  min-width: 600px;
+}
+
+.top-videos-thumb {
+  width: 120px;
+  height: 68px;
+  object-fit: cover;
+  border-radius: 4px;
+  display: block;
+}
+
+.top-videos-thumb--placeholder {
+  background: var(--border);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 0.75rem;
+  color: var(--text-secondary);
+  border-radius: 4px;
+  width: 120px;
+  height: 68px;
+}
+
+.top-videos-title {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  max-width: 0;
+}

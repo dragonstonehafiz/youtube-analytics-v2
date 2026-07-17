@@ -1,0 +1,34 @@
+.analytics-layout {
+  display: grid;
+  grid-template-columns: 1fr 320px;
+  gap: 1.5rem;
+  align-items: start;
+  margin-top: 1.5rem;
+}
+
+.analytics-main {
+  min-width: 0;
+  position: relative;
+  z-index: 1;
+}
+
+.analytics-sidebar {
+  display: flex;
+  flex-direction: column;
+  gap: 1.5rem;
+}
+
+@media (max-width: 1024px) {
+  .analytics-layout {
+    grid-template-columns: 1fr;
+  }
+
+  .analytics-sidebar {
+    flex-direction: row;
+  }
+
+  .analytics-sidebar > * {
+    flex: 1;
+    min-width: 0;
+  }
+}

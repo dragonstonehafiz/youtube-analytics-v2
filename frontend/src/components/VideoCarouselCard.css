@@ -1,0 +1,110 @@
+.video-carousel {
+  padding: 1.25rem 1.5rem;
+}
+
+.video-carousel-thumb-wrap {
+  position: relative;
+  display: block;
+  width: 100%;
+  aspect-ratio: 16 / 9;
+  border-radius: var(--radius-sm);
+  overflow: hidden;
+  background: var(--border);
+}
+
+.video-carousel-thumb {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  display: block;
+}
+
+.video-carousel-thumb--placeholder {
+  background: var(--border);
+}
+
+.video-carousel-overlay {
+  position: absolute;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  padding: 1.5rem 0.85rem 0.6rem;
+  background: linear-gradient(to top, rgba(0,0,0,0.75) 0%, rgba(0,0,0,0.35) 60%, transparent 100%);
+}
+
+.video-carousel-title {
+  color: #fff;
+  font-size: 14px;
+  font-weight: 700;
+  display: -webkit-box;
+  -webkit-line-clamp: 2;
+  -webkit-box-orient: vertical;
+  overflow: hidden;
+}
+
+.video-carousel-age {
+  margin-top: 0.6rem;
+  font-size: 12px;
+  color: var(--text-secondary);
+}
+
+.video-carousel-stats {
+  margin-top: 0.85rem;
+  display: flex;
+  flex-direction: column;
+  gap: 0.5rem;
+}
+
+.video-carousel-stat-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  font-size: 13px;
+}
+
+.video-carousel-stat-label {
+  color: var(--text-secondary);
+}
+
+.video-carousel-stat-value {
+  font-weight: 700;
+  color: var(--text-heading);
+}
+
+.video-carousel-nav {
+  margin-top: 1rem;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 1rem;
+}
+
+.video-carousel-arrow {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 28px;
+  height: 28px;
+  border-radius: 50%;
+  border: 1px solid var(--border);
+  background: var(--surface);
+  color: var(--text-secondary);
+  transition: color 0.15s, border-color 0.15s, background 0.15s;
+}
+
+.video-carousel-arrow:hover:not(:disabled) {
+  color: var(--blue);
+  border-color: var(--blue-mid);
+  background: var(--blue-light);
+}
+
+.video-carousel-arrow:disabled {
+  opacity: 0.4;
+  cursor: default;
+}
+
+.video-carousel-page {
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--text-secondary);
+}

@@ -1,0 +1,46 @@
+.sync-status {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.75rem;
+  font-size: 13px;
+}
+
+.sync-status-dot {
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  background: var(--blue);
+  flex-shrink: 0;
+  animation: sync-pulse 1.5s ease-in-out infinite;
+}
+
+.sync-status-message {
+  color: var(--blue);
+  font-weight: 500;
+}
+
+.sync-status-label {
+  color: var(--text-secondary);
+}
+
+.sync-scope-select {
+  height: 28px;
+  padding: 0 0.5rem;
+  font-size: 12px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  background: var(--surface);
+  color: var(--text);
+}
+
+.sync-trigger-btn {
+  height: 28px;
+  padding: 0 0.75rem;
+  font-size: 12px;
+  box-shadow: none;
+}
+
+@keyframes sync-pulse {
+  0%, 100% { opacity: 1; }
+  50% { opacity: 0.4; }
+}

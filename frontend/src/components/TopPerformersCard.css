@@ -1,0 +1,64 @@
+.top-performers-card {
+  padding: 0.85rem 1rem;
+}
+
+.top-performers-list {
+  display: flex;
+  flex-direction: column;
+}
+
+.top-performers-row {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  padding: 0.3rem 0;
+  border-bottom: 1px solid var(--border-light);
+  text-decoration: none;
+  color: inherit;
+}
+
+.top-performers-row:last-child {
+  border-bottom: none;
+}
+
+.top-performers-row:hover .top-performers-title {
+  color: var(--blue);
+}
+
+.top-performers-rank {
+  width: 14px;
+  flex-shrink: 0;
+  font-size: 11px;
+  font-weight: 600;
+  color: var(--text-secondary);
+  text-align: center;
+}
+
+.top-performers-thumb {
+  width: 40px;
+  height: 24px;
+  object-fit: cover;
+  border-radius: 3px;
+  flex-shrink: 0;
+  display: block;
+}
+
+.top-performers-thumb--placeholder {
+  background: var(--border);
+}
+
+.top-performers-title {
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-size: 12px;
+  color: var(--text);
+}
+
+.top-performers-views {
+  flex-shrink: 0;
+  font-size: 12px;
+  color: var(--text-secondary);
+}
