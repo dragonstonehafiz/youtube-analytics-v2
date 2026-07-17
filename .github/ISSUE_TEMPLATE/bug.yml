@@ -29,6 +29,18 @@ body:
     validations:
       required: false
 
+  - type: textarea
+    id: acceptance-criteria
+    attributes:
+      label: Acceptance criteria
+      description: Add each verifiable condition that confirms the bug is fixed as a Markdown checkbox.
+      placeholder: |
+        - [ ] First verifiable outcome
+        - [ ] Second verifiable outcome
+        - [ ] Relevant edge cases are handled
+    validations:
+      required: true
+
   - type: checkboxes
     id: secrets-confirmation
     attributes:
