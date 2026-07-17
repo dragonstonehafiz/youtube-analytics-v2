@@ -31,7 +31,7 @@ jobs:
           set -euo pipefail
           pattern='^(feat|fix|chore|docs|refactor|test|style|perf|build|ci)(\([a-z0-9./-]+\))?!?: .+'
           if ! [[ "$PR_TITLE" =~ $pattern ]]; then
-            echo "::error::PR title '$PR_TITLE' must follow Conventional Commits, e.g. 'feat(scope): description'"
+            echo "::error::PR title '$PR_TITLE' must follow Conventional Commits: <type>(<optional-scope>): <description>, e.g. 'feat(scope): description'. Valid types: feat, fix, chore, docs, refactor, test, style, perf, build, ci"
             exit 1
           fi
           echo "PR title OK: $PR_TITLE"
@@ -47,7 +47,7 @@ jobs:
           commits_json="$(gh api "repos/${REPO}/pulls/${PR_NUMBER}/commits" --paginate)"
           while IFS= read -r subject; do
             if ! [[ "$subject" =~ $pattern ]]; then
-              echo "::error::Commit message '$subject' must follow Conventional Commits"
+              echo "::error::Commit message '$subject' must follow Conventional Commits: <type>(<optional-scope>): <description>, e.g. 'feat(scope): description'. Valid types: feat, fix, chore, docs, refactor, test, style, perf, build, ci"
               exit 1
             fi
             echo "Commit OK: $subject"
