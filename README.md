@@ -1,6 +1,11 @@
 # YouTube Analytics
 
-A local dashboard for analysing your own YouTube channel — video and Shorts performance, playlists, earnings, and traffic sources, backed by a background sync from the YouTube Data and Analytics APIs.
+[![CI](https://github.com/dragonstonehafiz/youtube-analytics-v2/actions/workflows/ci.yml/badge.svg)](https://github.com/dragonstonehafiz/youtube-analytics-v2/actions/workflows/ci.yml)
+[![License](https://img.shields.io/github/license/dragonstonehafiz/youtube-analytics-v2)](./LICENSE)
+[![Python](https://img.shields.io/badge/Python-3.12-3776AB?logo=python&logoColor=white)](https://www.python.org/)
+[![Node.js](https://img.shields.io/badge/Node.js-22-339933?logo=nodedotjs&logoColor=white)](https://nodejs.org/)
+
+A local dashboard for analysing your own YouTube channel showing video and Shorts performance, playlists, earnings, and traffic sources, backed by a background sync from the YouTube Data and Analytics APIs.
 
 ## Features
 
