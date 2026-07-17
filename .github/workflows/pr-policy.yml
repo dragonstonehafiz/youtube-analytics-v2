@@ -10,6 +10,7 @@ permissions:
 
 jobs:
   check:
+    name: PR Policy
     runs-on: ubuntu-latest
     steps:
       - name: Check branch naming
