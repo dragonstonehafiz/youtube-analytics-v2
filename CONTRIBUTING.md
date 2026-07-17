@@ -26,23 +26,19 @@ chore/update-docker-image
 
 ## Commit messages
 
-Commits follow [Conventional Commits](https://www.conventionalcommits.org/):
+PRs are squash-merged, so the **PR title** becomes the final commit message and is the only thing enforced by CI. It follows [Conventional Commits](https://www.conventionalcommits.org/), restricted to the same three types as branch names:
 
 ```
-<type>(<optional-scope>): <description>
+feat(<optional-scope>): <description>
+fix(<optional-scope>): <description>
+chore(<optional-scope>): <description>
 ```
 
-Common types: `feat`, `fix`, `chore`, `docs`, `refactor`, `test`.
-
-Examples:
+Example:
 
 ```
-feat(analytics): add channel comparison
-fix(sync): prevent duplicate analytics rows
-chore(deps): update frontend dependencies
-docs: document local development
-refactor(database): split query helpers
-test(sync): cover incremental date ranges
+Branch:   fix/frontend-build-failure
+PR title: fix(frontend): resolve build failure
 ```
 
 Mark breaking changes with `!` before the colon:
@@ -51,7 +47,7 @@ Mark breaking changes with `!` before the colon:
 feat(api)!: change analytics response format
 ```
 
-Branches and commits both use the same Conventional Commit types (`feat`, `fix`, `chore`, ...), so a branch name and its PR title/commit message share the same prefix.
+Individual commits within a branch can follow the same format, but the PR workflow does not validate every intermediate commit — only the branch name and the final PR title. This means temporary or automatic commits (e.g. merge commits from syncing with `main`) never block a PR.
 
 ### Local commit-msg hook
 
