@@ -1,0 +1,38 @@
+name: Bug
+description: Something is broken or behaving incorrectly
+labels:
+  - bug
+body:
+  - type: textarea
+    id: description
+    attributes:
+      label: Description
+      description: What's wrong, and what did you expect instead?
+    validations:
+      required: true
+
+  - type: textarea
+    id: reproduction-steps
+    attributes:
+      label: Reproduction steps
+      placeholder: |
+        1.
+        2.
+        3.
+    validations:
+      required: false
+
+  - type: textarea
+    id: logs
+    attributes:
+      label: Logs or screenshots
+    validations:
+      required: false
+
+  - type: checkboxes
+    id: secrets-confirmation
+    attributes:
+      label: Confirmation
+      options:
+        - label: I have removed secrets, tokens, and personal data from this report
+          required: true
