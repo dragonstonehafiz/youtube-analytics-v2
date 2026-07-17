@@ -54,7 +54,10 @@ export default function TrafficSourceDonutCard({ title, rows }: Props) {
             <Tooltip
               contentStyle={{ background: 'var(--surface)', border: '1px solid var(--border)', borderRadius: 'var(--radius-sm)', fontSize: 13 }}
               labelStyle={{ color: 'var(--text-heading)', fontWeight: 600 }}
-              formatter={(v: number) => [v.toLocaleString(), 'Views']}
+              formatter={(value) => [
+                typeof value === 'number' ? value.toLocaleString() : String(value ?? 0),
+                'Views',
+              ]}
             />
           </PieChart>
         </ResponsiveContainer>
