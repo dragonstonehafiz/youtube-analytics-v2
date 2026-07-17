@@ -18,8 +18,8 @@ jobs:
           HEAD_REF: ${{ github.head_ref }}
         run: |
           set -euo pipefail
-          if ! [[ "$HEAD_REF" =~ ^(feature|bugfix|chore)/[a-z0-9]+(-[a-z0-9]+)*$ ]]; then
-            echo "::error::Branch name '$HEAD_REF' must match feature/<kebab-case>, bugfix/<kebab-case>, or chore/<kebab-case>"
+          if ! [[ "$HEAD_REF" =~ ^(feat|fix|chore)/[a-z0-9]+(-[a-z0-9]+)*$ ]]; then
+            echo "::error::Branch name '$HEAD_REF' must match feat/<kebab-case>, fix/<kebab-case>, or chore/<kebab-case>"
             exit 1
           fi
           echo "Branch name OK: $HEAD_REF"

@@ -11,16 +11,16 @@
 ## Branch naming
 
 ```
-feature/<short-kebab-case-description>
-bugfix/<short-kebab-case-description>
+feat/<short-kebab-case-description>
+fix/<short-kebab-case-description>
 chore/<short-kebab-case-description>
 ```
 
 Examples:
 
 ```
-feature/channel-comparison
-bugfix/incorrect-date-filter
+feat/channel-comparison
+fix/incorrect-date-filter
 chore/update-docker-image
 ```
 
@@ -51,7 +51,7 @@ Mark breaking changes with `!` before the colon:
 feat(api)!: change analytics response format
 ```
 
-Note the distinction: **branches** use the long words `feature`/`bugfix`; **commits** use the short Conventional Commit types `feat`/`fix`.
+Branches and commits both use the same Conventional Commit types (`feat`, `fix`, `chore`, ...), so a branch name and its PR title/commit message share the same prefix.
 
 ### Local commit-msg hook
 
@@ -66,7 +66,7 @@ This runs locally before each commit is created (in addition to the `pr-policy` 
 ## Pull requests
 
 - Target `main`.
-- Branch name must start with `feature/`, `bugfix/`, or `chore/`.
+- Branch name must start with `feat/`, `fix/`, or `chore/`.
 - Title must follow Conventional Commits — it becomes the squash commit message.
 - Include a summary, testing notes, and any linked issues.
 - All required checks must pass before merging.
