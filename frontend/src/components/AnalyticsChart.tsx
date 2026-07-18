@@ -1,6 +1,6 @@
 import { useState, useMemo, useRef, useEffect } from 'react'
 import { AreaChart, Area, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, ReferenceLine } from 'recharts'
-import type { AnalyticsRow, PublishedVideo } from '@/types'
+import type { AnalyticsRow, ContentType, PublishedVideo } from '@/types'
 import { YAXIS_WIDTH, CHART_RIGHT, formatCompact, getMarks, computeUploadBuckets, UploadStrip } from '@/components/UploadStrip'
 import '@/components/AnalyticsChart.css'
 
@@ -12,6 +12,27 @@ interface Props {
 type Metric = 'views' | 'watch_time_hours' | 'estimated_revenue_sgd'
 type BucketSize = 'daily' | 'weekly' | 'monthly'
 type ChartMode = 'daily' | 'cumulative'
+
+interface ChartPoint {
+  date: string
+  video_views: number
+  short_views: number
+  video_watch_time_hours: number
+  short_watch_time_hours: number
+  video_estimated_revenue_sgd: number
+  short_estimated_revenue_sgd: number
+}
+
+interface Series {
+  type: ContentType
+  label: string
+  color: string
+}
+
+const SERIES: Series[] = [
+  { type: 'video', label: 'Video',  color: 'var(--blue)' },
+  { type: 'short', label: 'Shorts', color: '#f59e0b' },
+]
 
 const METRICS: { key: Metric; label: string; format: (v: number) => string }[] = [
   { key: 'views',                label: 'Views',                  format: v => v.toLocaleString() },
@@ -30,15 +51,42 @@ const CHART_MODES: { key: ChartMode; label: string }[] = [
   { key: 'cumulative', label: 'Cumulative Total' },
 ]
 
-function toCumulative(rows: (AnalyticsRow & { watch_time_hours: number })[]) {
-  let views = 0
-  let watchTimeHours = 0
-  let revenueSgd = 0
-  return rows.map(row => {
-    views += row.views
-    watchTimeHours += row.watch_time_hours
-    revenueSgd += row.estimated_revenue_sgd
-    return { ...row, views, watch_time_hours: watchTimeHours, estimated_revenue_sgd: revenueSgd }
+function seriesDataKey(type: ContentType, metric: Metric): keyof ChartPoint {
+  return `${type}_${metric}` as keyof ChartPoint
+}
+
+function emptyPoint(date: string): ChartPoint {
+  return {
+    date,
+    video_views: 0, short_views: 0,
+    video_watch_time_hours: 0, short_watch_time_hours: 0,
+    video_estimated_revenue_sgd: 0, short_estimated_revenue_sgd: 0,
+  }
+}
+
+function addRowToPoint(point: ChartPoint, row: AnalyticsRow): void {
+  const watchTimeHours = row.watch_time_minutes / 60
+  if (row.content_type === 'video') {
+    point.video_views += row.views
+    point.video_watch_time_hours += watchTimeHours
+    point.video_estimated_revenue_sgd += row.estimated_revenue_sgd
+  } else {
+    point.short_views += row.views
+    point.short_watch_time_hours += watchTimeHours
+    point.short_estimated_revenue_sgd += row.estimated_revenue_sgd
+  }
+}
+
+function toCumulative(points: ChartPoint[]): ChartPoint[] {
+  const running = emptyPoint('')
+  return points.map(point => {
+    running.video_views += point.video_views
+    running.short_views += point.short_views
+    running.video_watch_time_hours += point.video_watch_time_hours
+    running.short_watch_time_hours += point.short_watch_time_hours
+    running.video_estimated_revenue_sgd += point.video_estimated_revenue_sgd
+    running.short_estimated_revenue_sgd += point.short_estimated_revenue_sgd
+    return { ...running, date: point.date }
   })
 }
 
@@ -56,24 +104,16 @@ function bucketKey(date: string, size: BucketSize): string {
   return date
 }
 
-function aggregateRows(rows: (AnalyticsRow & { watch_time_hours: number })[], size: BucketSize) {
-  if (size === 'daily') return rows
-  const buckets = new Map<string, AnalyticsRow & { watch_time_hours: number }>()
+function aggregateRows(rows: AnalyticsRow[], size: BucketSize): ChartPoint[] {
+  const buckets = new Map<string, ChartPoint>()
   for (const row of rows) {
     const key = bucketKey(row.date, size)
-    const existing = buckets.get(key)
-    if (!existing) {
-      buckets.set(key, { ...row, date: key })
-    } else {
-      existing.views += row.views
-      existing.watch_time_minutes += row.watch_time_minutes
-      existing.watch_time_hours += row.watch_time_hours
-      existing.estimated_revenue += row.estimated_revenue
-      existing.estimated_revenue_sgd += row.estimated_revenue_sgd
-      existing.likes += row.likes
-      existing.subscribers_gained += row.subscribers_gained
-      existing.subscribers_lost += row.subscribers_lost
+    let point = buckets.get(key)
+    if (!point) {
+      point = emptyPoint(key)
+      buckets.set(key, point)
     }
+    addRowToPoint(point, row)
   }
   return Array.from(buckets.values()).sort((a, b) => a.date.localeCompare(b.date))
 }
@@ -94,8 +134,11 @@ export default function AnalyticsChart({ rows, uploadedVideos }: Props) {
     return () => obs.disconnect()
   }, [rows.length > 0])
 
+  const presentTypes = useMemo(() => new Set(rows.map(r => r.content_type)), [rows])
+  const activeSeries = useMemo(() => SERIES.filter(s => presentTypes.has(s.type)), [presentTypes])
+
   const chartRows = useMemo(() =>
-    aggregateRows(rows.map(r => ({ ...r, watch_time_hours: r.watch_time_minutes / 60 })), bucketSize),
+    aggregateRows(rows, bucketSize),
     [rows, bucketSize]
   )
 
@@ -168,6 +211,17 @@ export default function AnalyticsChart({ rows, uploadedVideos }: Props) {
         ))}
       </div>
 
+      {activeSeries.length > 1 && (
+        <div className="analytics-chart-legend">
+          {activeSeries.map(s => (
+            <div key={s.type} className="analytics-chart-legend-item">
+              <span className="analytics-chart-legend-swatch" style={{ background: s.color }} />
+              {s.label}
+            </div>
+          ))}
+        </div>
+      )}
+
       <ResponsiveContainer width="100%" height={280}>
         <AreaChart data={displayRows} margin={{ top: 8, right: CHART_RIGHT, left: 0, bottom: 24 }}>
           <CartesianGrid strokeDasharray="3 3" stroke="var(--border)" vertical={false} />
@@ -177,8 +231,7 @@ export default function AnalyticsChart({ rows, uploadedVideos }: Props) {
           <Tooltip
             contentStyle={{ background: 'var(--surface)', border: '1px solid var(--border)', borderRadius: 'var(--radius-sm)', fontSize: 13 }}
             labelStyle={{ color: 'var(--text-heading)', fontWeight: 600 }}
-            itemStyle={{ color: 'var(--blue)' }}
-            formatter={(v) => [activeMeta.format(Number(v)), activeMeta.label]}
+            formatter={(v, name) => [activeMeta.format(Number(v)), name]}
           />
           {marks.map(({ date, label }) => (
             <ReferenceLine
@@ -189,7 +242,20 @@ export default function AnalyticsChart({ rows, uploadedVideos }: Props) {
               label={{ value: label, position: 'insideBottomLeft', fontSize: 11, fill: 'var(--text-secondary)', dy: 20 }}
             />
           ))}
-          <Area type="linear" dataKey={metric} stroke="var(--blue)" strokeWidth={2} fill="var(--blue)" fillOpacity={0.10} dot={false} activeDot={{ r: 4 }} />
+          {activeSeries.map(s => (
+            <Area
+              key={s.type}
+              type="linear"
+              dataKey={seriesDataKey(s.type, metric)}
+              name={s.label}
+              stroke={s.color}
+              strokeWidth={2}
+              fill={s.color}
+              fillOpacity={0.10}
+              dot={false}
+              activeDot={{ r: 4 }}
+            />
+          ))}
         </AreaChart>
       </ResponsiveContainer>
 

@@ -24,8 +24,11 @@ export interface Playlist {
   total_earnings_sgd: number
 }
 
+export type ContentType = 'video' | 'short'
+
 export interface AnalyticsRow {
   date: string
+  content_type: ContentType
   views: number
   watch_time_minutes: number
   estimated_revenue: number
