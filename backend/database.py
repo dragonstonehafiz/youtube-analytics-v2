@@ -349,6 +349,7 @@ def _zero_fill_analytics(rows: list[dict], start_date: str | None, end_date: str
     if not rows:
         return rows
     by_key = {(r["date"], r["content_type"]): r for r in rows}
+    real_dates = {r["date"] for r in rows}
     dates = [r["date"] for r in rows]
     first = date.fromisoformat(start_date or min(dates))
     last = date.fromisoformat(end_date or max(dates))
@@ -360,6 +361,8 @@ def _zero_fill_analytics(rows: list[dict], start_date: str | None, end_date: str
         for ct in content_types:
             result.append(by_key.get((ds, ct), {"date": ds, "content_type": ct, **zero}))
         d += timedelta(days=1)
+    while result and result[-1]["date"] not in real_dates:
+        result.pop()
     return result
 
 
