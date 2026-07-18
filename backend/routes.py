@@ -69,7 +69,7 @@ def get_video_analytics(
     start_date: str | None = Query(default=None),
     end_date: str | None = Query(default=None),
 ) -> dict:
-    """Return daily analytics rows for a video with optional date filters."""
+    """Return daily analytics rows for a video, each tagged with content_type, with optional date filters."""
     video = database.get_video(video_id)
     if not video:
         raise HTTPException(status_code=404, detail="Video not found")
@@ -96,7 +96,7 @@ def get_aggregated_analytics(
     content_type: str | None = Query(default=None),
     privacy_status: str | None = Query(default=None),
 ) -> dict:
-    """Return daily analytics aggregated across all videos."""
+    """Return daily analytics aggregated across all videos, grouped by date and content_type."""
     return {"items": database.get_aggregated_analytics(start_date, end_date, content_type, privacy_status)}
 
 
@@ -156,7 +156,7 @@ def get_playlist_aggregated_analytics(
     content_type: str | None = Query(default=None),
     privacy_status: str | None = Query(default=None),
 ) -> dict:
-    """Return daily analytics aggregated across all videos in a playlist."""
+    """Return daily analytics aggregated across all videos in a playlist, grouped by date and content_type."""
     playlist = database.get_playlist(playlist_id)
     if not playlist:
         raise HTTPException(status_code=404, detail="Playlist not found")

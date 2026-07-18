@@ -344,22 +344,22 @@ def upsert_video_analytics(row: dict) -> None:
         )
 
 
-def _zero_fill_analytics(rows: list[dict], start_date: str | None, end_date: str | None) -> list[dict]:
-    """Fill missing dates in the analytics rows with zero values."""
+def _zero_fill_analytics(rows: list[dict], start_date: str | None, end_date: str | None, content_types: list[str]) -> list[dict]:
+    """Fill missing (date, content_type) combinations in the analytics rows with zero values."""
     if not rows:
         return rows
-    by_date = {r["date"]: r for r in rows}
-    first = date.fromisoformat(start_date or rows[0]["date"])
-    last = date.fromisoformat(end_date or rows[-1]["date"])
-    zero = {k: 0 for k in rows[0] if k != "date"}
+    by_key = {(r["date"], r["content_type"]): r for r in rows}
+    dates = [r["date"] for r in rows]
+    first = date.fromisoformat(start_date or min(dates))
+    last = date.fromisoformat(end_date or max(dates))
+    zero = {k: 0 for k in rows[0] if k not in ("date", "content_type")}
     result = []
     d = first
     while d <= last:
         ds = d.isoformat()
-        result.append(by_date.get(ds, {"date": ds, **zero}))
+        for ct in content_types:
+            result.append(by_key.get((ds, ct), {"date": ds, "content_type": ct, **zero}))
         d += timedelta(days=1)
-    while result and result[-1]["date"] not in by_date:
-        result.pop()
     return result
 
 
@@ -381,16 +381,19 @@ def get_video_analytics(
     with get_connection() as conn:
         rows = conn.execute(
             f"""
-            SELECT va.*,
+            SELECT va.*, v.content_type,
                 COALESCE(va.estimated_revenue * fx.usd_to_sgd, 0) AS estimated_revenue_sgd
             FROM video_analytics va
+            JOIN videos v ON v.id = va.video_id
             LEFT JOIN fx_rates fx ON fx.date = va.date
             WHERE {where}
             ORDER BY va.date
             """,
             params,
         ).fetchall()
-    return _zero_fill_analytics([dict(r) for r in rows], start_date, end_date)
+    dict_rows = [dict(r) for r in rows]
+    content_types = [dict_rows[0]["content_type"]] if dict_rows else []
+    return _zero_fill_analytics(dict_rows, start_date, end_date, content_types)
 
 
 def get_last_analytics_date(video_id: str) -> str | None:
@@ -681,7 +684,7 @@ def get_aggregated_analytics(
     content_type: str | None = None,
     privacy_status: str | None = None,
 ) -> list[dict]:
-    """Return daily analytics aggregated across all videos, filtered by date range, content_type, and privacy_status."""
+    """Return daily analytics aggregated across all videos, grouped by date and content_type, filtered by date range, content_type, and privacy_status."""
     conditions = ["1=1"]
     params: list = []
 
@@ -704,6 +707,7 @@ def get_aggregated_analytics(
             f"""
             SELECT
                 va.date,
+                v.content_type,
                 SUM(va.views) AS views,
                 SUM(va.watch_time_minutes) AS watch_time_minutes,
                 SUM(va.estimated_revenue) AS estimated_revenue,
@@ -717,12 +721,13 @@ def get_aggregated_analytics(
             JOIN videos v ON v.id = va.video_id
             LEFT JOIN fx_rates fx ON fx.date = va.date
             WHERE {where}
-            GROUP BY va.date
-            ORDER BY va.date
+            GROUP BY va.date, v.content_type
+            ORDER BY va.date, v.content_type
             """,
             params,
         ).fetchall()
-    return _zero_fill_analytics([dict(r) for r in rows], start_date, end_date)
+    content_types = [content_type] if content_type else ["video", "short"]
+    return _zero_fill_analytics([dict(r) for r in rows], start_date, end_date, content_types)
 
 
 def get_top_videos_by_views(
@@ -825,7 +830,7 @@ def get_playlist_aggregated_analytics(
     content_type: str | None = None,
     privacy_status: str | None = None,
 ) -> list[dict]:
-    """Return daily analytics aggregated across all videos in a playlist, filtered by date range, content_type, and privacy_status."""
+    """Return daily analytics aggregated across all videos in a playlist, grouped by date and content_type, filtered by date range, content_type, and privacy_status."""
     conditions = ["pi.playlist_id = ?"]
     params: list = [playlist_id]
 
@@ -848,6 +853,7 @@ def get_playlist_aggregated_analytics(
             f"""
             SELECT
                 va.date,
+                v.content_type,
                 SUM(va.views) AS views,
                 SUM(va.watch_time_minutes) AS watch_time_minutes,
                 SUM(va.estimated_revenue) AS estimated_revenue,
@@ -862,12 +868,13 @@ def get_playlist_aggregated_analytics(
             JOIN playlist_items pi ON pi.video_id = va.video_id
             LEFT JOIN fx_rates fx ON fx.date = va.date
             WHERE {where}
-            GROUP BY va.date
-            ORDER BY va.date
+            GROUP BY va.date, v.content_type
+            ORDER BY va.date, v.content_type
             """,
             params,
         ).fetchall()
-    return _zero_fill_analytics([dict(r) for r in rows], start_date, end_date)
+    content_types = [content_type] if content_type else ["video", "short"]
+    return _zero_fill_analytics([dict(r) for r in rows], start_date, end_date, content_types)
 
 
 # ---------------------------------------------------------------------------
