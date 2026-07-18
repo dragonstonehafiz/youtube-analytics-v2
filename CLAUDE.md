@@ -144,32 +144,45 @@ frontend/
                                        #   parents own fetch + placement
       AnalyticsChart.tsx + AnalyticsChart.css  # area chart (recharts AreaChart/Area, type="linear" —
                                        #   straight segments, no curve smoothing) for AnalyticsRow[] data;
-                                       #   fill is solid var(--blue) at 25% opacity down to the axis, no
-                                       #   gradient; chart-type row (Per Bucket/Cumulative Total, thin
-                                       #   full-width buttons, under a "Chart Type" section-header) rendered
-                                       #   above the bucket-size row (Daily/Weekly/Monthly, same button style,
-                                       #   under a "Bucket Size" section-header), which is rendered above the
-                                       #   metric buttons — aggregates rows client-side via
-                                       #   aggregateRows()/bucketKey() (weekly buckets start Monday UTC,
-                                       #   monthly buckets key on the 1st) before charting; Cumulative Total
-                                       #   mode runs toCumulative() as a running sum over the already-bucketed
-                                       #   rows (so bucket size still controls the step resolution of the
-                                       #   curve, only the final total is bucket-size-independent); metric
-                                       #   switcher (Views / Watch Time hours / Estimated Earnings SGD)
-                                       #   rendered as full-width grouped buttons below the bucket row, each
-                                       #   showing total for the period (totals always computed from
-                                       #   unaggregated rows, independent of bucket size and chart type);
-                                       #   active metric highlighted with blue underline; x-axis hidden,
-                                       #   quarterly ReferenceLine labels when <8 quarters else yearly (derived
-                                       #   from the currently displayed rows); empty rows renders
-                                       #   chart-placeholder fallback; watch_time_hours computed client-side
-                                       #   from watch_time_minutes; y-axis ticks use formatCompact() — plain
-                                       #   number below 1,000, "1.5K"-style (1 decimal) from 1,000, "1.1M"-style
-                                       #   from 1,000,000; optional uploadedVideos prop (PublishedVideo[])
-                                       #   renders upload strip below chart via shared UploadStrip
-                                       #   component (see below); ResizeObserver on card div (always
-                                       #   mounted); used by Analytics.tsx and PlaylistAnalytics.tsx
-                                       #   (not VideoAnalytics, which has no uploadedVideos to pass)
+                                       #   renders one Area per content_type actually present in the input
+                                       #   rows (video = var(--blue), short = amber #f59e0b), determined via
+                                       #   a presentTypes Set derived from rows — a single-video page's rows
+                                       #   are all one content_type so exactly one line renders; a channel/
+                                       #   playlist page with no content_type filter gets both lines (both
+                                       #   zero-filled by the backend, see AnalyticsRow above), a content_type-
+                                       #   filtered view gets one; a legend row (.analytics-chart-legend in
+                                       #   AnalyticsChart.css) is only rendered when more than one series is
+                                       #   present; fill is solid at 10% opacity down to the axis, no gradient;
+                                       #   chart-type row (Per Bucket/Cumulative Total, thin full-width buttons,
+                                       #   under a "Chart Type" section-header) rendered above the bucket-size
+                                       #   row (Daily/Weekly/Monthly, same button style, under a "Bucket Size"
+                                       #   section-header), which is rendered above the metric buttons —
+                                       #   aggregateRows()/bucketKey() pivot rows client-side into one ChartPoint
+                                       #   per bucket with independent video_*/short_* fields per metric (weekly
+                                       #   buckets start Monday UTC, monthly buckets key on the 1st) before
+                                       #   charting, so Video and Shorts are summed into separate buckets, never
+                                       #   combined; Cumulative Total mode runs toCumulative() as independent
+                                       #   running sums per content_type over the already-bucketed rows (so
+                                       #   bucket size still controls the step resolution of the curve, only the
+                                       #   final total per series is bucket-size-independent); metric switcher
+                                       #   (Views / Watch Time hours / Estimated Earnings SGD) rendered as
+                                       #   full-width grouped buttons below the bucket row, each showing the
+                                       #   Video+Shorts combined total for the period (totals always computed
+                                       #   from unaggregated rows summed across content_type, independent of
+                                       #   bucket size and chart type); active metric highlighted with blue
+                                       #   underline; tooltip entries are named per-series ("Video"/"Shorts") so
+                                       #   both lines are distinguishable on hover; x-axis hidden, quarterly
+                                       #   ReferenceLine labels when <8 quarters else yearly (derived from the
+                                       #   currently displayed rows); empty rows renders chart-placeholder
+                                       #   fallback; watch_time_hours computed client-side from
+                                       #   watch_time_minutes; y-axis ticks use formatCompact() — plain number
+                                       #   below 1,000, "1.5K"-style (1 decimal) from 1,000, "1.1M"-style from
+                                       #   1,000,000; optional uploadedVideos prop (PublishedVideo[]) renders
+                                       #   upload strip below chart via shared UploadStrip component (see
+                                       #   below); ResizeObserver on card div (always mounted); used by
+                                       #   Analytics.tsx and PlaylistAnalytics.tsx (not VideoAnalytics, which
+                                       #   has no uploadedVideos to pass, though it still renders one series
+                                       #   since its rows are single-content_type)
       UploadStrip.tsx                  # shared upload-indicator infra used by both AnalyticsChart and
                                        #   TrafficSourceChart: formatCompact() (y-axis tick formatter),
                                        #   getMarks() (quarterly/yearly ReferenceLine labels),
@@ -326,8 +339,10 @@ GET  /videos/published           -> { items: PublishedVideo[] }  # lightweight: 
                                     (filters on published_at, not analytics date; no pagination)
                                     IMPORTANT: must be declared before /videos/{id} in routes.py
 GET  /videos/{id}                -> { item: Video }
-GET  /videos/{id}/analytics      -> { items: AnalyticsRow[] }
+GET  /videos/{id}/analytics      -> { items: AnalyticsRow[] }   # grouped by date and content_type
                                     ?start_date, end_date
+                                    (content_type is constant across rows — it's the video's own type —
+                                     but every row still carries it since AnalyticsRow always does)
 GET  /videos/{id}/traffic-sources -> { items: TrafficSourceRow[] }   # daily, per traffic source type
                                     ?start_date, end_date
                                     (date filters vts.date, not published_at)
@@ -345,9 +360,12 @@ GET  /playlists/{id}/videos/stats -> { total_uploads, total_videos, total_shorts
                                         total_earnings_sgd, total_video_earnings_sgd, total_short_earnings_sgd,
                                         total_public, total_private, total_unlisted }
                                     ?title, start_date, end_date, content_type, privacy_status
-GET  /analytics/videos           -> { items: AnalyticsRow[] }   # channel aggregated
+GET  /analytics/videos           -> { items: AnalyticsRow[] }   # channel aggregated, grouped by date and content_type
                                     ?start_date, end_date, content_type, privacy_status
-                                    (date filters va.date, not published_at; no title filter)
+                                    (date filters va.date, not published_at; no title filter;
+                                     one row per (date, content_type) — video and short rows for the
+                                     same date are separate entries, not summed together; zero-filled
+                                     independently per content_type, see AnalyticsRow below)
 GET  /analytics/videos/top       -> { items: TopVideo[] }   # top 10 videos by views (channel-wide)
                                     ?start_date, end_date, content_type, privacy_status
                                     (same date/filter semantics as /analytics/videos; views/earnings/
@@ -360,9 +378,10 @@ GET  /analytics/traffic-sources/top -> { items: Record<traffic_source_type, Traf
                                     (top 10 videos by views per traffic source type, channel-wide;
                                      limit=10 passed explicitly by routes.py — the get_top_videos_by_
                                      traffic_source() DB helper itself defaults to limit=3)
-GET  /analytics/playlists/{id}   -> { items: AnalyticsRow[] }   # playlist aggregated
+GET  /analytics/playlists/{id}   -> { items: AnalyticsRow[] }   # playlist aggregated, grouped by date and content_type
                                     ?start_date, end_date, content_type, privacy_status
-                                    (date filters va.date, not published_at; no title filter)
+                                    (date filters va.date, not published_at; no title filter;
+                                     same one-row-per-(date, content_type) semantics as /analytics/videos)
 GET  /analytics/playlists/{id}/top -> { items: TopVideo[] }   # top 10 videos by views in playlist
                                     ?start_date, end_date, content_type, privacy_status
 GET  /analytics/playlists/{id}/traffic-sources -> { items: TrafficSourceRow[] }   # playlist aggregated, daily
@@ -401,9 +420,10 @@ export interface Playlist {
   id: string; title: string; published_at: string; thumbnail_url: string | null; item_count: number
   last_item_added: string | null; total_views: number; total_earnings_sgd: number
 }
+export type ContentType = 'video' | 'short'
 export interface AnalyticsRow {
-  date: string; views: number; watch_time_minutes: number; estimated_revenue: number
-  estimated_revenue_sgd: number; average_view_duration_seconds: number
+  date: string; content_type: ContentType; views: number; watch_time_minutes: number
+  estimated_revenue: number; estimated_revenue_sgd: number; average_view_duration_seconds: number
   average_view_percentage: number; likes: number
   subscribers_gained: number; subscribers_lost: number
 }
