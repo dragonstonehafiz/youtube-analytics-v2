@@ -2,6 +2,10 @@
 
 <!-- What does this change do, and why? -->
 
+## Related Issue
+
+<!-- e.g. Closes #12, Fixes #34, Relates to #56 -->
+
 ## Testing
 
 <!-- Commands run, manual verification, screenshots if UI-facing -->
