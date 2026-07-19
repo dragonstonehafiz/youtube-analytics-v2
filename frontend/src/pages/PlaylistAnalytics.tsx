@@ -1,7 +1,8 @@
 import { useEffect, useState } from 'react'
-import { useParams, useSearchParams } from 'react-router-dom'
+import { useParams } from 'react-router-dom'
 import { getPlaylist, getPlaylistVideos, getPlaylistVideoStats, getPlaylistAnalytics, getPlaylistTopVideosByViews, getVideosPublished, getPlaylistTrafficSources, getPlaylistTopVideosByTrafficSource } from '@/api'
 import type { Video, VideoStats, AnalyticsRow, Playlist, TopVideo, PublishedVideo, TrafficSourceRow, TrafficSourceTopVideo } from '@/types'
+import { useReplaceSearchParams } from '@/hooks/useReplaceSearchParams'
 import VideoStatsBar from '@/components/VideoStatsBar'
 import VideoTable, { PAGE_SIZE } from '@/components/VideoTable'
 import type { SortKey, SortDir } from '@/components/VideoTable'
@@ -22,7 +23,8 @@ type Tab = 'analytics' | 'videos' | 'traffic-sources'
 
 export default function PlaylistAnalytics() {
   const { id } = useParams<{ id: string }>()
-  const [searchParams, setSearchParams] = useSearchParams()
+  const [searchParams, setSearchParams] = useReplaceSearchParams()
+  const tab = (searchParams.get('tab') as Tab) ?? 'analytics'
   const page = Math.max(1, Number(searchParams.get('page') ?? 1))
   const sortKey = (searchParams.get('sort_by') as SortKey) ?? 'published_at'
   const sortDir = (searchParams.get('sort_dir') as SortDir) ?? 'desc'
@@ -37,7 +39,6 @@ export default function PlaylistAnalytics() {
   const [total, setTotal] = useState(0)
   const [initialLoading, setInitialLoading] = useState(true)
   const [stats, setStats] = useState<VideoStats | null>(null)
-  const [tab, setTab] = useState<Tab>('analytics')
   const analyticsStartDate = searchParams.has('analytics_start_date') ? searchParams.get('analytics_start_date')! : last28Dates()[0]
   const analyticsEndDate = searchParams.has('analytics_end_date') ? searchParams.get('analytics_end_date')! : last28Dates()[1]
   const analyticsContentType = searchParams.get('analytics_content_type') ?? ''
@@ -153,19 +154,15 @@ export default function PlaylistAnalytics() {
   }
 
   const handleTabChange = (t: Tab) => {
-    setTab(t)
-    if (t === 'videos') {
-      setSearchParams(prev => {
-        const next = new URLSearchParams(prev)
+    setSearchParams(prev => {
+      const next = new URLSearchParams(prev)
+      next.set('tab', t)
+      if (t === 'videos') {
         next.delete('analytics_start_date')
         next.delete('analytics_end_date')
         next.delete('analytics_content_type')
         next.delete('analytics_privacy_status')
-        return next
-      })
-    } else {
-      setSearchParams(prev => {
-        const next = new URLSearchParams(prev)
+      } else {
         next.delete('page')
         next.delete('sort_by')
         next.delete('sort_dir')
@@ -174,9 +171,9 @@ export default function PlaylistAnalytics() {
         next.delete('end_date')
         next.delete('content_type')
         next.delete('privacy_status')
-        return next
-      })
-    }
+      }
+      return next
+    })
   }
 
   return (

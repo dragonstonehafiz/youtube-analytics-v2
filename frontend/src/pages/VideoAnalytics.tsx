@@ -1,11 +1,12 @@
 import { useEffect, useRef, useState } from 'react'
-import { useParams, useSearchParams } from 'react-router-dom'
+import { useParams } from 'react-router-dom'
 import { getVideo, getVideoAnalytics, getVideoTrafficSources } from '@/api'
 import type { Video, AnalyticsRow, TrafficSourceRow } from '@/types'
 import PeriodSelect, { last28Dates } from '@/components/PeriodSelect'
 import AnalyticsChart from '@/components/AnalyticsChart'
 import TrafficSourceChart from '@/components/TrafficSourceChart'
 import TrafficSourcesTable from '@/components/TrafficSourcesTable'
+import { useReplaceSearchParams } from '@/hooks/useReplaceSearchParams'
 import './VideoAnalytics.css'
 
 type Tab = 'analytics' | 'traffic-sources'
@@ -45,7 +46,7 @@ function DescriptionBlock({ text }: { text: string | null }) {
 
 export default function VideoAnalytics() {
   const { id } = useParams<{ id: string }>()
-  const [searchParams, setSearchParams] = useSearchParams()
+  const [searchParams, setSearchParams] = useReplaceSearchParams()
   const [video, setVideo] = useState<Video | null>(null)
   const [loading, setLoading] = useState(true)
   const tab = (searchParams.get('tab') as Tab) ?? 'analytics'

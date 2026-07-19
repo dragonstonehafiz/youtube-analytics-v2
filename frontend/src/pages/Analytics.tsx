@@ -1,5 +1,4 @@
 import { useEffect, useState } from 'react'
-import { useSearchParams } from 'react-router-dom'
 import { getVideoStats, getChannelAnalytics, getTopVideosByViews, getVideosPublished, getVideos, getChannelTrafficSources, getTopVideosByTrafficSource } from '@/api'
 import type { AnalyticsRow, VideoStats, TopVideo, PublishedVideo, Video, TrafficSourceRow, TrafficSourceTopVideo } from '@/types'
 import PeriodSelect, { last28Dates } from '@/components/PeriodSelect'
@@ -12,6 +11,7 @@ import TopPerformersCard from '@/components/TopPerformersCard'
 import TrafficSourceChart from '@/components/TrafficSourceChart'
 import TrafficSourcesTable from '@/components/TrafficSourcesTable'
 import TrafficSourceTopVideosPanel from '@/components/TrafficSourceTopVideosPanel'
+import { useReplaceSearchParams } from '@/hooks/useReplaceSearchParams'
 import './Analytics.css'
 
 const RECENT_COUNT = 10
@@ -19,7 +19,7 @@ const RECENT_COUNT = 10
 type Tab = 'analytics' | 'traffic-sources'
 
 export default function Analytics() {
-  const [searchParams, setSearchParams] = useSearchParams()
+  const [searchParams, setSearchParams] = useReplaceSearchParams()
   const tab = (searchParams.get('tab') as Tab) ?? 'analytics'
   const [rows, setRows] = useState<AnalyticsRow[]>([])
   const startDate = searchParams.has('start_date') ? searchParams.get('start_date')! : last28Dates()[0]

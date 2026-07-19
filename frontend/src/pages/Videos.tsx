@@ -1,13 +1,13 @@
 import { useEffect, useState } from 'react'
-import { useSearchParams } from 'react-router-dom'
 import { getVideos, getVideoStats } from '@/api'
 import type { Video, VideoStats } from '@/types'
 import VideoTable, { PAGE_SIZE } from '@/components/VideoTable'
 import type { SortKey, SortDir } from '@/components/VideoTable'
 import VideoStatsBar from '@/components/VideoStatsBar'
+import { useReplaceSearchParams } from '@/hooks/useReplaceSearchParams'
 
 export default function Videos() {
-  const [searchParams, setSearchParams] = useSearchParams()
+  const [searchParams, setSearchParams] = useReplaceSearchParams()
   const page = Math.max(1, Number(searchParams.get('page') ?? 1))
   const sortKey = (searchParams.get('sort_by') as SortKey) ?? 'published_at'
   const sortDir = (searchParams.get('sort_dir') as SortDir) ?? 'desc'
