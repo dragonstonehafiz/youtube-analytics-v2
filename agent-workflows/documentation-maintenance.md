@@ -144,25 +144,20 @@ Do not leave compatibility copies of obsolete documentation unless explicitly re
 
 ## Verification
 
-Until the dedicated validation script exists, use:
+Run the canonical validator:
 
 ```bash
-find agent-workflows -maxdepth 2 -type f -print
-rg -n '^#|^##' agent-workflows
-rg -n 'references/|issue-authoring.md|implementation-planning.md|documentation-maintenance.md' agent-workflows
-rg -n '[[:blank:]]+$' agent-workflows
-git status --short -- backend frontend
+python scripts/validate_agent_workflows.py
 ```
 
-Also manually confirm:
+It validates: both native skill entrypoints exist, required frontmatter on each (`---` delimiters, non-empty `name`/`description`, `name: youtube-analytics-workflow`, a body after the frontmatter), that both skills route to the same shared playbook/reference targets, and that every one of those targets actually resolves to a real file inside the repository.
 
-- referenced paths exist;
-- roots were updated only when a universal rule changed;
-- both skill entrypoints remain aligned;
-- no stale implementation-history wording was introduced;
-- application files remain untouched for documentation-only work.
+Also manually confirm what the script cannot determine:
 
-Once the dedicated validation script exists, this playbook names that script as the primary check rather than duplicating its implementation.
+- whether statements accurately reflect the current code;
+- whether content lives in its correct canonical file, not a duplicate;
+- whether unnecessary duplication was introduced;
+- whether application files changed unintentionally (`git status --short -- backend frontend`).
 
 ## Action boundaries
 

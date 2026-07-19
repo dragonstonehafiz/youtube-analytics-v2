@@ -69,3 +69,20 @@ This runs locally before each commit is created (in addition to the `pr-policy` 
 - The source branch is deleted after merging.
 
 See `.github/PULL_REQUEST_TEMPLATE.md` for the PR checklist.
+
+## Agent workflow documentation
+
+Agent workflow documentation lives under `agent-workflows/`. Native entrypoints live under `.agents/skills/` and `.claude/skills/`.
+
+Follow `agent-workflows/documentation-maintenance.md` when updating these files.
+
+Run:
+
+```bash
+python scripts/validate_agent_workflows.py
+```
+
+- Update the canonical reference alongside any behavior change it describes.
+- Do not copy detailed guidance into both skill entrypoints — they route to the shared playbooks and references instead.
+- Keep root instructions (`AGENTS.md`, `CLAUDE.md`) limited to universal rules.
+- No application build is required for documentation-only changes.

@@ -48,11 +48,12 @@ cd frontend && npm run build                              # full build — requi
 For documentation-only changes (no `backend/`/`frontend/` files touched):
 
 ```bash
+python scripts/validate_agent_workflows.py    # validates skill frontmatter and shared routing
 git diff --check                              # flag trailing whitespace / whitespace errors
 git status --short -- backend frontend        # confirm no application code changed (tracked or untracked)
 ```
 
-The second command should produce no output when the change is genuinely docs-only. Use `git status --short`, not `git diff --name-only` — the latter only sees tracked files and would miss a new untracked file added under `backend/`/`frontend/`.
+The last command should produce no output when the change is genuinely docs-only. Use `git status --short`, not `git diff --name-only` — the latter only sees tracked files and would miss a new untracked file added under `backend/`/`frontend/`.
 
 ## Adding a backend route
 
