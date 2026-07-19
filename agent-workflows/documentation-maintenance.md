@@ -46,6 +46,7 @@ Documentation updates accompany the implementation they describe — they are no
 | Issue-drafting procedure | `issue-authoring.md` |
 | Implementation-planning procedure | `implementation-planning.md` |
 | Documentation maintenance | `documentation-maintenance.md` |
+| PR title/body drafting procedure | `pull-request-authoring.md` |
 | Always-applicable agent rules | `AGENTS.md` and `CLAUDE.md` |
 | Agent-specific discovery and routing | Both repo-local `SKILL.md` entrypoints |
 | User setup and usage | `README.md` |
@@ -98,6 +99,7 @@ References own detailed application knowledge. Each fact has one practical canon
 | Add a verification command | `verification.md`; roots only if universally applicable |
 | Change issue-template fields | `issue-authoring.md` |
 | Change planning requirements | `implementation-planning.md` |
+| Change the PR template, title policy, or merge process | `pull-request-authoring.md` |
 | Rename a playbook/reference | both skill entrypoints and validation expectations |
 | Add a universal coding rule | both roots; detailed explanation elsewhere only if needed |
 

@@ -1,6 +1,6 @@
 ---
 name: youtube-analytics-workflow
-description: Use for repository workflow tasks in this project — drafting or revising a GitHub issue, creating or revising an implementation plan, maintaining agent instructions/playbooks/skills/references, or inspecting architecture/database/sync/API/frontend behavior before making a change.
+description: Use for repository workflow tasks in this project — drafting or revising a GitHub issue, creating or revising an implementation plan, maintaining agent instructions/playbooks/skills/references, drafting or revising a pull request title/description/body/summary, or inspecting architecture/database/sync/API/frontend behavior before making a change.
 ---
 
 # YouTube Analytics Workflow
@@ -10,6 +10,7 @@ description: Use for repository workflow tasks in this project — drafting or r
 - Issue drafting or revision: read `../../../agent-workflows/issue-authoring.md` in full before drafting.
 - Implementation planning or revision: read `../../../agent-workflows/implementation-planning.md` in full before planning.
 - Documentation maintenance (roots, playbooks, skills, or references): read `../../../agent-workflows/documentation-maintenance.md` in full before editing.
+- PR title/description/body/summary drafting or revision: read `../../../agent-workflows/pull-request-authoring.md` in full before drafting.
 - Application implementation (writing actual code): load only the affected references below, inspect current code and trace the affected flow, implement only when explicitly requested, verify using `../../../agent-workflows/references/verification.md`, then update the canonical reference for whatever behavior changed.
 
 Start with the matching playbook; load another only if the task's scope expands (for example, an application change that turns out to also require `documentation-maintenance.md` afterward).
