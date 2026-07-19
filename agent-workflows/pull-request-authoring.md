@@ -63,11 +63,17 @@ Never invent: an issue number, a test result, a screenshot, a "no breaking chang
 
 ## Render and hand off
 
-Present the complete title + body as the deliverable, then stop. Point out anything the user should double-check (an assumed issue relationship, a checklist item left unchecked for lack of evidence, a diff that looked mixed-scope). Do not stage, commit, push, or create/publish the PR — that is the user's action to take with the draft.
+GitHub's PR creation page has one title field and a single Markdown textarea for the whole body — unlike the issue forms (which have separate structured fields per label, see `issue-authoring.md`), there's nothing to split the body into. Render accordingly:
+
+- Present the proposed title as ordinary text outside a code fence: `Title: <proposed title>`.
+- Present the entire body — Summary, Related Issue, Testing, and Checklist together, in template order — as a single fenced `markdown` block, exactly as it should be pasted into that one textarea.
+- Never put the title inside the body's code block, and never split the body across multiple blocks.
+
+After the rendered draft, point out as ordinary text anything the user should double-check (an assumed issue relationship, a checklist item left unchecked for lack of evidence, a diff that looked mixed-scope). Do not stage, commit, push, or create/publish the PR — that is the user's action to take with the draft.
 
 ## Final checklist
 
-- [ ] Evidence gathered from actual `git status`/diff, not assumed from the request
+- [ ] Evidence gathered from the actual branch-vs-base diff and working-tree state, not assumed from the request
 - [ ] Verification evidence used only from what was already run/reported — no checks run proactively by this procedure
 - [ ] Title matches the enforced Conventional Commit format, with `!` only for confirmed breaking changes
 - [ ] Body matches the current PR template's sections exactly, nothing added or removed

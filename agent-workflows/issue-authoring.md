@@ -134,48 +134,90 @@ Do not turn a speculative implementation step ("refactor X to use Y") into an ac
 
 ## Render the draft
 
-### Bug (`bug.yml` fields)
+Render the issue title and every issue-form field as separate user-facing items:
+
+- Present the proposed title as ordinary text outside a code fence: `Title: <proposed title>`.
+- Present each issue-form label as ordinary text outside a code fence.
+- Immediately follow each label with its own fenced `markdown` block containing only the value to paste into that field.
+- Never wrap the entire issue in one large code fence.
+- Never put field labels such as `## Description` or explanatory text such as "copy this" inside a field's code block.
+- Keep template selection, search results, assumptions/unresolved-decision summaries, and other handoff commentary as ordinary text outside all copyable blocks.
+- Preserve the template's field order. Optional fields still get their own block when they have content; omit an optional field entirely when it has no content.
+
+Use this output shape for a Bug draft:
+
+````text
+Title: `Proposed issue title`
+
+Description
 
 ```markdown
-## Description
-
 ### Current behavior
+...
+
 ### Expected behavior
-### Verified facts
-### Assumptions
-### Unresolved decisions
-### Non-goals
-
-## Reproduction steps
-
-## Logs or screenshots
-
-## Acceptance criteria
-
-## Confirmation
+...
 ```
 
-Include the repository's required secrets/personal-data confirmation checkbox — never skip it.
-
-### Feature or Enhancement (`feature.yml` / `enhancement.yml` fields)
+Reproduction steps
 
 ```markdown
-## Description
-
-### Current context
-### Desired outcome
-### Verified facts
-### Assumptions
-### Unresolved decisions
-### Edge cases
-### Non-goals
-
-## Acceptance criteria
-
-## Additional context
+1. ...
+2. ...
 ```
 
-`Additional context` holds related issues, dependencies, alternatives considered, or supporting evidence gathered during the search step.
+Logs or screenshots
+
+```markdown
+...
+```
+
+Acceptance criteria
+
+```markdown
+- [ ] First verifiable outcome
+- [ ] Second verifiable outcome
+```
+
+Confirmation
+
+```markdown
+- [x] I have removed secrets, tokens, and personal data from this report
+```
+````
+
+Include the repository's required secrets/personal-data confirmation — never skip it. `Reproduction steps` and `Logs or screenshots` are optional and should be omitted when they have no content.
+
+Use this output shape for a Feature or Enhancement draft:
+
+````text
+Title: `Proposed issue title`
+
+Description
+
+```markdown
+### Current context
+...
+
+### Desired outcome
+...
+```
+
+Acceptance criteria
+
+```markdown
+- [ ] First verifiable outcome
+- [ ] Second verifiable outcome
+```
+
+Additional context
+
+```markdown
+...
+```
+````
+
+`Additional context` holds related issues, dependencies, alternatives considered, or supporting evidence gathered during the search step. It is optional and should be omitted when it has no content.
 
 Do not add empty subheadings just to look complete. Omit a subsection that has nothing in it, or write "None identified" only where that absence is itself meaningful information (e.g. "Assumptions: None identified" tells the reader the whole draft rests on confirmed facts — worth stating; an empty "Non-goals" with nothing to say is usually better just omitted).
 
@@ -200,4 +242,6 @@ Creating or editing an actual GitHub issue is a separate, explicit action outsid
 - [ ] Desired outcome stated as observable behavior, not an unverified implementation
 - [ ] Edge cases and non-goals included
 - [ ] Acceptance criteria are observable, verifiable, and free of vague wording
+- [ ] Title and field labels rendered as ordinary text; each populated field has its own `markdown` code block containing only pasteable field content
+- [ ] No single code block wraps multiple issue-form fields or handoff commentary
 - [ ] Draft presented for review, with assumptions/unresolved decisions summarized
