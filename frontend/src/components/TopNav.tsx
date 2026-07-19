@@ -24,7 +24,14 @@ export default function TopNav() {
             </svg>
           </button>
         )}
-        <button type="button" className="topnav-brand" onClick={() => navigate('/', { replace: true })}>
+        <button
+          type="button"
+          className="topnav-brand"
+          onClick={() => {
+            if (location.pathname === '/') return
+            navigate('/')
+          }}
+        >
           YouTube Analytics
         </button>
         <div className="topnav-links">
@@ -37,7 +44,10 @@ export default function TopNav() {
                 key={link.to}
                 type="button"
                 className={`topnav-link${isActive ? ' active' : ''}`}
-                onClick={() => navigate(link.to, { replace: true })}
+                onClick={() => {
+                  if (location.pathname === link.to) return
+                  navigate(link.to)
+                }}
               >
                 {link.label}
               </button>

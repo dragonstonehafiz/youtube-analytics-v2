@@ -1,7 +1,8 @@
 import { useEffect, useState } from 'react'
-import { Link, useSearchParams } from 'react-router-dom'
+import { Link } from 'react-router-dom'
 import { getPlaylists } from '@/api'
 import type { Playlist } from '@/types'
+import { useReplaceSearchParams } from '@/hooks/useReplaceSearchParams'
 
 type SortKey = 'published_at' | 'item_count' | 'last_item_added' | 'total_views' | 'total_earnings_sgd'
 type SortDir = 'asc' | 'desc'
@@ -9,7 +10,7 @@ type SortDir = 'asc' | 'desc'
 const PAGE_SIZE = 25
 
 export default function Playlists() {
-  const [searchParams, setSearchParams] = useSearchParams()
+  const [searchParams, setSearchParams] = useReplaceSearchParams()
   const page = Math.max(1, Number(searchParams.get('page') ?? 1))
   const sortKey = (searchParams.get('sort_by') as SortKey) ?? 'last_item_added'
   const sortDir = (searchParams.get('sort_dir') as SortDir) ?? 'desc'
