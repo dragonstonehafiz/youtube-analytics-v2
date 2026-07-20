@@ -19,17 +19,17 @@ export default function VideoStatsBar({ stats }: VideoStatsBarProps) {
       </div>
       <div className="video-stats-sep" />
       <div className="video-stats-col">
-        <span className="video-stats-heading">Legacy Shorts</span>
-        <div className="video-stats-item"><span className="video-stats-value">{num(stats.legacy_short_count)}</span><span className="video-stats-label">Count</span></div>
-        <div className="video-stats-item"><span className="video-stats-value">{num(stats.legacy_short_views)}</span><span className="video-stats-label">Period Views</span></div>
-        <div className="video-stats-item"><span className="video-stats-value">{sgd(stats.legacy_short_earnings_sgd)}</span><span className="video-stats-label">Period Earnings</span></div>
-      </div>
-      <div className="video-stats-sep" />
-      <div className="video-stats-col">
         <span className="video-stats-heading">New Videos</span>
         <div className="video-stats-item"><span className="video-stats-value">{num(stats.new_video_count)}</span><span className="video-stats-label">Count</span></div>
         <div className="video-stats-item"><span className="video-stats-value">{num(stats.new_video_views)}</span><span className="video-stats-label">Period Views</span></div>
         <div className="video-stats-item"><span className="video-stats-value">{sgd(stats.new_video_earnings_sgd)}</span><span className="video-stats-label">Period Earnings</span></div>
+      </div>
+      <div className="video-stats-sep" />
+      <div className="video-stats-col">
+        <span className="video-stats-heading">Legacy Shorts</span>
+        <div className="video-stats-item"><span className="video-stats-value">{num(stats.legacy_short_count)}</span><span className="video-stats-label">Count</span></div>
+        <div className="video-stats-item"><span className="video-stats-value">{num(stats.legacy_short_views)}</span><span className="video-stats-label">Period Views</span></div>
+        <div className="video-stats-item"><span className="video-stats-value">{sgd(stats.legacy_short_earnings_sgd)}</span><span className="video-stats-label">Period Earnings</span></div>
       </div>
       <div className="video-stats-sep" />
       <div className="video-stats-col">
