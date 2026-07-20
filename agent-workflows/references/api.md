@@ -40,6 +40,9 @@ GET  /videos
 GET  /videos/stats
   ?title, start_date, end_date, content_type, privacy_status
   → VideoStats (see frontend.md for the type)
+  start_date/end_date set the Legacy/New publication split and the video_analytics date window for period
+  views/earnings — see database.md. Comments and privacy-status counts are always current lifetime totals,
+  never date-restricted. Omitting both dates uses the full available dataset.
 
 GET  /videos/published
   ?start_date, end_date, content_type, privacy_status, playlist_id
@@ -76,6 +79,7 @@ GET  /playlists/{playlist_id}
 GET  /playlists/{playlist_id}/videos/stats
   ?title, start_date, end_date, content_type, privacy_status
   → VideoStats | 404 if playlist not found
+  Same semantics as GET /videos/stats, scoped to the playlist's member videos (deduplicated by video ID).
 
 GET  /playlists/{playlist_id}/videos
   ?page=1, page_size=50 (max 200), sort_by=published_at, sort_dir=desc,

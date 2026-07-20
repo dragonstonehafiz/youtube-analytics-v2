@@ -1,3 +1,5 @@
+import type { VideoStats } from '@/types'
+
 const BASE = "http://localhost:8000"
 
 function buildUrl(path: string, params?: Record<string, string>): string {
@@ -10,10 +12,10 @@ function buildUrl(path: string, params?: Record<string, string>): string {
   return url.toString()
 }
 
-export const getVideoStats = (title?: string, startDate?: string, endDate?: string, contentType?: string, privacyStatus?: string) =>
+export const getVideoStats = (title?: string, startDate?: string, endDate?: string, contentType?: string, privacyStatus?: string): Promise<VideoStats> =>
   fetch(buildUrl("/videos/stats", { ...(title && { title }), ...(startDate && { start_date: startDate }), ...(endDate && { end_date: endDate }), ...(contentType && { content_type: contentType }), ...(privacyStatus && { privacy_status: privacyStatus }) })).then(r => r.json())
 
-export const getPlaylistVideoStats = (id: string, title?: string, startDate?: string, endDate?: string, contentType?: string, privacyStatus?: string) =>
+export const getPlaylistVideoStats = (id: string, title?: string, startDate?: string, endDate?: string, contentType?: string, privacyStatus?: string): Promise<VideoStats> =>
   fetch(buildUrl(`/playlists/${id}/videos/stats`, { ...(title && { title }), ...(startDate && { start_date: startDate }), ...(endDate && { end_date: endDate }), ...(contentType && { content_type: contentType }), ...(privacyStatus && { privacy_status: privacyStatus }) })).then(r => r.json())
 
 export const getVideos = (page: number = 1, pageSize: number = 25, sortBy: string = 'published_at', sortDir: string = 'desc', title?: string, startDate?: string, endDate?: string, contentType?: string, privacyStatus?: string) =>
