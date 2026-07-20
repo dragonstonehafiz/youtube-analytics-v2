@@ -37,7 +37,15 @@ def get_video_stats(
     content_type: str | None = Query(default=None),
     privacy_status: str | None = Query(default=None),
 ) -> dict:
-    """Return aggregated counts and totals for all videos with optional filters."""
+    """Return Legacy/New publication-classified counts with period views/earnings, plus lifetime comments and
+    current privacy status, for all videos with optional title/content-type/privacy filters.
+
+    Legacy content published strictly before the effective start date; New content published between the
+    effective start and end dates inclusive. Period views/earnings are aggregated from video_analytics rows
+    within the effective date range. When start_date/end_date are omitted, the effective range is derived from
+    the available video_analytics date range (or the matching videos' published_at range if no analytics rows
+    exist). Lifetime comments and current privacy status counts are not restricted by date.
+    """
     return database.get_video_stats(title, start_date, end_date, content_type, privacy_status)
 
 
@@ -230,7 +238,11 @@ def get_playlist_video_stats(
     content_type: str | None = Query(default=None),
     privacy_status: str | None = Query(default=None),
 ) -> dict:
-    """Return aggregated counts and totals for videos in a playlist with optional filters."""
+    """Return Legacy/New publication-classified counts with period views/earnings, plus lifetime comments and
+    current privacy status, for videos in a playlist with optional title/content-type/privacy filters.
+
+    Semantics match GET /videos/stats, scoped to the playlist's member videos (deduplicated by video ID).
+    """
     playlist = database.get_playlist(playlist_id)
     if not playlist:
         raise HTTPException(status_code=404, detail="Playlist not found")

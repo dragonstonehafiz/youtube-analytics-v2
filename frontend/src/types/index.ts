@@ -82,16 +82,21 @@ export interface PublishedVideo {
 }
 
 export interface VideoStats {
-  total_uploads: number
-  total_videos: number
-  total_shorts: number
-  total_views: number
-  total_video_views: number
-  total_short_views: number
+  legacy_video_count: number
+  legacy_video_views: number
+  legacy_video_earnings_sgd: number
+  legacy_short_count: number
+  legacy_short_views: number
+  legacy_short_earnings_sgd: number
+  new_video_count: number
+  new_video_views: number
+  new_video_earnings_sgd: number
+  new_short_count: number
+  new_short_views: number
+  new_short_earnings_sgd: number
   total_comments: number
-  total_earnings_sgd: number
-  total_video_earnings_sgd: number
-  total_short_earnings_sgd: number
+  video_comments: number
+  short_comments: number
   total_public: number
   total_private: number
   total_unlisted: number
