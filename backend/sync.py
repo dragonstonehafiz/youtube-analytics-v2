@@ -8,6 +8,11 @@ from datetime import date, datetime, timedelta
 import database
 import youtube
 
+# Incremental syncs re-fetch this many days before the last stored date, since
+# both analytics and traffic-source metrics for recent days are not fully
+# settled by the API until some time after the day ends.
+INCREMENTAL_LOOKBACK_DAYS = 7
+
 # ---------------------------------------------------------------------------
 # Shared state (read by routes.py via get_status())
 # ---------------------------------------------------------------------------
@@ -76,12 +81,22 @@ def _run_stage(
 # Sync logic
 # ---------------------------------------------------------------------------
 
+def _incremental_lookback_start(last_date: str | None, publish_date: str) -> str:
+    """Return the incremental sync start date: publish_date if never synced,
+    otherwise INCREMENTAL_LOOKBACK_DAYS before last_date, clamped to publish_date."""
+    if not last_date:
+        return publish_date
+    start = (date.fromisoformat(last_date) - timedelta(days=INCREMENTAL_LOOKBACK_DAYS)).isoformat()
+    return max(start, publish_date)
+
+
 def run_sync(scope: str = "incremental", year: int | None = None) -> None:
     """Run a full sync: videos → playlists → video analytics → traffic sources → fx rates.
 
     `scope` controls the date range used for video analytics and traffic sources only
     (videos, playlists, and fx rates are always synced incrementally):
-      - "incremental" (default): resume from each video's last synced date, as before.
+      - "incremental" (default): resume from INCREMENTAL_LOOKBACK_DAYS before each video's
+        last synced date, clamped to its publish date.
       - "year": refetch the given `year` (Jan 1 - Dec 31, clamped to publish date / yesterday)
         for every video, ignoring any existing resume checkpoint.
       - "all": refetch each video's entire history (publish date - yesterday), ignoring
@@ -179,8 +194,12 @@ def _sync_playlists(counts: SyncCounts) -> None:
 def _sync_video_analytics(scope: str, year: int | None, counts: SyncCounts) -> None:
     """Fetch daily analytics for every video.
 
-    scope="incremental" resumes from each video's last synced date; scope="year"
-    refetches the given year; scope="all" refetches each video's entire history.
+    scope="incremental" re-fetches starting INCREMENTAL_LOOKBACK_DAYS before the last
+    synced date (not right after it), since analytics metrics for recent days are not
+    fully settled by the API until some time after that day ends — upserting re-pulled
+    days is a no-op once the data has settled, and corrects any recent day that was
+    stored before its data had fully arrived. scope="year" refetches the given year;
+    scope="all" refetches each video's entire history.
     """
     today = date.today()
     end_date = (today - timedelta(days=1)).isoformat()
@@ -202,7 +221,7 @@ def _sync_video_analytics(scope: str, year: int | None, counts: SyncCounts) -> N
             range_end = end_date
         else:
             last_date = database.get_last_analytics_date(video_id)
-            start = (date.fromisoformat(last_date) + timedelta(days=1)).isoformat() if last_date else publish_date
+            start = _incremental_lookback_start(last_date, publish_date)
             range_end = end_date
 
         if start > range_end:
@@ -217,12 +236,12 @@ def _sync_video_analytics(scope: str, year: int | None, counts: SyncCounts) -> N
 def _sync_video_traffic_sources(scope: str, year: int | None, counts: SyncCounts) -> None:
     """Fetch daily traffic-source breakdowns for every video.
 
-    scope="incremental" re-fetches starting a week before the last synced date (not
-    right after it), since traffic-source data for a given day is not fully available
-    from the API until some time after that day ends — upserting re-pulled days is a
-    no-op once the data has settled, and corrects any recent day that was stored
-    before its data had fully arrived. scope="year" refetches the given year;
-    scope="all" refetches each video's entire history.
+    scope="incremental" re-fetches starting INCREMENTAL_LOOKBACK_DAYS before the last
+    synced date (not right after it), since traffic-source data for a given day is not
+    fully available from the API until some time after that day ends — upserting
+    re-pulled days is a no-op once the data has settled, and corrects any recent day
+    that was stored before its data had fully arrived. scope="year" refetches the
+    given year; scope="all" refetches each video's entire history.
     """
     today = date.today()
     end_date = (today - timedelta(days=1)).isoformat()
@@ -244,12 +263,7 @@ def _sync_video_traffic_sources(scope: str, year: int | None, counts: SyncCounts
             range_end = end_date
         else:
             last_date = database.get_last_traffic_source_date(video_id)
-            if last_date:
-                start = (date.fromisoformat(last_date) - timedelta(days=7)).isoformat()
-                if start < publish_date:
-                    start = publish_date
-            else:
-                start = publish_date
+            start = _incremental_lookback_start(last_date, publish_date)
             range_end = end_date
 
         if start > range_end:

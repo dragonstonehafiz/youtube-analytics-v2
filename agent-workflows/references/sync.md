@@ -17,6 +17,7 @@ How data gets from the YouTube APIs into SQLite: pipeline order, scheduling, sco
 - [Scope behavior](#scope-behavior)
 - [Stage tracking](#stage-tracking)
 - [Video and playlist synchronization](#video-and-playlist-synchronization)
+- [Shared incremental lookback](#shared-incremental-lookback)
 - [Analytics synchronization](#analytics-synchronization)
 - [Traffic-source synchronization](#traffic-source-synchronization)
 - [FX-rate synchronization](#fx-rate-synchronization)
@@ -25,61 +26,68 @@ How data gets from the YouTube APIs into SQLite: pipeline order, scheduling, sco
 
 ## Pipeline overview
 
-A single sync (`run_sync()`, `sync.py:79-135`) runs five stages in order, always in this sequence:
+A single sync (`run_sync()`, `sync.py:93-150`) runs five stages in order, always in this sequence:
 
 ```
 videos → playlists → video_analytics → video_traffic_sources → fx_rates
 ```
 
-Each stage is wrapped by `_run_stage()` and recorded as its own `sync_runs` row; all five rows from one `run_sync()` call share one `batch_id` (a UUID generated once per call, `sync.py:105`).
+Each stage is wrapped by `_run_stage()` and recorded as its own `sync_runs` row; all five rows from one `run_sync()` call share one `batch_id` (a UUID generated once per call, `sync.py:120`).
 
 ## Scheduling and state
 
-- `_scheduler_loop()` (`sync.py:305-310`) calls `run_sync()` immediately, then reschedules itself via `threading.Timer(86400, ...)` (24h), as a daemon thread.
-- `start_background_scheduler()` (`sync.py:313-344`), called once from `server.py`'s lifespan, reads the persisted `last_synced_at` from `sync_state`. If the last sync was under 24h ago, it schedules the next run for the *remaining* time in that window instead of running immediately.
-- `last_synced_at` is a single global checkpoint stored in `sync_state` (survives restarts) used only to decide "was the last full sync run more than 24h ago" — it is **not** a per-row or per-date audit trail. It's stored as a **date-only** string (`date.today().isoformat()`, `sync.py:127`), not a full timestamp, and is only written after all five stages succeed.
-- `get_status()` / `is_syncing()` (`sync.py:21-30`) expose `{is_syncing, last_synced_at, message}` guarded by a module-level `threading.Lock` and `_is_syncing` bool — safe to poll from any thread. If a sync is already running, `run_sync()` returns immediately without starting a second one (`sync.py:100-103`).
+- `_scheduler_loop()` (`sync.py:319-324`) calls `run_sync()` immediately, then reschedules itself via `threading.Timer(86400, ...)` (24h), as a daemon thread.
+- `start_background_scheduler()` (`sync.py:327-358`), called once from `server.py`'s lifespan, reads the persisted `last_synced_at` from `sync_state`. If the last sync was under 24h ago, it schedules the next run for the *remaining* time in that window instead of running immediately.
+- `last_synced_at` is a single global checkpoint stored in `sync_state` (survives restarts) used only to decide "was the last full sync run more than 24h ago" — it is **not** a per-row or per-date audit trail. It's stored as a **date-only** string (`date.today().isoformat()`, `sync.py:142`), not a full timestamp, and is only written after all five stages succeed.
+- `get_status()` / `is_syncing()` (`sync.py:26-35`) expose `{is_syncing, last_synced_at, message}` guarded by a module-level `threading.Lock` and `_is_syncing` bool — safe to poll from any thread. If a sync is already running, `run_sync()` returns immediately without starting a second one (`sync.py:115-118`).
 
 ## Scope behavior
 
 `run_sync(scope="incremental"|"year"|"all", year=None)`:
 
-- `scope`/`year` affect **only** `_sync_video_analytics` and `_sync_video_traffic_sources`. Videos, playlists, and FX rates always sync incrementally regardless of the requested scope (`sync.py:109,112,125` hardcode `"incremental", None`).
-- Raises `ValueError` if `scope == "year"` and `year is None` (`sync.py:97-98`) — mirrored by `routes.py`'s `POST /sync/trigger`, which returns `400` for the same condition before ever calling `run_sync`.
-- `"incremental"` (default): resume each video from its own last-synced date.
+- `scope`/`year` affect **only** `_sync_video_analytics` and `_sync_video_traffic_sources`. Videos, playlists, and FX rates always sync incrementally regardless of the requested scope (`sync.py:124,127,140` hardcode `"incremental", None`).
+- Raises `ValueError` if `scope == "year"` and `year is None` (`sync.py:112-113`) — mirrored by `routes.py`'s `POST /sync/trigger`, which returns `400` for the same condition before ever calling `run_sync`.
+- `"incremental"` (default): resume each video from `INCREMENTAL_LOOKBACK_DAYS` before its own last-synced date, clamped to its publish date (see [Shared incremental lookback](#shared-incremental-lookback)).
 - `"year"`: refetch the given calendar year for every video, ignoring any resume checkpoint, clamped to `[publish_date, yesterday]`.
 - `"all"`: refetch each video's entire history (`publish_date` → yesterday), ignoring any resume checkpoint.
 
 ## Stage tracking
 
-- `SyncCounts` (`sync.py:44-49`) is a mutable dataclass (`rows_fetched`, `rows_written`, `rows_deleted`) accumulated incrementally *as rows are processed inside each stage's loop* — not computed from a return value at the end. If a stage raises partway through (e.g. video 200 of 378), the `sync_runs` row for that stage still reflects accurate partial totals, not zeros.
-- `_run_stage()` (`sync.py:52-72`) always re-raises the underlying exception after recording failure via `fail_sync_run()` — so `run_sync()`'s overall `try/finally` (which just clears `_is_syncing`) is unaffected by a stage failing.
+- `SyncCounts` (`sync.py:49-54`) is a mutable dataclass (`rows_fetched`, `rows_written`, `rows_deleted`) accumulated incrementally *as rows are processed inside each stage's loop* — not computed from a return value at the end. If a stage raises partway through (e.g. video 200 of 378), the `sync_runs` row for that stage still reflects accurate partial totals, not zeros.
+- `_run_stage()` (`sync.py:57-77`) always re-raises the underlying exception after recording failure via `fail_sync_run()` — so `run_sync()`'s overall `try/finally` (which just clears `_is_syncing`) is unaffected by a stage failing.
 - For `videos`/`playlists`/`fx_rates`, `sync_runs.scope` is always `"incremental"` and `year` is `NULL`. For `video_analytics`/`video_traffic_sources`, `scope`/`year` reflect whatever was passed into `run_sync()`.
-- The playlists stage's `rows_deleted` sums `delete_playlist_items()`'s return value across every playlist in the loop (items are deleted and fully re-inserted on every sync, `sync.py:171`) plus `delete_playlists_not_in()`'s return value (`sync.py:176`) — cascaded FK deletes (e.g. `video_analytics` rows removed because their parent video was deleted) are not counted, since those helpers only report `cursor.rowcount` for the row they directly targeted.
+- The playlists stage's `rows_deleted` sums `delete_playlist_items()`'s return value across every playlist in the loop (items are deleted and fully re-inserted on every sync, `sync.py:186`) plus `delete_playlists_not_in()`'s return value (`sync.py:191`) — cascaded FK deletes (e.g. `video_analytics` rows removed because their parent video was deleted) are not counted, since those helpers only report `cursor.rowcount` for the row they directly targeted.
 
 ## Video and playlist synchronization
 
-- `_sync_videos()` (`sync.py:138-156`): fetches the uploads playlist ID, the Shorts video-ID set (via UUSH), and all video IDs; fetches full video details in batches of 50 (YouTube API's per-request ID limit); collects everything into memory first, upserts all of it, **then** deletes any DB video not present in the freshly-fetched ID set (cascades to `video_analytics`/`video_traffic_sources`).
-- `_sync_playlists()` (`sync.py:159-176`): same collect-then-upsert-then-delete order, at the playlist level (cascades to `playlist_items`).
+- `_sync_videos()` (`sync.py:153-171`): fetches the uploads playlist ID, the Shorts video-ID set (via UUSH), and all video IDs; fetches full video details in batches of 50 (YouTube API's per-request ID limit); collects everything into memory first, upserts all of it, **then** deletes any DB video not present in the freshly-fetched ID set (cascades to `video_analytics`/`video_traffic_sources`).
+- `_sync_playlists()` (`sync.py:174-191`): same collect-then-upsert-then-delete order, at the playlist level (cascades to `playlist_items`).
+
+## Shared incremental lookback
+
+`_incremental_lookback_start(last_date, publish_date)` (`sync.py:84-90`) is the single helper both `_sync_video_analytics` and `_sync_video_traffic_sources` call for their `"incremental"` start date, so the two stages can't drift apart:
+
+- If `last_date` is `None` (never synced), returns `publish_date`.
+- Otherwise returns `max(publish_date, last_date - INCREMENTAL_LOOKBACK_DAYS)` (`INCREMENTAL_LOOKBACK_DAYS = 7`, `sync.py:14`) — i.e. resumes a week before the last stored date, clamped so it never goes earlier than the video's publish date.
 
 ## Analytics synchronization
 
-`_sync_video_analytics(scope, year, counts)` (`sync.py:179-214`):
+`_sync_video_analytics(scope, year, counts)` (`sync.py:194-233`):
 
-- Per video, computes `start`/`range_end` based on `scope` (see [Scope behavior](#scope-behavior)); for `"incremental"`, `start = get_last_analytics_date(video_id) + 1 day` (or `publish_date` if never synced).
+- Per video, computes `start`/`range_end` based on `scope` (see [Scope behavior](#scope-behavior)); for `"incremental"`, `start = _incremental_lookback_start(get_last_analytics_date(video_id), publish_date)`.
 - If `start > range_end`, the video is skipped entirely via `continue` — **zero API calls** for that video. This is what prevents querying analytics for a video before it existed even when an unrelated `year` is requested.
-- **No lookback window on incremental mode**: once a day is synced, it is never re-fetched by a later incremental run. If that day's analytics (views/watch time/revenue) hadn't fully settled in the YouTube API at sync time, the stored value can permanently undercount versus YouTube Studio unless a `year`/`all` resync is explicitly run for that period.
+- **7-day lookback on incremental mode** (see [Shared incremental lookback](#shared-incremental-lookback)): analytics metrics (views/watch time/revenue) for recent days are not fully settled in the YouTube API at sync time, so each incremental run re-fetches and re-upserts the last 7 days rather than resuming strictly after the last synced date. Re-upserting an already-settled day leaves its metric values unchanged, but `updated_at` is still refreshed on every upsert (see `database.md`) — it is not a true no-op at the row level.
 
 ## Traffic-source synchronization
 
-`_sync_video_traffic_sources(scope, year, counts)` (`sync.py:217-261`):
+`_sync_video_traffic_sources(scope, year, counts)` (`sync.py:236-275`):
 
-- Same `scope` semantics as analytics.
-- **7-day lookback on incremental mode**: `start = get_last_traffic_source_date(video_id) - 7 days` (clamped to `publish_date` if that goes earlier), not `last_date + 1 day`. Traffic-source data for a given day is not fully available from the API until some time after that day ends; this lookback corrects any recent day that was stored before its data had fully arrived. Re-upserting an already-settled day leaves its metric values unchanged, but `updated_at` is still refreshed on every upsert (see `database.md`) — it is not a true no-op at the row level.
+- Same `scope` semantics as analytics, including the shared [incremental lookback](#shared-incremental-lookback): `start = _incremental_lookback_start(get_last_traffic_source_date(video_id), publish_date)`.
+- Traffic-source data for a given day is not fully available from the API until some time after that day ends; the lookback corrects any recent day that was stored before its data had fully arrived. Re-upserting an already-settled day leaves its metric values unchanged, but `updated_at` is still refreshed on every upsert (see `database.md`) — it is not a true no-op at the row level.
 
 ## FX-rate synchronization
 
-`_sync_fx_rates()` (`sync.py:264-298`):
+`_sync_fx_rates()` (`sync.py:278-312`):
 
 - Incremental from `get_last_fx_rate()["date"] + 1 day`; first run starts `2015-01-01`.
 - Fetches `USDSGD=X` from Yahoo Finance via `yfinance` (imported **inside** the function, not at module scope).
