@@ -11,6 +11,26 @@
   min-width: 600px;
 }
 
+.top-videos-col-thumb {
+  width: 136px;
+}
+
+.top-videos-col-date {
+  width: 120px;
+}
+
+.top-videos-col-views {
+  width: 100px;
+}
+
+.top-videos-col-watch-time {
+  width: 130px;
+}
+
+.top-videos-col-earnings {
+  width: 140px;
+}
+
 .top-videos-thumb {
   width: 120px;
   height: 68px;

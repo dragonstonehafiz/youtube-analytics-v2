@@ -871,7 +871,7 @@ def get_top_videos_by_views(
                 v.id, v.title, v.published_at, v.thumbnail_url, v.content_type,
                 SUM(va.views) AS period_views,
                 COALESCE(SUM(va.estimated_revenue * fx.usd_to_sgd), 0) AS period_earnings_sgd,
-                SUM(va.watch_time_minutes) / 60.0 AS period_watch_time_hours
+                COALESCE(SUM(va.watch_time_minutes), 0) / 60.0 AS period_watch_time_hours
             FROM video_analytics va
             JOIN videos v ON v.id = va.video_id
             LEFT JOIN fx_rates fx ON fx.date = va.date
@@ -923,7 +923,7 @@ def get_playlist_top_videos_by_views(
                 v.id, v.title, v.published_at, v.thumbnail_url, v.content_type,
                 SUM(va.views) AS period_views,
                 COALESCE(SUM(va.estimated_revenue * fx.usd_to_sgd), 0) AS period_earnings_sgd,
-                SUM(va.watch_time_minutes) / 60.0 AS period_watch_time_hours
+                COALESCE(SUM(va.watch_time_minutes), 0) / 60.0 AS period_watch_time_hours
             FROM video_analytics va
             JOIN videos v ON v.id = va.video_id
             LEFT JOIN fx_rates fx ON fx.date = va.date

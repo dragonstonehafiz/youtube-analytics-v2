@@ -15,12 +15,12 @@ export default function TopVideosList({ videos }: Props) {
       <div className="top-videos-table-wrap">
         <table className="data-table top-videos-table">
           <colgroup>
-            <col style={{ width: '136px' }} />
+            <col className="top-videos-col-thumb" />
             <col />
-            <col style={{ width: '120px' }} />
-            <col style={{ width: '100px' }} />
-            <col style={{ width: '130px' }} />
-            <col style={{ width: '140px' }} />
+            <col className="top-videos-col-date" />
+            <col className="top-videos-col-views" />
+            <col className="top-videos-col-watch-time" />
+            <col className="top-videos-col-earnings" />
           </colgroup>
           <thead>
             <tr>
