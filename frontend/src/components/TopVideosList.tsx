@@ -20,7 +20,7 @@ export default function TopVideosList({ videos, sortBy, onSort }: Props) {
   return (
     <div className="top-videos-section">
       <div className="section-header">{heading}</div>
-      <div className="top-videos-table-wrap">
+      <div className="table-overflow-wrap top-videos-table-wrap">
         <table className="data-table top-videos-table">
           <colgroup>
             <col className="top-videos-col-thumb" />

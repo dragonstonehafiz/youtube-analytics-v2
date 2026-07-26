@@ -7,9 +7,7 @@ interface Props {
 }
 
 export default function TrafficSourcesTable({ rows }: Props) {
-  if (rows.length === 0) {
-    return <div className="chart-placeholder">No traffic source data available.</div>
-  }
+  if (rows.length === 0) return null
 
   const totals = aggregateTrafficSourceTotals(rows)
   const maxViews = Math.max(...totals.map(t => t.views))
@@ -18,14 +16,14 @@ export default function TrafficSourcesTable({ rows }: Props) {
   return (
     <div className="traffic-sources-section">
       <div className="section-header">Traffic Sources</div>
-      <div className="traffic-sources-table-wrap">
+      <div className="table-overflow-wrap traffic-sources-table-wrap">
         <table className="data-table traffic-sources-table">
           <colgroup>
-            <col style={{ width: '180px' }} />
+            <col className="traffic-sources-col-source" />
             <col />
-            <col style={{ width: '100px' }} />
-            <col style={{ width: '140px' }} />
-            <col style={{ width: '90px' }} />
+            <col className="traffic-sources-col-views" />
+            <col className="traffic-sources-col-watch-time" />
+            <col className="traffic-sources-col-share" />
           </colgroup>
           <thead>
             <tr>

@@ -15,7 +15,8 @@ import TopPerformersCard from '@/components/TopPerformersCard'
 import TrafficSourceChart from '@/components/TrafficSourceChart'
 import TrafficSourcesTable from '@/components/TrafficSourcesTable'
 import TrafficSourceTopVideosPanel from '@/components/TrafficSourceTopVideosPanel'
-import './PlaylistAnalytics.css'
+import '@/components/VideoMetaCard.css'
+import './Analytics.css'
 
 const RECENT_COUNT = 10
 
@@ -176,28 +177,12 @@ export default function PlaylistAnalytics() {
     setSearchParams(prev => {
       const next = new URLSearchParams(prev)
       next.set('tab', t)
-      if (t === 'videos') {
-        next.delete('analytics_start_date')
-        next.delete('analytics_end_date')
-        next.delete('analytics_content_type')
-        next.delete('analytics_privacy_status')
-        next.delete('top_videos_sort_by')
-      } else {
-        next.delete('page')
-        next.delete('sort_by')
-        next.delete('sort_dir')
-        next.delete('title')
-        next.delete('start_date')
-        next.delete('end_date')
-        next.delete('content_type')
-        next.delete('privacy_status')
-      }
       return next
     })
   }
 
   return (
-    <div className="page">
+    <div className="page analytics-page">
       {playlist && (
         <div className="card video-meta-card">
           <div className="video-meta-thumb-wrap">
@@ -317,27 +302,47 @@ export default function PlaylistAnalytics() {
             </label>
           </div>
 
-          {stats && <VideoStatsBar stats={stats} />}
-
           {tab === 'analytics' ? (
-            <div className="analytics-layout">
-              <div className="analytics-main">
-                <AnalyticsChart rows={rows} uploadedVideos={publishedVideos} />
-                <TopVideosList videos={topVideos} sortBy={topVideosSortBy} onSort={handleTopVideosSort} />
+            rows.length === 0 ? (
+              <div className="chart-placeholder">
+                <svg width="48" height="48" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round">
+                  <path d="M3 3v18h18"/><path d="M7 16l4-4 4 4 4-8"/>
+                </svg>
+                <p>No data for this period</p>
               </div>
-              <div className="analytics-sidebar">
-                <TopPerformersCard title="Top Videos (Last 7 Days)" videos={topPerformingVideos} />
-                <TopPerformersCard title="Top Shorts (Last 7 Days)" videos={topPerformingShorts} />
-                <VideoCarouselCard title="Latest Videos" videos={recentVideos} />
-                <VideoCarouselCard title="Latest Shorts" videos={recentShorts} />
-              </div>
-            </div>
+            ) : (
+              <>
+                {stats && <VideoStatsBar stats={stats} />}
+                <div className="analytics-layout">
+                  <div className="analytics-main">
+                    <AnalyticsChart rows={rows} uploadedVideos={publishedVideos} />
+                    <TopVideosList videos={topVideos} sortBy={topVideosSortBy} onSort={handleTopVideosSort} />
+                  </div>
+                  <div className="analytics-sidebar">
+                    <TopPerformersCard title="Top Videos (Last 7 Days)" videos={topPerformingVideos} />
+                    <TopPerformersCard title="Top Shorts (Last 7 Days)" videos={topPerformingShorts} />
+                    <VideoCarouselCard title="Latest Videos" videos={recentVideos} />
+                    <VideoCarouselCard title="Latest Shorts" videos={recentShorts} />
+                  </div>
+                </div>
+              </>
+            )
           ) : (
-            <>
-              <TrafficSourceChart rows={trafficSources} uploadedVideos={publishedVideos} />
-              <TrafficSourcesTable rows={trafficSources} />
-              <TrafficSourceTopVideosPanel rows={trafficSources} bySource={topVideosBySource} />
-            </>
+            trafficSources.length === 0 ? (
+              <div className="chart-placeholder">
+                <svg width="48" height="48" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round">
+                  <path d="M3 3v18h18"/><path d="M7 16l4-4 4 4 4-8"/>
+                </svg>
+                <p>No data for this period</p>
+              </div>
+            ) : (
+              <>
+                {stats && <VideoStatsBar stats={stats} />}
+                <TrafficSourceChart rows={trafficSources} uploadedVideos={publishedVideos} />
+                <TrafficSourcesTable rows={trafficSources} />
+                <TrafficSourceTopVideosPanel rows={trafficSources} bySource={topVideosBySource} />
+              </>
+            )
           )}
         </>
       )}

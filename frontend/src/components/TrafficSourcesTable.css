@@ -4,11 +4,26 @@
 
 .traffic-sources-table-wrap {
   margin-top: 0.75rem;
-  overflow-x: auto;
 }
 
 .traffic-sources-table {
   min-width: 560px;
+}
+
+.traffic-sources-col-source {
+  width: 180px;
+}
+
+.traffic-sources-col-views {
+  width: 100px;
+}
+
+.traffic-sources-col-watch-time {
+  width: 140px;
+}
+
+.traffic-sources-col-share {
+  width: 90px;
 }
 
 .traffic-source-bar-track {

@@ -7,6 +7,8 @@ import AnalyticsChart from '@/components/AnalyticsChart'
 import TrafficSourceChart from '@/components/TrafficSourceChart'
 import TrafficSourcesTable from '@/components/TrafficSourcesTable'
 import { useReplaceSearchParams } from '@/hooks/useReplaceSearchParams'
+import '@/components/VideoMetaCard.css'
+import './Analytics.css'
 import './VideoAnalytics.css'
 
 type Tab = 'analytics' | 'traffic-sources'
@@ -79,7 +81,7 @@ export default function VideoAnalytics() {
   }
 
   return (
-    <div className="page">
+    <div className="page analytics-page">
       {loading ? (
         <p className="loading">Loading...</p>
       ) : video ? (
@@ -136,6 +138,23 @@ export default function VideoAnalytics() {
             </div>
           </div>
 
+          <div className="tabs">
+            <button
+              type="button"
+              className={`tab${tab === 'analytics' ? ' active' : ''}`}
+              onClick={() => handleTabChange('analytics')}
+            >
+              Analytics
+            </button>
+            <button
+              type="button"
+              className={`tab${tab === 'traffic-sources' ? ' active' : ''}`}
+              onClick={() => handleTabChange('traffic-sources')}
+            >
+              Traffic Sources
+            </button>
+          </div>
+
           <div className="filter-bar">
             <PeriodSelect
               startDate={startDate}
@@ -165,30 +184,31 @@ export default function VideoAnalytics() {
             </label>
           </div>
 
-          <div className="tabs">
-            <button
-              type="button"
-              className={`tab${tab === 'analytics' ? ' active' : ''}`}
-              onClick={() => handleTabChange('analytics')}
-            >
-              Analytics
-            </button>
-            <button
-              type="button"
-              className={`tab${tab === 'traffic-sources' ? ' active' : ''}`}
-              onClick={() => handleTabChange('traffic-sources')}
-            >
-              Traffic Sources
-            </button>
-          </div>
-
           {tab === 'analytics' ? (
-            <AnalyticsChart rows={rows} />
+            rows.length === 0 ? (
+              <div className="chart-placeholder">
+                <svg width="48" height="48" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round">
+                  <path d="M3 3v18h18"/><path d="M7 16l4-4 4 4 4-8"/>
+                </svg>
+                <p>No data for this period</p>
+              </div>
+            ) : (
+              <AnalyticsChart rows={rows} />
+            )
           ) : (
-            <>
-              <TrafficSourceChart rows={trafficSources} />
-              <TrafficSourcesTable rows={trafficSources} />
-            </>
+            trafficSources.length === 0 ? (
+              <div className="chart-placeholder">
+                <svg width="48" height="48" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round">
+                  <path d="M3 3v18h18"/><path d="M7 16l4-4 4 4 4-8"/>
+                </svg>
+                <p>No data for this period</p>
+              </div>
+            ) : (
+              <>
+                <TrafficSourceChart rows={trafficSources} />
+                <TrafficSourcesTable rows={trafficSources} />
+              </>
+            )
           )}
         </>
       ) : (

@@ -95,56 +95,58 @@ export default function VideoTable({
         <p className="loading">Loading...</p>
       ) : (
         <>
-          <table className="data-table">
-            <colgroup>
-              <col style={{ width: 110 }} />
-              <col style={{ width: '35%' }} />
-              <col style={{ width: 120 }} />
-              <col style={{ width: 90 }} />
-              <col style={{ width: 100 }} />
-              <col style={{ width: 100 }} />
-              <col style={{ width: 110 }} />
-            </colgroup>
-            <thead>
-              <tr>
-                <th>Thumbnail</th>
-                <th>Title</th>
-                <th className="sortable" onClick={() => onSort('published_at')}>Upload Date{arrow('published_at')}</th>
-                <th>Type</th>
-                <th className="sortable" onClick={() => onSort('view_count')}>Views{arrow('view_count')}</th>
-                <th className="sortable" onClick={() => onSort('comment_count')}>Comments{arrow('comment_count')}</th>
-                <th className="sortable" onClick={() => onSort('total_revenue_sgd')}>Earnings (SGD){arrow('total_revenue_sgd')}</th>
-              </tr>
-            </thead>
-            <tbody>
-              {videos.length === 0 && (
+          <div className="table-overflow-wrap">
+            <table className="data-table video-table">
+              <colgroup>
+                <col className="video-table-col-thumb" />
+                <col className="video-table-col-title" />
+                <col className="video-table-col-date" />
+                <col className="video-table-col-type" />
+                <col className="video-table-col-views" />
+                <col className="video-table-col-comments" />
+                <col className="video-table-col-earnings" />
+              </colgroup>
+              <thead>
                 <tr>
-                  <td colSpan={7} className="table-empty">No videos found</td>
+                  <th>Thumbnail</th>
+                  <th>Title</th>
+                  <th className="sortable" onClick={() => onSort('published_at')}>Upload Date{arrow('published_at')}</th>
+                  <th>Type</th>
+                  <th className="sortable" onClick={() => onSort('view_count')}>Views{arrow('view_count')}</th>
+                  <th className="sortable" onClick={() => onSort('comment_count')}>Comments{arrow('comment_count')}</th>
+                  <th className="sortable" onClick={() => onSort('total_revenue_sgd')}>Earnings (SGD){arrow('total_revenue_sgd')}</th>
                 </tr>
-              )}
-              {videos.map(v => (
-                <tr key={v.id}>
-                  <td>
-                    {v.thumbnail_url
-                      ? <img src={v.thumbnail_url} alt="" className="table-thumb" />
-                      : <div className="table-thumb-placeholder" />}
-                  </td>
-                  <td className="cell-title">
-                    <Link to={`/analytics/videos/${v.id}`}>{v.title}</Link>
-                  </td>
-                  <td>{v.published_at?.slice(0, 10)}</td>
-                  <td>
-                    <span className={`badge${v.content_type === 'short' ? ' short' : ''}`}>
-                      {v.content_type === 'short' ? 'Short' : 'Video'}
-                    </span>
-                  </td>
-                  <td>{v.view_count?.toLocaleString()}</td>
-                  <td>{v.comment_count?.toLocaleString()}</td>
-                  <td>S${v.total_revenue_sgd?.toLocaleString('en-SG', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</td>
-                </tr>
-              ))}
-            </tbody>
-          </table>
+              </thead>
+              <tbody>
+                {videos.length === 0 && (
+                  <tr>
+                    <td colSpan={7} className="table-empty">No videos found</td>
+                  </tr>
+                )}
+                {videos.map(v => (
+                  <tr key={v.id}>
+                    <td>
+                      {v.thumbnail_url
+                        ? <img src={v.thumbnail_url} alt="" className="table-thumb" />
+                        : <div className="table-thumb-placeholder" />}
+                    </td>
+                    <td className="cell-title">
+                      <Link to={`/analytics/videos/${v.id}`}>{v.title}</Link>
+                    </td>
+                    <td>{v.published_at?.slice(0, 10)}</td>
+                    <td>
+                      <span className={`badge${v.content_type === 'short' ? ' short' : ''}`}>
+                        {v.content_type === 'short' ? 'Short' : 'Video'}
+                      </span>
+                    </td>
+                    <td>{v.view_count?.toLocaleString()}</td>
+                    <td>{v.comment_count?.toLocaleString()}</td>
+                    <td>S${v.total_revenue_sgd?.toLocaleString('en-SG', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
           {totalPages > 1 && (
             <div className="pagination">
               <button type="button" className="btn-ghost" onClick={() => onPageChange(page - 1)} disabled={page <= 1}>
