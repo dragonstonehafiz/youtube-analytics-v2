@@ -1,17 +1,25 @@
 import { Link } from 'react-router-dom'
-import type { TopVideo } from '@/types'
+import type { TopVideo, TopVideoSortBy } from '@/types'
 import './TopVideosList.css'
 
 interface Props {
   videos: TopVideo[]
+  sortBy: TopVideoSortBy
+  onSort: (sortBy: TopVideoSortBy) => void
 }
 
-export default function TopVideosList({ videos }: Props) {
+export default function TopVideosList({ videos, sortBy, onSort }: Props) {
   if (videos.length === 0) return null
+
+  const heading = sortBy === 'views' ? 'Top 10 Videos by Views' : 'Top 10 Videos by Watch Time'
+  const handleSort = (value: TopVideoSortBy) => {
+    if (value === sortBy) return
+    onSort(value)
+  }
 
   return (
     <div className="top-videos-section">
-      <div className="section-header">Top 10 Videos by Watch Time</div>
+      <div className="section-header">{heading}</div>
       <div className="top-videos-table-wrap">
         <table className="data-table top-videos-table">
           <colgroup>
@@ -27,8 +35,20 @@ export default function TopVideosList({ videos }: Props) {
               <th></th>
               <th>Title</th>
               <th>Upload Date</th>
-              <th>Views</th>
-              <th>Watch Time (hrs)</th>
+              <th
+                className="sortable"
+                aria-sort={sortBy === 'views' ? 'descending' : 'none'}
+                onClick={() => handleSort('views')}
+              >
+                Views{sortBy === 'views' ? ' ↓' : ''}
+              </th>
+              <th
+                className="sortable"
+                aria-sort={sortBy === 'watch_time' ? 'descending' : 'none'}
+                onClick={() => handleSort('watch_time')}
+              >
+                Watch Time (hrs){sortBy === 'watch_time' ? ' ↓' : ''}
+              </th>
               <th>Estimated Earnings (SGD)</th>
             </tr>
           </thead>
