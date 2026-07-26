@@ -57,6 +57,8 @@ export interface TopVideo {
   period_watch_time_hours: number
 }
 
+export type TopVideoSortBy = 'views' | 'watch_time'
+
 export interface TrafficSourceRow {
   date: string
   traffic_source_type: string

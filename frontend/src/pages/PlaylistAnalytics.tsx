@@ -65,9 +65,9 @@ export default function PlaylistAnalytics() {
     getPlaylistVideos(id, 1, RECENT_COUNT, 'published_at', 'desc', undefined, undefined, undefined, 'short', 'public')
       .then((data: { items: Video[] }) => setRecentShorts((data.items ?? []).map(toTopVideoShape)))
     const [sevenStart, sevenEnd] = last7Dates()
-    getPlaylistTopVideosByViews(id, sevenStart, sevenEnd, 'video', 'public')
+    getPlaylistTopVideosByViews(id, 'views', sevenStart, sevenEnd, 'video', 'public')
       .then((data: { items: TopVideo[] }) => setTopPerformingVideos(data.items ?? []))
-    getPlaylistTopVideosByViews(id, sevenStart, sevenEnd, 'short', 'public')
+    getPlaylistTopVideosByViews(id, 'views', sevenStart, sevenEnd, 'short', 'public')
       .then((data: { items: TopVideo[] }) => setTopPerformingShorts(data.items ?? []))
   }, [id])
 
@@ -94,7 +94,7 @@ export default function PlaylistAnalytics() {
     const ps = analyticsPrivacyStatus || undefined
     getPlaylistVideoStats(id, undefined, sd, ed, ct, ps).then((data: VideoStats) => setStats(data))
     getPlaylistAnalytics(id, params).then((data: { items: AnalyticsRow[] }) => setRows(data.items ?? []))
-    getPlaylistTopVideosByViews(id, sd, ed, ct, ps).then((data: { items: TopVideo[] }) => setTopVideos(data.items ?? []))
+    getPlaylistTopVideosByViews(id, 'watch_time', sd, ed, ct, ps).then((data: { items: TopVideo[] }) => setTopVideos(data.items ?? []))
     getVideosPublished(sd, ed, ct, ps, id).then((data: { items: PublishedVideo[] }) => setPublishedVideos(data.items ?? []))
     getPlaylistTrafficSources(id, params).then((data: { items: TrafficSourceRow[] }) => setTrafficSources(data.items ?? []))
     getPlaylistTopVideosByTrafficSource(id, params).then((data: { items: Record<string, TrafficSourceTopVideo[]> }) => setTopVideosBySource(data.items ?? {}))

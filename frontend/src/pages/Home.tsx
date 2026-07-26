@@ -60,9 +60,9 @@ export default function Home() {
 
   useEffect(() => {
     const [startDate, endDate] = last28Dates()
-    getTopVideosByViews(startDate, endDate, 'video', 'public')
+    getTopVideosByViews('views', startDate, endDate, 'video', 'public')
       .then((data: { items: TopVideo[] }) => setTopVideos(data.items ?? []))
-    getTopVideosByViews(startDate, endDate, 'short', 'public')
+    getTopVideosByViews('views', startDate, endDate, 'short', 'public')
       .then((data: { items: TopVideo[] }) => setTopShorts(data.items ?? []))
     getVideos(1, RECENT_COUNT, 'published_at', 'desc', undefined, undefined, undefined, undefined, 'public')
       .then((data: { items: Video[] }) => setRecentVideos((data.items ?? []).map(toTopVideoShape)))

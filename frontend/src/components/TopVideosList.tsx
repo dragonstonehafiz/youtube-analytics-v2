@@ -11,7 +11,7 @@ export default function TopVideosList({ videos }: Props) {
 
   return (
     <div className="top-videos-section">
-      <div className="section-header">Top 10 Videos by Views</div>
+      <div className="section-header">Top 10 Videos by Watch Time</div>
       <div className="top-videos-table-wrap">
         <table className="data-table top-videos-table">
           <colgroup>
@@ -19,6 +19,7 @@ export default function TopVideosList({ videos }: Props) {
             <col />
             <col style={{ width: '120px' }} />
             <col style={{ width: '100px' }} />
+            <col style={{ width: '130px' }} />
             <col style={{ width: '140px' }} />
           </colgroup>
           <thead>
@@ -27,7 +28,8 @@ export default function TopVideosList({ videos }: Props) {
               <th>Title</th>
               <th>Upload Date</th>
               <th>Views</th>
-              <th>Earnings (SGD)</th>
+              <th>Watch Time (hrs)</th>
+              <th>Estimated Earnings (SGD)</th>
             </tr>
           </thead>
           <tbody>
@@ -42,6 +44,7 @@ export default function TopVideosList({ videos }: Props) {
                 <td className="top-videos-title"><Link to={`/analytics/videos/${v.id}`}>{v.title}</Link></td>
                 <td>{v.published_at.slice(0, 10)}</td>
                 <td>{v.period_views.toLocaleString()}</td>
+                <td>{v.period_watch_time_hours.toLocaleString(undefined, { maximumFractionDigits: 0 })}</td>
                 <td>S${v.period_earnings_sgd.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</td>
               </tr>
             ))}

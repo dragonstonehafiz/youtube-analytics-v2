@@ -830,14 +830,23 @@ def get_aggregated_analytics(
     return _zero_fill_analytics([dict(r) for r in rows], start_date, end_date, content_types)
 
 
+_TOP_VIDEO_SORT_ORDER_BY = {
+    "views": "period_views DESC, v.id ASC",
+    "watch_time": "period_watch_time_hours DESC, period_views DESC, v.id ASC",
+}
+
+
 def get_top_videos_by_views(
     start_date: str | None = None,
     end_date: str | None = None,
     content_type: str | None = None,
     privacy_status: str | None = None,
     limit: int = 10,
+    sort_by: str = "views",
 ) -> list[dict]:
-    """Return top videos by views within the given filters, with earnings in SGD for the same period."""
+    """Return top videos within the given filters, ranked by views or period watch time, with earnings in SGD
+    for the same period. Unsupported sort_by values fall back to views."""
+    order_by = _TOP_VIDEO_SORT_ORDER_BY.get(sort_by, _TOP_VIDEO_SORT_ORDER_BY["views"])
     conditions = ["1=1"]
     params: list = []
 
@@ -868,7 +877,7 @@ def get_top_videos_by_views(
             LEFT JOIN fx_rates fx ON fx.date = va.date
             WHERE {where}
             GROUP BY v.id
-            ORDER BY period_views DESC
+            ORDER BY {order_by}
             LIMIT ?
             """,
             [*params, limit],
@@ -883,9 +892,14 @@ def get_playlist_top_videos_by_views(
     content_type: str | None = None,
     privacy_status: str | None = None,
     limit: int = 10,
+    sort_by: str = "views",
 ) -> list[dict]:
-    """Return top videos in a playlist by views within the given filters, with earnings in SGD for the same period."""
-    conditions = ["pi.playlist_id = ?"]
+    """Return top videos in a playlist within the given filters, ranked by views or period watch time, with
+    earnings in SGD for the same period. Playlist membership is deduplicated by video ID before aggregation so
+    duplicate playlist_items rows for the same video cannot inflate totals. Unsupported sort_by values fall back
+    to views."""
+    order_by = _TOP_VIDEO_SORT_ORDER_BY.get(sort_by, _TOP_VIDEO_SORT_ORDER_BY["views"])
+    conditions = ["v.id IN (SELECT DISTINCT pi.video_id FROM playlist_items pi WHERE pi.playlist_id = ?)"]
     params: list = [playlist_id]
 
     if content_type:
@@ -908,14 +922,14 @@ def get_playlist_top_videos_by_views(
             SELECT
                 v.id, v.title, v.published_at, v.thumbnail_url, v.content_type,
                 SUM(va.views) AS period_views,
-                COALESCE(SUM(va.estimated_revenue * fx.usd_to_sgd), 0) AS period_earnings_sgd
+                COALESCE(SUM(va.estimated_revenue * fx.usd_to_sgd), 0) AS period_earnings_sgd,
+                SUM(va.watch_time_minutes) / 60.0 AS period_watch_time_hours
             FROM video_analytics va
             JOIN videos v ON v.id = va.video_id
-            JOIN playlist_items pi ON pi.video_id = va.video_id
             LEFT JOIN fx_rates fx ON fx.date = va.date
             WHERE {where}
             GROUP BY v.id
-            ORDER BY period_views DESC
+            ORDER BY {order_by}
             LIMIT ?
             """,
             [*params, limit],

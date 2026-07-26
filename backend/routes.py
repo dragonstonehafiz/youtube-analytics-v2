@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+from typing import Literal
+
 from fastapi import APIRouter, BackgroundTasks, HTTPException, Query
 
 import database
@@ -114,9 +116,14 @@ def get_top_videos_by_views(
     end_date: str | None = Query(default=None),
     content_type: str | None = Query(default=None),
     privacy_status: str | None = Query(default=None),
+    sort_by: Literal["views", "watch_time"] = Query(default="views"),
 ) -> dict:
-    """Return top 10 videos by views within the given filters."""
-    return {"items": database.get_top_videos_by_views(start_date, end_date, content_type, privacy_status)}
+    """Return top 10 videos within the given filters, ranked by views or period watch time (default: views).
+
+    Metrics are aggregated over the selected analytics period. Results include period views, watch time hours,
+    and estimated SGD earnings.
+    """
+    return {"items": database.get_top_videos_by_views(start_date, end_date, content_type, privacy_status, sort_by=sort_by)}
 
 
 @router.get("/analytics/traffic-sources")
@@ -148,12 +155,18 @@ def get_playlist_top_videos_by_views(
     end_date: str | None = Query(default=None),
     content_type: str | None = Query(default=None),
     privacy_status: str | None = Query(default=None),
+    sort_by: Literal["views", "watch_time"] = Query(default="views"),
 ) -> dict:
-    """Return top 10 videos in a playlist by views within the given filters."""
+    """Return top 10 videos in a playlist within the given filters, ranked by views or period watch time
+    (default: views).
+
+    Metrics are aggregated over the selected analytics period. Results include period views, watch time hours,
+    and estimated SGD earnings.
+    """
     playlist = database.get_playlist(playlist_id)
     if not playlist:
         raise HTTPException(status_code=404, detail="Playlist not found")
-    return {"items": database.get_playlist_top_videos_by_views(playlist_id, start_date, end_date, content_type, privacy_status)}
+    return {"items": database.get_playlist_top_videos_by_views(playlist_id, start_date, end_date, content_type, privacy_status, sort_by=sort_by)}
 
 
 @router.get("/analytics/playlists/{playlist_id}")
