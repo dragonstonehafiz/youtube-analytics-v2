@@ -170,29 +170,47 @@ export default function Analytics() {
         </label>
       </div>
 
-      {stats && <VideoStatsBar stats={stats} />}
-
       {tab === 'analytics' ? (
-        <>
-          <div className="analytics-layout">
-            <div className="analytics-main">
-              <AnalyticsChart rows={rows} uploadedVideos={publishedVideos} />
-              <TopVideosList videos={topVideos} sortBy={topVideosSortBy} onSort={handleTopVideosSort} />
-            </div>
-            <div className="analytics-sidebar">
-              <TopPerformersCard title="Top Videos (Last 7 Days)" videos={topPerformingVideos} />
-              <TopPerformersCard title="Top Shorts (Last 7 Days)" videos={topPerformingShorts} />
-              <VideoCarouselCard title="Latest Videos" videos={recentVideos} />
-              <VideoCarouselCard title="Latest Shorts" videos={recentShorts} />
-            </div>
+        rows.length === 0 ? (
+          <div className="chart-placeholder">
+            <svg width="48" height="48" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round">
+              <path d="M3 3v18h18"/><path d="M7 16l4-4 4 4 4-8"/>
+            </svg>
+            <p>No data for this period</p>
           </div>
-        </>
+        ) : (
+          <>
+            {stats && <VideoStatsBar stats={stats} />}
+            <div className="analytics-layout">
+              <div className="analytics-main">
+                <AnalyticsChart rows={rows} uploadedVideos={publishedVideos} />
+                <TopVideosList videos={topVideos} sortBy={topVideosSortBy} onSort={handleTopVideosSort} />
+              </div>
+              <div className="analytics-sidebar">
+                <TopPerformersCard title="Top Videos (Last 7 Days)" videos={topPerformingVideos} />
+                <TopPerformersCard title="Top Shorts (Last 7 Days)" videos={topPerformingShorts} />
+                <VideoCarouselCard title="Latest Videos" videos={recentVideos} />
+                <VideoCarouselCard title="Latest Shorts" videos={recentShorts} />
+              </div>
+            </div>
+          </>
+        )
       ) : (
-        <>
-          <TrafficSourceChart rows={trafficSources} uploadedVideos={publishedVideos} />
-          <TrafficSourcesTable rows={trafficSources} />
-          <TrafficSourceTopVideosPanel rows={trafficSources} bySource={topVideosBySource} />
-        </>
+        trafficSources.length === 0 ? (
+          <div className="chart-placeholder">
+            <svg width="48" height="48" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round">
+              <path d="M3 3v18h18"/><path d="M7 16l4-4 4 4 4-8"/>
+            </svg>
+            <p>No data for this period</p>
+          </div>
+        ) : (
+          <>
+            {stats && <VideoStatsBar stats={stats} />}
+            <TrafficSourceChart rows={trafficSources} uploadedVideos={publishedVideos} />
+            <TrafficSourcesTable rows={trafficSources} />
+            <TrafficSourceTopVideosPanel rows={trafficSources} bySource={topVideosBySource} />
+          </>
+        )
       )}
     </div>
   )

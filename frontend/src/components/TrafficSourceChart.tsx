@@ -131,16 +131,7 @@ export default function TrafficSourceChart({ rows, uploadedVideos }: Props) {
     [chartRows]
   )
 
-  if (rows.length === 0) {
-    return (
-      <div className="chart-placeholder">
-        <svg width="48" height="48" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round">
-          <path d="M3 3v18h18"/><path d="M7 16l4-4 4 4 4-8"/>
-        </svg>
-        <p>No data for this period</p>
-      </div>
-    )
-  }
+  if (rows.length === 0) return null
 
   const marks = getMarks(displayRows)
   const activeMeta = METRICS.find(m => m.key === metric)!

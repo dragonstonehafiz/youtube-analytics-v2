@@ -7,9 +7,7 @@ interface Props {
 }
 
 export default function TrafficSourcesTable({ rows }: Props) {
-  if (rows.length === 0) {
-    return <div className="chart-placeholder">No traffic source data available.</div>
-  }
+  if (rows.length === 0) return null
 
   const totals = aggregateTrafficSourceTotals(rows)
   const maxViews = Math.max(...totals.map(t => t.views))
