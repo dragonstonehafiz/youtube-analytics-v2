@@ -151,7 +151,7 @@ Global tokens and shared classes live in `src/index.css`:
 - Font: Plus Jakarta Sans (Google Fonts import at the top of `index.css`).
 - `.page` — 80% viewport width, `2rem` padding (mirrored by `.home` in `Home.css` and `.topnav-inner` in `TopNav.css` — keep all three in sync if this changes).
 - `.card` — glass card (`backdrop-filter: blur(12px)`, `--surface-glass` background, `--border-light` border).
-- `.data-table` — `table-layout: fixed`, sortable headers via `.sortable` + hover highlight.
+- `.data-table` — `table-layout: fixed`; `.data-table th` is the single source of truth for header formatting across every data table (`TopVideosList`, `TrafficSourcesTable`, `TrafficSourceTopVideosPanel`, `VideoTable`, `Playlists.tsx`) — 10px uppercase text, `0.03em` letter spacing, wrapped labels (`white-space: normal`), `1.3` line-height. Sortable headers via `.sortable` + hover highlight are a separate, independent interaction class layered on top.
 - `.table-overflow-wrap` — shared horizontal-scroll wrapper (`overflow-x: auto`) for wide data tables; each table also defines its own `min-width` so the wrapper — not the page — is what scrolls. Used by `TopVideosList`, `TrafficSourcesTable`, `TrafficSourceTopVideosPanel`, and `VideoTable` (Videos.tsx and PlaylistAnalytics.tsx's Videos tab).
 - `.filter-bar` / `.filter-bar-sep` — inline filter row; 1px vertical divider between logical groups.
 - `.tabs` / `.tab` / `.tab.active` — underline tab strip, blue underline when active.
