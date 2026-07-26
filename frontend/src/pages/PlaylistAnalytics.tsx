@@ -1,7 +1,7 @@
 import { useEffect, useState } from 'react'
 import { useParams } from 'react-router-dom'
 import { getPlaylist, getPlaylistVideos, getPlaylistVideoStats, getPlaylistAnalytics, getPlaylistTopVideosByViews, getVideosPublished, getPlaylistTrafficSources, getPlaylistTopVideosByTrafficSource } from '@/api'
-import type { Video, VideoStats, AnalyticsRow, Playlist, TopVideo, PublishedVideo, TrafficSourceRow, TrafficSourceTopVideo } from '@/types'
+import type { Video, VideoStats, AnalyticsRow, Playlist, TopVideo, TopVideoSortBy, PublishedVideo, TrafficSourceRow, TrafficSourceTopVideo } from '@/types'
 import { useReplaceSearchParams } from '@/hooks/useReplaceSearchParams'
 import VideoStatsBar from '@/components/VideoStatsBar'
 import VideoTable, { PAGE_SIZE } from '@/components/VideoTable'
@@ -43,6 +43,8 @@ export default function PlaylistAnalytics() {
   const analyticsEndDate = searchParams.has('analytics_end_date') ? searchParams.get('analytics_end_date')! : last28Dates()[1]
   const analyticsContentType = searchParams.get('analytics_content_type') ?? ''
   const analyticsPrivacyStatus = searchParams.get('analytics_privacy_status') ?? ''
+  const rawTopVideosSortBy = searchParams.get('top_videos_sort_by')
+  const topVideosSortBy: TopVideoSortBy = rawTopVideosSortBy === 'views' ? 'views' : 'watch_time'
   const [rows, setRows] = useState<AnalyticsRow[]>([])
   const [topVideos, setTopVideos] = useState<TopVideo[]>([])
   const [publishedVideos, setPublishedVideos] = useState<PublishedVideo[]>([])
@@ -65,9 +67,9 @@ export default function PlaylistAnalytics() {
     getPlaylistVideos(id, 1, RECENT_COUNT, 'published_at', 'desc', undefined, undefined, undefined, 'short', 'public')
       .then((data: { items: Video[] }) => setRecentShorts((data.items ?? []).map(toTopVideoShape)))
     const [sevenStart, sevenEnd] = last7Dates()
-    getPlaylistTopVideosByViews(id, sevenStart, sevenEnd, 'video', 'public')
+    getPlaylistTopVideosByViews(id, 'views', sevenStart, sevenEnd, 'video', 'public')
       .then((data: { items: TopVideo[] }) => setTopPerformingVideos(data.items ?? []))
-    getPlaylistTopVideosByViews(id, sevenStart, sevenEnd, 'short', 'public')
+    getPlaylistTopVideosByViews(id, 'views', sevenStart, sevenEnd, 'short', 'public')
       .then((data: { items: TopVideo[] }) => setTopPerformingShorts(data.items ?? []))
   }, [id])
 
@@ -94,11 +96,19 @@ export default function PlaylistAnalytics() {
     const ps = analyticsPrivacyStatus || undefined
     getPlaylistVideoStats(id, undefined, sd, ed, ct, ps).then((data: VideoStats) => setStats(data))
     getPlaylistAnalytics(id, params).then((data: { items: AnalyticsRow[] }) => setRows(data.items ?? []))
-    getPlaylistTopVideosByViews(id, sd, ed, ct, ps).then((data: { items: TopVideo[] }) => setTopVideos(data.items ?? []))
     getVideosPublished(sd, ed, ct, ps, id).then((data: { items: PublishedVideo[] }) => setPublishedVideos(data.items ?? []))
     getPlaylistTrafficSources(id, params).then((data: { items: TrafficSourceRow[] }) => setTrafficSources(data.items ?? []))
     getPlaylistTopVideosByTrafficSource(id, params).then((data: { items: Record<string, TrafficSourceTopVideo[]> }) => setTopVideosBySource(data.items ?? {}))
   }, [id, analyticsStartDate, analyticsEndDate, analyticsContentType, analyticsPrivacyStatus])
+
+  useEffect(() => {
+    if (!id) return
+    const sd = analyticsStartDate || undefined
+    const ed = analyticsEndDate || undefined
+    const ct = analyticsContentType || undefined
+    const ps = analyticsPrivacyStatus || undefined
+    getPlaylistTopVideosByViews(id, topVideosSortBy, sd, ed, ct, ps).then((data: { items: TopVideo[] }) => setTopVideos(data.items ?? []))
+  }, [id, analyticsStartDate, analyticsEndDate, analyticsContentType, analyticsPrivacyStatus, topVideosSortBy])
 
   const setPage = (p: number) => {
     setSearchParams(prev => {
@@ -153,6 +163,15 @@ export default function PlaylistAnalytics() {
     })
   }
 
+  const handleTopVideosSort = (sortBy: TopVideoSortBy) => {
+    if (sortBy === topVideosSortBy) return
+    setSearchParams(prev => {
+      const next = new URLSearchParams(prev)
+      next.set('top_videos_sort_by', sortBy)
+      return next
+    })
+  }
+
   const handleTabChange = (t: Tab) => {
     setSearchParams(prev => {
       const next = new URLSearchParams(prev)
@@ -162,6 +181,7 @@ export default function PlaylistAnalytics() {
         next.delete('analytics_end_date')
         next.delete('analytics_content_type')
         next.delete('analytics_privacy_status')
+        next.delete('top_videos_sort_by')
       } else {
         next.delete('page')
         next.delete('sort_by')
@@ -303,7 +323,7 @@ export default function PlaylistAnalytics() {
             <div className="analytics-layout">
               <div className="analytics-main">
                 <AnalyticsChart rows={rows} uploadedVideos={publishedVideos} />
-                <TopVideosList videos={topVideos} />
+                <TopVideosList videos={topVideos} sortBy={topVideosSortBy} onSort={handleTopVideosSort} />
               </div>
               <div className="analytics-sidebar">
                 <TopPerformersCard title="Top Videos (Last 7 Days)" videos={topPerformingVideos} />

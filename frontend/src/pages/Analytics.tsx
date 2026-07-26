@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react'
 import { getVideoStats, getChannelAnalytics, getTopVideosByViews, getVideosPublished, getVideos, getChannelTrafficSources, getTopVideosByTrafficSource } from '@/api'
-import type { AnalyticsRow, VideoStats, TopVideo, PublishedVideo, Video, TrafficSourceRow, TrafficSourceTopVideo } from '@/types'
+import type { AnalyticsRow, VideoStats, TopVideo, TopVideoSortBy, PublishedVideo, Video, TrafficSourceRow, TrafficSourceTopVideo } from '@/types'
 import PeriodSelect, { last28Dates } from '@/components/PeriodSelect'
 import { toTopVideoShape, last7Dates } from '@/lib/topVideos'
 import VideoStatsBar from '@/components/VideoStatsBar'
@@ -26,6 +26,8 @@ export default function Analytics() {
   const endDate = searchParams.has('end_date') ? searchParams.get('end_date')! : last28Dates()[1]
   const contentType = searchParams.get('content_type') ?? ''
   const privacyStatus = searchParams.get('privacy_status') ?? ''
+  const rawTopVideosSortBy = searchParams.get('top_videos_sort_by')
+  const topVideosSortBy: TopVideoSortBy = rawTopVideosSortBy === 'views' ? 'views' : 'watch_time'
   const [stats, setStats] = useState<VideoStats | null>(null)
   const [topVideos, setTopVideos] = useState<TopVideo[]>([])
   const [publishedVideos, setPublishedVideos] = useState<PublishedVideo[]>([])
@@ -42,9 +44,9 @@ export default function Analytics() {
     getVideos(1, RECENT_COUNT, 'published_at', 'desc', undefined, undefined, undefined, 'short', 'public')
       .then((data: { items: Video[] }) => setRecentShorts((data.items ?? []).map(toTopVideoShape)))
     const [sevenStart, sevenEnd] = last7Dates()
-    getTopVideosByViews(sevenStart, sevenEnd, 'video', 'public')
+    getTopVideosByViews('views', sevenStart, sevenEnd, 'video', 'public')
       .then((data: { items: TopVideo[] }) => setTopPerformingVideos(data.items ?? []))
-    getTopVideosByViews(sevenStart, sevenEnd, 'short', 'public')
+    getTopVideosByViews('views', sevenStart, sevenEnd, 'short', 'public')
       .then((data: { items: TopVideo[] }) => setTopPerformingShorts(data.items ?? []))
   }, [])
 
@@ -60,11 +62,18 @@ export default function Analytics() {
     const ps = privacyStatus || undefined
     getVideoStats(undefined, sd, ed, ct, ps).then((data: VideoStats) => setStats(data))
     getChannelAnalytics(params).then((data: { items: AnalyticsRow[] }) => setRows(data.items ?? []))
-    getTopVideosByViews(sd, ed, ct, ps).then((data: { items: TopVideo[] }) => setTopVideos(data.items ?? []))
     getVideosPublished(sd, ed, ct, ps).then((data: { items: PublishedVideo[] }) => setPublishedVideos(data.items ?? []))
     getChannelTrafficSources(params).then((data: { items: TrafficSourceRow[] }) => setTrafficSources(data.items ?? []))
     getTopVideosByTrafficSource(params).then((data: { items: Record<string, TrafficSourceTopVideo[]> }) => setTopVideosBySource(data.items ?? {}))
   }, [startDate, endDate, contentType, privacyStatus])
+
+  useEffect(() => {
+    const sd = startDate || undefined
+    const ed = endDate || undefined
+    const ct = contentType || undefined
+    const ps = privacyStatus || undefined
+    getTopVideosByViews(topVideosSortBy, sd, ed, ct, ps).then((data: { items: TopVideo[] }) => setTopVideos(data.items ?? []))
+  }, [startDate, endDate, contentType, privacyStatus, topVideosSortBy])
 
   const updateParams = (updates: Record<string, string>) => {
     setSearchParams(prev => {
@@ -82,6 +91,15 @@ export default function Analytics() {
       for (const [key, value] of Object.entries(updates)) {
         next.set(key, value)
       }
+      return next
+    })
+  }
+
+  const handleTopVideosSort = (sortBy: TopVideoSortBy) => {
+    if (sortBy === topVideosSortBy) return
+    setSearchParams(prev => {
+      const next = new URLSearchParams(prev)
+      next.set('top_videos_sort_by', sortBy)
       return next
     })
   }
@@ -159,7 +177,7 @@ export default function Analytics() {
           <div className="analytics-layout">
             <div className="analytics-main">
               <AnalyticsChart rows={rows} uploadedVideos={publishedVideos} />
-              <TopVideosList videos={topVideos} />
+              <TopVideosList videos={topVideos} sortBy={topVideosSortBy} onSort={handleTopVideosSort} />
             </div>
             <div className="analytics-sidebar">
               <TopPerformersCard title="Top Videos (Last 7 Days)" videos={topPerformingVideos} />

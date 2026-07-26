@@ -98,9 +98,11 @@ GET  /analytics/videos
   Video and short rows for the same date are separate entries, zero-filled independently per content_type.
 
 GET  /analytics/videos/top
-  ?start_date, end_date, content_type, privacy_status
-  → { items: TopVideo[] }   # top 10 videos by views, channel-wide
-  Views/earnings/watch time are summed within the given period only — not lifetime.
+  ?start_date, end_date, content_type, privacy_status, sort_by=views
+  sort_by ∈ views | watch_time   (default: views; invalid values → 422)
+  → { items: TopVideo[] }   # top 10 videos, channel-wide, ranked by the selected sort
+  Each TopVideo has period_views, period_watch_time_hours, period_earnings_sgd — all summed
+  within the given period only (not lifetime); ranking happens in SQL before LIMIT.
 
 GET  /analytics/traffic-sources
   ?start_date, end_date, content_type, privacy_status   (no title filter)
@@ -122,8 +124,10 @@ GET  /analytics/playlists/{playlist_id}
   Same one-row-per-(date, content_type) semantics as /analytics/videos, scoped to the playlist.
 
 GET  /analytics/playlists/{playlist_id}/top
-  ?start_date, end_date, content_type, privacy_status
-  → { items: TopVideo[] } | 404 if playlist not found   # top 10 by views, within the playlist
+  ?start_date, end_date, content_type, privacy_status, sort_by=views
+  sort_by ∈ views | watch_time   (default: views; invalid values → 422)
+  → { items: TopVideo[] } | 404 if playlist not found   # top 10 within the playlist, ranked by the selected sort
+  Same TopVideo shape and period-based aggregation semantics as /analytics/videos/top.
 
 GET  /analytics/playlists/{playlist_id}/traffic-sources
   ?start_date, end_date, content_type, privacy_status   (no title filter)
@@ -169,3 +173,5 @@ GET  /sync/runs
 - **`/videos/published` must be declared before `/videos/{video_id}`** in `routes.py` — FastAPI matches routes in declaration order, and a literal path segment (`published`) would otherwise be captured by the `{video_id}` path parameter on an earlier-declared dynamic route. Confirmed current order in `routes.py` has `/videos/published` (line 44) before `/videos/{video_id}` (line 57).
 - Frontend's `api.ts` exposes two identically-implemented functions for the same endpoint — `getPlaylistAnalytics(id, params)` and `getPlaylistAggregatedAnalytics(id, params)` both call `GET /analytics/playlists/{id}` with no difference in behavior. Only `getPlaylistAnalytics` is actually used by `PlaylistAnalytics.tsx`; treat the other as a redundant alias, not a second endpoint.
 - Adding a new sortable column to any `sort_by` requires updating the backend's allow-list (`_VIDEO_SORT_COLUMNS` / `_PLAYLIST_SORT_COLUMNS` in `database.py`, see `database.md`) — an unrecognized value is silently ignored (falls back to the default sort) rather than rejected with an error.
+- The Top Videos routes' `sort_by` is different: it's typed `Literal["views", "watch_time"]` in `routes.py`, so FastAPI rejects an invalid value with 422 instead of silently falling back. The DB helpers (`get_top_videos_by_views()` / `get_playlist_top_videos_by_views()`) still fall back to `"views"` defensively if called directly with an unrecognized value — see `database.md`.
+- Frontend repository call sites (`api.ts`'s `getTopVideosByViews()` / `getPlaylistTopVideosByViews()`) require an explicit `TopVideoSortBy` argument with no default, so a missed call site fails `tsc` rather than silently sending the wrong sort. The backend route still defaults to `views` for external API consumers that omit `sort_by`.

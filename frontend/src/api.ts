@@ -1,4 +1,4 @@
-import type { VideoStats } from '@/types'
+import type { VideoStats, TopVideoSortBy } from '@/types'
 
 const BASE = "http://localhost:8000"
 
@@ -42,11 +42,11 @@ export const getPlaylistVideos = (id: string, page: number = 1, pageSize: number
 export const getChannelAnalytics = (params?: Record<string, string>) =>
   fetch(buildUrl("/analytics/videos", params)).then(r => r.json())
 
-export const getTopVideosByViews = (startDate?: string, endDate?: string, contentType?: string, privacyStatus?: string) =>
-  fetch(buildUrl("/analytics/videos/top", { ...(startDate && { start_date: startDate }), ...(endDate && { end_date: endDate }), ...(contentType && { content_type: contentType }), ...(privacyStatus && { privacy_status: privacyStatus }) })).then(r => r.json())
+export const getTopVideosByViews = (sortBy: TopVideoSortBy, startDate?: string, endDate?: string, contentType?: string, privacyStatus?: string) =>
+  fetch(buildUrl("/analytics/videos/top", { sort_by: sortBy, ...(startDate && { start_date: startDate }), ...(endDate && { end_date: endDate }), ...(contentType && { content_type: contentType }), ...(privacyStatus && { privacy_status: privacyStatus }) })).then(r => r.json())
 
-export const getPlaylistTopVideosByViews = (id: string, startDate?: string, endDate?: string, contentType?: string, privacyStatus?: string) =>
-  fetch(buildUrl(`/analytics/playlists/${id}/top`, { ...(startDate && { start_date: startDate }), ...(endDate && { end_date: endDate }), ...(contentType && { content_type: contentType }), ...(privacyStatus && { privacy_status: privacyStatus }) })).then(r => r.json())
+export const getPlaylistTopVideosByViews = (id: string, sortBy: TopVideoSortBy, startDate?: string, endDate?: string, contentType?: string, privacyStatus?: string) =>
+  fetch(buildUrl(`/analytics/playlists/${id}/top`, { sort_by: sortBy, ...(startDate && { start_date: startDate }), ...(endDate && { end_date: endDate }), ...(contentType && { content_type: contentType }), ...(privacyStatus && { privacy_status: privacyStatus }) })).then(r => r.json())
 
 export const getPlaylistAnalytics = (id: string, params?: Record<string, string>) =>
   fetch(buildUrl(`/analytics/playlists/${id}`, params)).then(r => r.json())

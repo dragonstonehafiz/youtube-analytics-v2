@@ -8,7 +8,34 @@
 }
 
 .top-videos-table {
-  min-width: 600px;
+  min-width: 820px;
+}
+
+.top-videos-table th {
+  font-size: 10px;
+  letter-spacing: 0.03em;
+  white-space: normal;
+  line-height: 1.3;
+}
+
+.top-videos-col-thumb {
+  width: 136px;
+}
+
+.top-videos-col-date {
+  width: 120px;
+}
+
+.top-videos-col-views {
+  width: 100px;
+}
+
+.top-videos-col-watch-time {
+  width: 130px;
+}
+
+.top-videos-col-earnings {
+  width: 140px;
 }
 
 .top-videos-thumb {
