@@ -113,7 +113,7 @@ export default function Analytics() {
   }
 
   return (
-    <div className="page">
+    <div className="page analytics-page">
       <div className="page-header">
         <h1>Analytics</h1>
       </div>

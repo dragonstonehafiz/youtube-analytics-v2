@@ -4,6 +4,7 @@
 
 .chart-bucket-buttons {
   display: flex;
+  flex-wrap: wrap;
   gap: 0;
   margin-bottom: 0.6rem;
   width: 100%;
@@ -43,12 +44,19 @@
 
 .chart-metric-buttons {
   display: flex;
+  flex-wrap: wrap;
   gap: 0;
   margin-bottom: 1.25rem;
   width: 100%;
   border: 1px solid var(--border);
   border-radius: var(--radius-sm);
   overflow: hidden;
+}
+
+@media (max-width: 640px) {
+  .chart-metric-btn {
+    flex-basis: 50%;
+  }
 }
 
 .chart-metric-btn {

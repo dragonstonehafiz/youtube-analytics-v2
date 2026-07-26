@@ -15,7 +15,8 @@ import TopPerformersCard from '@/components/TopPerformersCard'
 import TrafficSourceChart from '@/components/TrafficSourceChart'
 import TrafficSourcesTable from '@/components/TrafficSourcesTable'
 import TrafficSourceTopVideosPanel from '@/components/TrafficSourceTopVideosPanel'
-import './PlaylistAnalytics.css'
+import '@/components/VideoMetaCard.css'
+import './Analytics.css'
 
 const RECENT_COUNT = 10
 
@@ -181,7 +182,7 @@ export default function PlaylistAnalytics() {
   }
 
   return (
-    <div className="page">
+    <div className="page analytics-page">
       {playlist && (
         <div className="card video-meta-card">
           <div className="video-meta-thumb-wrap">

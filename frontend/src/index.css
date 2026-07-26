@@ -374,6 +374,11 @@ input, select {
   background: var(--border);
 }
 
+/* Shared horizontal overflow wrapper for data tables */
+.table-overflow-wrap {
+  overflow-x: auto;
+}
+
 /* Chart placeholder */
 .chart-placeholder {
   display: flex;

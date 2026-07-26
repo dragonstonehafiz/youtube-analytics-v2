@@ -7,6 +7,8 @@ import AnalyticsChart from '@/components/AnalyticsChart'
 import TrafficSourceChart from '@/components/TrafficSourceChart'
 import TrafficSourcesTable from '@/components/TrafficSourcesTable'
 import { useReplaceSearchParams } from '@/hooks/useReplaceSearchParams'
+import '@/components/VideoMetaCard.css'
+import './Analytics.css'
 import './VideoAnalytics.css'
 
 type Tab = 'analytics' | 'traffic-sources'
@@ -79,7 +81,7 @@ export default function VideoAnalytics() {
   }
 
   return (
-    <div className="page">
+    <div className="page analytics-page">
       {loading ? (
         <p className="loading">Loading...</p>
       ) : video ? (

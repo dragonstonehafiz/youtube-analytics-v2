@@ -1,6 +1,5 @@
-.traffic-source-top-videos-card {
+.traffic-source-top-videos-section {
   margin-top: 1.5rem;
-  padding: 1rem 1.1rem;
 }
 
 .traffic-source-top-videos-switcher {
@@ -42,8 +41,28 @@
   flex-shrink: 0;
 }
 
+.traffic-source-top-videos-table-wrap {
+  margin-top: 0.75rem;
+}
+
 .traffic-source-top-videos-table {
-  font-size: 12px;
+  min-width: 640px;
+}
+
+.traffic-source-top-videos-col-rank {
+  width: 32px;
+}
+
+.traffic-source-top-videos-col-thumb {
+  width: 136px;
+}
+
+.traffic-source-top-videos-col-views {
+  width: 100px;
+}
+
+.traffic-source-top-videos-col-watch-time {
+  width: 120px;
 }
 
 .traffic-source-top-videos-rank {
@@ -53,8 +72,8 @@
 }
 
 .traffic-source-top-videos-thumb {
-  width: 64px;
-  height: 36px;
+  width: 120px;
+  height: 68px;
   object-fit: cover;
   border-radius: 4px;
   display: block;

@@ -19,7 +19,8 @@ export default function TrafficSourceTopVideosPanel({ rows, bySource }: Props) {
   const videos = bySource[activeType] ?? []
 
   return (
-    <div className="card traffic-source-top-videos-card">
+    <div className="traffic-source-top-videos-section">
+      <div className="section-header">Top Videos by Traffic Source</div>
       <div className="traffic-source-top-videos-switcher">
         {order.map(type => (
           <button
@@ -36,40 +37,42 @@ export default function TrafficSourceTopVideosPanel({ rows, bySource }: Props) {
       {videos.length === 0 ? (
         <p className="traffic-source-top-videos-empty">No videos for this source</p>
       ) : (
-        <table className="data-table traffic-source-top-videos-table">
-          <colgroup>
-            <col style={{ width: '20px' }} />
-            <col style={{ width: '64px' }} />
-            <col />
-            <col style={{ width: '100px' }} />
-            <col style={{ width: '120px' }} />
-          </colgroup>
-          <thead>
-            <tr>
-              <th></th>
-              <th></th>
-              <th>Title</th>
-              <th>Views</th>
-              <th>Watch Time</th>
-            </tr>
-          </thead>
-          <tbody>
-            {videos.map((v, i) => (
-              <tr key={v.id}>
-                <td className="traffic-source-top-videos-rank">{i + 1}</td>
-                <td>
-                  {v.thumbnail_url
-                    ? <img src={v.thumbnail_url} alt="" className="traffic-source-top-videos-thumb" />
-                    : <div className="traffic-source-top-videos-thumb traffic-source-top-videos-thumb--placeholder" />
-                  }
-                </td>
-                <td className="traffic-source-top-videos-title"><Link to={`/analytics/videos/${v.id}`}>{v.title}</Link></td>
-                <td>{v.views.toLocaleString()}</td>
-                <td>{(v.watch_time_minutes / 60).toLocaleString(undefined, { maximumFractionDigits: 1 })}h</td>
+        <div className="table-overflow-wrap traffic-source-top-videos-table-wrap">
+          <table className="data-table traffic-source-top-videos-table">
+            <colgroup>
+              <col className="traffic-source-top-videos-col-rank" />
+              <col className="traffic-source-top-videos-col-thumb" />
+              <col />
+              <col className="traffic-source-top-videos-col-views" />
+              <col className="traffic-source-top-videos-col-watch-time" />
+            </colgroup>
+            <thead>
+              <tr>
+                <th></th>
+                <th></th>
+                <th>Title</th>
+                <th>Views</th>
+                <th>Watch Time</th>
               </tr>
-            ))}
-          </tbody>
-        </table>
+            </thead>
+            <tbody>
+              {videos.map((v, i) => (
+                <tr key={v.id}>
+                  <td className="traffic-source-top-videos-rank">{i + 1}</td>
+                  <td>
+                    {v.thumbnail_url
+                      ? <img src={v.thumbnail_url} alt="" className="traffic-source-top-videos-thumb" />
+                      : <div className="traffic-source-top-videos-thumb traffic-source-top-videos-thumb--placeholder" />
+                    }
+                  </td>
+                  <td className="traffic-source-top-videos-title"><Link to={`/analytics/videos/${v.id}`}>{v.title}</Link></td>
+                  <td>{v.views.toLocaleString()}</td>
+                  <td>{(v.watch_time_minutes / 60).toLocaleString(undefined, { maximumFractionDigits: 1 })}h</td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
       )}
     </div>
   )

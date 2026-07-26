@@ -24,11 +24,45 @@
   }
 
   .analytics-sidebar {
-    flex-direction: row;
+    display: grid;
+    grid-template-columns: repeat(3, 1fr);
+    gap: 1.5rem;
   }
 
   .analytics-sidebar > * {
-    flex: 1;
     min-width: 0;
+  }
+}
+
+@media (max-width: 768px) {
+  .analytics-sidebar {
+    grid-template-columns: repeat(2, 1fr);
+  }
+}
+
+@media (max-width: 480px) {
+  .analytics-sidebar {
+    grid-template-columns: 1fr;
+  }
+}
+
+/* Analytics page scope: page frame, tabs, filters shared across
+   Channel/Playlist/Video Analytics without affecting other pages */
+.analytics-page {
+  overflow-x: hidden;
+}
+
+.analytics-page .tabs {
+  flex-wrap: wrap;
+}
+
+@media (max-width: 640px) {
+  .analytics-page {
+    width: 100%;
+    padding: 1.25rem 1rem;
+  }
+
+  .analytics-page .filter-bar-sep {
+    display: none;
   }
 }

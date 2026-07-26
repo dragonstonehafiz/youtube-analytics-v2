@@ -3,3 +3,35 @@
   padding: 3rem;
   color: var(--text-secondary);
 }
+
+.video-table {
+  min-width: 900px;
+}
+
+.video-table-col-thumb {
+  width: 110px;
+}
+
+.video-table-col-title {
+  width: 35%;
+}
+
+.video-table-col-date {
+  width: 120px;
+}
+
+.video-table-col-type {
+  width: 90px;
+}
+
+.video-table-col-views {
+  width: 100px;
+}
+
+.video-table-col-comments {
+  width: 100px;
+}
+
+.video-table-col-earnings {
+  width: 110px;
+}
