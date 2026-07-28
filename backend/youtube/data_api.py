@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import re
+from typing import Any
 
 from googleapiclient.discovery import build
 from googleapiclient.errors import HttpError
@@ -12,7 +13,7 @@ _DURATION_RE = re.compile(
 )
 
 
-def _data_client():
+def _data_client() -> Any:
     """Return an authenticated YouTube Data API v3 client."""
     return build("youtube", "v3", credentials=get_credentials())
 

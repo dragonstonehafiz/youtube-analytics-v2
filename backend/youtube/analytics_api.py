@@ -27,12 +27,12 @@ _TRAFFIC_SOURCE_METRICS = [
 ]
 
 
-def _analytics_client():
+def _analytics_client() -> Any:
     """Return an authenticated YouTube Analytics API v2 client."""
     return build("youtubeAnalytics", "v2", credentials=get_credentials())
 
 
-def _analytics_query(service, params: dict, max_attempts: int = 5) -> dict:
+def _analytics_query(service: Any, params: dict, max_attempts: int = 5) -> dict:
     """Execute a YouTube Analytics reports.query with exponential-backoff retry."""
     for attempt in range(1, max_attempts + 1):
         try:
@@ -65,7 +65,7 @@ def _chunk_date_range(start: str, end: str, months: int = 4) -> list[tuple[str, 
     return chunks
 
 
-def _fetch_analytics_rows(service, params: dict) -> list[dict[str, Any]]:
+def _fetch_analytics_rows(service: Any, params: dict) -> list[dict[str, Any]]:
     """Fetch all paginated rows from an Analytics reports.query call."""
     results: list[dict[str, Any]] = []
     headers: list[str] | None = None

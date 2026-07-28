@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import uuid
+from collections.abc import Callable
 
 import database
 
@@ -30,7 +31,7 @@ def _run_stage(
     sync_type: str,
     scope: str | None,
     year: int | None,
-    fn,
+    fn: Callable[[SyncCounts], None],
 ) -> None:
     """Run one sync stage, recording a sync_runs row that reflects partial progress on failure."""
     counts = SyncCounts()
