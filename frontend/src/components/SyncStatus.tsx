@@ -43,9 +43,6 @@ export default function SyncStatus() {
         </>
       ) : (
         <>
-          <span className="sync-status-label">
-            {status.last_synced_at ? `Last synced ${status.last_synced_at}` : 'Never synced'}
-          </span>
           <select className="sync-scope-select" value={scopeValue} onChange={e => setScopeValue(e.target.value)}>
             <option value="incremental">New data only</option>
             <option value="all">Full resync</option>

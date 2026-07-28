@@ -1,4 +1,4 @@
-import type { VideoStats, TopVideoSortBy } from '@/types'
+import type { VideoStats, TopVideoSortBy, SyncState } from '@/types'
 
 const BASE = "http://localhost:8000"
 
@@ -72,7 +72,7 @@ export const getVideosPublished = (startDate?: string, endDate?: string, content
 export const getDateRange = () =>
   fetch(buildUrl("/meta/date-range")).then(r => r.json())
 
-export const getSyncStatus = () =>
+export const getSyncStatus = (): Promise<SyncState> =>
   fetch(buildUrl("/sync/status")).then(r => r.json())
 
 export const triggerSync = (scope?: string, year?: number) =>

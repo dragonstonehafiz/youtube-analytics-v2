@@ -51,6 +51,7 @@ YouTube Data API v3 / YouTube Analytics API v2
 
 1. `database.init_db()` — creates tables from `schema.sql` if they don't already exist.
 2. `sync.start_background_scheduler()` — starts the 24-hour sync loop (see `sync.md`).
+3. On shutdown, the lifespan blocks (polling `sync.is_syncing()` every 0.5s) until any in-progress sync finishes, so a `uvicorn --reload` restart waits for the current sync to complete rather than killing it mid-flight.
 
 CORS is configured to allow only `http://localhost:5173` (the Vite dev server). Running `python server.py` directly starts `uvicorn` on `0.0.0.0:8000` with `reload=True`; in normal development the file is run via `uvicorn server:app --reload` instead.
 
@@ -63,7 +64,7 @@ CORS is configured to allow only `http://localhost:5173` (the Vite dev server). 
 | `sync.py` | Sync orchestration, scope handling, `sync_runs` tracking, 24h background scheduler, global sync-status state |
 | `youtube.py` | YouTube Data API v3 / Analytics API v2 clients, OAuth, pagination, chunking, Shorts detection |
 | `database.py` | All DB helpers (connection setup, upserts, queries, aggregation, zero-filling) |
-| `schema.sql` | SQLite schema definition (8 tables) — see `database.md` |
+| `schema.sql` | SQLite schema definition (7 tables) — see `database.md` |
 
 ## Frontend structure
 

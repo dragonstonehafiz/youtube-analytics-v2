@@ -3,7 +3,7 @@ from __future__ import annotations
 import threading
 import uuid
 from dataclasses import dataclass
-from datetime import date, datetime, timedelta
+from datetime import date, datetime, time, timedelta
 
 import database
 import youtube
@@ -13,20 +13,29 @@ import youtube
 # settled by the API until some time after the day ends.
 INCREMENTAL_LOOKBACK_DAYS = 7
 
+# The five stages that make up one full pipeline run, sharing a batch_id. Used to
+# identify the latest successful full-pipeline batch for scheduler checkpointing.
+FULL_SYNC_TYPES = (
+    "videos",
+    "playlists",
+    "video_analytics",
+    "video_traffic_sources",
+    "fx_rates",
+)
+
 # ---------------------------------------------------------------------------
 # Shared state (read by routes.py via get_status())
 # ---------------------------------------------------------------------------
 
 _lock = threading.Lock()
 _is_syncing: bool = False
-_last_synced_at: str | None = None
 _message: str = ""
 
 
 def get_status() -> dict:
     """Return current sync status. Safe to call from any thread."""
     with _lock:
-        return {"is_syncing": _is_syncing, "last_synced_at": _last_synced_at, "message": _message}
+        return {"is_syncing": _is_syncing, "message": _message}
 
 
 def is_syncing() -> bool:
@@ -107,7 +116,7 @@ def run_sync(scope: str = "incremental", year: int | None = None) -> None:
 
     Safe to call from a background thread. Sets is_syncing for the duration.
     """
-    global _is_syncing, _last_synced_at
+    global _is_syncing
 
     if scope == "year" and year is None:
         raise ValueError("year is required when scope='year'")
@@ -139,11 +148,8 @@ def run_sync(scope: str = "incremental", year: int | None = None) -> None:
         _set_message("Syncing FX rates...")
         _run_stage(batch_id, "fx_rates", "incremental", None, _sync_fx_rates)
 
-        now = date.today().isoformat()
         with _lock:
-            _last_synced_at = now
             _message = "Sync complete."
-        database.set_sync_state("last_synced_at", now)
 
     finally:
         with _lock:
@@ -327,20 +333,19 @@ def _scheduler_loop() -> None:
 def start_background_scheduler() -> None:
     """Start the background sync scheduler. Call once on app startup.
 
-    If last sync was within 24 hours, skip the immediate sync and schedule
-    the next one for the remaining time in the 24h window.
+    If the latest successful full-pipeline batch (all five stages in FULL_SYNC_TYPES
+    succeeded under one batch_id) completed within the last 24 hours (by local calendar
+    date), skip the immediate sync and schedule the next one for the remaining time in
+    the 24h window. This avoids re-syncing on every dev-server reload.
     """
-    global _last_synced_at
-    stored = database.get_sync_state("last_synced_at")
-    if stored:
-        with _lock:
-            _last_synced_at = stored
+    completed_at = database.get_last_successful_batch_completed_at(FULL_SYNC_TYPES)
 
     delay = 0.0
-    if stored:
+    if completed_at:
         try:
-            last = datetime.fromisoformat(stored)
-            elapsed = (datetime.now() - last).total_seconds()
+            last_date = datetime.fromisoformat(completed_at).astimezone().date()
+            last_midnight = datetime.combine(last_date, time.min)
+            elapsed = (datetime.now() - last_midnight).total_seconds()
             if elapsed < 86400:
                 delay = 86400 - elapsed
         except ValueError:

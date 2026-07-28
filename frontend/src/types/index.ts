@@ -42,7 +42,6 @@ export interface AnalyticsRow {
 
 export interface SyncState {
   is_syncing: boolean
-  last_synced_at: string | null
   message: string
 }
 

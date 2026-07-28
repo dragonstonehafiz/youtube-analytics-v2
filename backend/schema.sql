@@ -64,11 +64,6 @@ CREATE TABLE IF NOT EXISTS playlist_items (
 
 CREATE INDEX IF NOT EXISTS idx_playlist_items_playlist ON playlist_items(playlist_id);
 
-CREATE TABLE IF NOT EXISTS sync_state (
-    key TEXT PRIMARY KEY,
-    value TEXT
-);
-
 CREATE TABLE IF NOT EXISTS fx_rates (
     date TEXT PRIMARY KEY,
     usd_to_sgd REAL NOT NULL,

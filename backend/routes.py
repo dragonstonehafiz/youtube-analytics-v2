@@ -299,7 +299,7 @@ def get_date_range() -> dict:
 
 @router.get("/sync/status")
 def sync_status() -> dict:
-    """Return current sync status and last synced timestamp."""
+    """Return active sync status and progress."""
     return sync.get_status()
 
 
