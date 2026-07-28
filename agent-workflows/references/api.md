@@ -150,7 +150,7 @@ GET  /meta/date-range
 
 ```
 GET  /sync/status
-  → { is_syncing, last_synced_at, message }
+  → { is_syncing, message }
 
 POST /sync/trigger
   ?scope=incremental (| year | all), year (int, required if scope=year)

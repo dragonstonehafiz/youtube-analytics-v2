@@ -19,10 +19,6 @@
   font-weight: 500;
 }
 
-.sync-status-label {
-  color: var(--text-secondary);
-}
-
 .sync-scope-select {
   height: 28px;
   padding: 0 0.5rem;

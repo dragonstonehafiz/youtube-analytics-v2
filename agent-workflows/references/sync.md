@@ -8,7 +8,7 @@ How data gets from the YouTube APIs into SQLite: pipeline order, scheduling, sco
 
 - `backend/sync.py`
 - `backend/youtube.py`
-- `backend/database.py` (sync-state and sync-run helpers only: `get_sync_state`, `set_sync_state`, `create_sync_run`, `complete_sync_run`, `fail_sync_run`, `get_sync_runs`, `get_last_analytics_date`, `get_last_traffic_source_date`, `get_last_fx_rate`, `get_all_video_ids`)
+- `backend/database.py` (sync-run helpers only: `create_sync_run`, `complete_sync_run`, `fail_sync_run`, `get_sync_runs`, `get_last_successful_batch_completed_at`, `get_last_analytics_date`, `get_last_traffic_source_date`, `get_last_fx_rate`, `get_all_video_ids`)
 
 ## Contents
 
@@ -26,20 +26,20 @@ How data gets from the YouTube APIs into SQLite: pipeline order, scheduling, sco
 
 ## Pipeline overview
 
-A single sync (`run_sync()`, `sync.py:93-150`) runs five stages in order, always in this sequence:
+A single sync (`run_sync()`, `sync.py:102-156`) runs five stages in order, always in this sequence:
 
 ```
 videos → playlists → video_analytics → video_traffic_sources → fx_rates
 ```
 
-Each stage is wrapped by `_run_stage()` and recorded as its own `sync_runs` row; all five rows from one `run_sync()` call share one `batch_id` (a UUID generated once per call, `sync.py:120`).
+Each stage is wrapped by `_run_stage()` and recorded as its own `sync_runs` row; all five rows from one `run_sync()` call share one `batch_id` (a UUID generated once per call, `sync.py:129`).
 
 ## Scheduling and state
 
-- `_scheduler_loop()` (`sync.py:319-324`) calls `run_sync()` immediately, then reschedules itself via `threading.Timer(86400, ...)` (24h), as a daemon thread.
-- `start_background_scheduler()` (`sync.py:327-358`), called once from `server.py`'s lifespan, reads the persisted `last_synced_at` from `sync_state`. If the last sync was under 24h ago, it schedules the next run for the *remaining* time in that window instead of running immediately.
-- `last_synced_at` is a single global checkpoint stored in `sync_state` (survives restarts) used only to decide "was the last full sync run more than 24h ago" — it is **not** a per-row or per-date audit trail. It's stored as a **date-only** string (`date.today().isoformat()`, `sync.py:142`), not a full timestamp, and is only written after all five stages succeed.
-- `get_status()` / `is_syncing()` (`sync.py:26-35`) expose `{is_syncing, last_synced_at, message}` guarded by a module-level `threading.Lock` and `_is_syncing` bool — safe to poll from any thread. If a sync is already running, `run_sync()` returns immediately without starting a second one (`sync.py:115-118`).
+- `_scheduler_loop()` (`sync.py:325-330`) calls `run_sync()` immediately, then reschedules itself via `threading.Timer(86400, ...)` (24h), as a daemon thread.
+- `start_background_scheduler()` (`sync.py:333-361`), called once from `server.py`'s lifespan, calls `database.get_last_successful_batch_completed_at(FULL_SYNC_TYPES)` to find the latest batch where all five stages (`FULL_SYNC_TYPES = ("videos", "playlists", "video_analytics", "video_traffic_sources", "fx_rates")`) succeeded. If that batch completed within the last 24h (by local calendar date), it schedules the next run for the *remaining* time in that window instead of running immediately. If no qualifying batch exists, it starts a sync immediately. This is what keeps a `uvicorn --reload` restart (triggered by every code save during development) from re-syncing on every reload.
+- There is no separate persisted scheduler checkpoint — `sync_runs` is the sole source of truth. A partial batch (missing a stage) or a batch containing any non-success row for an expected stage does not count, even if another row for that same stage in the batch succeeded; the scheduler falls back to the latest fully-successful batch before it, or runs immediately if none exists.
+- `get_status()` / `is_syncing()` (`sync.py:35-44`) expose `{is_syncing, message}` guarded by a module-level `threading.Lock` and `_is_syncing` bool — safe to poll from any thread. If a sync is already running, `run_sync()` returns immediately without starting a second one (`sync.py:124-127`).
 
 ## Scope behavior
 

@@ -63,7 +63,7 @@ GET  /videos/{id}             Single video detail
 GET  /videos/{id}/analytics   Daily analytics for a video
 GET  /playlists               List all playlists
 GET  /playlists/{id}/videos   Videos in a playlist
-GET  /sync/status             Sync status and last synced timestamp
+GET  /sync/status             Active sync status and progress
 POST /sync/trigger            Manually trigger a sync
 ```
 

@@ -32,7 +32,7 @@ Persistence layer, schema, and query conventions. Owns everything about how data
 
 ## Schema
 
-Eight tables:
+Seven tables:
 
 ```sql
 videos                  -- id, title, description, published_at, duration_seconds, thumbnail_url,
@@ -45,7 +45,6 @@ video_traffic_sources   -- video_id, date, traffic_source_type, views, watch_tim
                         --   PRIMARY KEY (video_id, date, traffic_source_type)
 playlists               -- id, title, description, published_at, thumbnail_url, item_count, updated_at
 playlist_items          -- id, playlist_id, video_id, position, updated_at
-sync_state              -- key, value  (persists last_synced_at across restarts)
 fx_rates                -- date, usd_to_sgd, updated_at  (daily USD→SGD close; weekends/holidays forward-filled)
 sync_runs                -- id, batch_id, sync_type, scope, year, status, started_at, completed_at,
                         --   rows_fetched, rows_written, rows_deleted, error_message
@@ -69,7 +68,7 @@ Deletion helpers report only rows they directly deleted via `cursor.rowcount` �
 
 Every upsert helper sets `updated_at = _now()` on the Python side before the query executes, and every `ON CONFLICT` clause sets `updated_at = excluded.updated_at` — so `updated_at` reflects "last successfully pulled and upserted," not "last changed." It updates even when a re-fetched row's values are identical to what's already stored.
 
-`updated_at` is not present on `sync_state` (a key/value store, not a synced record) or `sync_runs` (has its own `started_at`/`completed_at`).
+`updated_at` is not present on `sync_runs` (has its own `started_at`/`completed_at`).
 
 ## Query conventions
 
@@ -85,6 +84,7 @@ Every upsert helper sets `updated_at = _now()` on the Python side before the que
 - All multi-table queries qualify columns with table aliases (`v.`, `va.`, `vts.`, `pi.`, `fx.`, `p.`) since `video_analytics` and `fx_rates` both have a `date` column, and other tables share `content_type`/`privacy_status`-adjacent names.
 - `get_all_video_ids()` (`database.py:183-187`) has **no `ORDER BY`** — callers get SQLite's default row order (roughly insertion order), not anything meaningful.
 - `get_video_stats()` and `get_playlist_video_stats()` each run several sequential queries against the same `get_connection()` connection rather than one combined statement — the multi-query split is deliberate (see below) and each function's queries stay self-contained; there is no shared stats helper between them.
+- `get_last_successful_batch_completed_at(sync_types)` groups `sync_runs` by `batch_id` (without pre-filtering by status), keeping only batches where every requested `sync_type` is present (`HAVING COUNT(DISTINCT sync_type) = len(sync_types)`) **and** none of those rows has a non-success status (`SUM(CASE WHEN status <> 'success' THEN 1 ELSE 0 END) = 0`) — a failed or still-running row for an expected stage disqualifies the whole batch even if another row for that same stage in the batch did succeed. Returns the latest qualifying batch's max `completed_at`, or `None` if no batch qualifies. Used by `sync.py`'s scheduler to find the latest full-pipeline run without a separate persisted checkpoint — see `sync.md`.
 
 ## Aggregation and filtering semantics
 
