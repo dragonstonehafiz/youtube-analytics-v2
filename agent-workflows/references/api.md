@@ -6,8 +6,8 @@ Public FastAPI contracts: every route, its parameters, defaults, and response sh
 
 ## Authoritative source files
 
-- `backend/routes.py`
-- `backend/database.py` (response-producing helpers only — see `database.md` for their internals)
+- `backend/routes/videos.py`, `backend/routes/playlists.py`, `backend/routes/analytics.py`, `backend/routes/synchronization.py`, `backend/routes/metadata.py` (`backend/routes/__init__.py` aggregates these into one `router`, in that order)
+- `backend/database/` (response-producing helpers only — see `database.md` for their internals)
 
 ## Contents
 
@@ -25,7 +25,7 @@ Public FastAPI contracts: every route, its parameters, defaults, and response sh
 - All list endpoints return `{ items: [...] }`; paginated endpoints additionally return `{ total, page, page_size }`.
 - Date filters are always optional query params named `start_date`/`end_date` (ISO `YYYY-MM-DD`).
 - `content_type` ∈ `video` | `short`; `privacy_status` ∈ `public` | `private` | `unlisted`. Both are optional filters on nearly every endpoint below.
-- 404s are raised explicitly wherever a route takes a `video_id`/`playlist_id` path param and the row doesn't exist (`routes.py`, every playlist-scoped and single-video route).
+- 404s are raised explicitly wherever a route takes a `video_id`/`playlist_id` path param and the row doesn't exist (every playlist-scoped route in `routes/playlists.py`/`routes/analytics.py` and every single-video route in `routes/videos.py`).
 
 ## Videos
 
@@ -48,7 +48,7 @@ GET  /videos/published
   ?start_date, end_date, content_type, privacy_status, playlist_id
   → { items: PublishedVideo[] }   # id, title, published_at, thumbnail_url, content_type only
   Filters on published_at, not analytics date. No pagination.
-  MUST be declared before /videos/{id} in routes.py (path-matching order) — see below.
+  MUST be declared before /videos/{id} in routes/videos.py (path-matching order) — see below.
 
 GET  /videos/{video_id}
   → { item: Video } | 404
@@ -111,7 +111,7 @@ GET  /analytics/traffic-sources
 GET  /analytics/traffic-sources/top
   ?start_date, end_date, content_type, privacy_status
   → { items: Record<traffic_source_type, TrafficSourceTopVideo[]> }
-  Top 10 per traffic source type, channel-wide. limit=10 is passed explicitly by routes.py
+  Top 10 per traffic source type, channel-wide. limit=10 is passed explicitly by routes/analytics.py
   — the underlying database.get_top_videos_by_traffic_source() itself defaults to limit=3.
 ```
 
@@ -170,8 +170,8 @@ GET  /sync/runs
 
 ## Route-order and compatibility constraints
 
-- **`/videos/published` must be declared before `/videos/{video_id}`** in `routes.py` — FastAPI matches routes in declaration order, and a literal path segment (`published`) would otherwise be captured by the `{video_id}` path parameter on an earlier-declared dynamic route. Confirmed current order in `routes.py` has `/videos/published` (line 44) before `/videos/{video_id}` (line 57).
+- **`/videos/published` must be declared before `/videos/{video_id}`** in `routes/videos.py` — FastAPI matches routes in declaration order, and a literal path segment (`published`) would otherwise be captured by the `{video_id}` path parameter on an earlier-declared dynamic route. Confirmed current order in `routes/videos.py` has `/videos/published` (line 47) before `/videos/{video_id}` (line 60). `routes/__init__.py` includes the five sub-routers in a fixed order (videos, playlists, analytics, synchronization, metadata), but that inter-file order carries no matching-order risk here since no two files declare overlapping path prefixes with the same ambiguity — only the intra-file `/videos/published` vs `/videos/{video_id}` ordering matters.
 - Frontend's `api.ts` exposes two identically-implemented functions for the same endpoint — `getPlaylistAnalytics(id, params)` and `getPlaylistAggregatedAnalytics(id, params)` both call `GET /analytics/playlists/{id}` with no difference in behavior. Only `getPlaylistAnalytics` is actually used by `PlaylistAnalytics.tsx`; treat the other as a redundant alias, not a second endpoint.
-- Adding a new sortable column to any `sort_by` requires updating the backend's allow-list (`_VIDEO_SORT_COLUMNS` / `_PLAYLIST_SORT_COLUMNS` in `database.py`, see `database.md`) — an unrecognized value is silently ignored (falls back to the default sort) rather than rejected with an error.
-- The Top Videos routes' `sort_by` is different: it's typed `Literal["views", "watch_time"]` in `routes.py`, so FastAPI rejects an invalid value with 422 instead of silently falling back. The DB helpers (`get_top_videos_by_views()` / `get_playlist_top_videos_by_views()`) still fall back to `"views"` defensively if called directly with an unrecognized value — see `database.md`.
+- Adding a new sortable column to any `sort_by` requires updating the backend's allow-list (`database/videos.py`'s `VIDEO_SORT_COLUMNS` / `database/playlists.py`'s `_PLAYLIST_SORT_COLUMNS`, see `database.md`) — an unrecognized value is silently ignored (falls back to the default sort) rather than rejected with an error.
+- The Top Videos routes' `sort_by` is different: it's typed `Literal["views", "watch_time"]` in `routes/analytics.py`, so FastAPI rejects an invalid value with 422 instead of silently falling back. The DB helpers (`get_top_videos_by_views()` / `get_playlist_top_videos_by_views()`, in `database/analytics.py`) still fall back to `"views"` defensively if called directly with an unrecognized value — see `database.md`.
 - Frontend repository call sites (`api.ts`'s `getTopVideosByViews()` / `getPlaylistTopVideosByViews()`) require an explicit `TopVideoSortBy` argument with no default, so a missed call site fails `tsc` rather than silently sending the wrong sort. The backend route still defaults to `views` for external API consumers that omit `sort_by`.

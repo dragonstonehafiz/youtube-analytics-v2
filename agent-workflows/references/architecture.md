@@ -7,7 +7,7 @@ High-level orientation to the system: stack, data flow, runtime lifecycle, and r
 ## Authoritative source files
 
 - `backend/server.py`
-- `backend/sync.py` (scheduler wiring only — see `sync.md` for behavior)
+- `backend/sync/scheduler.py` (scheduler wiring only — see `sync.md` for behavior)
 - `frontend/src/App.tsx`
 - `frontend/vite.config.ts`, `frontend/tsconfig.app.json`
 
@@ -30,13 +30,13 @@ FastAPI (Python) backend, React + TypeScript frontend (Vite), SQLite storage. Th
 YouTube Data API v3 / YouTube Analytics API v2
         │
         ▼
-  backend/sync.py  (background sync orchestration)
+  backend/sync/  (background sync orchestration)
         │
         ▼
    backend/data/youtube.db  (SQLite)
         │
         ▼
-  backend/routes.py  (FastAPI REST endpoints)
+  backend/routes/  (FastAPI REST endpoints)
         │
         ▼
   frontend/src/api.ts  (fetch wrappers)
@@ -51,20 +51,27 @@ YouTube Data API v3 / YouTube Analytics API v2
 
 1. `database.init_db()` — creates tables from `schema.sql` if they don't already exist.
 2. `sync.start_background_scheduler()` — starts the 24-hour sync loop (see `sync.md`).
-3. On shutdown, the lifespan blocks (polling `sync.is_syncing()` every 0.5s) until any in-progress sync finishes, so a `uvicorn --reload` restart waits for the current sync to complete rather than killing it mid-flight.
 
-CORS is configured to allow only `http://localhost:5173` (the Vite dev server). Running `python server.py` directly starts `uvicorn` on `0.0.0.0:8000` with `reload=True`; in normal development the file is run via `uvicorn server:app --reload` instead.
+CORS is configured to allow only `http://localhost:5173` (the Vite dev server). Both `python server.py` and `uvicorn server:app --reload` start the same app; neither hardcodes `reload=True` in `server.py` itself, so file-watching only happens when `--reload` is passed on the `uvicorn` command line (or via `uvicorn.run(..., reload=True)`, which `server.py`'s `__main__` block does not currently set).
 
 ## Backend structure
 
-| File | Responsibility |
+| Path | Responsibility |
 |---|---|
 | `server.py` | FastAPI app construction, CORS, lifespan (`init_db` → `start_background_scheduler`) |
-| `routes.py` | All API route handlers — thin wrappers around `database.py` helpers |
-| `sync.py` | Sync orchestration, scope handling, `sync_runs` tracking, 24h background scheduler, global sync-status state |
-| `youtube.py` | YouTube Data API v3 / Analytics API v2 clients, OAuth, pagination, chunking, Shorts detection |
-| `database.py` | All DB helpers (connection setup, upserts, queries, aggregation, zero-filling) |
+| `routes/videos.py`, `routes/playlists.py`, `routes/analytics.py`, `routes/synchronization.py`, `routes/metadata.py` | API route handlers, grouped by resource — thin wrappers around `database` helpers; `routes/__init__.py` aggregates them in a fixed order into one `router` |
+| `sync/status.py` | Global sync-status state (`is_syncing`, `message`) behind one lock |
+| `sync/orchestration.py` | `run_sync()`, stage sequencing, `sync_runs` tracking, scope validation, `FULL_SYNC_TYPES` |
+| `sync/stages.py` | The five sync stage implementations plus the shared incremental-lookback calculation |
+| `sync/scheduler.py` | 24h background scheduler |
+| `youtube/auth.py` | OAuth credentials and token/secret paths |
+| `youtube/data_api.py` | YouTube Data API v3 client, pagination, Shorts detection, video/playlist fetchers |
+| `youtube/analytics_api.py` | YouTube Analytics API v2 client, retry/backoff, date chunking, daily analytics/traffic-source generators |
+| `database/connection.py` | Connection setup, `init_db()`, `_now()` |
+| `database/videos.py`, `database/playlists.py`, `database/analytics.py`, `database/traffic_sources.py`, `database/fx_rates.py`, `database/sync_runs.py` | DB helpers grouped by domain (upserts, queries, aggregation, zero-filling) |
 | `schema.sql` | SQLite schema definition (7 tables) — see `database.md` |
+
+Each of `routes/`, `sync/`, `youtube/`, and `database/` re-exports its public callables from its package `__init__.py`, so other modules keep importing them as `import database`, `import sync`, `import youtube`, `from routes import router` — the split is internal.
 
 ## Frontend structure
 
@@ -95,11 +102,39 @@ Routes registered in `App.tsx`:
 ```
 backend/
   server.py
-  routes.py
-  sync.py
-  youtube.py
-  database.py
   schema.sql
+
+  routes/
+    __init__.py           # aggregates the sub-routers below into one `router`
+    videos.py
+    playlists.py
+    analytics.py
+    synchronization.py
+    metadata.py
+
+  sync/
+    __init__.py            # re-exports get_status, is_syncing, run_sync, start_background_scheduler
+    status.py
+    orchestration.py
+    stages.py
+    scheduler.py
+
+  youtube/
+    __init__.py             # re-exports get_credentials + the fetch/iter functions
+    auth.py
+    data_api.py
+    analytics_api.py
+
+  database/
+    __init__.py              # re-exports every public helper below
+    connection.py
+    videos.py
+    playlists.py
+    analytics.py
+    traffic_sources.py
+    fx_rates.py
+    sync_runs.py
+
   secrets/
     token.json           # OAuth token; auto-deleted on any credential-refresh failure, re-created on next auth
     client_secret.json

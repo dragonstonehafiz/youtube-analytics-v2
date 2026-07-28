@@ -1,59 +1,18 @@
 from __future__ import annotations
 
-import threading
-import uuid
 from dataclasses import dataclass
-from datetime import date, datetime, time, timedelta
+from datetime import date, timedelta
 
 import database
 import youtube
+
+from . import status
 
 # Incremental syncs re-fetch this many days before the last stored date, since
 # both analytics and traffic-source metrics for recent days are not fully
 # settled by the API until some time after the day ends.
 INCREMENTAL_LOOKBACK_DAYS = 7
 
-# The five stages that make up one full pipeline run, sharing a batch_id. Used to
-# identify the latest successful full-pipeline batch for scheduler checkpointing.
-FULL_SYNC_TYPES = (
-    "videos",
-    "playlists",
-    "video_analytics",
-    "video_traffic_sources",
-    "fx_rates",
-)
-
-# ---------------------------------------------------------------------------
-# Shared state (read by routes.py via get_status())
-# ---------------------------------------------------------------------------
-
-_lock = threading.Lock()
-_is_syncing: bool = False
-_message: str = ""
-
-
-def get_status() -> dict:
-    """Return current sync status. Safe to call from any thread."""
-    with _lock:
-        return {"is_syncing": _is_syncing, "message": _message}
-
-
-def is_syncing() -> bool:
-    """Return True if a sync is currently running."""
-    with _lock:
-        return _is_syncing
-
-
-def _set_message(msg: str) -> None:
-    """Update the current sync message."""
-    global _message
-    with _lock:
-        _message = msg
-
-
-# ---------------------------------------------------------------------------
-# Sync run tracking
-# ---------------------------------------------------------------------------
 
 @dataclass
 class SyncCounts:
@@ -62,33 +21,6 @@ class SyncCounts:
     rows_written: int = 0
     rows_deleted: int = 0
 
-
-def _run_stage(
-    batch_id: str,
-    sync_type: str,
-    scope: str | None,
-    year: int | None,
-    fn,
-) -> None:
-    """Run one sync stage, recording a sync_runs row that reflects partial progress on failure."""
-    counts = SyncCounts()
-    sync_run_id = database.create_sync_run(batch_id, sync_type, scope, year)
-    try:
-        fn(counts)
-    except Exception as exc:
-        database.fail_sync_run(
-            sync_run_id, str(exc), counts.rows_fetched, counts.rows_written, counts.rows_deleted
-        )
-        raise
-    else:
-        database.complete_sync_run(
-            sync_run_id, counts.rows_fetched, counts.rows_written, counts.rows_deleted
-        )
-
-
-# ---------------------------------------------------------------------------
-# Sync logic
-# ---------------------------------------------------------------------------
 
 def _incremental_lookback_start(last_date: str | None, publish_date: str) -> str:
     """Return the incremental sync start date: publish_date if never synced,
@@ -99,64 +31,7 @@ def _incremental_lookback_start(last_date: str | None, publish_date: str) -> str
     return max(start, publish_date)
 
 
-def run_sync(scope: str = "incremental", year: int | None = None) -> None:
-    """Run a full sync: videos → playlists → video analytics → traffic sources → fx rates.
-
-    `scope` controls the date range used for video analytics and traffic sources only
-    (videos, playlists, and fx rates are always synced incrementally):
-      - "incremental" (default): resume from INCREMENTAL_LOOKBACK_DAYS before each video's
-        last synced date, clamped to its publish date.
-      - "year": refetch the given `year` (Jan 1 - Dec 31, clamped to publish date / yesterday)
-        for every video, ignoring any existing resume checkpoint.
-      - "all": refetch each video's entire history (publish date - yesterday), ignoring
-        any existing resume checkpoint.
-
-    Each of the five stages is recorded as its own sync_runs row, all sharing one
-    batch_id, tracking status/timing/row counts/errors.
-
-    Safe to call from a background thread. Sets is_syncing for the duration.
-    """
-    global _is_syncing
-
-    if scope == "year" and year is None:
-        raise ValueError("year is required when scope='year'")
-
-    with _lock:
-        if _is_syncing:
-            return
-        _is_syncing = True
-
-    batch_id = str(uuid.uuid4())
-
-    try:
-        _set_message("Syncing videos...")
-        _run_stage(batch_id, "videos", "incremental", None, _sync_videos)
-
-        _set_message("Syncing playlists...")
-        _run_stage(batch_id, "playlists", "incremental", None, _sync_playlists)
-
-        _run_stage(
-            batch_id, "video_analytics", scope, year,
-            lambda counts: _sync_video_analytics(scope, year, counts),
-        )
-
-        _run_stage(
-            batch_id, "video_traffic_sources", scope, year,
-            lambda counts: _sync_video_traffic_sources(scope, year, counts),
-        )
-
-        _set_message("Syncing FX rates...")
-        _run_stage(batch_id, "fx_rates", "incremental", None, _sync_fx_rates)
-
-        with _lock:
-            _message = "Sync complete."
-
-    finally:
-        with _lock:
-            _is_syncing = False
-
-
-def _sync_videos(counts: SyncCounts) -> None:
+def sync_videos(counts: SyncCounts) -> None:
     """Fetch all channel videos, upsert, then delete any DB videos not returned by the API."""
     uploads_id = youtube.fetch_uploads_playlist_id()
     shorts_ids = youtube.fetch_shorts_video_ids(uploads_id)
@@ -177,7 +52,7 @@ def _sync_videos(counts: SyncCounts) -> None:
     counts.rows_deleted += database.delete_videos_not_in([v["id"] for v in all_videos])
 
 
-def _sync_playlists(counts: SyncCounts) -> None:
+def sync_playlists(counts: SyncCounts) -> None:
     """Fetch all playlists and their items, upsert, then delete any DB playlists not returned by the API."""
     playlists = youtube.fetch_playlists()
     all_items: dict[str, list[dict]] = {}
@@ -197,7 +72,7 @@ def _sync_playlists(counts: SyncCounts) -> None:
     counts.rows_deleted += database.delete_playlists_not_in([p["id"] for p in playlists])
 
 
-def _sync_video_analytics(scope: str, year: int | None, counts: SyncCounts) -> None:
+def sync_video_analytics(scope: str, year: int | None, counts: SyncCounts) -> None:
     """Fetch daily analytics for every video.
 
     scope="incremental" re-fetches starting INCREMENTAL_LOOKBACK_DAYS before the last
@@ -213,7 +88,7 @@ def _sync_video_analytics(scope: str, year: int | None, counts: SyncCounts) -> N
     video_ids = database.get_all_video_ids()
     total = len(video_ids)
     for i, video_id in enumerate(video_ids, start=1):
-        _set_message(f"Syncing video analytics ({i}/{total})...")
+        status.set_message(f"Syncing video analytics ({i}/{total})...")
         video = database.get_video(video_id)
         if not video or not video.get("published_at"):
             continue
@@ -239,7 +114,7 @@ def _sync_video_analytics(scope: str, year: int | None, counts: SyncCounts) -> N
             counts.rows_written += 1
 
 
-def _sync_video_traffic_sources(scope: str, year: int | None, counts: SyncCounts) -> None:
+def sync_video_traffic_sources(scope: str, year: int | None, counts: SyncCounts) -> None:
     """Fetch daily traffic-source breakdowns for every video.
 
     scope="incremental" re-fetches starting INCREMENTAL_LOOKBACK_DAYS before the last
@@ -255,7 +130,7 @@ def _sync_video_traffic_sources(scope: str, year: int | None, counts: SyncCounts
     video_ids = database.get_all_video_ids()
     total = len(video_ids)
     for i, video_id in enumerate(video_ids, start=1):
-        _set_message(f"Syncing traffic sources ({i}/{total})...")
+        status.set_message(f"Syncing traffic sources ({i}/{total})...")
         video = database.get_video(video_id)
         if not video or not video.get("published_at"):
             continue
@@ -281,7 +156,7 @@ def _sync_video_traffic_sources(scope: str, year: int | None, counts: SyncCounts
             counts.rows_written += 1
 
 
-def _sync_fx_rates(counts: SyncCounts) -> None:
+def sync_fx_rates(counts: SyncCounts) -> None:
     """Fetch daily USD/SGD rates from Yahoo Finance, filling weekends/holidays with last known rate."""
     import yfinance as yf
     import pandas as pd
@@ -316,48 +191,3 @@ def _sync_fx_rates(counts: SyncCounts) -> None:
             database.upsert_fx_rate({"date": day_str, "usd_to_sgd": carry})
             counts.rows_written += 1
         current += timedelta(days=1)
-
-
-# ---------------------------------------------------------------------------
-# Background scheduler
-# ---------------------------------------------------------------------------
-
-def _scheduler_loop() -> None:
-    """Run sync immediately, then repeat every 24 hours."""
-    run_sync()
-    timer = threading.Timer(86400, _scheduler_loop)
-    timer.daemon = True
-    timer.start()
-
-
-def start_background_scheduler() -> None:
-    """Start the background sync scheduler. Call once on app startup.
-
-    If the latest successful full-pipeline batch (all five stages in FULL_SYNC_TYPES
-    succeeded under one batch_id) completed within the last 24 hours (by local calendar
-    date), skip the immediate sync and schedule the next one for the remaining time in
-    the 24h window. This avoids re-syncing on every dev-server reload.
-    """
-    completed_at = database.get_last_successful_batch_completed_at(FULL_SYNC_TYPES)
-
-    delay = 0.0
-    if completed_at:
-        try:
-            last_date = datetime.fromisoformat(completed_at).astimezone().date()
-            last_midnight = datetime.combine(last_date, time.min)
-            elapsed = (datetime.now() - last_midnight).total_seconds()
-            if elapsed < 86400:
-                delay = 86400 - elapsed
-        except ValueError:
-            pass
-
-    def _start(d: float) -> None:
-        if d > 0:
-            timer = threading.Timer(d, _scheduler_loop)
-            timer.daemon = True
-            timer.start()
-        else:
-            thread = threading.Thread(target=_scheduler_loop, daemon=True)
-            thread.start()
-
-    _start(delay)

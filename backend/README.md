@@ -36,6 +36,12 @@ FastAPI backend for YouTube Analytics.
 uvicorn server:app --reload
 ```
 
+or directly:
+
+```bash
+python server.py
+```
+
 On first run, a browser window will open for YouTube OAuth. The token is saved to `secrets/token.json` for subsequent runs.
 
 The server runs on `http://127.0.0.1:8000`
@@ -47,12 +53,36 @@ The server runs on `http://127.0.0.1:8000`
 
 ```
 backend/
-  server.py      # FastAPI app entry point
-  schema.sql     # Database table definitions
-  database.py    # DB connection and all helpers
-  youtube.py     # YouTube Data + Analytics API clients and fetchers
-  sync.py        # Background sync scheduler
-  routes.py      # All API endpoints
+  server.py            # FastAPI app entry point
+
+  routes/              # API endpoints, grouped by resource
+    videos.py
+    playlists.py
+    analytics.py
+    synchronization.py
+    metadata.py
+
+  database/            # DB connection and helpers, grouped by domain
+    connection.py
+    videos.py
+    playlists.py
+    analytics.py
+    traffic_sources.py
+    fx_rates.py
+    sync_runs.py
+
+  sync/                # Background sync orchestration and scheduler
+    status.py
+    orchestration.py
+    stages.py
+    scheduler.py
+
+  youtube/              # YouTube Data + Analytics API clients and fetchers
+    auth.py
+    data_api.py
+    analytics_api.py
+
+  schema.sql            # Database table definitions
 ```
 
 ## Endpoints

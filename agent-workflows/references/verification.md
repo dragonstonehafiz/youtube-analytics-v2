@@ -29,11 +29,11 @@ The agent must never run `git commit`, `git push`, or any other command that cre
 ## Backend verification
 
 ```bash
-cd backend && python -m mypy database.py      # type check a single changed file
-cd backend && uvicorn server:app --reload     # run the server locally
+cd backend && python -m mypy database/connection.py   # type check a single changed file (package-qualified path)
+cd backend && uvicorn server:app --reload              # run the server locally
 ```
 
-Run `mypy` against every backend `.py` file actually changed, not just `database.py` — substitute the filename.
+Run `mypy` against every backend `.py` file actually changed, not just the example above — substitute the path, e.g. `routes/videos.py`, `sync/orchestration.py`, `youtube/auth.py`. `database.py`, `routes.py`, `sync.py`, and `youtube.py` no longer exist as single files — each is now a package (`database/`, `routes/`, `sync/`, `youtube/`) of focused modules; see `architecture.md` for the layout.
 
 ## Frontend verification
 
@@ -57,10 +57,10 @@ The last command should produce no output when the change is genuinely docs-only
 
 ## Adding a backend route
 
-1. Add the handler in `backend/routes.py`.
-2. Add the corresponding DB helper in `backend/database.py` if the query doesn't already exist — follow the parameterized-query and table-alias conventions in `database.md`.
+1. Add the handler in the matching `backend/routes/<resource>.py` (`videos.py`, `playlists.py`, `analytics.py`, `synchronization.py`, or `metadata.py`).
+2. Add the corresponding DB helper in the matching `backend/database/<domain>.py` if the query doesn't already exist — follow the parameterized-query and table-alias conventions in `database.md`.
 3. Update `api.md` with the new route's method, path, params, and response shape.
-4. Run `python -m mypy routes.py database.py`.
+4. Run `python -m mypy routes/<resource>.py database/<domain>.py`.
 
 ## Adding a frontend page
 
@@ -75,9 +75,9 @@ The last command should produce no output when the change is genuinely docs-only
 
 | Task | Reference(s) to consult | Verification |
 |---|---|---|
-| Database query change | `database.md` | `mypy` on the changed file |
-| Sync bug | `sync.md`, possibly `database.md` | `mypy` on `sync.py`/`youtube.py`; manual `POST /sync/trigger` against a local run if behavior-sensitive |
-| New endpoint | `api.md`, likely `database.md` | `mypy` on `routes.py`/`database.py`; update `api.md` |
+| Database query change | `database.md` | `mypy` on the changed file under `database/` |
+| Sync bug | `sync.md`, possibly `database.md` | `mypy` on the changed file(s) under `sync/`/`youtube/`; manual `POST /sync/trigger` against a local run if behavior-sensitive |
+| New endpoint | `api.md`, likely `database.md` | `mypy` on the changed file(s) under `routes/`/`database/`; update `api.md` |
 | Frontend API integration | `api.md`, `frontend.md` | `tsc --noEmit`; `eslint --fix` on changed files |
 | Page or component change | `frontend.md` | `eslint --fix`, `tsc --noEmit`; manual check in a running dev server for UI-facing changes |
 | Verification selection itself | this file | — |
