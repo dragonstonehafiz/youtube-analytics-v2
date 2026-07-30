@@ -71,11 +71,14 @@ backend/
     fx_rates.py
     sync_runs.py
 
-  sync/                # Background sync orchestration and scheduler
+  sync/                # Sync plans, orchestration, and the startup freshness check
     status.py
+    plans.py
     orchestration.py
     stages.py
     scheduler.py
+
+  tests/               # stdlib unittest suite for the sync subsystem
 
   youtube/              # YouTube Data + Analytics API clients and fetchers
     auth.py
@@ -94,8 +97,26 @@ GET  /videos/{id}/analytics   Daily analytics for a video
 GET  /playlists               List all playlists
 GET  /playlists/{id}/videos   Videos in a playlist
 GET  /sync/status             Active sync status and progress
-POST /sync/trigger            Manually trigger a sync
+POST /sync/trigger            Queue a manual sync of the selected stages (JSON plan body)
+GET  /sync/runs               Recent sync-stage records, newest first
 ```
+
+## Syncing
+
+On startup the app runs one complete incremental sync unless a complete five-stage batch
+already succeeded today (local date). There is no recurring timer — restarting the server
+the same day does nothing, and freshness is otherwise driven manually from the `/sync`
+page in the frontend, which can select any combination of stages and give video analytics
+and traffic sources independent periods.
+
+## Testing
+
+```bash
+python -m unittest discover -s tests -p "test_sync*.py"
+```
+
+Stage execution and external APIs are mocked; the checkpoint tests run against a
+throwaway SQLite file, so no test touches `data/youtube.db` or the network.
 
 ## Dependencies
 
@@ -103,4 +124,5 @@ POST /sync/trigger            Manually trigger a sync
 - `uvicorn` — ASGI server
 - `google-api-python-client` — YouTube Data + Analytics API
 - `google-auth-oauthlib` — OAuth2 flow
+- `httpx2` — required by `starlette.testclient` for the test suite only
 - `pydantic-settings` — `.env` config management

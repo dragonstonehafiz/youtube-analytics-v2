@@ -4,3 +4,7 @@ google-api-python-client
 google-auth-oauthlib
 pydantic-settings
 yfinance
+# Required by starlette.testclient (>=1.x) for the backend tests only. Not a typo for
+# "httpx" — this installed starlette version imports httpx2 first and only falls back
+# to httpx with a deprecation warning; confirmed in .venv/Lib/site-packages/starlette/testclient.py.
+httpx2

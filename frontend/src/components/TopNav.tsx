@@ -6,6 +6,7 @@ const links = [
   { to: '/videos', label: 'Videos', exact: false },
   { to: '/playlists', label: 'Playlists', exact: false },
   { to: '/analytics', label: 'Analytics', exact: false },
+  { to: '/sync', label: 'Sync', exact: false },
 ]
 
 export default function TopNav() {

@@ -1,0 +1,117 @@
+.sync-status-banner {
+  display: flex;
+  align-items: center;
+  padding: 0.75rem 1rem;
+  margin-bottom: 1rem;
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  background: var(--surface);
+  color: var(--text-secondary);
+  font-size: 13px;
+  font-weight: 500;
+}
+
+.sync-table td {
+  white-space: normal;
+  vertical-align: middle;
+}
+
+.sync-col-include {
+  width: 90px;
+}
+
+/* Center the Include column, header and checkbox together. */
+.sync-table th:first-child,
+.sync-table td:first-child {
+  text-align: center;
+}
+
+.sync-col-period {
+  width: 200px;
+}
+
+.sync-checkbox {
+  width: 16px;
+  height: 16px;
+  accent-color: var(--blue);
+  cursor: pointer;
+}
+
+.sync-checkbox:disabled {
+  cursor: not-allowed;
+  opacity: 0.5;
+}
+
+.sync-stage-label {
+  display: block;
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--text-heading);
+  cursor: pointer;
+}
+
+.sync-stage-description {
+  display: block;
+  font-size: 12px;
+  color: var(--text-secondary);
+}
+
+.sync-period-select {
+  border: 1.5px solid var(--border);
+  border-radius: var(--radius-sm);
+  padding: 0.35rem 0.6rem;
+  font-size: 13px;
+  color: var(--text);
+  background: var(--surface);
+  outline: none;
+  transition: border-color 0.15s;
+}
+
+.sync-period-select:focus {
+  border-color: var(--blue);
+}
+
+.sync-period-select:disabled {
+  color: var(--text-secondary);
+  background: var(--bg);
+  cursor: not-allowed;
+}
+
+.sync-period-na {
+  font-size: 12px;
+  color: var(--text-secondary);
+}
+
+.sync-error {
+  margin-top: 1rem;
+  padding: 0.75rem 1rem;
+  border: 1px solid var(--red-mid);
+  border-radius: var(--radius);
+  background: var(--red-light);
+  color: var(--red);
+  font-size: 13px;
+}
+
+.sync-submit {
+  width: 100%;
+  margin-top: 1rem;
+  padding: 0.75rem 1rem;
+  font-size: 14px;
+}
+
+.sync-submit:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+  transform: none;
+  box-shadow: none;
+}
+
+@media (max-width: 720px) {
+  .sync-col-include {
+    width: 56px;
+  }
+
+  .sync-col-period {
+    width: 150px;
+  }
+}
