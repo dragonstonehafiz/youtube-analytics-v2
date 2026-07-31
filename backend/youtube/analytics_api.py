@@ -8,7 +8,11 @@ from typing import Any
 from googleapiclient.discovery import build
 from googleapiclient.errors import HttpError
 
+from logging_config import get_logger
+
 from .auth import get_credentials
+
+_logger = get_logger("sync")
 
 _VIDEO_DAILY_METRICS = [
     "views",
@@ -43,7 +47,13 @@ def _analytics_query(service: Any, params: dict, max_attempts: int = 5) -> dict:
             is_quota = any(t in error_text for t in ("rateLimitExceeded", "quotaExceeded"))
             should_retry = status_code >= 500 or (status_code in {403, 429} and is_quota)
             if should_retry and attempt < max_attempts:
-                time.sleep(min(2 ** (attempt - 1), 30))
+                delay = min(2 ** (attempt - 1), 30)
+                reason = "server" if status_code >= 500 else "quota"
+                _logger.debug(
+                    "analytics_query retry attempt=%d status=%d reason=%s delay=%d",
+                    attempt, status_code, reason, delay,
+                )
+                time.sleep(delay)
                 continue
             raise RuntimeError(f"YouTube Analytics API error: {exc}") from exc
     return {}

@@ -6,11 +6,15 @@ from typing import Any
 from googleapiclient.discovery import build
 from googleapiclient.errors import HttpError
 
+from logging_config import get_logger
+
 from .auth import get_credentials
 
 _DURATION_RE = re.compile(
     r"^PT(?:(?P<hours>\d+)H)?(?:(?P<minutes>\d+)M)?(?:(?P<seconds>\d+)S)?$"
 )
+
+_logger = get_logger("sync")
 
 
 def _data_client() -> Any:
@@ -52,6 +56,7 @@ def fetch_shorts_video_ids(uploads_playlist_id: str) -> set[str]:
     yt = _data_client()
     video_ids: set[str] = set()
     page_token = None
+    page = 0
 
     while True:
         try:
@@ -65,10 +70,15 @@ def fetch_shorts_video_ids(uploads_playlist_id: str) -> set[str]:
             if int(exc.resp.status) == 404:
                 raise RuntimeError(f"Shorts playlist {shorts_playlist_id} not found.") from exc
             raise
-        for item in response.get("items", []):
+        page += 1
+        items = response.get("items", [])
+        for item in items:
             vid = item["contentDetails"].get("videoId")
             if vid:
                 video_ids.add(vid)
+        _logger.debug(
+            "shorts_video_ids page=%d items=%d playlist=%s", page, len(items), shorts_playlist_id
+        )
         page_token = response.get("nextPageToken")
         if not page_token:
             break
@@ -81,6 +91,7 @@ def fetch_all_video_ids(uploads_playlist_id: str) -> list[str]:
     yt = _data_client()
     video_ids: list[str] = []
     page_token = None
+    page = 0
 
     while True:
         response = yt.playlistItems().list(
@@ -89,10 +100,13 @@ def fetch_all_video_ids(uploads_playlist_id: str) -> list[str]:
             maxResults=50,
             pageToken=page_token,
         ).execute()
-        for item in response.get("items", []):
+        page += 1
+        items = response.get("items", [])
+        for item in items:
             vid = item["contentDetails"].get("videoId")
             if vid:
                 video_ids.append(vid)
+        _logger.debug("video_ids page=%d items=%d playlist=%s", page, len(items), uploads_playlist_id)
         page_token = response.get("nextPageToken")
         if not page_token:
             break
@@ -145,6 +159,7 @@ def fetch_playlists() -> list[dict]:
     yt = _data_client()
     playlists: list[dict] = []
     page_token = None
+    page = 0
 
     while True:
         response = yt.playlists().list(
@@ -153,7 +168,9 @@ def fetch_playlists() -> list[dict]:
             maxResults=50,
             pageToken=page_token,
         ).execute()
-        for item in response.get("items", []):
+        page += 1
+        items = response.get("items", [])
+        for item in items:
             snippet = item.get("snippet", {})
             thumbnails = snippet.get("thumbnails", {})
             thumbnail_url = (
@@ -170,6 +187,7 @@ def fetch_playlists() -> list[dict]:
                 "thumbnail_url": thumbnail_url,
                 "item_count": item.get("contentDetails", {}).get("itemCount"),
             })
+        _logger.debug("playlists page=%d items=%d", page, len(items))
         page_token = response.get("nextPageToken")
         if not page_token:
             break
@@ -182,6 +200,7 @@ def fetch_playlist_items(playlist_id: str) -> list[dict]:
     yt = _data_client()
     items: list[dict] = []
     page_token = None
+    page = 0
 
     while True:
         response = yt.playlistItems().list(
@@ -190,7 +209,9 @@ def fetch_playlist_items(playlist_id: str) -> list[dict]:
             maxResults=50,
             pageToken=page_token,
         ).execute()
-        for item in response.get("items", []):
+        page += 1
+        page_items = response.get("items", [])
+        for item in page_items:
             snippet = item.get("snippet", {})
             items.append({
                 "id": item["id"],
@@ -198,6 +219,7 @@ def fetch_playlist_items(playlist_id: str) -> list[dict]:
                 "video_id": snippet.get("resourceId", {}).get("videoId"),
                 "position": snippet.get("position"),
             })
+        _logger.debug("playlist_items page=%d items=%d playlist=%s", page, len(page_items), playlist_id)
         page_token = response.get("nextPageToken")
         if not page_token:
             break

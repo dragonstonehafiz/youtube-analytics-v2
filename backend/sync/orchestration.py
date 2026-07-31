@@ -5,6 +5,7 @@ from collections.abc import Callable, Sequence
 from dataclasses import dataclass
 
 import database
+from logging_config import exception_context, get_logger
 
 from . import status
 from .plans import (
@@ -25,6 +26,16 @@ from .stages import (
 )
 
 __all__ = ["FULL_SYNC_TYPES", "execute_plan", "run_plan"]
+
+_logger = get_logger("sync")
+
+
+def _format_stage_counts(sync_type: str, counts: SyncCounts) -> str:
+    """Render the canonical stage-count suffix shared by start/completion/failure records."""
+    return (
+        f"sync_type={sync_type} rows_fetched={counts.rows_fetched} "
+        f"rows_written={counts.rows_written} rows_deleted={counts.rows_deleted}"
+    )
 
 
 @dataclass(frozen=True)
@@ -72,18 +83,53 @@ def _run_stage(
 ) -> None:
     """Run one sync stage, recording a sync_runs row that reflects partial progress on failure."""
     counts = SyncCounts()
-    sync_run_id = database.create_sync_run(batch_id, sync_type, scope, year)
+    _logger.info("Sync stage started %s", _format_stage_counts(sync_type, counts))
+
+    try:
+        sync_run_id = database.create_sync_run(batch_id, sync_type, scope, year)
+    except Exception as exc:
+        _logger.error(
+            "Sync stage persistence failed %s operation=create_sync_run %s",
+            _format_stage_counts(sync_type, counts),
+            exception_context(exc),
+        )
+        raise
+
     try:
         fn(counts)
     except Exception as exc:
-        database.fail_sync_run(
-            sync_run_id, str(exc), counts.rows_fetched, counts.rows_written, counts.rows_deleted
+        _logger.error(
+            "Sync stage failed %s scope=%s year=%s %s",
+            _format_stage_counts(sync_type, counts),
+            scope,
+            year,
+            exception_context(exc),
         )
+        try:
+            database.fail_sync_run(
+                sync_run_id, str(exc), counts.rows_fetched, counts.rows_written, counts.rows_deleted
+            )
+        except Exception as fail_exc:
+            _logger.error(
+                "Sync stage persistence failed %s operation=fail_sync_run %s",
+                _format_stage_counts(sync_type, counts),
+                exception_context(fail_exc),
+            )
+            raise
         raise
     else:
-        database.complete_sync_run(
-            sync_run_id, counts.rows_fetched, counts.rows_written, counts.rows_deleted
-        )
+        try:
+            database.complete_sync_run(
+                sync_run_id, counts.rows_fetched, counts.rows_written, counts.rows_deleted
+            )
+        except Exception as exc:
+            _logger.error(
+                "Sync stage persistence failed %s operation=complete_sync_run %s",
+                _format_stage_counts(sync_type, counts),
+                exception_context(exc),
+            )
+            raise
+        _logger.info("Sync stage completed %s", _format_stage_counts(sync_type, counts))
 
 
 def execute_plan(stages: Sequence[PlanStage]) -> None:
@@ -100,8 +146,14 @@ def execute_plan(stages: Sequence[PlanStage]) -> None:
     try:
         # Revalidated here, not just at the API boundary, so no caller can drive the
         # stage loop with a plan that was never checked. validate_plan is idempotent.
-        plan = {stage.stage: stage for stage in validate_plan(stages)}
+        try:
+            plan = {stage.stage: stage for stage in validate_plan(stages)}
+        except Exception as exc:
+            _logger.error("Sync plan rejected %s", exception_context(exc))
+            raise
         batch_id = str(uuid.uuid4())
+        selected = ",".join(name for name in STAGE_ORDER if name in plan)
+        _logger.info("Sync plan started sync_types=%s", selected)
 
         for name in STAGE_ORDER:
             stage = plan.get(name)
@@ -137,6 +189,7 @@ def run_plan(stages: Sequence[PlanStage]) -> bool:
     would otherwise be blocked by their own reservation.
     """
     if not status.try_start("Starting sync..."):
+        _logger.warning("Sync plan skipped reason=already_active")
         return False
     execute_plan(stages)
     return True

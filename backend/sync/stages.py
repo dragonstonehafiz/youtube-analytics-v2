@@ -5,6 +5,7 @@ from datetime import date, timedelta
 
 import database
 import youtube
+from logging_config import get_logger
 
 from . import status
 
@@ -12,6 +13,8 @@ from . import status
 # both analytics and traffic-source metrics for recent days are not fully
 # settled by the API until some time after the day ends.
 INCREMENTAL_LOOKBACK_DAYS = 7
+
+_logger = get_logger("sync")
 
 
 @dataclass
@@ -91,6 +94,9 @@ def sync_video_analytics(scope: str, year: int | None, counts: SyncCounts) -> No
         status.set_message(f"Syncing video analytics ({i}/{total})...")
         video = database.get_video(video_id)
         if not video or not video.get("published_at"):
+            _logger.debug(
+                "video_analytics %d/%d video=%s skipped reason=no_publish_date", i, total, video_id
+            )
             continue
         publish_date = video["published_at"][:10]
 
@@ -106,12 +112,19 @@ def sync_video_analytics(scope: str, year: int | None, counts: SyncCounts) -> No
             range_end = end_date
 
         if start > range_end:
+            _logger.debug(
+                "video_analytics %d/%d video=%s skipped reason=empty_range", i, total, video_id
+            )
             continue
 
+        rows_before = counts.rows_fetched
         for row in youtube.iter_video_analytics(video_id, start, range_end, publish_date=publish_date):
             counts.rows_fetched += 1
             database.upsert_video_analytics(row)
             counts.rows_written += 1
+        _logger.debug(
+            "video_analytics %d/%d video=%s rows=%d", i, total, video_id, counts.rows_fetched - rows_before
+        )
 
 
 def sync_video_traffic_sources(scope: str, year: int | None, counts: SyncCounts) -> None:
@@ -133,6 +146,9 @@ def sync_video_traffic_sources(scope: str, year: int | None, counts: SyncCounts)
         status.set_message(f"Syncing traffic sources ({i}/{total})...")
         video = database.get_video(video_id)
         if not video or not video.get("published_at"):
+            _logger.debug(
+                "video_traffic_sources %d/%d video=%s skipped reason=no_publish_date", i, total, video_id
+            )
             continue
         publish_date = video["published_at"][:10]
 
@@ -148,12 +164,20 @@ def sync_video_traffic_sources(scope: str, year: int | None, counts: SyncCounts)
             range_end = end_date
 
         if start > range_end:
+            _logger.debug(
+                "video_traffic_sources %d/%d video=%s skipped reason=empty_range", i, total, video_id
+            )
             continue
 
+        rows_before = counts.rows_fetched
         for row in youtube.iter_video_traffic_sources(video_id, start, range_end, publish_date=publish_date):
             counts.rows_fetched += 1
             database.upsert_video_traffic_source(row)
             counts.rows_written += 1
+        _logger.debug(
+            "video_traffic_sources %d/%d video=%s rows=%d",
+            i, total, video_id, counts.rows_fetched - rows_before,
+        )
 
 
 def sync_fx_rates(counts: SyncCounts) -> None:
@@ -170,6 +194,7 @@ def sync_fx_rates(counts: SyncCounts) -> None:
     )
 
     if start > yesterday:
+        _logger.debug("fx_rates start=%s end=%s no_work=true", start.isoformat(), yesterday.isoformat())
         return
 
     df = yf.download("USDSGD=X", start=start.isoformat(), end=date.today().isoformat(),
@@ -191,3 +216,7 @@ def sync_fx_rates(counts: SyncCounts) -> None:
             database.upsert_fx_rate({"date": day_str, "usd_to_sgd": carry})
             counts.rows_written += 1
         current += timedelta(days=1)
+
+    _logger.debug(
+        "fx_rates start=%s end=%s days_written=%d", start.isoformat(), yesterday.isoformat(), counts.rows_written
+    )
