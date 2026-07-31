@@ -78,6 +78,54 @@ class VideoCleanupGateTest(unittest.TestCase):
         self.assertEqual(warnings, ["videos cleanup skipped reason=pagination_truncated fetched=1"])
 
 
+class VideoShortsClassificationGateTest(unittest.TestCase):
+    """`sync_videos()` classifies each video as a Short via a separate Shorts-playlist
+    enumeration. A truncated enumeration can't tell a real Short that was missed from a
+    genuine long-form video, so guessing "video" would silently reclassify already-known
+    Shorts. Classification is skipped in that case, leaving `content_type` untouched."""
+
+    def setUp(self) -> None:
+        self.addCleanup(mock.patch.stopall)
+        mock.patch("sync.stages.youtube.fetch_uploads_playlist_id", return_value="UU123").start()
+        mock.patch(
+            "sync.stages.youtube.fetch_all_video_ids", return_value=(["v1"], False)
+        ).start()
+        mock.patch(
+            "sync.stages.youtube.fetch_videos",
+            return_value=[{"id": "v1", "title": "Kept", "content_type": None}],
+        ).start()
+        self.upsert = mock.patch("sync.stages.database.upsert_video").start()
+        mock.patch("sync.stages.database.delete_videos_not_in", return_value=0).start()
+
+    def test_complete_shorts_pagination_classifies_normally(self) -> None:
+        mock.patch(
+            "sync.stages.youtube.fetch_shorts_video_ids", return_value=({"v1"}, False)
+        ).start()
+        counts = SyncCounts()
+
+        stages.sync_videos(counts)
+
+        written = self.upsert.call_args.args[0]
+        self.assertEqual(written["content_type"], "short")
+
+    def test_truncated_shorts_pagination_skips_classification_but_still_upserts(self) -> None:
+        mock.patch(
+            "sync.stages.youtube.fetch_shorts_video_ids", return_value=(set(), True)
+        ).start()
+        counts = SyncCounts()
+
+        with self.assertLogs("youtube_analytics.sync", level="DEBUG") as captured:
+            stages.sync_videos(counts)
+
+        written = self.upsert.call_args.args[0]
+        self.assertIsNone(written["content_type"])
+        self.assertEqual(counts.rows_written, 1)
+        warnings = [r.getMessage() for r in captured.records if r.levelname == "WARNING"]
+        self.assertEqual(
+            warnings, ["videos classification skipped reason=shorts_pagination_truncated"]
+        )
+
+
 class PlaylistCleanupGateTest(unittest.TestCase):
     """`sync_playlists()` has two deletes: the per-playlist item replace and the
     listing-level reconcile. Each is gated on its own pagination completing."""

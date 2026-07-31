@@ -42,16 +42,25 @@ def sync_videos(counts: SyncCounts) -> None:
     only these videos", and acting on it would drop every video past the cut along with
     its analytics and traffic-source history via `ON DELETE CASCADE`. Upserts still run,
     so a truncated sync moves forward without ever removing data.
+
+    Classification is skipped the same way when the Shorts playlist enumeration is
+    truncated: an incomplete `shorts_ids` set can't tell a real Short from a video that
+    was simply missed, so guessing "video" would silently reclassify already-known
+    Shorts. `upsert_video` leaves `content_type` untouched on conflict when it's None.
     """
     uploads_id = youtube.fetch_uploads_playlist_id()
-    shorts_ids, _ = youtube.fetch_shorts_video_ids(uploads_id)
+    shorts_ids, shorts_truncated = youtube.fetch_shorts_video_ids(uploads_id)
     all_ids, truncated = youtube.fetch_all_video_ids(uploads_id)
+
+    if shorts_truncated:
+        _logger.warning("videos classification skipped reason=shorts_pagination_truncated")
 
     all_videos: list[dict] = []
     for i in range(0, len(all_ids), 50):
         batch = all_ids[i : i + 50]
         for video in youtube.fetch_videos(batch):
-            video["content_type"] = "short" if video["id"] in shorts_ids else "video"
+            if not shorts_truncated:
+                video["content_type"] = "short" if video["id"] in shorts_ids else "video"
             all_videos.append(video)
             counts.rows_fetched += 1
 

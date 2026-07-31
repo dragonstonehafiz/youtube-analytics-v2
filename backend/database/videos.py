@@ -4,7 +4,12 @@ from .connection import _now, get_connection
 
 
 def upsert_video(video: dict) -> None:
-    """Insert or replace a video row."""
+    """Insert or replace a video row.
+
+    `content_type` may be None when the sync stage could not safely classify the
+    video (e.g. Shorts pagination was truncated); on conflict this preserves the
+    row's existing classification instead of overwriting it with NULL.
+    """
     row = {**video, "updated_at": _now()}
     with get_connection() as conn:
         conn.execute(
@@ -21,7 +26,7 @@ def upsert_video(video: dict) -> None:
                 published_at = excluded.published_at,
                 duration_seconds = excluded.duration_seconds,
                 thumbnail_url = excluded.thumbnail_url,
-                content_type = excluded.content_type,
+                content_type = COALESCE(excluded.content_type, content_type),
                 privacy_status = excluded.privacy_status,
                 view_count = excluded.view_count,
                 like_count = excluded.like_count,
