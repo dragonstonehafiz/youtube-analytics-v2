@@ -42,10 +42,10 @@ class CheckpointTestCase(unittest.TestCase):
 
     @property
     def checkpoint(self) -> str | None:
-        return database.get_last_successful_batch_completed_at(FULL_SYNC_TYPES)
+        return database.get_last_successful_run_completed_at()
 
 
-class QualifyingBatchTest(CheckpointTestCase):
+class QualifyingRunTest(CheckpointTestCase):
     def test_no_history_has_no_checkpoint(self) -> None:
         self.assertIsNone(self.checkpoint)
 
@@ -53,65 +53,65 @@ class QualifyingBatchTest(CheckpointTestCase):
         self._complete_batch("batch-1")
         self.assertIsNotNone(self.checkpoint)
 
-    def test_partial_manual_batch_does_not_qualify(self) -> None:
+    def test_single_successful_stage_qualifies(self) -> None:
+        """Any one succeeded stage is enough — this is the whole point of the check."""
+        self._succeed("batch-1", "fx_rates")
+        self.assertIsNotNone(self.checkpoint)
+
+    def test_partial_manual_batch_qualifies(self) -> None:
         self._succeed("batch-1", "video_analytics")
         self._succeed("batch-1", "video_traffic_sources")
-        self.assertIsNone(self.checkpoint)
+        self.assertIsNotNone(self.checkpoint)
 
-    def test_batch_without_fx_rates_does_not_qualify(self) -> None:
+    def test_batch_missing_fx_rates_still_qualifies(self) -> None:
         for sync_type in FULL_SYNC_TYPES:
             if sync_type != "fx_rates":
                 self._succeed("batch-1", sync_type)
-        self.assertIsNone(self.checkpoint)
+        self.assertIsNotNone(self.checkpoint)
 
-    def test_batch_with_failed_fx_rates_does_not_qualify(self) -> None:
+    def test_failed_stage_alongside_a_success_does_not_disqualify_the_batch(self) -> None:
+        self._succeed("batch-1", "videos")
+        self._fail("batch-1", "fx_rates")
+        self.assertIsNotNone(self.checkpoint)
+
+    def test_only_failed_runs_do_not_qualify(self) -> None:
         for sync_type in FULL_SYNC_TYPES:
-            if sync_type == "fx_rates":
-                self._fail("batch-1", sync_type)
-            else:
-                self._succeed("batch-1", sync_type)
+            self._fail("batch-1", sync_type)
         self.assertIsNone(self.checkpoint)
 
-    def test_batch_with_a_still_running_stage_does_not_qualify(self) -> None:
+    def test_only_still_running_runs_do_not_qualify(self) -> None:
         for sync_type in FULL_SYNC_TYPES:
-            if sync_type == "video_analytics":
-                self._start("batch-1", sync_type)
-            else:
-                self._succeed("batch-1", sync_type)
-        self.assertIsNone(self.checkpoint)
-
-    def test_single_stage_plan_does_not_qualify(self) -> None:
-        self._succeed("batch-1", "fx_rates")
+            self._start("batch-1", sync_type)
         self.assertIsNone(self.checkpoint)
 
 
 class CheckpointSelectionTest(CheckpointTestCase):
-    def test_newer_partial_batch_does_not_hide_older_complete_batch(self) -> None:
-        self._complete_batch("batch-1")
-        complete_checkpoint = self.checkpoint
-
-        self._succeed("batch-2", "fx_rates")
-
-        self.assertEqual(self.checkpoint, complete_checkpoint)
-
-    def test_newer_complete_batch_replaces_the_older_one(self) -> None:
+    def test_newest_success_wins_regardless_of_batch(self) -> None:
         self._complete_batch("batch-1")
         first = self.checkpoint
 
-        self._complete_batch("batch-2")
+        self._succeed("batch-2", "fx_rates")
 
         self.assertIsNotNone(self.checkpoint)
         assert first is not None and self.checkpoint is not None
         self.assertGreaterEqual(self.checkpoint, first)
 
-    def test_failed_batch_does_not_hide_older_complete_batch(self) -> None:
-        self._complete_batch("batch-1")
-        complete_checkpoint = self.checkpoint
+    def test_later_failure_does_not_hide_an_earlier_success(self) -> None:
+        self._succeed("batch-1", "videos")
+        success_checkpoint = self.checkpoint
 
         for sync_type in FULL_SYNC_TYPES:
             self._fail("batch-2", sync_type)
 
-        self.assertEqual(self.checkpoint, complete_checkpoint)
+        self.assertEqual(self.checkpoint, success_checkpoint)
+
+    def test_later_still_running_run_does_not_hide_an_earlier_success(self) -> None:
+        self._succeed("batch-1", "videos")
+        success_checkpoint = self.checkpoint
+
+        self._start("batch-2", "playlists")
+
+        self.assertEqual(self.checkpoint, success_checkpoint)
 
 
 class NoPersistedCheckpointStateTest(CheckpointTestCase):

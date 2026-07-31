@@ -5,7 +5,6 @@ from datetime import datetime, timedelta, timezone
 from unittest import mock
 
 from sync import scheduler
-from sync.plans import FULL_SYNC_TYPES
 
 
 def _iso(moment: datetime) -> str:
@@ -17,21 +16,21 @@ class SyncedTodayTest(unittest.TestCase):
     def _with_checkpoint(self, completed_at: str | None) -> mock.Mock:
         patcher = mock.patch.object(
             scheduler.database,
-            "get_last_successful_batch_completed_at",
+            "get_last_successful_run_completed_at",
             return_value=completed_at,
         )
         self.addCleanup(patcher.stop)
         return patcher.start()
 
-    def test_true_when_a_complete_batch_succeeded_today(self) -> None:
+    def test_true_when_any_sync_succeeded_today(self) -> None:
         self._with_checkpoint(_iso(datetime.now().astimezone()))
         self.assertTrue(scheduler.synced_today())
 
-    def test_false_when_the_last_complete_batch_was_yesterday(self) -> None:
+    def test_false_when_the_last_success_was_yesterday(self) -> None:
         self._with_checkpoint(_iso(datetime.now().astimezone() - timedelta(days=1)))
         self.assertFalse(scheduler.synced_today())
 
-    def test_false_when_no_batch_qualifies(self) -> None:
+    def test_false_when_nothing_has_ever_succeeded(self) -> None:
         self._with_checkpoint(None)
         self.assertFalse(scheduler.synced_today())
 
@@ -39,14 +38,11 @@ class SyncedTodayTest(unittest.TestCase):
         self._with_checkpoint("not-a-timestamp")
         self.assertFalse(scheduler.synced_today())
 
-    def test_checks_the_complete_five_stage_pipeline(self) -> None:
+    def test_queries_any_successful_run_without_naming_sync_types(self) -> None:
+        """The check no longer depends on the five-stage pipeline being complete."""
         query = self._with_checkpoint(None)
         scheduler.synced_today()
-        query.assert_called_once_with(FULL_SYNC_TYPES)
-        self.assertEqual(
-            FULL_SYNC_TYPES,
-            ("videos", "playlists", "video_analytics", "video_traffic_sources", "fx_rates"),
-        )
+        query.assert_called_once_with()
 
 
 class StartBackgroundSchedulerTest(unittest.TestCase):

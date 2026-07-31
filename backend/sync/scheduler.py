@@ -6,18 +6,18 @@ from datetime import date, datetime
 import database
 
 from .orchestration import run_plan
-from .plans import FULL_SYNC_TYPES, full_incremental_plan
+from .plans import full_incremental_plan
 
 
 def synced_today() -> bool:
-    """Return whether a complete pipeline run already succeeded today (local date).
+    """Return whether any sync stage already succeeded today (local date).
 
-    The checkpoint is derived from sync_runs alone: the latest batch in which every stage
-    in FULL_SYNC_TYPES succeeded under one batch_id. A partial plan, or a batch with a
-    failed or still-running stage, does not qualify — so the next launch still syncs.
-    Missing or unparseable timestamps count as not-synced.
+    The checkpoint is derived from sync_runs alone: the most recent successful run of any
+    sync_type. A single-stage manual plan counts, so a manual sync of one type suppresses
+    that day's startup sync. Failed and still-running rows are ignored, and missing or
+    unparseable timestamps count as not-synced.
     """
-    completed_at = database.get_last_successful_batch_completed_at(FULL_SYNC_TYPES)
+    completed_at = database.get_last_successful_run_completed_at()
     if not completed_at:
         return False
     try:
@@ -28,11 +28,11 @@ def synced_today() -> bool:
 
 
 def start_background_scheduler() -> None:
-    """Run one complete incremental sync on startup unless today's already succeeded.
+    """Run one complete incremental sync on startup unless any sync already succeeded today.
 
     Called once from the app lifespan. There is no recurring timer: the app is not
     expected to stay running long enough for one to fire, so freshness is decided per
-    launch. Restarting after a complete sync on the same local date does nothing.
+    launch. Restarting after any successful sync on the same local date does nothing.
     """
     if synced_today():
         return
