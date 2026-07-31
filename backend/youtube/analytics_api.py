@@ -36,6 +36,28 @@ def _analytics_client() -> Any:
     return build("youtubeAnalytics", "v2", credentials=get_credentials())
 
 
+def _log_page(
+    resource: str,
+    page: int,
+    item_count: int,
+    start_index: int,
+    owner: str | None = None,
+    owner_name: str | None = None,
+) -> None:
+    """Log one fetched Analytics page.
+
+    `owner`/`owner_name` identify the video the report is filtered to. The name is
+    rendered last and `repr`-quoted so a title containing spaces or newlines cannot
+    corrupt the fields before it.
+    """
+    owner_field = f" owner={owner}" if owner else ""
+    name_field = f" owner_name={owner_name!r}" if owner_name else ""
+    _logger.debug(
+        "%s page=%d items=%d start_index=%d%s%s",
+        resource, page, item_count, start_index, owner_field, name_field,
+    )
+
+
 def _analytics_query(service: Any, params: dict, max_attempts: int = 5) -> dict:
     """Execute a YouTube Analytics reports.query with exponential-backoff retry."""
     for attempt in range(1, max_attempts + 1):
@@ -49,7 +71,7 @@ def _analytics_query(service: Any, params: dict, max_attempts: int = 5) -> dict:
             if should_retry and attempt < max_attempts:
                 delay = min(2 ** (attempt - 1), 30)
                 reason = "server" if status_code >= 500 else "quota"
-                _logger.debug(
+                _logger.warning(
                     "analytics_query retry attempt=%d status=%d reason=%s delay=%d",
                     attempt, status_code, reason, delay,
                 )
@@ -75,11 +97,20 @@ def _chunk_date_range(start: str, end: str, months: int = 4) -> list[tuple[str, 
     return chunks
 
 
-def _fetch_analytics_rows(service: Any, params: dict) -> list[dict[str, Any]]:
-    """Fetch all paginated rows from an Analytics reports.query call."""
+def _fetch_analytics_rows(
+    service: Any, params: dict, resource: str = "analytics_rows", owner_name: str | None = None
+) -> list[dict[str, Any]]:
+    """Fetch all paginated rows from an Analytics reports.query call.
+
+    Pagination here is `startIndex`-based rather than token-based, and an empty page
+    already terminates the loop, so a page record is routine DEBUG detail. `owner_name`
+    names the video the report is filtered to; its id is read back from the filter.
+    """
     results: list[dict[str, Any]] = []
     headers: list[str] | None = None
     max_results = params.get("maxResults", 200)
+    owner = params.get("filters", "").removeprefix("video==") or None
+    page = 0
 
     while True:
         response = _analytics_query(service, params)
@@ -88,6 +119,8 @@ def _fetch_analytics_rows(service: Any, params: dict) -> list[dict[str, Any]]:
             headers = [h["name"] for h in response.get("columnHeaders", [])]
         for row in rows:
             results.append({headers[i]: row[i] for i in range(len(headers))})
+        page += 1
+        _log_page(resource, page, len(rows), params.get("startIndex", 1), owner, owner_name)
         if not rows:
             break
         params = {**params, "startIndex": params.get("startIndex", 1) + max_results}
@@ -101,6 +134,7 @@ def iter_video_analytics(
     start_date: str,
     end_date: str,
     publish_date: str | None = None,
+    title: str | None = None,
 ):
     """Yield daily analytics rows for a single video, one year-chunk at a time.
 
@@ -132,7 +166,7 @@ def iter_video_analytics(
             "maxResults": 2000,
             "startIndex": 1,
         }
-        for row in _fetch_analytics_rows(service, params):
+        for row in _fetch_analytics_rows(service, params, "video_analytics_rows", title):
             yield {
                 "video_id": video_id,
                 "date": row.get("day"),
@@ -152,6 +186,7 @@ def iter_video_traffic_sources(
     start_date: str,
     end_date: str,
     publish_date: str | None = None,
+    title: str | None = None,
 ):
     """Yield daily traffic-source breakdown rows for a single video, one year-chunk at a time.
 
@@ -183,7 +218,7 @@ def iter_video_traffic_sources(
             "maxResults": 10000,
             "startIndex": 1,
         }
-        for row in _fetch_analytics_rows(service, params):
+        for row in _fetch_analytics_rows(service, params, "video_traffic_sources_rows", title):
             yield {
                 "video_id": video_id,
                 "date": row.get("day"),

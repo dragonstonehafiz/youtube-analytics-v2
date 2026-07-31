@@ -50,13 +50,15 @@ def _http_error(status: int, body: bytes) -> HttpError:
 
 class DataApiPaginationLoggingTest(unittest.TestCase):
     """Exercises the four `data_api.py` token-pagination loops with mocked multi-page
-    responses; asserts one ordered DEBUG record per page and no paired before/after
-    records, with the raw pagination token never appearing in a logged message."""
+    responses; asserts one ordered record per page, no paired before/after records, and
+    that each record carries the owning entity's name and the page's `nextPageToken`.
+    The token is an opaque result-set cursor, not a credential, and is logged so a
+    repeating token can be told apart from fresh tokens walking an empty region."""
 
     def test_fetch_shorts_video_ids_logs_one_record_per_page(self) -> None:
         client = mock.Mock()
         client.playlistItems.return_value.list.return_value.execute.side_effect = [
-            {"items": [{"contentDetails": {"videoId": "s1"}}], "nextPageToken": "SECRET_TOKEN_1"},
+            {"items": [{"contentDetails": {"videoId": "s1"}}], "nextPageToken": "TOKEN_1"},
             {"items": [{"contentDetails": {"videoId": "s2"}}, {"contentDetails": {"videoId": "s3"}}]},
         ]
 
@@ -69,16 +71,16 @@ class DataApiPaginationLoggingTest(unittest.TestCase):
         self.assertEqual(
             messages,
             [
-                "shorts_video_ids page=1 items=1 playlist=UUSHxxxxxxxxxxxxxxxxxxxx",
-                "shorts_video_ids page=2 items=2 playlist=UUSHxxxxxxxxxxxxxxxxxxxx",
+                "shorts_video_ids page=1 items=1 owner=UUSHxxxxxxxxxxxxxxxxxxxx "
+                "next_page_token=TOKEN_1 owner_name='Shorts'",
+                "shorts_video_ids page=2 items=2 owner=UUSHxxxxxxxxxxxxxxxxxxxx owner_name='Shorts'",
             ],
         )
-        self.assertNotIn("SECRET_TOKEN_1", " ".join(messages))
 
     def test_fetch_all_video_ids_logs_one_record_per_page(self) -> None:
         client = mock.Mock()
         client.playlistItems.return_value.list.return_value.execute.side_effect = [
-            {"items": [{"contentDetails": {"videoId": "v1"}}], "nextPageToken": "SECRET_TOKEN_2"},
+            {"items": [{"contentDetails": {"videoId": "v1"}}], "nextPageToken": "TOKEN_2"},
             {"items": [{"contentDetails": {"videoId": "v2"}}]},
         ]
 
@@ -91,18 +93,18 @@ class DataApiPaginationLoggingTest(unittest.TestCase):
         self.assertEqual(
             messages,
             [
-                "video_ids page=1 items=1 playlist=UUuploadsplaylist",
-                "video_ids page=2 items=1 playlist=UUuploadsplaylist",
+                "video_ids page=1 items=1 owner=UUuploadsplaylist "
+                "next_page_token=TOKEN_2 owner_name='Uploads'",
+                "video_ids page=2 items=1 owner=UUuploadsplaylist owner_name='Uploads'",
             ],
         )
-        self.assertNotIn("SECRET_TOKEN_2", " ".join(messages))
 
     def test_fetch_playlists_logs_one_record_per_page(self) -> None:
         client = mock.Mock()
         client.playlists.return_value.list.return_value.execute.side_effect = [
             {
                 "items": [{"id": "p1", "snippet": {"title": "sentinel title"}, "contentDetails": {}}],
-                "nextPageToken": "SECRET_TOKEN_3",
+                "nextPageToken": "TOKEN_3",
             },
             {"items": []},
         ]
@@ -112,34 +114,102 @@ class DataApiPaginationLoggingTest(unittest.TestCase):
                 data_api.fetch_playlists()
 
         messages = [record.getMessage() for record in captured.records]
-        self.assertEqual(messages, ["playlists page=1 items=1", "playlists page=2 items=0"])
-        self.assertNotIn("sentinel title", " ".join(messages))
-        self.assertNotIn("SECRET_TOKEN_3", " ".join(messages))
+        self.assertEqual(
+            messages,
+            [
+                "playlists page=1 items=1 next_page_token=TOKEN_3 owner_name='Playlists'",
+                "playlists page=2 items=0 owner_name='Playlists'",
+            ],
+        )
 
     def test_fetch_playlist_items_logs_one_record_per_page(self) -> None:
         client = mock.Mock()
         client.playlistItems.return_value.list.return_value.execute.side_effect = [
             {
                 "items": [{"id": "i1", "snippet": {"resourceId": {"videoId": "v1"}, "position": 0}}],
-                "nextPageToken": "SECRET_TOKEN_4",
+                "nextPageToken": "TOKEN_4",
             },
             {"items": [{"id": "i2", "snippet": {"resourceId": {"videoId": "v2"}, "position": 1}}]},
         ]
 
         with mock.patch("youtube.data_api._data_client", return_value=client):
             with self.assertLogs("youtube_analytics.sync", level="DEBUG") as captured:
-                data_api.fetch_playlist_items("PL123")
+                data_api.fetch_playlist_items("PL123", playlist_title="My Playlist")
 
         messages = [record.getMessage() for record in captured.records]
         self.assertEqual(
             messages,
-            ["playlist_items page=1 items=1 playlist=PL123", "playlist_items page=2 items=1 playlist=PL123"],
+            [
+                "playlist_items page=1 items=1 owner=PL123 next_page_token=TOKEN_4 "
+                "owner_name='My Playlist'",
+                "playlist_items page=2 items=1 owner=PL123 owner_name='My Playlist'",
+            ],
         )
-        self.assertNotIn("SECRET_TOKEN_4", " ".join(messages))
+
+    def test_empty_page_carrying_a_token_is_logged_as_a_warning(self) -> None:
+        """The observed anomaly: a populated first page, then an empty page that still
+        supplies a token. That combination can spin pagination until quota is gone, so
+        it is a WARNING rather than routine DEBUG detail, and names the token so
+        consecutive pages can be compared."""
+        client = mock.Mock()
+        client.playlistItems.return_value.list.return_value.execute.side_effect = [
+            {"items": [{"contentDetails": {"videoId": "v1"}}], "nextPageToken": "TOKEN_A"},
+            {"items": [], "nextPageToken": "TOKEN_B"},
+            {"items": []},
+        ]
+
+        with mock.patch("youtube.data_api._data_client", return_value=client):
+            with self.assertLogs("youtube_analytics.sync", level="DEBUG") as captured:
+                data_api.fetch_all_video_ids("UUuploadsplaylist")
+
+        levels = [record.levelname for record in captured.records]
+        messages = [record.getMessage() for record in captured.records]
+        self.assertEqual(levels, ["DEBUG", "WARNING", "DEBUG"])
+        self.assertEqual(
+            messages[1],
+            "video_ids page=2 items=0 empty_page_with_token=true owner=UUuploadsplaylist "
+            "next_page_token=TOKEN_B owner_name='Uploads'",
+        )
+
+    def test_empty_final_page_without_a_token_stays_debug(self) -> None:
+        """An empty page with no token is an ordinary terminal response, not a problem."""
+        client = mock.Mock()
+        client.playlistItems.return_value.list.return_value.execute.side_effect = [
+            {"items": [{"contentDetails": {"videoId": "v1"}}], "nextPageToken": "TOKEN_A"},
+            {"items": []},
+        ]
+
+        with mock.patch("youtube.data_api._data_client", return_value=client):
+            with self.assertLogs("youtube_analytics.sync", level="DEBUG") as captured:
+                data_api.fetch_all_video_ids("UUuploadsplaylist")
+
+        self.assertEqual([record.levelname for record in captured.records], ["DEBUG", "DEBUG"])
+
+    def test_owner_name_is_quoted_so_it_cannot_corrupt_earlier_fields(self) -> None:
+        """Titles are arbitrary YouTube-authored text. Rendering the name last and
+        `repr`-quoted keeps a newline or `=` inside it from breaking the key=value
+        fields ahead of it."""
+        client = mock.Mock()
+        client.playlistItems.return_value.list.return_value.execute.side_effect = [
+            {"items": [{"id": "i1", "snippet": {"resourceId": {"videoId": "v1"}, "position": 0}}]},
+        ]
+
+        with mock.patch("youtube.data_api._data_client", return_value=client):
+            with self.assertLogs("youtube_analytics.sync", level="DEBUG") as captured:
+                data_api.fetch_playlist_items("PL123", playlist_title="line\nbreak items=999")
+
+        message = captured.records[0].getMessage()
+        self.assertEqual(len(message.splitlines()), 1)
+        self.assertTrue(message.startswith("playlist_items page=1 items=1 owner=PL123 owner_name="))
+        self.assertIn("\\n", message)
 
 
 class AnalyticsRetryLoggingTest(unittest.TestCase):
-    """Exercises `_analytics_query`'s retry branch with `time.sleep` mocked."""
+    """Exercises `_analytics_query`'s retry branch with `time.sleep` mocked.
+
+    A retry is a problem the operator should see without raising the log level, so these
+    records are WARNING — which also routes them to `application.log`, not `sync.log`
+    alone."""
 
     def test_server_error_retry_is_logged_and_classified_as_server(self) -> None:
         service = mock.Mock()
@@ -156,6 +226,7 @@ class AnalyticsRetryLoggingTest(unittest.TestCase):
         sleep_mock.assert_called_once_with(1)
         messages = [record.getMessage() for record in captured.records]
         self.assertEqual(messages, ["analytics_query retry attempt=1 status=500 reason=server delay=1"])
+        self.assertEqual([record.levelname for record in captured.records], ["WARNING"])
         self.assertNotIn("SENTINEL_BODY_TEXT", messages[0])
 
     def test_quota_error_retry_is_logged_and_classified_as_quota(self) -> None:
@@ -171,6 +242,7 @@ class AnalyticsRetryLoggingTest(unittest.TestCase):
 
         messages = [record.getMessage() for record in captured.records]
         self.assertEqual(messages, ["analytics_query retry attempt=1 status=403 reason=quota delay=1"])
+        self.assertEqual([record.levelname for record in captured.records], ["WARNING"])
         self.assertNotIn("FAKE", messages[0])
         self.assertNotIn("quotaExceeded", messages[0])
 
@@ -185,20 +257,20 @@ class VideoAnalyticsStageDetailLoggingTest(unittest.TestCase):
 
     def test_video_skipped_without_publish_date(self) -> None:
         mock.patch("sync.stages.database.get_all_video_ids", return_value=["v1"]).start()
-        mock.patch("sync.stages.database.get_video", return_value={"published_at": None}).start()
+        mock.patch("sync.stages.database.get_video", return_value={"published_at": None, "title": "No Publish Date"}).start()
         counts = SyncCounts()
 
         with self.assertLogs("youtube_analytics.sync", level="DEBUG") as captured:
             stages.sync_video_analytics("incremental", None, counts)
 
         messages = [record.getMessage() for record in captured.records]
-        self.assertEqual(messages, ["video_analytics 1/1 video=v1 skipped reason=no_publish_date"])
+        self.assertEqual(messages, ["video_analytics 1/1 video=v1 skipped reason=no_publish_date title='No Publish Date'"])
         self.assertEqual(counts.rows_fetched, 0)
 
     def test_video_skipped_when_range_is_empty(self) -> None:
         mock.patch("sync.stages.database.get_all_video_ids", return_value=["v1"]).start()
         mock.patch(
-            "sync.stages.database.get_video", return_value={"published_at": "2999-01-01T00:00:00Z"}
+            "sync.stages.database.get_video", return_value={"published_at": "2999-01-01T00:00:00Z", "title": "Future Video"}
         ).start()
         counts = SyncCounts()
 
@@ -206,13 +278,13 @@ class VideoAnalyticsStageDetailLoggingTest(unittest.TestCase):
             stages.sync_video_analytics("all", None, counts)
 
         messages = [record.getMessage() for record in captured.records]
-        self.assertEqual(messages, ["video_analytics 1/1 video=v1 skipped reason=empty_range"])
+        self.assertEqual(messages, ["video_analytics 1/1 video=v1 skipped reason=empty_range title='Future Video'"])
         self.assertEqual(counts.rows_fetched, 0)
 
     def test_video_processed_logs_its_own_row_count_only(self) -> None:
         mock.patch("sync.stages.database.get_all_video_ids", return_value=["v1"]).start()
         mock.patch(
-            "sync.stages.database.get_video", return_value={"published_at": "2020-01-01T00:00:00Z"}
+            "sync.stages.database.get_video", return_value={"published_at": "2020-01-01T00:00:00Z", "title": "Sample Video"}
         ).start()
         mock.patch("sync.stages.database.get_last_analytics_date", return_value=None).start()
         upsert_mock = mock.patch("sync.stages.database.upsert_video_analytics").start()
@@ -224,7 +296,7 @@ class VideoAnalyticsStageDetailLoggingTest(unittest.TestCase):
             stages.sync_video_analytics("incremental", None, counts)
 
         messages = [record.getMessage() for record in captured.records]
-        self.assertEqual(messages, ["video_analytics 1/1 video=v1 rows=2"])
+        self.assertEqual(messages, ["video_analytics 1/1 video=v1 rows=2 title='Sample Video'"])
         self.assertEqual(counts.rows_fetched, 2)
         self.assertEqual(counts.rows_written, 2)
         self.assertEqual(upsert_mock.call_count, 2)
@@ -232,7 +304,7 @@ class VideoAnalyticsStageDetailLoggingTest(unittest.TestCase):
     def test_no_record_per_row_only_one_per_video(self) -> None:
         mock.patch("sync.stages.database.get_all_video_ids", return_value=["v1"]).start()
         mock.patch(
-            "sync.stages.database.get_video", return_value={"published_at": "2020-01-01T00:00:00Z"}
+            "sync.stages.database.get_video", return_value={"published_at": "2020-01-01T00:00:00Z", "title": "Sample Video"}
         ).start()
         mock.patch("sync.stages.database.get_last_analytics_date", return_value=None).start()
         mock.patch("sync.stages.database.upsert_video_analytics").start()
@@ -255,19 +327,19 @@ class VideoTrafficSourcesStageDetailLoggingTest(unittest.TestCase):
 
     def test_video_skipped_without_publish_date(self) -> None:
         mock.patch("sync.stages.database.get_all_video_ids", return_value=["v1"]).start()
-        mock.patch("sync.stages.database.get_video", return_value={"published_at": None}).start()
+        mock.patch("sync.stages.database.get_video", return_value={"published_at": None, "title": "No Publish Date"}).start()
         counts = SyncCounts()
 
         with self.assertLogs("youtube_analytics.sync", level="DEBUG") as captured:
             stages.sync_video_traffic_sources("incremental", None, counts)
 
         messages = [record.getMessage() for record in captured.records]
-        self.assertEqual(messages, ["video_traffic_sources 1/1 video=v1 skipped reason=no_publish_date"])
+        self.assertEqual(messages, ["video_traffic_sources 1/1 video=v1 skipped reason=no_publish_date title='No Publish Date'"])
 
     def test_video_skipped_when_range_is_empty(self) -> None:
         mock.patch("sync.stages.database.get_all_video_ids", return_value=["v1"]).start()
         mock.patch(
-            "sync.stages.database.get_video", return_value={"published_at": "2999-01-01T00:00:00Z"}
+            "sync.stages.database.get_video", return_value={"published_at": "2999-01-01T00:00:00Z", "title": "Future Video"}
         ).start()
         counts = SyncCounts()
 
@@ -275,12 +347,12 @@ class VideoTrafficSourcesStageDetailLoggingTest(unittest.TestCase):
             stages.sync_video_traffic_sources("all", None, counts)
 
         messages = [record.getMessage() for record in captured.records]
-        self.assertEqual(messages, ["video_traffic_sources 1/1 video=v1 skipped reason=empty_range"])
+        self.assertEqual(messages, ["video_traffic_sources 1/1 video=v1 skipped reason=empty_range title='Future Video'"])
 
     def test_video_processed_logs_its_own_row_count_only(self) -> None:
         mock.patch("sync.stages.database.get_all_video_ids", return_value=["v1"]).start()
         mock.patch(
-            "sync.stages.database.get_video", return_value={"published_at": "2020-01-01T00:00:00Z"}
+            "sync.stages.database.get_video", return_value={"published_at": "2020-01-01T00:00:00Z", "title": "Sample Video"}
         ).start()
         mock.patch("sync.stages.database.get_last_traffic_source_date", return_value=None).start()
         upsert_mock = mock.patch("sync.stages.database.upsert_video_traffic_source").start()
@@ -292,7 +364,7 @@ class VideoTrafficSourcesStageDetailLoggingTest(unittest.TestCase):
             stages.sync_video_traffic_sources("incremental", None, counts)
 
         messages = [record.getMessage() for record in captured.records]
-        self.assertEqual(messages, ["video_traffic_sources 1/1 video=v1 rows=1"])
+        self.assertEqual(messages, ["video_traffic_sources 1/1 video=v1 rows=1 title='Sample Video'"])
         self.assertEqual(counts.rows_fetched, 1)
         self.assertEqual(upsert_mock.call_count, 1)
 

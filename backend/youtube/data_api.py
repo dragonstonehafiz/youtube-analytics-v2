@@ -22,6 +22,41 @@ def _data_client() -> Any:
     return build("youtube", "v3", credentials=get_credentials())
 
 
+def _log_page(
+    resource: str,
+    page: int,
+    item_count: int,
+    next_page_token: str | None,
+    owner: str | None = None,
+    owner_name: str | None = None,
+) -> None:
+    """Log one fetched Data API page, escalating an empty-but-tokened page to WARNING.
+
+    `owner` is the id of the entity being paged through where one exists — a playlist
+    for the playlist-item loops, absent for the channel-wide playlist listing.
+    `owner_name` is its human-readable name, rendered last and `repr`-quoted so a title
+    containing spaces or newlines cannot corrupt the fields before it.
+
+    A page that returns no items while still supplying a `nextPageToken` can spin
+    pagination indefinitely and exhaust quota, so it is recorded as a problem rather
+    than as routine detail. The token is included on every record: it is an opaque
+    result-set cursor, not a credential, and comparing it across consecutive pages is
+    what distinguishes a repeating token from fresh tokens walking an empty region.
+    """
+    owner_field = f" owner={owner}" if owner else ""
+    token_field = f" next_page_token={next_page_token}" if next_page_token else ""
+    name_field = f" owner_name={owner_name!r}" if owner_name else ""
+    if item_count == 0 and next_page_token:
+        _logger.warning(
+            "%s page=%d items=0 empty_page_with_token=true%s%s%s",
+            resource, page, owner_field, token_field, name_field,
+        )
+        return
+    _logger.debug(
+        "%s page=%d items=%d%s%s%s", resource, page, item_count, owner_field, token_field, name_field
+    )
+
+
 def _parse_duration(value: str | None) -> int | None:
     """Convert ISO 8601 duration string to total seconds."""
     if not value:
@@ -76,10 +111,11 @@ def fetch_shorts_video_ids(uploads_playlist_id: str) -> set[str]:
             vid = item["contentDetails"].get("videoId")
             if vid:
                 video_ids.add(vid)
-        _logger.debug(
-            "shorts_video_ids page=%d items=%d playlist=%s", page, len(items), shorts_playlist_id
-        )
         page_token = response.get("nextPageToken")
+        _log_page(
+            "shorts_video_ids", page, len(items), page_token,
+            owner=shorts_playlist_id, owner_name="Shorts",
+        )
         if not page_token:
             break
 
@@ -106,8 +142,11 @@ def fetch_all_video_ids(uploads_playlist_id: str) -> list[str]:
             vid = item["contentDetails"].get("videoId")
             if vid:
                 video_ids.append(vid)
-        _logger.debug("video_ids page=%d items=%d playlist=%s", page, len(items), uploads_playlist_id)
         page_token = response.get("nextPageToken")
+        _log_page(
+            "video_ids", page, len(items), page_token,
+            owner=uploads_playlist_id, owner_name="Uploads",
+        )
         if not page_token:
             break
 
@@ -187,16 +226,21 @@ def fetch_playlists() -> list[dict]:
                 "thumbnail_url": thumbnail_url,
                 "item_count": item.get("contentDetails", {}).get("itemCount"),
             })
-        _logger.debug("playlists page=%d items=%d", page, len(items))
         page_token = response.get("nextPageToken")
+        _log_page("playlists", page, len(items), page_token, owner_name="Playlists")
         if not page_token:
             break
 
     return playlists
 
 
-def fetch_playlist_items(playlist_id: str) -> list[dict]:
-    """Return all items in a playlist."""
+def fetch_playlist_items(playlist_id: str, playlist_title: str | None = None) -> list[dict]:
+    """Return all items in a playlist.
+
+    `playlist_title` is used only to name the playlist in this function's page log
+    records; the playlistItems response carries video titles, not the owning
+    playlist's, so the caller supplies it.
+    """
     yt = _data_client()
     items: list[dict] = []
     page_token = None
@@ -219,8 +263,11 @@ def fetch_playlist_items(playlist_id: str) -> list[dict]:
                 "video_id": snippet.get("resourceId", {}).get("videoId"),
                 "position": snippet.get("position"),
             })
-        _logger.debug("playlist_items page=%d items=%d playlist=%s", page, len(page_items), playlist_id)
         page_token = response.get("nextPageToken")
+        _log_page(
+            "playlist_items", page, len(page_items), page_token,
+            owner=playlist_id, owner_name=playlist_title,
+        )
         if not page_token:
             break
 

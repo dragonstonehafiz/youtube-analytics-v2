@@ -60,7 +60,7 @@ def sync_playlists(counts: SyncCounts) -> None:
     playlists = youtube.fetch_playlists()
     all_items: dict[str, list[dict]] = {}
     for playlist in playlists:
-        items = youtube.fetch_playlist_items(playlist["id"])
+        items = youtube.fetch_playlist_items(playlist["id"], playlist_title=playlist.get("title"))
         all_items[playlist["id"]] = items
         counts.rows_fetched += 1 + len(items)
 
@@ -95,10 +95,12 @@ def sync_video_analytics(scope: str, year: int | None, counts: SyncCounts) -> No
         video = database.get_video(video_id)
         if not video or not video.get("published_at"):
             _logger.debug(
-                "video_analytics %d/%d video=%s skipped reason=no_publish_date", i, total, video_id
+                "video_analytics %d/%d video=%s skipped reason=no_publish_date title=%r",
+                i, total, video_id, video.get("title") if video else None,
             )
             continue
         publish_date = video["published_at"][:10]
+        title = video.get("title")
 
         if scope == "year":
             start = max(publish_date, f"{year}-01-01")
@@ -113,17 +115,21 @@ def sync_video_analytics(scope: str, year: int | None, counts: SyncCounts) -> No
 
         if start > range_end:
             _logger.debug(
-                "video_analytics %d/%d video=%s skipped reason=empty_range", i, total, video_id
+                "video_analytics %d/%d video=%s skipped reason=empty_range title=%r",
+                i, total, video_id, title,
             )
             continue
 
         rows_before = counts.rows_fetched
-        for row in youtube.iter_video_analytics(video_id, start, range_end, publish_date=publish_date):
+        for row in youtube.iter_video_analytics(
+            video_id, start, range_end, publish_date=publish_date, title=title
+        ):
             counts.rows_fetched += 1
             database.upsert_video_analytics(row)
             counts.rows_written += 1
         _logger.debug(
-            "video_analytics %d/%d video=%s rows=%d", i, total, video_id, counts.rows_fetched - rows_before
+            "video_analytics %d/%d video=%s rows=%d title=%r",
+            i, total, video_id, counts.rows_fetched - rows_before, title,
         )
 
 
@@ -147,10 +153,12 @@ def sync_video_traffic_sources(scope: str, year: int | None, counts: SyncCounts)
         video = database.get_video(video_id)
         if not video or not video.get("published_at"):
             _logger.debug(
-                "video_traffic_sources %d/%d video=%s skipped reason=no_publish_date", i, total, video_id
+                "video_traffic_sources %d/%d video=%s skipped reason=no_publish_date title=%r",
+                i, total, video_id, video.get("title") if video else None,
             )
             continue
         publish_date = video["published_at"][:10]
+        title = video.get("title")
 
         if scope == "year":
             start = max(publish_date, f"{year}-01-01")
@@ -165,18 +173,21 @@ def sync_video_traffic_sources(scope: str, year: int | None, counts: SyncCounts)
 
         if start > range_end:
             _logger.debug(
-                "video_traffic_sources %d/%d video=%s skipped reason=empty_range", i, total, video_id
+                "video_traffic_sources %d/%d video=%s skipped reason=empty_range title=%r",
+                i, total, video_id, title,
             )
             continue
 
         rows_before = counts.rows_fetched
-        for row in youtube.iter_video_traffic_sources(video_id, start, range_end, publish_date=publish_date):
+        for row in youtube.iter_video_traffic_sources(
+            video_id, start, range_end, publish_date=publish_date, title=title
+        ):
             counts.rows_fetched += 1
             database.upsert_video_traffic_source(row)
             counts.rows_written += 1
         _logger.debug(
-            "video_traffic_sources %d/%d video=%s rows=%d",
-            i, total, video_id, counts.rows_fetched - rows_before,
+            "video_traffic_sources %d/%d video=%s rows=%d title=%r",
+            i, total, video_id, counts.rows_fetched - rows_before, title,
         )
 
 
