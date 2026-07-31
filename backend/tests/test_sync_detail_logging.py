@@ -64,9 +64,10 @@ class DataApiPaginationLoggingTest(unittest.TestCase):
 
         with mock.patch("youtube.data_api._data_client", return_value=client):
             with self.assertLogs("youtube_analytics.sync", level="DEBUG") as captured:
-                result = data_api.fetch_shorts_video_ids("UUxxxxxxxxxxxxxxxxxxxx")
+                result, truncated = data_api.fetch_shorts_video_ids("UUxxxxxxxxxxxxxxxxxxxx")
 
         self.assertEqual(result, {"s1", "s2", "s3"})
+        self.assertFalse(truncated)
         messages = [record.getMessage() for record in captured.records]
         self.assertEqual(
             messages,
@@ -86,9 +87,10 @@ class DataApiPaginationLoggingTest(unittest.TestCase):
 
         with mock.patch("youtube.data_api._data_client", return_value=client):
             with self.assertLogs("youtube_analytics.sync", level="DEBUG") as captured:
-                result = data_api.fetch_all_video_ids("UUuploadsplaylist")
+                result, truncated = data_api.fetch_all_video_ids("UUuploadsplaylist")
 
         self.assertEqual(result, ["v1", "v2"])
+        self.assertFalse(truncated)
         messages = [record.getMessage() for record in captured.records]
         self.assertEqual(
             messages,
@@ -146,32 +148,100 @@ class DataApiPaginationLoggingTest(unittest.TestCase):
             ],
         )
 
-    def test_empty_page_carrying_a_token_is_logged_as_a_warning(self) -> None:
-        """The observed anomaly: a populated first page, then an empty page that still
-        supplies a token. That combination can spin pagination until quota is gone, so
-        it is a WARNING rather than routine DEBUG detail, and names the token so
-        consecutive pages can be compared."""
+    def test_empty_page_carrying_a_token_ends_pagination_as_a_warning(self) -> None:
+        """An empty page that still supplies a token would otherwise spin pagination
+        until quota is gone. It ends the loop, is logged at WARNING, and reports the
+        result as truncated."""
         client = mock.Mock()
-        client.playlistItems.return_value.list.return_value.execute.side_effect = [
+        execute = client.playlistItems.return_value.list.return_value.execute
+        execute.side_effect = [
             {"items": [{"contentDetails": {"videoId": "v1"}}], "nextPageToken": "TOKEN_A"},
             {"items": [], "nextPageToken": "TOKEN_B"},
-            {"items": []},
         ]
 
         with mock.patch("youtube.data_api._data_client", return_value=client):
             with self.assertLogs("youtube_analytics.sync", level="DEBUG") as captured:
-                data_api.fetch_all_video_ids("UUuploadsplaylist")
+                result, truncated = data_api.fetch_all_video_ids("UUuploadsplaylist")
 
-        levels = [record.levelname for record in captured.records]
-        messages = [record.getMessage() for record in captured.records]
-        self.assertEqual(levels, ["DEBUG", "WARNING", "DEBUG"])
+        self.assertEqual(result, ["v1"])
+        self.assertTrue(truncated)
+        self.assertEqual(execute.call_count, 2)
+        self.assertEqual([r.levelname for r in captured.records], ["DEBUG", "WARNING"])
         self.assertEqual(
-            messages[1],
+            captured.records[1].getMessage(),
             "video_ids page=2 items=0 empty_page_with_token=true owner=UUuploadsplaylist "
             "next_page_token=TOKEN_B owner_name='Uploads'",
         )
 
-    def test_empty_final_page_without_a_token_stays_debug(self) -> None:
+    def test_observed_incident_repeated_cursor_stops_after_two_requests(self) -> None:
+        """The production incident: page 1 returns items with TOKEN_A, page 2 returns the
+        same TOKEN_A. Following it again re-requests the same page forever, so pagination
+        ends at the repeat and reports truncation."""
+        client = mock.Mock()
+        execute = client.playlistItems.return_value.list.return_value.execute
+        execute.side_effect = [
+            {"items": [{"contentDetails": {"videoId": "v1"}}], "nextPageToken": "TOKEN_A"},
+            {"items": [{"contentDetails": {"videoId": "v2"}}], "nextPageToken": "TOKEN_A"},
+        ]
+
+        with mock.patch("youtube.data_api._data_client", return_value=client):
+            with self.assertLogs("youtube_analytics.sync", level="DEBUG") as captured:
+                result, truncated = data_api.fetch_all_video_ids("UUuploadsplaylist")
+
+        self.assertEqual(execute.call_count, 2)
+        self.assertTrue(truncated)
+        # Items from the repeated-token page are kept, exactly once.
+        self.assertEqual(result, ["v1", "v2"])
+        self.assertEqual([r.levelname for r in captured.records], ["DEBUG", "WARNING"])
+        self.assertEqual(
+            captured.records[1].getMessage(),
+            "video_ids page=2 items=1 repeated_page_token=true owner=UUuploadsplaylist "
+            "next_page_token=TOKEN_A owner_name='Uploads'",
+        )
+
+    def test_longer_cursor_cycle_is_detected(self) -> None:
+        """A cycle need not be an immediate repeat — `A → B → A` must also terminate."""
+        client = mock.Mock()
+        execute = client.playlists.return_value.list.return_value.execute
+        execute.side_effect = [
+            {"items": [{"id": "p1", "snippet": {}, "contentDetails": {}}], "nextPageToken": "TOKEN_A"},
+            {"items": [{"id": "p2", "snippet": {}, "contentDetails": {}}], "nextPageToken": "TOKEN_B"},
+            {"items": [{"id": "p3", "snippet": {}, "contentDetails": {}}], "nextPageToken": "TOKEN_A"},
+        ]
+
+        with mock.patch("youtube.data_api._data_client", return_value=client):
+            with self.assertLogs("youtube_analytics.sync", level="DEBUG") as captured:
+                playlists, truncated = data_api.fetch_playlists()
+
+        self.assertEqual(execute.call_count, 3)
+        self.assertTrue(truncated)
+        self.assertEqual([p["id"] for p in playlists], ["p1", "p2", "p3"])
+        self.assertEqual([r.levelname for r in captured.records], ["DEBUG", "DEBUG", "WARNING"])
+        self.assertIn("repeated_page_token=true", captured.records[2].getMessage())
+
+    def test_token_history_does_not_leak_between_playlists(self) -> None:
+        """Cursor history is per invocation. Two playlists may legitimately hand back the
+        same token string, and the second must still follow it normally."""
+        client = mock.Mock()
+        execute = client.playlistItems.return_value.list.return_value.execute
+        page_with_token = {
+            "items": [{"id": "i1", "snippet": {"resourceId": {"videoId": "v1"}, "position": 0}}],
+            "nextPageToken": "SHARED_TOKEN",
+        }
+        final_page = {"items": [{"id": "i2", "snippet": {"resourceId": {"videoId": "v2"}, "position": 1}}]}
+        execute.side_effect = [page_with_token, final_page, page_with_token, final_page]
+
+        with mock.patch("youtube.data_api._data_client", return_value=client):
+            first, first_truncated = data_api.fetch_playlist_items("PL_ONE")
+            second, second_truncated = data_api.fetch_playlist_items("PL_TWO")
+
+        self.assertEqual(execute.call_count, 4)
+        self.assertFalse(first_truncated)
+        self.assertFalse(second_truncated)
+        self.assertEqual(len(first), 2)
+        self.assertEqual(len(second), 2)
+
+    def test_empty_final_page_without_a_token_is_not_truncated(self) -> None:
         """An empty page with no token is an ordinary terminal response, not a problem."""
         client = mock.Mock()
         client.playlistItems.return_value.list.return_value.execute.side_effect = [
@@ -181,9 +251,11 @@ class DataApiPaginationLoggingTest(unittest.TestCase):
 
         with mock.patch("youtube.data_api._data_client", return_value=client):
             with self.assertLogs("youtube_analytics.sync", level="DEBUG") as captured:
-                data_api.fetch_all_video_ids("UUuploadsplaylist")
+                result, truncated = data_api.fetch_all_video_ids("UUuploadsplaylist")
 
-        self.assertEqual([record.levelname for record in captured.records], ["DEBUG", "DEBUG"])
+        self.assertEqual(result, ["v1"])
+        self.assertFalse(truncated)
+        self.assertEqual([r.levelname for r in captured.records], ["DEBUG", "DEBUG"])
 
     def test_owner_name_is_quoted_so_it_cannot_corrupt_earlier_fields(self) -> None:
         """Titles are arbitrary YouTube-authored text. Rendering the name last and

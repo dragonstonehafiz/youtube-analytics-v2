@@ -35,10 +35,17 @@ def _incremental_lookback_start(last_date: str | None, publish_date: str) -> str
 
 
 def sync_videos(counts: SyncCounts) -> None:
-    """Fetch all channel videos, upsert, then delete any DB videos not returned by the API."""
+    """Fetch all channel videos, upsert, then delete any DB videos not returned by the API.
+
+    The delete is skipped when the uploads-playlist pagination ended early: a truncated
+    enumeration is indistinguishable at the delete site from "the channel really has
+    only these videos", and acting on it would drop every video past the cut along with
+    its analytics and traffic-source history via `ON DELETE CASCADE`. Upserts still run,
+    so a truncated sync moves forward without ever removing data.
+    """
     uploads_id = youtube.fetch_uploads_playlist_id()
-    shorts_ids = youtube.fetch_shorts_video_ids(uploads_id)
-    all_ids = youtube.fetch_all_video_ids(uploads_id)
+    shorts_ids, _ = youtube.fetch_shorts_video_ids(uploads_id)
+    all_ids, truncated = youtube.fetch_all_video_ids(uploads_id)
 
     all_videos: list[dict] = []
     for i in range(0, len(all_ids), 50):
@@ -52,25 +59,54 @@ def sync_videos(counts: SyncCounts) -> None:
         database.upsert_video(video)
         counts.rows_written += 1
 
+    if truncated:
+        _logger.warning(
+            "videos cleanup skipped reason=pagination_truncated fetched=%d", len(all_videos)
+        )
+        return
+
     counts.rows_deleted += database.delete_videos_not_in([v["id"] for v in all_videos])
 
 
 def sync_playlists(counts: SyncCounts) -> None:
-    """Fetch all playlists and their items, upsert, then delete any DB playlists not returned by the API."""
-    playlists = youtube.fetch_playlists()
+    """Fetch all playlists and their items, upsert, then delete any DB playlists not returned by the API.
+
+    Both deletes are gated on complete pagination. A playlist whose items were truncated
+    keeps its stored items untouched — the replace is delete-then-reinsert, so running it
+    against a partial page set would silently shrink that playlist. A truncated playlist
+    listing likewise suppresses the listing-level reconcile.
+    """
+    playlists, playlists_truncated = youtube.fetch_playlists()
     all_items: dict[str, list[dict]] = {}
+    truncated_playlists: set[str] = set()
     for playlist in playlists:
-        items = youtube.fetch_playlist_items(playlist["id"], playlist_title=playlist.get("title"))
+        items, items_truncated = youtube.fetch_playlist_items(
+            playlist["id"], playlist_title=playlist.get("title")
+        )
         all_items[playlist["id"]] = items
+        if items_truncated:
+            truncated_playlists.add(playlist["id"])
         counts.rows_fetched += 1 + len(items)
 
     for playlist in playlists:
         database.upsert_playlist(playlist)
         counts.rows_written += 1
+        if playlist["id"] in truncated_playlists:
+            _logger.warning(
+                "playlist_items replace skipped reason=pagination_truncated playlist=%s fetched=%d title=%r",
+                playlist["id"], len(all_items[playlist["id"]]), playlist.get("title"),
+            )
+            continue
         counts.rows_deleted += database.delete_playlist_items(playlist["id"])
         for item in all_items[playlist["id"]]:
             database.upsert_playlist_item(item)
             counts.rows_written += 1
+
+    if playlists_truncated:
+        _logger.warning(
+            "playlists cleanup skipped reason=pagination_truncated fetched=%d", len(playlists)
+        )
+        return
 
     counts.rows_deleted += database.delete_playlists_not_in([p["id"] for p in playlists])
 
