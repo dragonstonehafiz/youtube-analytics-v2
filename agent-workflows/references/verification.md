@@ -28,12 +28,22 @@ The agent must never run `git commit`, `git push`, or any other command that cre
 
 ## Backend verification
 
+Run every backend command through the `backend/.venv` interpreter, not a global
+`python`/`pip` — `mypy`, `pytest`, and the other dev dependencies are installed there,
+not system-wide.
+
 ```bash
-cd backend && python -m mypy database/connection.py   # type check a single changed file (package-qualified path)
-cd backend && uvicorn server:app --reload              # run the server locally
+cd backend
+.venv/Scripts/python.exe -m mypy database/connection.py   # Windows; type check a single changed file (package-qualified path)
+.venv/bin/python -m mypy database/connection.py            # macOS/Linux
+uvicorn server:app --reload                                 # run the server locally (from an activated venv, or .venv/Scripts/uvicorn)
 ```
 
 Run `mypy` against every backend `.py` file actually changed, not just the example above — substitute the path, e.g. `routes/videos.py`, `sync/orchestration.py`, `youtube/auth.py`. `database.py`, `routes.py`, `sync.py`, and `youtube.py` no longer exist as single files — each is now a package (`database/`, `routes/`, `sync/`, `youtube/`) of focused modules; see `architecture.md` for the layout.
+
+Run the test suite the same way: `.venv/Scripts/python.exe -m pytest tests/` (Windows) or
+`.venv/bin/python -m pytest tests/` (macOS/Linux) — see `backend/README.md`'s Testing
+section for what each test group mocks/isolates.
 
 ## Frontend verification
 
@@ -60,7 +70,7 @@ The last command should produce no output when the change is genuinely docs-only
 1. Add the handler in the matching `backend/routes/<resource>.py` (`videos.py`, `playlists.py`, `analytics.py`, `synchronization.py`, or `metadata.py`).
 2. Add the corresponding DB helper in the matching `backend/database/<domain>.py` if the query doesn't already exist — follow the parameterized-query and table-alias conventions in `database.md`.
 3. Update `api.md` with the new route's method, path, params, and response shape.
-4. Run `python -m mypy routes/<resource>.py database/<domain>.py`.
+4. Run `.venv/Scripts/python.exe -m mypy routes/<resource>.py database/<domain>.py` (from `backend/`, using the venv interpreter — see [Backend verification](#backend-verification)).
 
 ## Adding a frontend page
 
@@ -85,7 +95,7 @@ The last command should produce no output when the change is genuinely docs-only
 
 ## Pull request checks
 
-- `python -m mypy <file>.py` on every changed backend file
+- `mypy <file>.py` (via the `backend/.venv` interpreter — see [Backend verification](#backend-verification)) on every changed backend file
 - `npx eslint src/... --fix` on every changed frontend file — no errors left afterward
 - `npx tsc --noEmit` — no type errors
 - No `console.log` in frontend code

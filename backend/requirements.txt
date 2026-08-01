@@ -8,3 +8,5 @@ yfinance
 # "httpx" — this installed starlette version imports httpx2 first and only falls back
 # to httpx with a deprecation warning; confirmed in .venv/Lib/site-packages/starlette/testclient.py.
 httpx2
+pytest
+mypy

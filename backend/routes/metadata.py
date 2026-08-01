@@ -9,5 +9,5 @@ router = APIRouter()
 
 @router.get("/meta/date-range")
 def get_date_range() -> dict:
-    """Return the earliest published year across videos and playlists."""
+    """Return the earliest published year across videos."""
     return {"earliest_year": database.get_earliest_published_year()}

@@ -104,11 +104,15 @@ GET  /sync/runs               Recent sync-stage records, newest first
 
 ## Syncing
 
-On startup the app runs one complete incremental sync unless a complete five-stage batch
-already succeeded today (local date). There is no recurring timer — restarting the server
-the same day does nothing, and freshness is otherwise driven manually from the `/sync`
-page in the frontend, which can select any combination of stages and give video analytics
-and traffic sources independent periods.
+On startup the app runs one complete incremental sync unless any sync run already
+succeeded today (local date). A single stage counts — manually syncing just FX rates
+marks the day as synced and the next launch runs nothing. A day on which every run failed
+still counts as not-synced, so the next launch retries.
+
+There is no recurring timer — restarting the server the same day does nothing, and
+freshness is otherwise driven manually from the `/sync` page in the frontend, which can
+select any combination of stages and give video analytics and traffic sources independent
+periods.
 
 ## Logging
 
@@ -131,19 +135,29 @@ detail records only to `sync.log`. Any other application area writes `INFO`+ to
 `get_logger(area)` rather than the standard library's `logging.getLogger()` directly,
 so configuration happens once regardless of which module is imported first.
 
-The five sync-only `DEBUG` detail events, each one line emitted after the work
-completes (never a paired before/after record, never one line per returned row):
+The sync-only `DEBUG` detail events, each one line emitted after the work completes
+(never a paired before/after record, never one line per returned row):
 
 | Event | Where | Fields |
 |---|---|---|
-| Page fetched | the four `youtube/data_api.py` token-pagination loops | resource, page number, item count, owning entity id where one exists |
-| Video processed | the per-video loops in both analytics stages | ordinal/total, `video_id`, rows fetched for that video |
-| Video skipped | the two `continue` branches in each analytics stage | ordinal/total, `video_id`, reason (`no_publish_date` or `empty_range`) |
-| Request retried | `youtube/analytics_api.py::_analytics_query()` | attempt number, HTTP status, classified reason (`server` or `quota`), delay |
+| Page fetched | the four `youtube/data_api.py` token-pagination loops | resource, page number, item count, owning entity id and name where one exists, that page's `nextPageToken` |
+| Analytics page fetched | `youtube/analytics_api.py::_fetch_analytics_rows()` | resource, page number, row count, `startIndex`, owning `video_id` and title |
+| Video processed | the per-video loops in both analytics stages | ordinal/total, `video_id`, rows fetched for that video, title |
+| Video skipped | the two `continue` branches in each analytics stage | ordinal/total, `video_id`, reason (`no_publish_date` or `empty_range`), title |
 | FX rates downloaded | `sync/stages.py::sync_fx_rates()` | requested start/end dates, days written, or the no-work condition |
 
-Every logged field is an identifier, counter, or date. Records never carry pagination
-tokens, video/playlist titles, descriptions, thumbnails, statistics payloads,
+Two conditions are anomalies rather than routine detail and are logged at `WARNING`, so
+they reach `application.log` as well:
+
+| Event | Where |
+|---|---|
+| Empty page with a token / repeated pagination cursor | `_log_page()` in `youtube/data_api.py` |
+| Cleanup skipped due to truncated pagination | `sync_videos()`/`sync_playlists()` |
+| Request retried | `youtube/analytics_api.py::_analytics_query()` |
+
+Every logged field is an identifier, counter, date, name, or pagination token. Titles
+and pagination tokens are logged deliberately — see `sync.md`'s "Sync logging" section
+for why. Records never carry descriptions, thumbnails, statistics payloads,
 credentials, OAuth tokens, request/response bodies, or raw exception text — failure
 records use only the exception's class name and source location.
 
@@ -155,9 +169,18 @@ and are safe to delete between runs, since nothing reads them back.
 
 ## Testing
 
+Run tests and type checks through the backend's virtual environment (`backend/.venv`),
+not a global `python`/`pip` — dependencies like `pytest` and `mypy` are installed there,
+not system-wide.
+
 ```bash
-python -m unittest discover -s tests
+cd backend
+.venv/Scripts/python.exe -m pytest tests/          # Windows
+.venv/bin/python -m pytest tests/                  # macOS/Linux
 ```
+
+`python -m unittest discover -s tests` (via the same venv interpreter) also works —
+the test suite is stdlib `unittest`, `pytest` is just the runner.
 
 Stage execution and external APIs are mocked; the checkpoint tests run against a
 throwaway SQLite file, and the logging tests redirect both log files to a
