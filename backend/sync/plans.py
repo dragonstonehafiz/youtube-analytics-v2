@@ -8,18 +8,29 @@ import database
 
 # Canonical execution order for every sync stage. The backend — not the client — owns
 # this order: a submitted plan always runs in this sequence regardless of the order its
-# stages appear in the request.
+# stages appear in the request. `pruning` sits between `videos` and `video_analytics` so
+# it always runs after both discovery stages it depends on and before any stage whose
+# rows would otherwise be cascade-deleted out from under it.
 STAGE_ORDER: tuple[str, ...] = (
-    "videos",
     "playlists",
+    "videos",
+    "pruning",
     "video_analytics",
     "video_traffic_sources",
     "fx_rates",
 )
 
+# Stages that delete data are never selected automatically; a plan built for unattended
+# runs (e.g. the startup sync) must exclude them explicitly.
+DESTRUCTIVE_STAGES: frozenset[str] = frozenset({"pruning"})
+
 # The stages whose date range is configurable. Every other stage is always incremental
 # and must not carry a scope or year.
 PERIOD_AWARE_STAGES: frozenset[str] = frozenset({"video_analytics", "video_traffic_sources"})
+
+# Stages that require both of these stages to run in the same plan, because they act on
+# a discovery set only those stages populate.
+STAGES_REQUIRING_PLAYLISTS_AND_VIDEOS: frozenset[str] = frozenset({"pruning"})
 
 # Period scopes accepted for the period-aware stages.
 SCOPES: tuple[str, ...] = ("incremental", "year", "all")
@@ -98,6 +109,13 @@ def validate_plan(stages: Sequence[PlanStage]) -> tuple[PlanStage, ...]:
         elif stage.scope is not None or stage.year is not None:
             raise PlanValidationError(f"{stage.stage} does not accept a scope or year")
 
+    for name in STAGES_REQUIRING_PLAYLISTS_AND_VIDEOS & seen:
+        missing = {"playlists", "videos"} - seen
+        if missing:
+            raise PlanValidationError(
+                f"{name} requires {' and '.join(sorted(missing))} in the same plan"
+            )
+
     by_stage = {stage.stage: stage for stage in stages}
     return tuple(by_stage[name] for name in STAGE_ORDER if name in by_stage)
 
@@ -124,8 +142,13 @@ def _validate_period(stage: PlanStage) -> None:
 
 
 def full_incremental_plan() -> tuple[PlanStage, ...]:
-    """Return the complete five-stage incremental plan used for the startup sync."""
+    """Return the non-destructive startup plan: every stage except pruning.
+
+    Pruning deletes videos and is opt-in only — never selected automatically, so a
+    truncated or unattended run can never remove data.
+    """
     return tuple(
         PlanStage(name, IMPLICIT_SCOPE if name in PERIOD_AWARE_STAGES else None)
         for name in STAGE_ORDER
+        if name not in DESTRUCTIVE_STAGES
     )

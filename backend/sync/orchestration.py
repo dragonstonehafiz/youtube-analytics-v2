@@ -2,7 +2,6 @@ from __future__ import annotations
 
 import uuid
 from collections.abc import Callable, Sequence
-from dataclasses import dataclass
 
 import database
 from logging_config import exception_context, get_logger
@@ -20,6 +19,7 @@ from .stages import (
     SyncCounts,
     sync_fx_rates,
     sync_playlists,
+    sync_pruning,
     sync_video_analytics,
     sync_video_traffic_sources,
     sync_videos,
@@ -38,39 +38,16 @@ def _format_stage_counts(sync_type: str, counts: SyncCounts) -> str:
     )
 
 
-@dataclass(frozen=True)
-class _StageSpec:
-    """How one stage is announced and invoked.
-
-    `message` is None for stages that report their own per-video progress from inside
-    their loop; setting a message here would be immediately overwritten.
-    """
-
-    message: str | None
-    run: Callable[[PlanStage, SyncCounts], None]
-
-
-_STAGE_REGISTRY: dict[str, _StageSpec] = {
-    "videos": _StageSpec(
-        "Syncing videos...",
-        lambda stage, counts: sync_videos(counts),
-    ),
-    "playlists": _StageSpec(
-        "Syncing playlists...",
-        lambda stage, counts: sync_playlists(counts),
-    ),
-    "video_analytics": _StageSpec(
-        None,
-        lambda stage, counts: sync_video_analytics(recorded_scope(stage), stage.year, counts),
-    ),
-    "video_traffic_sources": _StageSpec(
-        None,
-        lambda stage, counts: sync_video_traffic_sources(recorded_scope(stage), stage.year, counts),
-    ),
-    "fx_rates": _StageSpec(
-        "Syncing FX rates...",
-        lambda stage, counts: sync_fx_rates(counts),
-    ),
+# Progress message shown while each stage runs. None for stages that report their own
+# per-video progress from inside their loop; setting a message here would be
+# immediately overwritten.
+_STAGE_MESSAGES: dict[str, str | None] = {
+    "playlists": "Syncing playlists...",
+    "videos": "Syncing videos...",
+    "pruning": "Pruning videos...",
+    "video_analytics": None,
+    "video_traffic_sources": None,
+    "fx_rates": "Syncing FX rates...",
 }
 
 
@@ -141,8 +118,16 @@ def execute_plan(stages: Sequence[PlanStage]) -> None:
     partial counters and later stages neither run nor create rows — which also keeps the
     batch from qualifying as a complete pipeline run.
 
+    Playlist- and video-discovered IDs are held in local variables for this call only
+    (never persisted) and threaded from `sync_playlists()` into `sync_videos()` and from
+    `sync_videos()` into `sync_pruning()`. Canonical ordering and fail-fast execution
+    guarantee pruning cannot run without both of its inputs already populated.
+
     Releases the reservation in all cases. Safe to call from a background thread.
     """
+    playlist_video_ids: set[str] = set()
+    channel_owned_ids: set[str] = set()
+
     try:
         # Revalidated here, not just at the API boundary, so no caller can drive the
         # stage loop with a plan that was never checked. validate_plan is idempotent.
@@ -159,18 +144,33 @@ def execute_plan(stages: Sequence[PlanStage]) -> None:
             stage = plan.get(name)
             if stage is None:
                 continue
-            spec = _STAGE_REGISTRY[name]
-            if spec.message:
-                status.set_message(spec.message)
-            # Invoked synchronously inside _run_stage, so the loop variables cannot
-            # advance before the lambda runs.
-            _run_stage(
-                batch_id,
-                name,
-                recorded_scope(stage),
-                recorded_year(stage),
-                lambda counts: spec.run(stage, counts),
-            )
+            message = _STAGE_MESSAGES[name]
+            if message:
+                status.set_message(message)
+
+            run: Callable[[SyncCounts], None]
+            if name == "playlists":
+                def run(counts: SyncCounts) -> None:
+                    nonlocal playlist_video_ids
+                    playlist_video_ids = sync_playlists(counts)
+            elif name == "videos":
+                def run(counts: SyncCounts) -> None:
+                    nonlocal channel_owned_ids
+                    channel_owned_ids = sync_videos(counts, playlist_video_ids)
+            elif name == "pruning":
+                def run(counts: SyncCounts) -> None:
+                    sync_pruning(counts, channel_owned_ids)
+            elif name == "video_analytics":
+                def run(counts: SyncCounts, stage: PlanStage = stage) -> None:
+                    sync_video_analytics(recorded_scope(stage), stage.year, counts)
+            elif name == "video_traffic_sources":
+                def run(counts: SyncCounts, stage: PlanStage = stage) -> None:
+                    sync_video_traffic_sources(recorded_scope(stage), stage.year, counts)
+            else:
+                def run(counts: SyncCounts) -> None:
+                    sync_fx_rates(counts)
+
+            _run_stage(batch_id, name, recorded_scope(stage), recorded_year(stage), run)
         status.set_message("Sync complete.")
 
     except Exception as exc:
