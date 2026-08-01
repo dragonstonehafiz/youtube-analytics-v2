@@ -24,7 +24,7 @@ from .sync_runs import (
     complete_sync_run,
     create_sync_run,
     fail_sync_run,
-    get_last_successful_batch_completed_at,
+    get_last_successful_run_completed_at,
     get_sync_runs,
 )
 from .traffic_sources import (
@@ -65,7 +65,7 @@ __all__ = [
     "get_fx_rates",
     "get_last_analytics_date",
     "get_last_fx_rate",
-    "get_last_successful_batch_completed_at",
+    "get_last_successful_run_completed_at",
     "get_last_traffic_source_date",
     "get_playlist",
     "get_playlist_aggregated_analytics",

@@ -1,49 +1,44 @@
 from __future__ import annotations
 
 import threading
-from datetime import datetime, time
+from datetime import date, datetime
 
 import database
 
-from .orchestration import FULL_SYNC_TYPES, run_sync
+from .orchestration import run_plan
+from .plans import full_incremental_plan
 
 
-def _scheduler_loop() -> None:
-    """Run sync immediately, then repeat every 24 hours."""
-    run_sync()
-    timer = threading.Timer(86400, _scheduler_loop)
-    timer.daemon = True
-    timer.start()
+def synced_today() -> bool:
+    """Return whether any sync stage already succeeded today (local date).
+
+    The checkpoint is derived from sync_runs alone: the most recent successful run of any
+    sync_type. A single-stage manual plan counts, so a manual sync of one type suppresses
+    that day's startup sync. Failed and still-running rows are ignored, and missing or
+    unparseable timestamps count as not-synced.
+    """
+    completed_at = database.get_last_successful_run_completed_at()
+    if not completed_at:
+        return False
+    try:
+        last_date = datetime.fromisoformat(completed_at).astimezone().date()
+    except ValueError:
+        return False
+    return last_date >= date.today()
 
 
 def start_background_scheduler() -> None:
-    """Start the background sync scheduler. Call once on app startup.
+    """Run one complete incremental sync on startup unless any sync already succeeded today.
 
-    If the latest successful full-pipeline batch (all five stages in FULL_SYNC_TYPES
-    succeeded under one batch_id) completed within the last 24 hours (by local calendar
-    date), skip the immediate sync and schedule the next one for the remaining time in
-    the 24h window. This avoids re-syncing on every dev-server reload.
+    Called once from the app lifespan. There is no recurring timer: the app is not
+    expected to stay running long enough for one to fire, so freshness is decided per
+    launch. Restarting after any successful sync on the same local date does nothing.
     """
-    completed_at = database.get_last_successful_batch_completed_at(FULL_SYNC_TYPES)
+    if synced_today():
+        return
 
-    delay = 0.0
-    if completed_at:
-        try:
-            last_date = datetime.fromisoformat(completed_at).astimezone().date()
-            last_midnight = datetime.combine(last_date, time.min)
-            elapsed = (datetime.now() - last_midnight).total_seconds()
-            if elapsed < 86400:
-                delay = 86400 - elapsed
-        except ValueError:
-            pass
+    def _run() -> None:
+        run_plan(full_incremental_plan())
 
-    def _start(d: float) -> None:
-        if d > 0:
-            timer = threading.Timer(d, _scheduler_loop)
-            timer.daemon = True
-            timer.start()
-        else:
-            thread = threading.Thread(target=_scheduler_loop, daemon=True)
-            thread.start()
-
-    _start(delay)
+    thread = threading.Thread(target=_run, daemon=True)
+    thread.start()

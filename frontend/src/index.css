@@ -16,6 +16,10 @@
   --text-secondary: #6b7280;
   --text-heading: #111827;
 
+  --red: #991b1b;
+  --red-light: #fef2f2;
+  --red-mid: #fecaca;
+
   --shadow-sm: 0 1px 3px rgba(0,0,0,0.06), 0 1px 2px rgba(0,0,0,0.04);
   --shadow-md: 0 4px 16px rgba(26,115,232,0.08), 0 2px 6px rgba(0,0,0,0.05);
   --shadow-lg: 0 8px 32px rgba(26,115,232,0.12), 0 4px 12px rgba(0,0,0,0.06);
@@ -475,6 +479,12 @@ input, select {
   padding: 3rem;
   color: var(--text-secondary);
   font-size: 14px;
+}
+
+/* Shared pulse for sync activity indicators (navbar status, sync page banner) */
+@keyframes sync-pulse {
+  0%, 100% { opacity: 1; }
+  50% { opacity: 0.4; }
 }
 
 /* Section header */

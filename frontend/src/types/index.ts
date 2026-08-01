@@ -45,6 +45,38 @@ export interface SyncState {
   message: string
 }
 
+/** Sync stages whose date range is configurable. */
+export type PeriodAwareSyncStage = 'video_analytics' | 'video_traffic_sources'
+
+/** Sync stages that are always incremental and accept no scope or year. */
+export type IncrementalOnlySyncStage = 'videos' | 'playlists' | 'fx_rates'
+
+export type SyncStage = PeriodAwareSyncStage | IncrementalOnlySyncStage
+
+export type SyncScope = 'incremental' | 'year' | 'all'
+
+/** A year is required for — and only allowed with — the 'year' scope. */
+export type SyncPeriod =
+  | { scope: 'incremental' }
+  | { scope: 'all' }
+  | { scope: 'year'; year: number }
+
+/**
+ * One stage of a manual sync plan. Period-aware stages must carry a period; the
+ * always-incremental stages must not.
+ */
+export type SyncPlanStage =
+  | ({ stage: PeriodAwareSyncStage } & SyncPeriod)
+  | { stage: IncrementalOnlySyncStage; scope?: never; year?: never }
+
+export interface SyncPlan {
+  stages: SyncPlanStage[]
+}
+
+export interface SyncQueuedResponse {
+  queued: boolean
+}
+
 export interface TopVideo {
   id: string
   title: string

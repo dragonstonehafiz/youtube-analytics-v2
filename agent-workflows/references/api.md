@@ -153,11 +153,20 @@ GET  /sync/status
   → { is_syncing, message }
 
 POST /sync/trigger
-  ?scope=incremental (| year | all), year (int, required if scope=year)
+  Body (JSON): { stages: [ { stage, scope?, year? }, ... ] }
+    stage ∈ videos | playlists | video_analytics | video_traffic_sources | fx_rates
+    scope ∈ incremental | year | all   # video_analytics / video_traffic_sources only,
+                                       # required for those two, forbidden on the rest
+    year  (int)                        # required with scope=year, forbidden otherwise
   → { queued: true }
-  409 if a sync is already in progress
-  400 if scope is invalid, or scope=year without year
-  Actual sync runs via FastAPI BackgroundTasks — response returns before the sync completes.
+  422 malformed body, missing `stages`, unknown stage, unknown scope, non-numeric year
+  400 empty `stages`, duplicate stage, missing/misapplied scope or year, unavailable year
+  409 a sync is already in progress
+  Each period-aware stage carries its own scope/year — the two can differ in one plan.
+  Submission order is irrelevant: the backend always executes in canonical stage order.
+  Active state is reserved before the response, so two concurrent requests cannot both
+  be told they were queued. Actual sync runs via FastAPI BackgroundTasks — the response
+  returns before the sync completes.
 
 GET  /sync/runs
   ?limit=100 (1-500)
@@ -166,6 +175,7 @@ GET  /sync/runs
              rows_fetched, rows_written, rows_deleted, error_message }
   sync_type ∈ videos | playlists | video_analytics | video_traffic_sources | fx_rates
   status ∈ running | success | failed
+  Only stages that actually started have rows; a plan's rows share one batch_id.
 ```
 
 ## Route-order and compatibility constraints

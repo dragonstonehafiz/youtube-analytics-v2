@@ -1,4 +1,4 @@
-import type { VideoStats, TopVideoSortBy, SyncState } from '@/types'
+import type { VideoStats, TopVideoSortBy, SyncState, SyncPlan, SyncQueuedResponse } from '@/types'
 
 const BASE = "http://localhost:8000"
 
@@ -75,5 +75,27 @@ export const getDateRange = () =>
 export const getSyncStatus = (): Promise<SyncState> =>
   fetch(buildUrl("/sync/status")).then(r => r.json())
 
-export const triggerSync = (scope?: string, year?: number) =>
-  fetch(buildUrl("/sync/trigger", { ...(scope && { scope }), ...(year !== undefined && { year: String(year) }) }), { method: "POST" }).then(r => r.json())
+async function syncErrorMessage(response: Response): Promise<string> {
+  try {
+    const body: unknown = await response.json()
+    const detail = (body as { detail?: unknown }).detail
+    if (typeof detail === "string") return detail
+    if (Array.isArray(detail)) {
+      const first = detail[0] as { msg?: string } | undefined
+      if (first?.msg) return first.msg
+    }
+  } catch {
+    // Non-JSON error body; fall through to the status code.
+  }
+  return `Sync request failed (${response.status})`
+}
+
+export const triggerSync = async (plan: SyncPlan): Promise<SyncQueuedResponse> => {
+  const response = await fetch(buildUrl("/sync/trigger"), {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(plan),
+  })
+  if (!response.ok) throw new Error(await syncErrorMessage(response))
+  return response.json() as Promise<SyncQueuedResponse>
+}

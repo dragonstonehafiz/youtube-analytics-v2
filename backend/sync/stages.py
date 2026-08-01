@@ -5,6 +5,7 @@ from datetime import date, timedelta
 
 import database
 import youtube
+from logging_config import get_logger
 
 from . import status
 
@@ -12,6 +13,8 @@ from . import status
 # both analytics and traffic-source metrics for recent days are not fully
 # settled by the API until some time after the day ends.
 INCREMENTAL_LOOKBACK_DAYS = 7
+
+_logger = get_logger("sync")
 
 
 @dataclass
@@ -32,16 +35,32 @@ def _incremental_lookback_start(last_date: str | None, publish_date: str) -> str
 
 
 def sync_videos(counts: SyncCounts) -> None:
-    """Fetch all channel videos, upsert, then delete any DB videos not returned by the API."""
+    """Fetch all channel videos, upsert, then delete any DB videos not returned by the API.
+
+    The delete is skipped when the uploads-playlist pagination ended early: a truncated
+    enumeration is indistinguishable at the delete site from "the channel really has
+    only these videos", and acting on it would drop every video past the cut along with
+    its analytics and traffic-source history via `ON DELETE CASCADE`. Upserts still run,
+    so a truncated sync moves forward without ever removing data.
+
+    Classification is skipped the same way when the Shorts playlist enumeration is
+    truncated: an incomplete `shorts_ids` set can't tell a real Short from a video that
+    was simply missed, so guessing "video" would silently reclassify already-known
+    Shorts. `upsert_video` leaves `content_type` untouched on conflict when it's None.
+    """
     uploads_id = youtube.fetch_uploads_playlist_id()
-    shorts_ids = youtube.fetch_shorts_video_ids(uploads_id)
-    all_ids = youtube.fetch_all_video_ids(uploads_id)
+    shorts_ids, shorts_truncated = youtube.fetch_shorts_video_ids(uploads_id)
+    all_ids, truncated = youtube.fetch_all_video_ids(uploads_id)
+
+    if shorts_truncated:
+        _logger.warning("videos classification skipped reason=shorts_pagination_truncated")
 
     all_videos: list[dict] = []
     for i in range(0, len(all_ids), 50):
         batch = all_ids[i : i + 50]
         for video in youtube.fetch_videos(batch):
-            video["content_type"] = "short" if video["id"] in shorts_ids else "video"
+            if not shorts_truncated:
+                video["content_type"] = "short" if video["id"] in shorts_ids else "video"
             all_videos.append(video)
             counts.rows_fetched += 1
 
@@ -49,25 +68,54 @@ def sync_videos(counts: SyncCounts) -> None:
         database.upsert_video(video)
         counts.rows_written += 1
 
+    if truncated:
+        _logger.warning(
+            "videos cleanup skipped reason=pagination_truncated fetched=%d", len(all_videos)
+        )
+        return
+
     counts.rows_deleted += database.delete_videos_not_in([v["id"] for v in all_videos])
 
 
 def sync_playlists(counts: SyncCounts) -> None:
-    """Fetch all playlists and their items, upsert, then delete any DB playlists not returned by the API."""
-    playlists = youtube.fetch_playlists()
+    """Fetch all playlists and their items, upsert, then delete any DB playlists not returned by the API.
+
+    Both deletes are gated on complete pagination. A playlist whose items were truncated
+    keeps its stored items untouched — the replace is delete-then-reinsert, so running it
+    against a partial page set would silently shrink that playlist. A truncated playlist
+    listing likewise suppresses the listing-level reconcile.
+    """
+    playlists, playlists_truncated = youtube.fetch_playlists()
     all_items: dict[str, list[dict]] = {}
+    truncated_playlists: set[str] = set()
     for playlist in playlists:
-        items = youtube.fetch_playlist_items(playlist["id"])
+        items, items_truncated = youtube.fetch_playlist_items(
+            playlist["id"], playlist_title=playlist.get("title")
+        )
         all_items[playlist["id"]] = items
+        if items_truncated:
+            truncated_playlists.add(playlist["id"])
         counts.rows_fetched += 1 + len(items)
 
     for playlist in playlists:
         database.upsert_playlist(playlist)
         counts.rows_written += 1
+        if playlist["id"] in truncated_playlists:
+            _logger.warning(
+                "playlist_items replace skipped reason=pagination_truncated playlist=%s fetched=%d title=%r",
+                playlist["id"], len(all_items[playlist["id"]]), playlist.get("title"),
+            )
+            continue
         counts.rows_deleted += database.delete_playlist_items(playlist["id"])
         for item in all_items[playlist["id"]]:
             database.upsert_playlist_item(item)
             counts.rows_written += 1
+
+    if playlists_truncated:
+        _logger.warning(
+            "playlists cleanup skipped reason=pagination_truncated fetched=%d", len(playlists)
+        )
+        return
 
     counts.rows_deleted += database.delete_playlists_not_in([p["id"] for p in playlists])
 
@@ -91,8 +139,13 @@ def sync_video_analytics(scope: str, year: int | None, counts: SyncCounts) -> No
         status.set_message(f"Syncing video analytics ({i}/{total})...")
         video = database.get_video(video_id)
         if not video or not video.get("published_at"):
+            _logger.debug(
+                "video_analytics %d/%d video=%s skipped reason=no_publish_date title=%r",
+                i, total, video_id, video.get("title") if video else None,
+            )
             continue
         publish_date = video["published_at"][:10]
+        title = video.get("title")
 
         if scope == "year":
             start = max(publish_date, f"{year}-01-01")
@@ -106,12 +159,23 @@ def sync_video_analytics(scope: str, year: int | None, counts: SyncCounts) -> No
             range_end = end_date
 
         if start > range_end:
+            _logger.debug(
+                "video_analytics %d/%d video=%s skipped reason=empty_range title=%r",
+                i, total, video_id, title,
+            )
             continue
 
-        for row in youtube.iter_video_analytics(video_id, start, range_end, publish_date=publish_date):
+        rows_before = counts.rows_fetched
+        for row in youtube.iter_video_analytics(
+            video_id, start, range_end, publish_date=publish_date, title=title
+        ):
             counts.rows_fetched += 1
             database.upsert_video_analytics(row)
             counts.rows_written += 1
+        _logger.debug(
+            "video_analytics %d/%d video=%s rows=%d title=%r",
+            i, total, video_id, counts.rows_fetched - rows_before, title,
+        )
 
 
 def sync_video_traffic_sources(scope: str, year: int | None, counts: SyncCounts) -> None:
@@ -133,8 +197,13 @@ def sync_video_traffic_sources(scope: str, year: int | None, counts: SyncCounts)
         status.set_message(f"Syncing traffic sources ({i}/{total})...")
         video = database.get_video(video_id)
         if not video or not video.get("published_at"):
+            _logger.debug(
+                "video_traffic_sources %d/%d video=%s skipped reason=no_publish_date title=%r",
+                i, total, video_id, video.get("title") if video else None,
+            )
             continue
         publish_date = video["published_at"][:10]
+        title = video.get("title")
 
         if scope == "year":
             start = max(publish_date, f"{year}-01-01")
@@ -148,12 +217,23 @@ def sync_video_traffic_sources(scope: str, year: int | None, counts: SyncCounts)
             range_end = end_date
 
         if start > range_end:
+            _logger.debug(
+                "video_traffic_sources %d/%d video=%s skipped reason=empty_range title=%r",
+                i, total, video_id, title,
+            )
             continue
 
-        for row in youtube.iter_video_traffic_sources(video_id, start, range_end, publish_date=publish_date):
+        rows_before = counts.rows_fetched
+        for row in youtube.iter_video_traffic_sources(
+            video_id, start, range_end, publish_date=publish_date, title=title
+        ):
             counts.rows_fetched += 1
             database.upsert_video_traffic_source(row)
             counts.rows_written += 1
+        _logger.debug(
+            "video_traffic_sources %d/%d video=%s rows=%d title=%r",
+            i, total, video_id, counts.rows_fetched - rows_before, title,
+        )
 
 
 def sync_fx_rates(counts: SyncCounts) -> None:
@@ -170,6 +250,7 @@ def sync_fx_rates(counts: SyncCounts) -> None:
     )
 
     if start > yesterday:
+        _logger.debug("fx_rates start=%s end=%s no_work=true", start.isoformat(), yesterday.isoformat())
         return
 
     df = yf.download("USDSGD=X", start=start.isoformat(), end=date.today().isoformat(),
@@ -191,3 +272,7 @@ def sync_fx_rates(counts: SyncCounts) -> None:
             database.upsert_fx_rate({"date": day_str, "usd_to_sgd": carry})
             counts.rows_written += 1
         current += timedelta(days=1)
+
+    _logger.debug(
+        "fx_rates start=%s end=%s days_written=%d", start.isoformat(), yesterday.isoformat(), counts.rows_written
+    )

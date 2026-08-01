@@ -1,36 +1,19 @@
 import { useEffect, useState } from 'react'
-import { getSyncStatus, triggerSync, getDateRange } from '@/api'
+import { getSyncStatus } from '@/api'
 import type { SyncState } from '@/types'
 import './SyncStatus.css'
 
+const STATUS_POLL_MS = 5000
+
 export default function SyncStatus() {
   const [status, setStatus] = useState<SyncState | null>(null)
-  const [earliestYear, setEarliestYear] = useState<number | null>(null)
-  const [scopeValue, setScopeValue] = useState('incremental')
 
   useEffect(() => {
     const poll = () => getSyncStatus().then(setStatus).catch(() => {})
     poll()
-    const id = setInterval(poll, 5000)
+    const id = setInterval(poll, STATUS_POLL_MS)
     return () => clearInterval(id)
   }, [])
-
-  useEffect(() => {
-    getDateRange().then((data: { earliest_year: number | null }) => {
-      setEarliestYear(data.earliest_year)
-    })
-  }, [])
-
-  const currentYear = new Date().getFullYear()
-  const years = earliestYear
-    ? Array.from({ length: currentYear - earliestYear + 1 }, (_, i) => currentYear - i)
-    : []
-
-  const handleTrigger = () => {
-    const scope = scopeValue === 'all' ? 'all' : scopeValue === 'incremental' ? 'incremental' : 'year'
-    const year = scope === 'year' ? Number(scopeValue) : undefined
-    triggerSync(scope, year).then(() => getSyncStatus().then(setStatus)).catch(() => {})
-  }
 
   if (!status) return null
 
@@ -42,18 +25,7 @@ export default function SyncStatus() {
           <span className="sync-status-message">{status.message || 'Syncing...'}</span>
         </>
       ) : (
-        <>
-          <select className="sync-scope-select" value={scopeValue} onChange={e => setScopeValue(e.target.value)}>
-            <option value="incremental">New data only</option>
-            <option value="all">Full resync</option>
-            {years.map(y => (
-              <option key={y} value={String(y)}>{y}</option>
-            ))}
-          </select>
-          <button type="button" className="btn-primary sync-trigger-btn" onClick={handleTrigger}>
-            Sync now
-          </button>
-        </>
+        <span className="sync-status-idle">Not syncing</span>
       )}
     </div>
   )

@@ -26,13 +26,18 @@ def set_message(msg: str) -> None:
         _message = msg
 
 
-def try_start() -> bool:
-    """Mark a sync as in-progress if one isn't already running. Returns whether it was acquired."""
-    global _is_syncing
+def try_start(message: str = "") -> bool:
+    """Mark a sync as in-progress if one isn't already running. Returns whether it was acquired.
+
+    Sets `message` under the same lock acquisition, so a status poll can never observe an
+    active sync still carrying the previous run's message.
+    """
+    global _is_syncing, _message
     with _lock:
         if _is_syncing:
             return False
         _is_syncing = True
+        _message = message
         return True
 
 

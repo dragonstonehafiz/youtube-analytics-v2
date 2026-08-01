@@ -60,30 +60,19 @@ def get_sync_runs(limit: int = 100) -> list[dict]:
     return [dict(r) for r in rows]
 
 
-def get_last_successful_batch_completed_at(sync_types: tuple[str, ...]) -> str | None:
-    """Return the latest completion time for a batch where all expected sync types succeeded.
+def get_last_successful_run_completed_at() -> str | None:
+    """Return the completion time of the most recent successful sync run of any type.
 
-    A batch qualifies only if every sync_type in `sync_types` appears in that batch_id and
-    none of those rows has a non-success status (failed or still running disqualifies the
-    whole batch, even if another row for the same sync_type in the batch did succeed).
-    Returns None if no batch qualifies.
+    A single succeeded stage qualifies — the run's sync_type, scope, and batch_id do not
+    matter, and other stages in the same batch may have failed or never run. Failed and
+    still-running rows are ignored. Returns None when no run has ever succeeded.
     """
-    if not sync_types:
-        return None
-    placeholders = ",".join("?" * len(sync_types))
     with get_connection() as conn:
         row = conn.execute(
-            f"""
-            SELECT MAX(batches.completed_at) AS completed_at
-            FROM (
-                SELECT sr.batch_id AS batch_id, MAX(sr.completed_at) AS completed_at
-                FROM sync_runs sr
-                WHERE sr.sync_type IN ({placeholders})
-                GROUP BY sr.batch_id
-                HAVING COUNT(DISTINCT sr.sync_type) = ?
-                   AND SUM(CASE WHEN sr.status <> 'success' THEN 1 ELSE 0 END) = 0
-            ) batches
-            """,
-            [*sync_types, len(sync_types)],
+            """
+            SELECT MAX(sr.completed_at) AS completed_at
+            FROM sync_runs sr
+            WHERE sr.status = 'success'
+            """
         ).fetchone()
     return row["completed_at"] if row else None

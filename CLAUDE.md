@@ -23,8 +23,11 @@ Use `.claude/skills/youtube-analytics-workflow/SKILL.md` for issue drafting, imp
 
 ## Verification
 
+Run backend commands through `backend/.venv`'s interpreter, not a global `python`/`pip` — `mypy`, `pytest`, and other dev dependencies are installed there, not system-wide.
+
 ```bash
-cd backend && python -m mypy database.py
+cd backend && .venv/Scripts/python.exe -m mypy database/connection.py   # Windows
+cd backend && .venv/bin/python -m mypy database/connection.py            # macOS/Linux
 cd backend && uvicorn server:app --reload
 cd frontend && npx eslint src/pages/Videos.tsx --fix
 cd frontend && npx tsc --noEmit

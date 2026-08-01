@@ -6,6 +6,7 @@ import Playlists from '@/pages/Playlists'
 import Analytics from '@/pages/Analytics'
 import VideoAnalytics from '@/pages/VideoAnalytics'
 import PlaylistAnalytics from '@/pages/PlaylistAnalytics'
+import Sync from '@/pages/Sync'
 
 export default function App() {
   return (
@@ -18,6 +19,7 @@ export default function App() {
         <Route path="/analytics" element={<Analytics />} />
         <Route path="/analytics/videos/:id" element={<VideoAnalytics />} />
         <Route path="/analytics/playlists/:id" element={<PlaylistAnalytics />} />
+        <Route path="/sync" element={<Sync />} />
       </Routes>
     </BrowserRouter>
   )

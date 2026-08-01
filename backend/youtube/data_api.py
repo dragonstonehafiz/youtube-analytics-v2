@@ -6,16 +6,100 @@ from typing import Any
 from googleapiclient.discovery import build
 from googleapiclient.errors import HttpError
 
+from logging_config import get_logger
+
 from .auth import get_credentials
 
 _DURATION_RE = re.compile(
     r"^PT(?:(?P<hours>\d+)H)?(?:(?P<minutes>\d+)M)?(?:(?P<seconds>\d+)S)?$"
 )
 
+_logger = get_logger("sync")
+
 
 def _data_client() -> Any:
     """Return an authenticated YouTube Data API v3 client."""
     return build("youtube", "v3", credentials=get_credentials())
+
+
+def _log_page(
+    resource: str,
+    page: int,
+    item_count: int,
+    next_page_token: str | None,
+    owner: str | None = None,
+    owner_name: str | None = None,
+    anomaly: str | None = None,
+) -> None:
+    """Log one fetched Data API page, escalating an anomalous terminal page to WARNING.
+
+    `owner` is the id of the entity being paged through where one exists — a playlist
+    for the playlist-item loops, absent for the channel-wide playlist listing.
+    `owner_name` is its human-readable name, rendered last and `repr`-quoted so a title
+    containing spaces or newlines cannot corrupt the fields before it.
+
+    `anomaly` names the condition that ended pagination early (`empty_page_with_token`
+    or `repeated_page_token`); both can spin pagination indefinitely and exhaust quota,
+    so they are recorded as problems rather than as routine detail. The token is
+    included on every record: it is an opaque result-set cursor, not a credential, and
+    comparing it across consecutive pages is what distinguishes a repeating token from
+    fresh tokens walking an empty region.
+    """
+    owner_field = f" owner={owner}" if owner else ""
+    token_field = f" next_page_token={next_page_token}" if next_page_token else ""
+    name_field = f" owner_name={owner_name!r}" if owner_name else ""
+    if anomaly:
+        _logger.warning(
+            "%s page=%d items=%d %s=true%s%s%s",
+            resource, page, item_count, anomaly, owner_field, token_field, name_field,
+        )
+        return
+    _logger.debug(
+        "%s page=%d items=%d%s%s%s", resource, page, item_count, owner_field, token_field, name_field
+    )
+
+
+def _next_page_token(
+    resource: str,
+    page: int,
+    item_count: int,
+    next_page_token: str | None,
+    seen_tokens: set[str],
+    owner: str | None = None,
+    owner_name: str | None = None,
+) -> tuple[str | None, bool]:
+    """Decide whether to request another page, logging the page as a side effect.
+
+    Returns `(token_to_follow, truncated)`. `token_to_follow` is `None` whenever
+    pagination must stop. `truncated` is True only when it stopped on an anomaly, which
+    means the collected rows are an incomplete view of the resource and must not be
+    treated as authoritative for absence — see `sync/stages.py`, where it suppresses the
+    reconciling deletes.
+
+    Pagination stops without truncation when the response carries no token. It stops
+    *with* truncation when the page is empty but still carries a token, or when the
+    token has already been followed during this call — either of which would otherwise
+    re-request pages until the Data API quota is gone.
+
+    `seen_tokens` is this invocation's cursor history and is mutated here. Callers must
+    create it per call so that two playlists paginated in sequence never share history.
+    """
+    if item_count == 0:
+        anomaly = "empty_page_with_token" if next_page_token else None
+        _log_page(resource, page, item_count, next_page_token, owner, owner_name, anomaly)
+        return None, bool(next_page_token)
+
+    if next_page_token and next_page_token in seen_tokens:
+        _log_page(
+            resource, page, item_count, next_page_token, owner, owner_name, "repeated_page_token"
+        )
+        return None, True
+
+    _log_page(resource, page, item_count, next_page_token, owner, owner_name)
+    if not next_page_token:
+        return None, False
+    seen_tokens.add(next_page_token)
+    return next_page_token, False
 
 
 def _parse_duration(value: str | None) -> int | None:
@@ -41,8 +125,9 @@ def fetch_uploads_playlist_id() -> str:
     return items[0]["contentDetails"]["relatedPlaylists"]["uploads"]
 
 
-def fetch_shorts_video_ids(uploads_playlist_id: str) -> set[str]:
-    """Return the set of video IDs that are Shorts via the UUSH playlist.
+def fetch_shorts_video_ids(uploads_playlist_id: str) -> tuple[set[str], bool]:
+    """Return the set of video IDs that are Shorts via the UUSH playlist, and whether
+    pagination ended early on an anomaly.
 
     Raises RuntimeError if the UUSH playlist is unavailable.
     """
@@ -51,7 +136,10 @@ def fetch_shorts_video_ids(uploads_playlist_id: str) -> set[str]:
     shorts_playlist_id = f"UUSH{uploads_playlist_id[2:]}"
     yt = _data_client()
     video_ids: set[str] = set()
+    seen_tokens: set[str] = set()
     page_token = None
+    page = 0
+    truncated = False
 
     while True:
         try:
@@ -65,22 +153,37 @@ def fetch_shorts_video_ids(uploads_playlist_id: str) -> set[str]:
             if int(exc.resp.status) == 404:
                 raise RuntimeError(f"Shorts playlist {shorts_playlist_id} not found.") from exc
             raise
-        for item in response.get("items", []):
+        page += 1
+        items = response.get("items", [])
+        for item in items:
             vid = item["contentDetails"].get("videoId")
             if vid:
                 video_ids.add(vid)
-        page_token = response.get("nextPageToken")
+        page_token, truncated = _next_page_token(
+            "shorts_video_ids", page, len(items), response.get("nextPageToken"), seen_tokens,
+            owner=shorts_playlist_id, owner_name="Shorts",
+        )
         if not page_token:
             break
 
-    return video_ids
+    return video_ids, truncated
 
 
-def fetch_all_video_ids(uploads_playlist_id: str) -> list[str]:
-    """Return all video IDs from the uploads playlist."""
+def fetch_all_video_ids(uploads_playlist_id: str) -> tuple[list[str], bool]:
+    """Return all video IDs from the uploads playlist, and whether pagination ended
+    early on an anomaly.
+
+    The uploads playlist is how the Data API enumerates a channel's videos, so a
+    truncated result here is a partial view of the channel — never a complete one that
+    happens to be short. `sync_videos()` reconciles deletions against this list and must
+    skip that step when the flag is set.
+    """
     yt = _data_client()
     video_ids: list[str] = []
+    seen_tokens: set[str] = set()
     page_token = None
+    page = 0
+    truncated = False
 
     while True:
         response = yt.playlistItems().list(
@@ -89,15 +192,20 @@ def fetch_all_video_ids(uploads_playlist_id: str) -> list[str]:
             maxResults=50,
             pageToken=page_token,
         ).execute()
-        for item in response.get("items", []):
+        page += 1
+        items = response.get("items", [])
+        for item in items:
             vid = item["contentDetails"].get("videoId")
             if vid:
                 video_ids.append(vid)
-        page_token = response.get("nextPageToken")
+        page_token, truncated = _next_page_token(
+            "video_ids", page, len(items), response.get("nextPageToken"), seen_tokens,
+            owner=uploads_playlist_id, owner_name="Uploads",
+        )
         if not page_token:
             break
 
-    return video_ids
+    return video_ids, truncated
 
 
 def fetch_videos(video_ids: list[str]) -> list[dict]:
@@ -140,11 +248,15 @@ def fetch_videos(video_ids: list[str]) -> list[dict]:
     return results
 
 
-def fetch_playlists() -> list[dict]:
-    """Return all playlists for the authenticated channel."""
+def fetch_playlists() -> tuple[list[dict], bool]:
+    """Return all playlists for the authenticated channel, and whether pagination ended
+    early on an anomaly."""
     yt = _data_client()
     playlists: list[dict] = []
+    seen_tokens: set[str] = set()
     page_token = None
+    page = 0
+    truncated = False
 
     while True:
         response = yt.playlists().list(
@@ -153,7 +265,9 @@ def fetch_playlists() -> list[dict]:
             maxResults=50,
             pageToken=page_token,
         ).execute()
-        for item in response.get("items", []):
+        page += 1
+        items = response.get("items", [])
+        for item in items:
             snippet = item.get("snippet", {})
             thumbnails = snippet.get("thumbnails", {})
             thumbnail_url = (
@@ -170,18 +284,34 @@ def fetch_playlists() -> list[dict]:
                 "thumbnail_url": thumbnail_url,
                 "item_count": item.get("contentDetails", {}).get("itemCount"),
             })
-        page_token = response.get("nextPageToken")
+        page_token, truncated = _next_page_token(
+            "playlists", page, len(items), response.get("nextPageToken"), seen_tokens,
+            owner_name="Playlists",
+        )
         if not page_token:
             break
 
-    return playlists
+    return playlists, truncated
 
 
-def fetch_playlist_items(playlist_id: str) -> list[dict]:
-    """Return all items in a playlist."""
+def fetch_playlist_items(
+    playlist_id: str, playlist_title: str | None = None
+) -> tuple[list[dict], bool]:
+    """Return all items in a playlist, and whether pagination ended early on an anomaly.
+
+    `playlist_title` is used only to name the playlist in this function's page log
+    records; the playlistItems response carries video titles, not the owning
+    playlist's, so the caller supplies it.
+
+    The cursor history is created here, per call, so paginating one playlist can never
+    make another playlist's identical token look like a repeat.
+    """
     yt = _data_client()
     items: list[dict] = []
+    seen_tokens: set[str] = set()
     page_token = None
+    page = 0
+    truncated = False
 
     while True:
         response = yt.playlistItems().list(
@@ -190,7 +320,9 @@ def fetch_playlist_items(playlist_id: str) -> list[dict]:
             maxResults=50,
             pageToken=page_token,
         ).execute()
-        for item in response.get("items", []):
+        page += 1
+        page_items = response.get("items", [])
+        for item in page_items:
             snippet = item.get("snippet", {})
             items.append({
                 "id": item["id"],
@@ -198,8 +330,11 @@ def fetch_playlist_items(playlist_id: str) -> list[dict]:
                 "video_id": snippet.get("resourceId", {}).get("videoId"),
                 "position": snippet.get("position"),
             })
-        page_token = response.get("nextPageToken")
+        page_token, truncated = _next_page_token(
+            "playlist_items", page, len(page_items), response.get("nextPageToken"), seen_tokens,
+            owner=playlist_id, owner_name=playlist_title,
+        )
         if not page_token:
             break
 
-    return items
+    return items, truncated

@@ -1,11 +1,41 @@
 from __future__ import annotations
 
+from typing import Literal
+
 from fastapi import APIRouter, BackgroundTasks, HTTPException, Query
+from pydantic import BaseModel, ConfigDict
 
 import database
 import sync
 
 router = APIRouter()
+
+SyncStage = Literal[
+    "videos",
+    "playlists",
+    "video_analytics",
+    "video_traffic_sources",
+    "fx_rates",
+]
+SyncScope = Literal["incremental", "year", "all"]
+
+
+class PlanStageRequest(BaseModel):
+    """One requested stage. `scope`/`year` apply only to the period-aware stages."""
+
+    model_config = ConfigDict(extra="forbid")
+
+    stage: SyncStage
+    scope: SyncScope | None = None
+    year: int | None = None
+
+
+class SyncPlanRequest(BaseModel):
+    """An explicit manual sync plan. Submission order does not affect execution order."""
+
+    model_config = ConfigDict(extra="forbid")
+
+    stages: list[PlanStageRequest]
 
 
 @router.get("/sync/status")
@@ -15,24 +45,30 @@ def sync_status() -> dict:
 
 
 @router.post("/sync/trigger")
-def trigger_sync(
-    background_tasks: BackgroundTasks,
-    scope: str = Query(default="incremental"),
-    year: int | None = Query(default=None),
-) -> dict:
-    """Manually trigger a sync if one is not already running.
+def trigger_sync(plan: SyncPlanRequest, background_tasks: BackgroundTasks) -> dict:
+    """Queue a manual sync of the selected stages if no sync is already running.
 
-    scope: "incremental" (default, resume from last synced date) | "year" (refetch
-    the given year) | "all" (refetch each video's entire history). scope/year only
-    affect video analytics and traffic source syncing.
+    Unknown stages or scopes are rejected as 422 by request parsing; semantic problems
+    (empty selection, duplicate stage, missing or misapplied period, unavailable year)
+    are rejected as 400; an in-flight sync is rejected as 409. Active state is reserved
+    before the response so a second request cannot also be told it was queued.
     """
-    if sync.is_syncing():
+    try:
+        stages = sync.validate_plan(
+            [sync.PlanStage(s.stage, s.scope, s.year) for s in plan.stages]
+        )
+    except sync.PlanValidationError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+
+    if not sync.try_start("Sync queued..."):
         raise HTTPException(status_code=409, detail="Sync already in progress")
-    if scope not in ("incremental", "year", "all"):
-        raise HTTPException(status_code=400, detail="scope must be one of: incremental, year, all")
-    if scope == "year" and year is None:
-        raise HTTPException(status_code=400, detail="year is required when scope=year")
-    background_tasks.add_task(sync.run_sync, scope, year)
+
+    try:
+        background_tasks.add_task(sync.execute_plan, stages)
+    except Exception:
+        sync.finish()
+        raise
+
     return {"queued": True}
 
 
