@@ -34,56 +34,80 @@ def _incremental_lookback_start(last_date: str | None, publish_date: str) -> str
     return max(start, publish_date)
 
 
-def sync_videos(counts: SyncCounts) -> None:
-    """Fetch all channel videos, upsert, then delete any DB videos not returned by the API.
+def sync_videos(counts: SyncCounts, playlist_video_ids: set[str]) -> set[str]:
+    """Fetch and upsert details for every channel-owned video; never deletes.
 
-    The delete is skipped when the uploads-playlist pagination ended early: a truncated
-    enumeration is indistinguishable at the delete site from "the channel really has
-    only these videos", and acting on it would drop every video past the cut along with
-    its analytics and traffic-source history via `ON DELETE CASCADE`. Upserts still run,
-    so a truncated sync moves forward without ever removing data.
+    Fetches details for the union of the uploads-playlist IDs and `playlist_video_ids`
+    (candidates discovered by `sync_playlists()`, empty when that stage didn't run).
+    Uploads-playlist membership is treated as proof of ownership on its own; a
+    playlist-only candidate is upserted only when its returned `snippet.channelId`
+    matches the authenticated channel, so a video from someone else's playlist is never
+    imported as if it were this channel's.
 
-    Classification is skipped the same way when the Shorts playlist enumeration is
-    truncated: an incomplete `shorts_ids` set can't tell a real Short from a video that
-    was simply missed, so guessing "video" would silently reclassify already-known
+    Returns every ID confirmed to belong to the channel — every uploads ID (even one
+    `videos.list` didn't return details for) plus every ownership-confirmed
+    playlist-only ID — for the pruning stage to retain.
+
+    Classification is skipped when the Shorts playlist enumeration is truncated: an
+    incomplete `shorts_ids` set can't tell a real Short that was missed from a genuine
+    long-form video, so guessing "video" would silently reclassify already-known
     Shorts. `upsert_video` leaves `content_type` untouched on conflict when it's None.
+
+    `fetch_videos()` silently omits any id the videos().list detail call doesn't return
+    an item for (e.g. region-restricted or transiently unavailable). That gap is logged
+    here rather than left to show up only as an unexplained DB shortfall.
     """
-    uploads_id = youtube.fetch_uploads_playlist_id()
+    channel_id, uploads_id = youtube.fetch_channel_identity()
     shorts_ids, shorts_truncated = youtube.fetch_shorts_video_ids(uploads_id)
-    all_ids, truncated = youtube.fetch_all_video_ids(uploads_id)
+    uploads_ids, _ = youtube.fetch_all_video_ids(uploads_id)
 
     if shorts_truncated:
         _logger.warning("videos classification skipped reason=shorts_pagination_truncated")
 
-    all_videos: list[dict] = []
-    for i in range(0, len(all_ids), 50):
-        batch = all_ids[i : i + 50]
+    uploads_id_set = set(uploads_ids)
+    playlist_only_ids = playlist_video_ids - uploads_id_set
+    candidate_ids = uploads_ids + sorted(playlist_only_ids)
+
+    fetched_videos: list[dict] = []
+    for i in range(0, len(candidate_ids), 50):
+        batch = candidate_ids[i : i + 50]
         for video in youtube.fetch_videos(batch):
             if not shorts_truncated:
                 video["content_type"] = "short" if video["id"] in shorts_ids else "video"
-            all_videos.append(video)
+            fetched_videos.append(video)
             counts.rows_fetched += 1
 
-    for video in all_videos:
-        database.upsert_video(video)
-        counts.rows_written += 1
+    fetched_by_id = {v["id"]: v for v in fetched_videos}
 
-    if truncated:
+    missing_ids = set(candidate_ids) - fetched_by_id.keys()
+    if missing_ids:
         _logger.warning(
-            "videos cleanup skipped reason=pagination_truncated fetched=%d", len(all_videos)
+            "videos missing from detail fetch count=%d ids=%s", len(missing_ids), sorted(missing_ids)
         )
-        return
 
-    counts.rows_deleted += database.delete_videos_not_in([v["id"] for v in all_videos])
+    owned_playlist_only_ids = {
+        video_id for video_id in playlist_only_ids
+        if video_id in fetched_by_id and fetched_by_id[video_id].get("channel_id") == channel_id
+    }
+
+    for video_id, video in fetched_by_id.items():
+        if video_id in uploads_id_set or video_id in owned_playlist_only_ids:
+            database.upsert_video(video)
+            counts.rows_written += 1
+
+    return uploads_id_set | owned_playlist_only_ids
 
 
-def sync_playlists(counts: SyncCounts) -> None:
+def sync_playlists(counts: SyncCounts) -> set[str]:
     """Fetch all playlists and their items, upsert, then delete any DB playlists not returned by the API.
 
     Both deletes are gated on complete pagination. A playlist whose items were truncated
     keeps its stored items untouched — the replace is delete-then-reinsert, so running it
     against a partial page set would silently shrink that playlist. A truncated playlist
     listing likewise suppresses the listing-level reconcile.
+
+    Returns every non-null playlist-item video ID seen, for `sync_videos()` to combine
+    with the uploads-playlist IDs.
     """
     playlists, playlists_truncated = youtube.fetch_playlists()
     all_items: dict[str, list[dict]] = {}
@@ -96,6 +120,13 @@ def sync_playlists(counts: SyncCounts) -> None:
         if items_truncated:
             truncated_playlists.add(playlist["id"])
         counts.rows_fetched += 1 + len(items)
+
+    playlist_video_ids = {
+        item["video_id"]
+        for items in all_items.values()
+        for item in items
+        if item.get("video_id")
+    }
 
     for playlist in playlists:
         database.upsert_playlist(playlist)
@@ -115,9 +146,16 @@ def sync_playlists(counts: SyncCounts) -> None:
         _logger.warning(
             "playlists cleanup skipped reason=pagination_truncated fetched=%d", len(playlists)
         )
-        return
+        return playlist_video_ids
 
     counts.rows_deleted += database.delete_playlists_not_in([p["id"] for p in playlists])
+    return playlist_video_ids
+
+
+def sync_pruning(counts: SyncCounts, channel_owned_ids: set[str]) -> None:
+    """Delete every DB video not in `channel_owned_ids`, the channel-owned set built by
+    `sync_playlists()` and `sync_videos()` in this same plan."""
+    counts.rows_deleted += database.delete_videos_not_in(sorted(channel_owned_ids))
 
 
 def sync_video_analytics(scope: str, year: int | None, counts: SyncCounts) -> None:

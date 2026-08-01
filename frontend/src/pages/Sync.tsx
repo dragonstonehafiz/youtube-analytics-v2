@@ -22,8 +22,9 @@ interface StageRow {
 }
 
 const STAGE_ROWS: readonly StageRow[] = [
-  { stage: 'videos', label: 'Videos', description: 'Video and video metadata' },
   { stage: 'playlists', label: 'Playlists', description: 'Playlists metadata and playlist items' },
+  { stage: 'videos', label: 'Videos', description: 'Video and video metadata' },
+  { stage: 'pruning', label: 'Pruning', description: 'Removes videos no longer found during complete discovery' },
   { stage: 'video_analytics', label: 'Video Analytics', description: 'Daily per-video metrics' },
   { stage: 'video_traffic_sources', label: 'Traffic Sources', description: 'Daily video traffic metrics' },
   { stage: 'fx_rates', label: 'FX Rates', description: 'USD to SGD conversion rates' },
@@ -39,8 +40,9 @@ type IncludedMap = Record<SyncStage, boolean>
 type PeriodMap = Record<PeriodAwareSyncStage, string>
 
 const ALL_INCLUDED: IncludedMap = {
-  videos: true,
   playlists: true,
+  videos: true,
+  pruning: false,
   video_analytics: true,
   video_traffic_sources: true,
   fx_rates: true,
@@ -143,7 +145,17 @@ export default function Sync() {
   }
 
   const toggleStage = (stage: SyncStage) => {
-    setIncluded(prev => ({ ...prev, [stage]: !prev[stage] }))
+    setIncluded(prev => {
+      const next = { ...prev, [stage]: !prev[stage] }
+      if (stage === 'pruning' && next.pruning) {
+        next.playlists = true
+        next.videos = true
+      }
+      if ((stage === 'playlists' || stage === 'videos') && !next[stage]) {
+        next.pruning = false
+      }
+      return next
+    })
   }
 
   const setPeriod = (stage: PeriodAwareSyncStage, value: string) => {

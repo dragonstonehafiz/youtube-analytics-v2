@@ -91,6 +91,14 @@ class ValidPlanTest(SyncRoutesTestCase):
         self.assertEqual(response.status_code, 200)
         self.assertEqual(self.queued_stages, ["fx_rates"])
 
+    def test_pruning_with_both_prerequisites_is_queued_in_canonical_order(self) -> None:
+        response = self._post({
+            "stages": [{"stage": "pruning"}, {"stage": "videos"}, {"stage": "playlists"}]
+        })
+
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(self.queued_stages, ["playlists", "videos", "pruning"])
+
     def test_reservation_is_released_after_the_queued_plan_runs(self) -> None:
         response = self._post({"stages": [{"stage": "videos"}]})
 
@@ -126,6 +134,21 @@ class SemanticRejectionTest(SyncRoutesTestCase):
 
     def test_scope_on_non_period_stage_is_rejected(self) -> None:
         self._assert_rejected({"stages": [{"stage": "videos", "scope": "all"}]}, 400)
+
+    def test_pruning_without_playlists_or_videos_is_rejected(self) -> None:
+        self._assert_rejected({"stages": [{"stage": "pruning"}]}, 400)
+
+    def test_pruning_without_videos_is_rejected(self) -> None:
+        self._assert_rejected({"stages": [{"stage": "pruning"}, {"stage": "playlists"}]}, 400)
+
+    def test_pruning_with_scope_is_rejected(self) -> None:
+        self._assert_rejected(
+            {"stages": [
+                {"stage": "pruning", "scope": "all"},
+                {"stage": "playlists"},
+                {"stage": "videos"},
+            ]}, 400
+        )
 
     def test_unavailable_year_is_rejected(self) -> None:
         self._assert_rejected(

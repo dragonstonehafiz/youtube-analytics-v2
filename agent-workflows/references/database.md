@@ -35,8 +35,10 @@ Persistence layer, schema, and query conventions. Owns everything about how data
 Seven tables:
 
 ```sql
-videos                  -- id, title, description, published_at, duration_seconds, thumbnail_url,
+videos                  -- id, channel_id, title, description, published_at, duration_seconds, thumbnail_url,
                         --   content_type, privacy_status, view_count, like_count, comment_count, updated_at
+                        --   channel_id is the owning YouTube channel ID, used by sync/stages.py::sync_videos()
+                        --   to filter playlist-only candidates to this channel's own videos (see sync.md)
 video_analytics         -- video_id, date, views, watch_time_minutes, estimated_revenue,
                         --   average_view_duration_seconds, average_view_percentage,
                         --   likes, subscribers_gained, subscribers_lost, updated_at
@@ -62,7 +64,9 @@ There is no `sync_state` table — the scheduler derives its checkpoint from `sy
 - `playlist_items.video_id` has **no FK** — it's a raw YouTube video ID that may not exist in `videos` (e.g. a playlist item referencing a video not in the channel's own uploads)
 - Cascades only take effect because `PRAGMA foreign_keys = ON` is set on every connection
 
-Deletion helpers report only rows they directly deleted via `cursor.rowcount` — cascaded child-row deletes (e.g. `video_analytics` rows removed when their parent `videos` row is deleted) are **not** included in that count. See `delete_videos_not_in()` (`database/videos.py:371-378`), `delete_playlists_not_in()` (`database/playlists.py:199-206`), `delete_playlist_items()` (`database/playlists.py:209-213`).
+Deletion helpers report only rows they directly deleted via `cursor.rowcount` — cascaded child-row deletes (e.g. `video_analytics` rows removed when their parent `videos` row is deleted) are **not** included in that count. See `delete_videos_not_in()` (`database/videos.py:376-388`), `delete_playlists_not_in()` (`database/playlists.py:199-206`), `delete_playlist_items()` (`database/playlists.py:209-213`).
+
+`delete_videos_not_in(ids)` has **no empty-list guard**: an empty `ids` deletes every video, not zero. Its only caller is the `pruning` sync stage (`sync/stages.py::sync_pruning()`), which is opt-in and never runs automatically — see `sync.md` for how the caller is expected to only pass an empty list when that genuinely reflects a channel with zero owned videos.
 
 ## Timestamp behavior
 

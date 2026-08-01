@@ -1,5 +1,6 @@
 CREATE TABLE IF NOT EXISTS videos (
     id TEXT PRIMARY KEY,
+    channel_id TEXT,
     title TEXT NOT NULL,
     description TEXT,
     published_at TEXT,

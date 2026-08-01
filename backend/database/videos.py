@@ -14,13 +14,14 @@ def upsert_video(video: dict) -> None:
     with get_connection() as conn:
         conn.execute(
             """
-            INSERT INTO videos (id, title, description, published_at, duration_seconds,
+            INSERT INTO videos (id, channel_id, title, description, published_at, duration_seconds,
                 thumbnail_url, content_type, privacy_status, view_count, like_count, comment_count,
                 updated_at)
-            VALUES (:id, :title, :description, :published_at, :duration_seconds,
+            VALUES (:id, :channel_id, :title, :description, :published_at, :duration_seconds,
                 :thumbnail_url, :content_type, :privacy_status, :view_count, :like_count, :comment_count,
                 :updated_at)
             ON CONFLICT(id) DO UPDATE SET
+                channel_id = excluded.channel_id,
                 title = excluded.title,
                 description = excluded.description,
                 published_at = excluded.published_at,
@@ -374,10 +375,17 @@ def get_playlist_video_stats(
 
 
 def delete_videos_not_in(ids: list[str]) -> int:
-    """Delete videos (and their analytics via cascade) whose IDs are not in the given list. Returns the number of videos deleted."""
-    if not ids:
-        return 0
-    placeholders = ",".join("?" * len(ids))
+    """Delete videos (and their analytics via cascade) whose IDs are not in the given list.
+    Returns the number of videos deleted.
+
+    An empty list deletes every video — the only caller, the pruning sync stage, gates
+    this call on proven-complete discovery first, so an empty list here means the
+    channel genuinely has zero owned videos, not that discovery came back short.
+    """
     with get_connection() as conn:
-        cursor = conn.execute(f"DELETE FROM videos WHERE id NOT IN ({placeholders})", ids)
+        if not ids:
+            cursor = conn.execute("DELETE FROM videos")
+        else:
+            placeholders = ",".join("?" * len(ids))
+            cursor = conn.execute(f"DELETE FROM videos WHERE id NOT IN ({placeholders})", ids)
         return cursor.rowcount

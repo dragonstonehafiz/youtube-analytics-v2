@@ -32,50 +32,141 @@ def tearDownModule() -> None:
     _tmpdir.cleanup()
 
 
-class VideoCleanupGateTest(unittest.TestCase):
-    """`sync_videos()` reconciles deletions against the uploads-playlist enumeration.
-    A truncated enumeration is a partial view of the channel, and deleting against it
-    would drop every video past the cut plus its analytics and traffic-source history
-    via `ON DELETE CASCADE`, so the delete is skipped."""
+class VideoNeverDeletesTest(unittest.TestCase):
+    """`sync_videos()` only upserts; it never deletes. Deletion belongs solely to the
+    `pruning` stage, regardless of whether uploads-playlist pagination truncated."""
 
     def setUp(self) -> None:
         self.addCleanup(mock.patch.stopall)
-        mock.patch("sync.stages.youtube.fetch_uploads_playlist_id", return_value="UU123").start()
+        mock.patch("sync.stages.youtube.fetch_channel_identity", return_value=("UC1", "UU123")).start()
         mock.patch("sync.stages.youtube.fetch_shorts_video_ids", return_value=(set(), False)).start()
         mock.patch(
             "sync.stages.youtube.fetch_videos",
-            return_value=[{"id": "v1", "title": "Kept"}],
+            return_value=[{"id": "v1", "channel_id": "UC1", "title": "Kept"}],
         ).start()
         self.upsert = mock.patch("sync.stages.database.upsert_video").start()
-        self.delete = mock.patch("sync.stages.database.delete_videos_not_in", return_value=7).start()
+        self.delete = mock.patch("sync.stages.database.delete_videos_not_in").start()
 
-    def test_complete_pagination_still_reconciles_deletions(self) -> None:
+    def test_complete_pagination_upserts_and_returns_owned_ids_without_deleting(self) -> None:
         mock.patch(
             "sync.stages.youtube.fetch_all_video_ids", return_value=(["v1"], False)
         ).start()
         counts = SyncCounts()
 
-        stages.sync_videos(counts)
+        owned_ids = stages.sync_videos(counts, set())
 
-        self.delete.assert_called_once_with(["v1"])
-        self.assertEqual(counts.rows_deleted, 7)
+        self.delete.assert_not_called()
+        self.assertEqual(owned_ids, {"v1"})
+        self.assertEqual(counts.rows_deleted, 0)
 
-    def test_truncated_pagination_skips_the_delete_but_still_upserts(self) -> None:
+    def test_truncated_pagination_still_upserts_without_deleting(self) -> None:
         mock.patch(
             "sync.stages.youtube.fetch_all_video_ids", return_value=(["v1"], True)
         ).start()
         counts = SyncCounts()
 
-        with self.assertLogs("youtube_analytics.sync", level="DEBUG") as captured:
-            stages.sync_videos(counts)
+        owned_ids = stages.sync_videos(counts, set())
 
         self.delete.assert_not_called()
-        self.assertEqual(counts.rows_deleted, 0)
-        # Forward progress is preserved: the rows that were fetched are still written.
+        self.assertEqual(owned_ids, {"v1"})
         self.upsert.assert_called_once()
         self.assertEqual(counts.rows_written, 1)
+
+
+class VideoOwnershipFilterTest(unittest.TestCase):
+    """Videos discovered only via a playlist (not the uploads playlist) are imported
+    only when the returned `snippet.channelId` matches the authenticated channel, so a
+    video from someone else's playlist is never mistaken for this channel's."""
+
+    def setUp(self) -> None:
+        self.addCleanup(mock.patch.stopall)
+        mock.patch("sync.stages.youtube.fetch_channel_identity", return_value=("UC1", "UU123")).start()
+        mock.patch("sync.stages.youtube.fetch_shorts_video_ids", return_value=(set(), False)).start()
+        mock.patch(
+            "sync.stages.youtube.fetch_all_video_ids", return_value=([], False)
+        ).start()
+        self.upsert = mock.patch("sync.stages.database.upsert_video").start()
+        mock.patch("sync.stages.database.delete_videos_not_in").start()
+
+    def test_playlist_only_video_owned_by_channel_is_upserted_and_retained(self) -> None:
+        mock.patch(
+            "sync.stages.youtube.fetch_videos",
+            return_value=[{"id": "v1", "channel_id": "UC1", "title": "Mine"}],
+        ).start()
+        counts = SyncCounts()
+
+        owned_ids = stages.sync_videos(counts, {"v1"})
+
+        self.upsert.assert_called_once()
+        self.assertEqual(owned_ids, {"v1"})
+
+    def test_playlist_only_video_owned_by_another_channel_is_not_imported(self) -> None:
+        mock.patch(
+            "sync.stages.youtube.fetch_videos",
+            return_value=[{"id": "v1", "channel_id": "UCother", "title": "Not mine"}],
+        ).start()
+        counts = SyncCounts()
+
+        owned_ids = stages.sync_videos(counts, {"v1"})
+
+        self.upsert.assert_not_called()
+        self.assertEqual(owned_ids, set())
+
+    def test_uploads_id_is_retained_even_when_details_are_missing(self) -> None:
+        mock.patch("sync.stages.youtube.fetch_all_video_ids", return_value=(["v1"], False)).start()
+        mock.patch("sync.stages.youtube.fetch_videos", return_value=[]).start()
+        counts = SyncCounts()
+
+        owned_ids = stages.sync_videos(counts, set())
+
+        self.upsert.assert_not_called()
+        self.assertEqual(owned_ids, {"v1"})
+
+
+class VideoDetailFetchGapTest(unittest.TestCase):
+    """`fetch_videos()` silently omits any id the API doesn't return an item for (e.g.
+    region-restricted or transiently unavailable video). `sync_videos()` must not let
+    that vanish unnoticed — it diffs the fetched ids against the requested ones and
+    logs whatever is missing."""
+
+    def setUp(self) -> None:
+        self.addCleanup(mock.patch.stopall)
+        mock.patch("sync.stages.youtube.fetch_channel_identity", return_value=("UC1", "UU123")).start()
+        mock.patch("sync.stages.youtube.fetch_shorts_video_ids", return_value=(set(), False)).start()
+        mock.patch(
+            "sync.stages.youtube.fetch_all_video_ids", return_value=(["v1", "v2", "v3"], False)
+        ).start()
+        mock.patch("sync.stages.database.upsert_video").start()
+        mock.patch("sync.stages.database.delete_videos_not_in").start()
+
+    def test_full_detail_fetch_logs_nothing(self) -> None:
+        mock.patch(
+            "sync.stages.youtube.fetch_videos",
+            return_value=[
+                {"id": "v1", "channel_id": "UC1"},
+                {"id": "v2", "channel_id": "UC1"},
+                {"id": "v3", "channel_id": "UC1"},
+            ],
+        ).start()
+        counts = SyncCounts()
+
+        with self.assertNoLogs("youtube_analytics.sync", level="WARNING"):
+            stages.sync_videos(counts, set())
+
+    def test_ids_missing_from_detail_fetch_are_logged(self) -> None:
+        mock.patch(
+            "sync.stages.youtube.fetch_videos",
+            return_value=[{"id": "v1", "channel_id": "UC1"}, {"id": "v3", "channel_id": "UC1"}],
+        ).start()
+        counts = SyncCounts()
+
+        with self.assertLogs("youtube_analytics.sync", level="DEBUG") as captured:
+            stages.sync_videos(counts, set())
+
         warnings = [r.getMessage() for r in captured.records if r.levelname == "WARNING"]
-        self.assertEqual(warnings, ["videos cleanup skipped reason=pagination_truncated fetched=1"])
+        self.assertEqual(
+            warnings, ["videos missing from detail fetch count=1 ids=['v2']"]
+        )
 
 
 class VideoShortsClassificationGateTest(unittest.TestCase):
@@ -86,16 +177,16 @@ class VideoShortsClassificationGateTest(unittest.TestCase):
 
     def setUp(self) -> None:
         self.addCleanup(mock.patch.stopall)
-        mock.patch("sync.stages.youtube.fetch_uploads_playlist_id", return_value="UU123").start()
+        mock.patch("sync.stages.youtube.fetch_channel_identity", return_value=("UC1", "UU123")).start()
         mock.patch(
             "sync.stages.youtube.fetch_all_video_ids", return_value=(["v1"], False)
         ).start()
         mock.patch(
             "sync.stages.youtube.fetch_videos",
-            return_value=[{"id": "v1", "title": "Kept", "content_type": None}],
+            return_value=[{"id": "v1", "channel_id": "UC1", "title": "Kept", "content_type": None}],
         ).start()
         self.upsert = mock.patch("sync.stages.database.upsert_video").start()
-        mock.patch("sync.stages.database.delete_videos_not_in", return_value=0).start()
+        mock.patch("sync.stages.database.delete_videos_not_in").start()
 
     def test_complete_shorts_pagination_classifies_normally(self) -> None:
         mock.patch(
@@ -103,7 +194,7 @@ class VideoShortsClassificationGateTest(unittest.TestCase):
         ).start()
         counts = SyncCounts()
 
-        stages.sync_videos(counts)
+        stages.sync_videos(counts, set())
 
         written = self.upsert.call_args.args[0]
         self.assertEqual(written["content_type"], "short")
@@ -115,7 +206,7 @@ class VideoShortsClassificationGateTest(unittest.TestCase):
         counts = SyncCounts()
 
         with self.assertLogs("youtube_analytics.sync", level="DEBUG") as captured:
-            stages.sync_videos(counts)
+            stages.sync_videos(counts, set())
 
         written = self.upsert.call_args.args[0]
         self.assertIsNone(written["content_type"])
@@ -148,14 +239,15 @@ class PlaylistCleanupGateTest(unittest.TestCase):
         ).start()
         mock.patch(
             "sync.stages.youtube.fetch_playlist_items",
-            return_value=([{"id": "i1", "playlist_id": "PL1"}], False),
+            return_value=([{"id": "i1", "playlist_id": "PL1", "video_id": "v1"}], False),
         ).start()
         counts = SyncCounts()
 
-        stages.sync_playlists(counts)
+        playlist_video_ids = stages.sync_playlists(counts)
 
         self.delete_items.assert_called_once_with("PL1")
         self.delete_playlists.assert_called_once_with(["PL1"])
+        self.assertEqual(playlist_video_ids, {"v1"})
 
     def test_truncated_items_leave_that_playlist_untouched(self) -> None:
         """The item replace is delete-then-reinsert, so a partial page set must not run
@@ -166,7 +258,7 @@ class PlaylistCleanupGateTest(unittest.TestCase):
         ).start()
         mock.patch(
             "sync.stages.youtube.fetch_playlist_items",
-            return_value=([{"id": "i1", "playlist_id": "PL1"}], True),
+            return_value=([{"id": "i1", "playlist_id": "PL1", "video_id": "v1"}], True),
         ).start()
         counts = SyncCounts()
 
@@ -190,7 +282,7 @@ class PlaylistCleanupGateTest(unittest.TestCase):
         ).start()
         mock.patch(
             "sync.stages.youtube.fetch_playlist_items",
-            return_value=([{"id": "i1", "playlist_id": "PL1"}], False),
+            return_value=([{"id": "i1", "playlist_id": "PL1", "video_id": "v1"}], False),
         ).start()
         counts = SyncCounts()
 
@@ -204,6 +296,31 @@ class PlaylistCleanupGateTest(unittest.TestCase):
         self.assertEqual(
             warnings, ["playlists cleanup skipped reason=pagination_truncated fetched=1"]
         )
+
+
+class PruningTest(unittest.TestCase):
+    """`sync_pruning()` is the sole deleter of video rows, and it deletes unconditionally
+    against whatever channel-owned set it's given."""
+
+    def test_deletes_against_the_given_owned_set(self) -> None:
+        delete = mock.patch("sync.stages.database.delete_videos_not_in", return_value=5).start()
+        self.addCleanup(mock.patch.stopall)
+        counts = SyncCounts()
+
+        stages.sync_pruning(counts, {"v1", "v2"})
+
+        delete.assert_called_once_with(["v1", "v2"])
+        self.assertEqual(counts.rows_deleted, 5)
+
+    def test_empty_owned_set_deletes_everything(self) -> None:
+        delete = mock.patch("sync.stages.database.delete_videos_not_in", return_value=0).start()
+        self.addCleanup(mock.patch.stopall)
+        counts = SyncCounts()
+
+        stages.sync_pruning(counts, set())
+
+        delete.assert_called_once_with([])
+        self.assertEqual(counts.rows_deleted, 0)
 
 
 class AnalyticsEmptyRowTerminationTest(unittest.TestCase):

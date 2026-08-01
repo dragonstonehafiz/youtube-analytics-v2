@@ -103,6 +103,26 @@ class ValidatePlanTest(unittest.TestCase):
         with self.assertRaises(PlanValidationError):
             validate_plan([PlanStage("fx_rates", None, 2024)])
 
+    def test_rejects_scope_on_pruning(self) -> None:
+        with self.assertRaises(PlanValidationError):
+            validate_plan([PlanStage("pruning", "all"), PlanStage("playlists"), PlanStage("videos")])
+
+    def test_rejects_pruning_without_playlists_or_videos(self) -> None:
+        with self.assertRaises(PlanValidationError):
+            validate_plan([PlanStage("pruning")])
+
+    def test_rejects_pruning_without_videos(self) -> None:
+        with self.assertRaises(PlanValidationError):
+            validate_plan([PlanStage("pruning"), PlanStage("playlists")])
+
+    def test_rejects_pruning_without_playlists(self) -> None:
+        with self.assertRaises(PlanValidationError):
+            validate_plan([PlanStage("pruning"), PlanStage("videos")])
+
+    def test_accepts_pruning_with_both_prerequisites_in_any_submission_order(self) -> None:
+        stages = validate_plan([PlanStage("pruning"), PlanStage("videos"), PlanStage("playlists")])
+        self.assertEqual([s.stage for s in stages], ["playlists", "videos", "pruning"])
+
     def test_rejects_year_before_earliest_available(self) -> None:
         with self.assertRaises(PlanValidationError):
             validate_plan([PlanStage("video_analytics", "year", 2022)])
@@ -140,11 +160,14 @@ class RecordedValuesTest(unittest.TestCase):
 
 
 class FullIncrementalPlanTest(unittest.TestCase):
-    def test_contains_all_five_stages_in_canonical_order(self) -> None:
+    def test_contains_all_five_non_destructive_stages_in_canonical_order(self) -> None:
         self.assertEqual(
             [s.stage for s in full_incremental_plan()],
-            ["videos", "playlists", "video_analytics", "video_traffic_sources", "fx_rates"],
+            ["playlists", "videos", "video_analytics", "video_traffic_sources", "fx_rates"],
         )
+
+    def test_excludes_pruning(self) -> None:
+        self.assertNotIn("pruning", [s.stage for s in full_incremental_plan()])
 
     def test_both_period_aware_stages_are_incremental(self) -> None:
         by_stage = {s.stage: s for s in full_incremental_plan()}

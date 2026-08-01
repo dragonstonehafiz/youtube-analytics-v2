@@ -80,11 +80,22 @@ class StartBackgroundSchedulerTest(unittest.TestCase):
         stages = self.run_plan.call_args[0][0]
         self.assertEqual(
             [s.stage for s in stages],
-            ["videos", "playlists", "video_analytics", "video_traffic_sources", "fx_rates"],
+            ["playlists", "videos", "video_analytics", "video_traffic_sources", "fx_rates"],
         )
         by_stage = {s.stage: s for s in stages}
         self.assertEqual(by_stage["video_analytics"].scope, "incremental")
         self.assertEqual(by_stage["video_traffic_sources"].scope, "incremental")
+
+    def test_startup_plan_never_includes_pruning(self) -> None:
+        """Pruning deletes videos and must never run unattended, even if the startup
+        plan is later extended with more stages."""
+        with mock.patch("sync.scheduler.synced_today", return_value=False):
+            scheduler.start_background_scheduler()
+
+        self.thread.call_args.kwargs["target"]()
+
+        stages = self.run_plan.call_args[0][0]
+        self.assertNotIn("pruning", [s.stage for s in stages])
 
     def test_schedules_no_recurring_timer(self) -> None:
         with mock.patch("sync.scheduler.synced_today", return_value=False), \

@@ -154,16 +154,21 @@ GET  /sync/status
 
 POST /sync/trigger
   Body (JSON): { stages: [ { stage, scope?, year? }, ... ] }
-    stage ∈ videos | playlists | video_analytics | video_traffic_sources | fx_rates
+    stage ∈ videos | playlists | pruning | video_analytics | video_traffic_sources | fx_rates
     scope ∈ incremental | year | all   # video_analytics / video_traffic_sources only,
                                        # required for those two, forbidden on the rest
     year  (int)                        # required with scope=year, forbidden otherwise
   → { queued: true }
   422 malformed body, missing `stages`, unknown stage, unknown scope, non-numeric year
-  400 empty `stages`, duplicate stage, missing/misapplied scope or year, unavailable year
+  400 empty `stages`, duplicate stage, missing/misapplied scope or year, unavailable year,
+      `pruning` submitted without both `playlists` and `videos` in the same plan
   409 a sync is already in progress
   Each period-aware stage carries its own scope/year — the two can differ in one plan.
-  Submission order is irrelevant: the backend always executes in canonical stage order.
+  Submission order is irrelevant: the backend always executes in canonical stage order
+  (playlists → videos → pruning → video_analytics → video_traffic_sources → fx_rates).
+  `pruning` is the only stage that deletes video rows (cascades to video_analytics/
+  video_traffic_sources) and is never selected automatically — omit it from a plan and
+  nothing is deleted.
   Active state is reserved before the response, so two concurrent requests cannot both
   be told they were queued. Actual sync runs via FastAPI BackgroundTasks — the response
   returns before the sync completes.
@@ -173,7 +178,7 @@ GET  /sync/runs
   → { items: SyncRun[] }   # newest first
   SyncRun: { id, batch_id, sync_type, scope, year, status, started_at, completed_at,
              rows_fetched, rows_written, rows_deleted, error_message }
-  sync_type ∈ videos | playlists | video_analytics | video_traffic_sources | fx_rates
+  sync_type ∈ videos | playlists | pruning | video_analytics | video_traffic_sources | fx_rates
   status ∈ running | success | failed
   Only stages that actually started have rows; a plan's rows share one batch_id.
 ```

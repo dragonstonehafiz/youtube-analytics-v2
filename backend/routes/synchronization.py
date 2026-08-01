@@ -13,6 +13,7 @@ router = APIRouter()
 SyncStage = Literal[
     "videos",
     "playlists",
+    "pruning",
     "video_analytics",
     "video_traffic_sources",
     "fx_rates",
@@ -49,9 +50,10 @@ def trigger_sync(plan: SyncPlanRequest, background_tasks: BackgroundTasks) -> di
     """Queue a manual sync of the selected stages if no sync is already running.
 
     Unknown stages or scopes are rejected as 422 by request parsing; semantic problems
-    (empty selection, duplicate stage, missing or misapplied period, unavailable year)
-    are rejected as 400; an in-flight sync is rejected as 409. Active state is reserved
-    before the response so a second request cannot also be told it was queued.
+    (empty selection, duplicate stage, missing or misapplied period, unavailable year,
+    pruning submitted without both playlists and videos) are rejected as 400; an
+    in-flight sync is rejected as 409. Active state is reserved before the response so a
+    second request cannot also be told it was queued.
     """
     try:
         stages = sync.validate_plan(

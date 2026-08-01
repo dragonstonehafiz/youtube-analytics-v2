@@ -115,14 +115,20 @@ def _parse_duration(value: str | None) -> int | None:
     return hours * 3600 + minutes * 60 + seconds
 
 
-def fetch_uploads_playlist_id() -> str:
-    """Return the uploads playlist ID for the authenticated channel."""
+def fetch_channel_identity() -> tuple[str, str]:
+    """Return (channel_id, uploads_playlist_id) for the authenticated channel.
+
+    Both come from the same `channels.list(mine=true)` response so the ownership check
+    in `sync_videos()` compares against the same identity the uploads playlist belongs
+    to, rather than one inferred from the playlist ID.
+    """
     yt = _data_client()
     response = yt.channels().list(part="contentDetails", mine=True, maxResults=1).execute()
     items = response.get("items", [])
     if not items:
         raise RuntimeError("No channel found for the authenticated user.")
-    return items[0]["contentDetails"]["relatedPlaylists"]["uploads"]
+    channel = items[0]
+    return channel["id"], channel["contentDetails"]["relatedPlaylists"]["uploads"]
 
 
 def fetch_shorts_video_ids(uploads_playlist_id: str) -> tuple[set[str], bool]:
@@ -233,6 +239,7 @@ def fetch_videos(video_ids: list[str]) -> list[dict]:
 
         results.append({
             "id": item["id"],
+            "channel_id": snippet.get("channelId"),
             "title": snippet.get("title", ""),
             "description": snippet.get("description"),
             "published_at": snippet.get("publishedAt"),

@@ -49,7 +49,7 @@ export interface SyncState {
 export type PeriodAwareSyncStage = 'video_analytics' | 'video_traffic_sources'
 
 /** Sync stages that are always incremental and accept no scope or year. */
-export type IncrementalOnlySyncStage = 'videos' | 'playlists' | 'fx_rates'
+export type IncrementalOnlySyncStage = 'videos' | 'playlists' | 'pruning' | 'fx_rates'
 
 export type SyncStage = PeriodAwareSyncStage | IncrementalOnlySyncStage
 

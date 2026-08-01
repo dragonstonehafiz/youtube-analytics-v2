@@ -48,6 +48,7 @@ class OrchestrationTestCase(unittest.TestCase):
             for name in (
                 "sync_videos",
                 "sync_playlists",
+                "sync_pruning",
                 "sync_video_analytics",
                 "sync_video_traffic_sources",
                 "sync_fx_rates",
@@ -97,6 +98,14 @@ class SelectedStageExecutionTest(OrchestrationTestCase):
         self.assertEqual(
             self.calls,
             ["sync_playlists", "sync_video_traffic_sources", "sync_fx_rates"],
+        )
+
+    def test_pruning_runs_after_playlists_and_videos(self) -> None:
+        execute_plan([PlanStage("fx_rates"), PlanStage("pruning"), PlanStage("videos"), PlanStage("playlists")])
+
+        self.assertEqual(
+            self.calls,
+            ["sync_playlists", "sync_videos", "sync_pruning", "sync_fx_rates"],
         )
 
     def test_creates_one_row_per_started_stage_only(self) -> None:
@@ -155,8 +164,26 @@ class FailFastTest(OrchestrationTestCase):
         with self.assertRaises(RuntimeError):
             execute_plan(full_incremental_plan())
 
-        self.assertEqual(self.recorded_stages, ["videos", "playlists"])
-        self.assertEqual(self.calls, ["sync_videos"])
+        self.assertEqual(self.recorded_stages, ["playlists"])
+        self.assertEqual(self.calls, [])
+
+    def test_playlist_failure_prevents_pruning_from_running(self) -> None:
+        self.stage_mocks["sync_playlists"].side_effect = RuntimeError("quota exceeded")
+
+        with self.assertRaises(RuntimeError):
+            execute_plan([PlanStage("playlists"), PlanStage("videos"), PlanStage("pruning")])
+
+        self.stage_mocks["sync_pruning"].assert_not_called()
+        self.assertEqual(self.calls, [])
+
+    def test_video_failure_prevents_pruning_from_running(self) -> None:
+        self.stage_mocks["sync_videos"].side_effect = RuntimeError("quota exceeded")
+
+        with self.assertRaises(RuntimeError):
+            execute_plan([PlanStage("playlists"), PlanStage("videos"), PlanStage("pruning")])
+
+        self.stage_mocks["sync_pruning"].assert_not_called()
+        self.assertEqual(self.calls, ["sync_playlists"])
 
     def test_failed_stage_is_recorded_with_its_error(self) -> None:
         self.stage_mocks["sync_videos"].side_effect = RuntimeError("quota exceeded")
@@ -281,7 +308,7 @@ class StageLoggingTest(OrchestrationTestCase):
         )
 
     def test_independent_stage_counts_are_never_summed(self) -> None:
-        def videos_side_effect(counts: object) -> None:
+        def videos_side_effect(counts: object, playlist_video_ids: object) -> None:
             self.calls.append("sync_videos")
             counts.rows_fetched = 10  # type: ignore[attr-defined]
 
@@ -313,7 +340,7 @@ class StageLoggingTest(OrchestrationTestCase):
 
 class StageFailureLoggingTest(OrchestrationTestCase):
     def test_stage_failure_logs_partial_counts_and_safe_context_not_secret_text(self) -> None:
-        def fail(counts: object) -> None:
+        def fail(counts: object, playlist_video_ids: object) -> None:
             self.calls.append("sync_videos")
             counts.rows_fetched = 7  # type: ignore[attr-defined]
             raise RuntimeError('access_token=FAKE_OAUTH_TOKEN body={"quotaExceeded": true}')
