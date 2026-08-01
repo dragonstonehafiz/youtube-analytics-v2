@@ -30,15 +30,17 @@ How data gets from the YouTube APIs into SQLite: plan validation, stage order, s
 
 ## Pipeline overview
 
-A sync runs an explicit **plan**: a set of selected stages, always executed in the canonical order defined by `STAGE_ORDER` (`sync/plans.py:12-18`), regardless of the order the stages were submitted in:
+A sync runs an explicit **plan**: a set of selected stages, always executed in the canonical order defined by `STAGE_ORDER` (`sync/plans.py:14-21`), regardless of the order the stages were submitted in:
 
 ```
-videos → playlists → video_analytics → video_traffic_sources → fx_rates
+playlists → videos → pruning → video_analytics → video_traffic_sources → fx_rates
 ```
 
-`execute_plan()` (`sync/orchestration.py:135-181`) iterates `STAGE_ORDER` and skips any stage the plan omits. Each selected stage is wrapped by `_run_stage()` (`sync/orchestration.py:77-132`) and recorded as its own `sync_runs` row; every row from one plan shares one `batch_id` (a UUID generated once per plan). Omitted stages get **no** row — there are no placeholder records. Execution is fail-fast: a failing stage is recorded with its partial counters, and the stages after it neither run nor create rows.
+`pruning` is the only stage that deletes video rows. It is opt-in: `validate_plan()` rejects any plan that names it without also naming both `playlists` and `videos` (`STAGES_REQUIRING_PLAYLISTS_AND_VIDEOS`, `sync/plans.py:33`), and it is excluded from the startup plan (`DESTRUCTIVE_STAGES`, `sync/plans.py:25`; see [Startup freshness and state](#startup-freshness-and-state)).
 
-The stage implementations themselves (`sync_videos`, `sync_playlists`, `sync_video_analytics`, `sync_video_traffic_sources`, `sync_fx_rates`) live in `sync/stages.py`. `orchestration.py` maps each stage name to its progress message and call signature in `_STAGE_REGISTRY` (`sync/orchestration.py:53-74`) and only sequences them and records their outcomes.
+`execute_plan()` (`sync/orchestration.py:112-183`) iterates `STAGE_ORDER` and skips any stage the plan omits. Each selected stage is wrapped by `_run_stage()` (`sync/orchestration.py:54-109`) and recorded as its own `sync_runs` row; every row from one plan shares one `batch_id` (a UUID generated once per plan). Omitted stages get **no** row — there are no placeholder records. Execution is fail-fast: a failing stage is recorded with its partial counters, and the stages after it neither run nor create rows — this is also what guarantees `pruning` can never run after a `playlists` or `videos` failure.
+
+The stage implementations themselves (`sync_videos`, `sync_playlists`, `sync_pruning`, `sync_video_analytics`, `sync_video_traffic_sources`, `sync_fx_rates`) live in `sync/stages.py`. `orchestration.py` looks up each stage's progress message in `_STAGE_MESSAGES` (`sync/orchestration.py:44-51`) and dispatches to its call inline inside `execute_plan()`'s loop, since `playlists`/`videos`/`pruning` thread plan-local video-ID sets between each other (see [Video and playlist synchronization](#video-and-playlist-synchronization)) while the other stages don't need that state.
 
 Two entry points wrap the executor:
 
@@ -49,27 +51,28 @@ Calling `execute_plan` from an unreserved caller leaves the sync unguarded; call
 
 ## Sync plans and validation
 
-`sync/plans.py` owns the plan vocabulary. Constants: `STAGE_ORDER` (canonical order), `PERIOD_AWARE_STAGES` (`sync/plans.py:22` — `video_analytics` and `video_traffic_sources`), `SCOPES` (`sync/plans.py:25`), and `FULL_SYNC_TYPES` (`sync/plans.py:32`), which is *derived from* `STAGE_ORDER` so the execution order and the complete-batch definition cannot drift.
+`sync/plans.py` owns the plan vocabulary. Constants: `STAGE_ORDER` (canonical order, `sync/plans.py:14-21`), `DESTRUCTIVE_STAGES` (`sync/plans.py:25` — just `pruning`; excluded from `full_incremental_plan()`), `PERIOD_AWARE_STAGES` (`sync/plans.py:29` — `video_analytics` and `video_traffic_sources`), `STAGES_REQUIRING_PLAYLISTS_AND_VIDEOS` (`sync/plans.py:33` — just `pruning`), `SCOPES` (`sync/plans.py:36`), and `FULL_SYNC_TYPES` (`sync/plans.py:43`), which is *derived from* `STAGE_ORDER` so the execution order and the complete-batch definition cannot drift.
 
-`PlanStage` (`sync/plans.py:40-51`) is a frozen dataclass of `stage`, `scope`, `year`. `scope`/`year` stay `None` for the always-incremental stages, which keeps `validate_plan()` idempotent — a validated plan revalidates cleanly rather than being rejected for carrying a scope it should not.
+`PlanStage` (`sync/plans.py:51-61`) is a frozen dataclass of `stage`, `scope`, `year`. `scope`/`year` stay `None` for the always-incremental stages, which keeps `validate_plan()` idempotent — a validated plan revalidates cleanly rather than being rejected for carrying a scope it should not.
 
-`validate_plan(stages)` (`sync/plans.py:78-102`) returns the stages in canonical order and raises `PlanValidationError` when:
+`validate_plan(stages)` (`sync/plans.py:89-120`) returns the stages in canonical order and raises `PlanValidationError` when:
 
 - the plan is empty;
 - a stage appears more than once;
 - a stage name is not in `STAGE_ORDER`;
 - a period-aware stage omits `scope`, or names a scope outside `SCOPES`;
 - `scope="year"` without a `year`, or a `year` supplied with `incremental`/`all`;
-- a `scope` or `year` is attached to `videos`, `playlists`, or `fx_rates`;
-- the requested year is outside `available_years()`.
+- a `scope` or `year` is attached to `videos`, `playlists`, `pruning`, or `fx_rates`;
+- the requested year is outside `available_years()`;
+- `pruning` is named without both `playlists` and `videos` also in the plan.
 
-`available_years()` (`sync/plans.py:53-63`) spans `database.get_earliest_published_year()` through the current year, newest first. It returns an **empty tuple** when no videos have been synced yet, in which case every year-scoped plan is rejected; `incremental` and `all` plans stay valid.
+`available_years()` (`sync/plans.py:64-74`) spans `database.get_earliest_published_year()` through the current year, newest first. It returns an **empty tuple** when no videos have been synced yet, in which case every year-scoped plan is rejected; `incremental` and `all` plans stay valid.
 
-`execute_plan()` revalidates its input rather than trusting the caller, so no code path can drive the stage loop with an unchecked plan. `full_incremental_plan()` (`sync/plans.py:126-131`) builds the complete five-stage incremental plan used by the startup sync.
+`execute_plan()` revalidates its input rather than trusting the caller, so no code path can drive the stage loop with an unchecked plan. `full_incremental_plan()` (`sync/plans.py:144-154`) builds the five-stage **non-destructive** startup plan — every canonical stage except `pruning` — used by the startup sync.
 
 ## Startup freshness and state
 
-- `start_background_scheduler()` (`sync/scheduler.py:30-44`), called once from `server.py`'s lifespan, runs **one** complete incremental sync on a daemon thread unless `synced_today()` is already true. There is no recurring timer: the app is not expected to stay running long enough for one to fire, so freshness is decided per launch.
+- `start_background_scheduler()` (`sync/scheduler.py:30-44`), called once from `server.py`'s lifespan, runs **one** non-destructive incremental sync (`full_incremental_plan()`, which excludes `pruning`) on a daemon thread unless `synced_today()` is already true. There is no recurring timer: the app is not expected to stay running long enough for one to fire, so freshness is decided per launch. Pruning is never selected automatically at any freshness check — it is manual-only.
 - `synced_today()` (`sync/scheduler.py:12-27`) calls `database.get_last_successful_run_completed_at()` and compares its local calendar date against today. A missing or unparseable timestamp counts as not-synced. Restarting the backend after any successful sync on the same local date therefore does nothing.
 - There is no separate persisted checkpoint — `sync_runs` is the sole source of truth. Any single succeeded run qualifies: its `sync_type`, scope, and `batch_id` do not matter, and other stages in the same batch may have failed or never run. Only failed and still-running rows are ignored.
 - A selective manual sync therefore suppresses that day's startup sync. Manually syncing one stage — even just `fx_rates` — marks the day as synced, and the next launch runs nothing. A day on which every run failed still counts as not-synced, so the next launch retries.
@@ -81,25 +84,28 @@ Calling `execute_plan` from an unreserved caller leaves the sync unguarded; call
 
 Scopes are per-stage, not per-sync: `video_analytics` and `video_traffic_sources` each carry their own `scope`/`year` and can differ within one plan (e.g. analytics for `2024` alongside a full-history traffic-source refetch).
 
-- `scope`/`year` affect **only** `sync_video_analytics` and `sync_video_traffic_sources` (`sync/stages.py`). Videos, playlists, and FX rates always sync incrementally and must not be given a scope at all — `validate_plan()` rejects a plan that tries.
+- `scope`/`year` affect **only** `sync_video_analytics` and `sync_video_traffic_sources` (`sync/stages.py`). Videos, playlists, pruning, and FX rates always sync incrementally (or, for pruning, run once against current state) and must not be given a scope at all — `validate_plan()` rejects a plan that tries.
 - `"incremental"`: resume each video from `INCREMENTAL_LOOKBACK_DAYS` before its own last-synced date, clamped to its publish date (see [Shared incremental lookback](#shared-incremental-lookback)).
 - `"year"`: refetch the given calendar year for every video, ignoring any resume checkpoint, clamped to `[publish_date, yesterday]`.
 - `"all"`: refetch each video's entire history (`publish_date` → yesterday), ignoring any resume checkpoint.
 
 ## Stage tracking
 
-- `SyncCounts` (`sync/stages.py:20-25`) is a mutable dataclass (`rows_fetched`, `rows_written`, `rows_deleted`) accumulated incrementally *as rows are processed inside each stage's loop* — not computed from a return value at the end. If a stage raises partway through (e.g. video 200 of 378), the `sync_runs` row for that stage still reflects accurate partial totals, not zeros. It's defined in `sync/stages.py` since that's what the stage functions mutate directly; `sync/orchestration.py` imports it only to construct a fresh instance per stage.
-- `_run_stage()` (`sync/orchestration.py:77-132`) always re-raises the underlying exception after recording failure via `fail_sync_run()` — so `execute_plan()`'s `finally` (which calls `status.finish()`) still runs, and the exception propagates to the caller. It also logs that stage's start, completion, and failure — see [Sync logging](#sync-logging).
-- For `videos`/`playlists`/`fx_rates`, `sync_runs.scope` is always `"incremental"` and `year` is `NULL`. For `video_analytics`/`video_traffic_sources`, `scope`/`year` reflect that stage's own plan entry. `recorded_scope()`/`recorded_year()` (`sync/plans.py:66-75`) derive both values, so a non-period stage can never record a scope it was not run with.
-- The playlists stage's `rows_deleted` sums `delete_playlist_items()`'s return value across every playlist in the loop (items are deleted and fully re-inserted on every sync, `sync/stages.py:109`) plus `delete_playlists_not_in()`'s return value (`sync/stages.py:120`) — cascaded FK deletes (e.g. `video_analytics` rows removed because their parent video was deleted) are not counted, since those helpers only report `cursor.rowcount` for the row they directly targeted.
+- `SyncCounts` (`sync/stages.py:21-25`) is a mutable dataclass (`rows_fetched`, `rows_written`, `rows_deleted`) accumulated incrementally *as rows are processed inside each stage's loop* — not computed from a return value at the end. If a stage raises partway through (e.g. video 200 of 378), the `sync_runs` row for that stage still reflects accurate partial totals, not zeros. It's defined in `sync/stages.py` since that's what the stage functions mutate directly; `sync/orchestration.py` imports it only to construct a fresh instance per stage.
+- `_run_stage()` (`sync/orchestration.py:54-109`) always re-raises the underlying exception after recording failure via `fail_sync_run()` — so `execute_plan()`'s `finally` (which calls `status.finish()`) still runs, and the exception propagates to the caller. It also logs that stage's start, completion, and failure — see [Sync logging](#sync-logging).
+- For `videos`/`playlists`/`pruning`/`fx_rates`, `sync_runs.scope` is always `"incremental"` and `year` is `NULL`. For `video_analytics`/`video_traffic_sources`, `scope`/`year` reflect that stage's own plan entry. `recorded_scope()`/`recorded_year()` (`sync/plans.py:77-86`) derive both values, so a non-period stage can never record a scope it was not run with.
+- `pruning` gets its own `sync_runs` row and its own `rows_deleted` count, independent of `videos`'/`playlists`' counts — it is the only stage that writes to `rows_deleted` for video rows.
+- The playlists stage's `rows_deleted` sums `delete_playlist_items()`'s return value across every playlist in the loop (items are deleted and fully re-inserted on every sync, `sync/stages.py:140`) plus `delete_playlists_not_in()`'s return value (`sync/stages.py:151`) — cascaded FK deletes (e.g. `video_analytics` rows removed because their parent video was deleted) are not counted, since those helpers only report `cursor.rowcount` for the row they directly targeted.
 
 ## Video and playlist synchronization
 
-- `sync_videos()`: fetches the uploads playlist ID, the Shorts video-ID set (via UUSH), and all video IDs; fetches full video details in batches of 50 (YouTube API's per-request ID limit); collects everything into memory first, upserts all of it, **then** deletes any DB video not present in the freshly-fetched ID set (cascades to `video_analytics`/`video_traffic_sources`).
-- `sync_playlists()`: same collect-then-upsert-then-delete order, at the playlist level (cascades to `playlist_items`). Its item replace is delete-then-reinsert per playlist, and the listing-level reconcile runs after every playlist has been processed.
-- The uploads playlist is how the Data API enumerates a channel's videos — there is no channel-wide video listing endpoint — so `fetch_all_video_ids()`'s result *is* the authority for which videos still exist. Deleting against it is correct only when its pagination completed.
-- Every delete in these two stages is therefore gated on the `truncated` flag its paginator returns (see [Pagination termination](#pagination-termination)). When set: `sync_videos()` skips `delete_videos_not_in()`, `sync_playlists()` skips `delete_playlist_items()` for the affected playlist (leaving its stored items intact rather than replacing them with a partial page set), and a truncated playlist *listing* skips `delete_playlists_not_in()`. Upserts always run, so a truncated sync still makes forward progress and never removes data. Each skip emits a `WARNING` naming `reason=pagination_truncated`.
-- These are the only three deletes in the sync path. `sync_video_analytics()`, `sync_video_traffic_sources()`, and `sync_fx_rates()` only ever upsert; analytics and traffic-source rows are removed exclusively by cascade from a video deletion. Their writes are idempotent, so a short fetch there is self-healing on the next run and needs no gate.
+Video deletion and video/playlist discovery are separate stages. `playlists` and `videos` only fetch and upsert; only `pruning` deletes video rows. This split exists so a plan can safely refresh video/playlist data without any risk of deleting anything — pruning has to be selected deliberately.
+
+- `sync_playlists()` (`sync/stages.py:101-152`): fetches all playlists and their items, upserts them, then deletes any DB playlist not returned by the API (cascades to `playlist_items`). Its item replace is delete-then-reinsert per playlist, gated on that playlist's own item pagination completing (leaving stored items untouched otherwise); the listing-level reconcile (`delete_playlists_not_in()`) is gated on the playlist *listing* itself completing. Both gates emit a `WARNING` naming `reason=pagination_truncated` when they skip. It also collects every non-null `video_id` referenced by any playlist item — regardless of that playlist's own truncation state, since a partial page set is still real, known membership — and returns that set for `sync_videos()` to combine with the uploads-playlist IDs.
+- `sync_videos()` (`sync/stages.py:37-98`): calls `fetch_channel_identity()` to get the authenticated channel's ID and uploads-playlist ID, fetches the Shorts video-ID set (via UUSH) and the full uploads-playlist ID list, then fetches details (batches of 50, the Data API's per-request ID limit) for the **union** of the uploads IDs and the playlist-discovered candidates passed in from `sync_playlists()`. Every uploads ID is treated as channel-owned outright; a playlist-only candidate is upserted only when its returned `snippet.channelId` matches the authenticated channel — this ownership check is what stops a video from someone else's playlist being imported as if it were this channel's. It never deletes. It returns the full channel-owned ID set (every uploads ID, even one `videos.list` didn't return details for, plus every ownership-confirmed playlist-only ID) for `sync_pruning()` to use as its retain set.
+- `sync_pruning()` (`sync/stages.py:155-158`): the sole stage that deletes video rows (cascades to `video_analytics`/`video_traffic_sources`). Calls `database.delete_videos_not_in()` unconditionally with the channel-owned ID set built by `sync_playlists()` + `sync_videos()` in the same plan — there is no truncation-based safety gate on pruning itself; canonical stage ordering and `validate_plan()`'s `playlists`+`videos` dependency are what keep it from ever running without that set populated. An empty set deletes every video (`database/videos.py::delete_videos_not_in()` has no empty-list guard) — correct only when the channel genuinely has zero owned videos, which is why pruning is manual-only and never part of the startup plan.
+- The uploads playlist is how the Data API enumerates a channel's videos — there is no channel-wide video listing endpoint — so `fetch_all_video_ids()`'s result is one of the two authorities pruning's retain set is built from (the other being playlist membership, for videos the uploads enumeration might otherwise miss).
+- `sync_video_analytics()`, `sync_video_traffic_sources()`, and `sync_fx_rates()` only ever upsert; analytics and traffic-source rows are removed exclusively by cascade from a pruning-triggered video deletion. Their writes are idempotent, so a short fetch there is self-healing on the next run and needs no gate.
 
 ## Shared incremental lookback
 
@@ -110,7 +116,7 @@ Scopes are per-stage, not per-sync: `video_analytics` and `video_traffic_sources
 
 ## Analytics synchronization
 
-`sync_video_analytics(scope, year, counts)` (`sync/stages.py:123-178`):
+`sync_video_analytics(scope, year, counts)` (`sync/stages.py:161-216`):
 
 - Per video, computes `start`/`range_end` based on `scope` (see [Scope behavior](#scope-behavior)); for `"incremental"`, `start = _incremental_lookback_start(get_last_analytics_date(video_id), publish_date)`.
 - If `start > range_end`, the video is skipped entirely via `continue` — **zero API calls** for that video. This is what prevents querying analytics for a video before it existed even when an unrelated `year` is requested.
@@ -119,7 +125,7 @@ Scopes are per-stage, not per-sync: `video_analytics` and `video_traffic_sources
 
 ## Traffic-source synchronization
 
-`sync_video_traffic_sources(scope, year, counts)` (`sync/stages.py:181-236`):
+`sync_video_traffic_sources(scope, year, counts)` (`sync/stages.py:219-274`):
 
 - Same `scope` semantics as analytics, including the shared [incremental lookback](#shared-incremental-lookback): `start = _incremental_lookback_start(get_last_traffic_source_date(video_id), publish_date)`.
 - Traffic-source data for a given day is not fully available from the API until some time after that day ends; the lookback corrects any recent day that was stored before its data had fully arrived. Re-upserting an already-settled day leaves its metric values unchanged, but `updated_at` is still refreshed on every upsert (see `database.md`) — it is not a true no-op at the row level.
@@ -127,7 +133,7 @@ Scopes are per-stage, not per-sync: `video_analytics` and `video_traffic_sources
 
 ## FX-rate synchronization
 
-`sync_fx_rates()` (`sync/stages.py:239-278`):
+`sync_fx_rates()` (`sync/stages.py:277-316`):
 
 - Incremental from `get_last_fx_rate()["date"] + 1 day`; first run starts `2015-01-01`.
 - Fetches `USDSGD=X` from Yahoo Finance via `yfinance` (imported **inside** the function, not at module scope).
@@ -177,9 +183,13 @@ clients, or batches.
 `truncated` is what makes early termination safe rather than merely quiet: it marks the
 returned rows as an incomplete view that must not be treated as authoritative for
 absence. See [Video and playlist synchronization](#video-and-playlist-synchronization)
-for the three deletes it gates. `fetch_shorts_video_ids()` also returns the flag, but no
-caller acts on it — a truncated Shorts set only mislabels some videos' `content_type`,
-which the next complete sync corrects.
+for the two playlist-level deletes it gates (`delete_playlist_items()` per playlist and
+the listing-level `delete_playlists_not_in()`) — `sync_videos()` no longer deletes at
+all, and `sync_pruning()`'s delete is ungated by any truncation flag. `fetch_all_video_ids()`'s
+own `truncated` flag is otherwise unused now that `sync_videos()` doesn't delete against
+it. `fetch_shorts_video_ids()` also returns the flag, but no caller acts on it — a
+truncated Shorts set only mislabels some videos' `content_type`, which the next complete
+sync corrects.
 
 The Analytics API paginator is unaffected. `_fetch_analytics_rows()`
 (`youtube/analytics_api.py:100`) is `startIndex`-based rather than token-based and
@@ -224,8 +234,12 @@ they reach `application.log` as well and are visible without lowering the log le
 |---|---|---|
 | Empty page with a token | `_log_page()` in `youtube/data_api.py`, when a page returns zero items but still supplies a `nextPageToken` | the page-fetched fields plus `empty_page_with_token=true` |
 | Repeated pagination cursor | `_log_page()` in `youtube/data_api.py`, when a `nextPageToken` was already followed during this call | the page-fetched fields plus `repeated_page_token=true`, including the repeated token itself |
-| Cleanup skipped | `sync_videos()`/`sync_playlists()`, when a paginator reported truncation | which cleanup was skipped, `reason=pagination_truncated`, the fetched count, and the playlist id/title for the per-playlist case |
+| Playlist cleanup skipped | `sync_playlists()`, when a paginator reported truncation | which cleanup was skipped, `reason=pagination_truncated`, the fetched count, and the playlist id/title for the per-playlist case |
+| Video classification skipped | `sync_videos()`, when Shorts-playlist pagination reported truncation | `reason=shorts_pagination_truncated` |
+| Video details missing | `sync_videos()`, when `fetch_videos()` didn't return an item for one or more requested IDs | count and sorted list of the missing IDs |
 | Request retried | `youtube/analytics_api.py::_analytics_query()` | attempt number, HTTP status, classified reason (`server` or `quota`), delay |
+
+`sync_pruning()` has no analogous skip warning: it deletes unconditionally against whatever channel-owned set it's given, with no truncation-based gate of its own (see [Video and playlist synchronization](#video-and-playlist-synchronization)).
 
 Names and pagination tokens are both logged. A `nextPageToken` is an opaque result-set
 cursor, not a credential, and logging it is what lets a reader tell a repeating token
@@ -243,7 +257,9 @@ and `repr`-quoted — a title containing a newline or an `=` cannot then corrupt
 records carry only `logging_config.exception_context()` (see above), never an API error
 body, which is where an OAuth token could actually appear.
 
-`sync_videos()` and `sync_playlists()` emit no detail records of their own; their work is
-already covered by the page records from the `data_api.py` loops they call. The
-generators' date chunking emits no records — a chunk boundary is not an event a reader
-follows, and the per-video row count already reports what those chunks produced.
+Beyond the truncation/gap warnings above, `sync_videos()` and `sync_playlists()` emit no
+further detail records; most of their work is already covered by the page records from
+the `data_api.py` loops they call. `sync_pruning()` emits no records of its own at all —
+its outcome is fully captured by its `sync_runs` row's `rows_deleted`. The generators'
+date chunking emits no records — a chunk boundary is not an event a reader follows, and
+the per-video row count already reports what those chunks produced.
