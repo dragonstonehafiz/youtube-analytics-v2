@@ -72,9 +72,9 @@ See `.github/PULL_REQUEST_TEMPLATE.md` for the PR checklist.
 
 ## Agent workflow documentation
 
-Agent workflow documentation lives under `agent-workflows/`. Native entrypoints live under `.agents/skills/` and `.claude/skills/`.
+Agent workflow documentation lives under `agent-workflows/`, split into four responsibility-specific subfolders: `programming-workflow/`, `github-workflow/`, and `documentation-workflow/` (each a self-contained, portable bundle usable in other repositories), and `project-docs/` (this repository's own documentation router). Native entrypoints live under `.agents/skills/` and `.claude/skills/`, one pair per responsibility.
 
-Follow `agent-workflows/documentation-maintenance.md` when updating these files.
+Follow `agent-workflows/documentation-workflow/documentation-maintenance.md` when updating these files, using `agent-workflows/project-docs/SKILL.md` to find this repository's canonical ownership map.
 
 Run:
 
@@ -83,6 +83,6 @@ python scripts/validate_agent_workflows.py
 ```
 
 - Update the canonical reference alongside any behavior change it describes.
-- Do not copy detailed guidance into both skill entrypoints — they route to the shared playbooks and references instead.
+- Do not copy detailed guidance into native entrypoints — they route to the shared bundle content instead.
 - Keep root instructions (`AGENTS.md`, `CLAUDE.md`) limited to universal rules.
 - No application build is required for documentation-only changes.

@@ -4,7 +4,12 @@ YouTube analytics dashboard — FastAPI + React/TypeScript + SQLite.
 
 ## Repository workflow
 
-Use `.claude/skills/youtube-analytics-workflow/SKILL.md` for issue drafting, implementation planning, documentation maintenance, PR title/body drafting, and on-demand project references (architecture, database, sync, API, frontend, verification).
+- Implementation planning: `.claude/skills/programming-workflow/SKILL.md`.
+- Issue and pull request drafting: `.claude/skills/github-workflow/SKILL.md`.
+- Documentation writing and maintenance: `.claude/skills/documentation-workflow/SKILL.md`.
+- YouTube Analytics codebase discovery (architecture, database, sync, API, frontend, verification references): `.claude/skills/project-docs/SKILL.md`.
+
+The programming, GitHub, and documentation skills are portable and project-independent; the coding rules, commands, and permissions below are the local inputs they discover here. `project-docs` is specific to this repository.
 
 ## Coding rules
 
