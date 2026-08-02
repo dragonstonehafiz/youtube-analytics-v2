@@ -323,10 +323,13 @@ class PruningTest(unittest.TestCase):
         self.assertEqual(counts.rows_deleted, 0)
 
 
-class AnalyticsEmptyRowTerminationTest(unittest.TestCase):
-    """Locks in `_fetch_analytics_rows()`'s existing behavior: `startIndex` pagination
-    stops on the first empty `rows` response. No production change was needed here — this
-    is regression cover so the Data API fix cannot be mirrored onto it by mistake."""
+class AnalyticsPageSizeTerminationTest(unittest.TestCase):
+    """`_fetch_analytics_rows()` stops as soon as a page returns fewer rows than
+    `maxResults` (including an empty page), and only advances `startIndex`/sleeps
+    between requests when the prior page was exactly full. `maxResults=2` throughout
+    so full-page fixtures stay readable."""
+
+    _HEADERS = [{"name": "day"}, {"name": "views"}]
 
     def _service(self, responses: list[dict]) -> mock.Mock:
         service = mock.Mock()
@@ -337,42 +340,75 @@ class AnalyticsEmptyRowTerminationTest(unittest.TestCase):
         service = self._service([{"rows": [], "columnHeaders": []}])
 
         with mock.patch("youtube.analytics_api.time.sleep") as sleep_mock:
-            rows = analytics_api._fetch_analytics_rows(service, {"startIndex": 1, "maxResults": 200})
+            rows = analytics_api._fetch_analytics_rows(service, {"startIndex": 1, "maxResults": 2})
 
         self.assertEqual(rows, [])
         self.assertEqual(service.reports.return_value.query.call_count, 1)
         sleep_mock.assert_not_called()
 
-    def test_empty_page_after_populated_pages_returns_prior_rows_and_stops(self) -> None:
-        headers = [{"name": "day"}, {"name": "views"}]
+    def test_partial_first_page_returned_with_one_request_and_no_sleep(self) -> None:
         service = self._service([
-            {"rows": [["2024-01-01", 5]], "columnHeaders": headers},
-            {"rows": [], "columnHeaders": headers},
+            {"rows": [["2024-01-01", 5]], "columnHeaders": self._HEADERS},
         ])
 
         with mock.patch("youtube.analytics_api.time.sleep") as sleep_mock:
-            rows = analytics_api._fetch_analytics_rows(service, {"startIndex": 1, "maxResults": 200})
+            rows = analytics_api._fetch_analytics_rows(service, {"startIndex": 1, "maxResults": 2})
 
         self.assertEqual(rows, [{"day": "2024-01-01", "views": 5}])
-        self.assertEqual(service.reports.return_value.query.call_count, 2)
-        self.assertEqual(sleep_mock.call_count, 1)
+        self.assertEqual(service.reports.return_value.query.call_count, 1)
+        sleep_mock.assert_not_called()
 
-    def test_non_empty_rows_advance_start_index(self) -> None:
-        headers = [{"name": "day"}, {"name": "views"}]
+    def test_exactly_full_page_advances_start_index_and_continues(self) -> None:
         service = self._service([
-            {"rows": [["2024-01-01", 5]], "columnHeaders": headers},
-            {"rows": [["2024-01-02", 6]], "columnHeaders": headers},
-            {"rows": [], "columnHeaders": headers},
+            {
+                "rows": [["2024-01-01", 5], ["2024-01-02", 6]],
+                "columnHeaders": self._HEADERS,
+            },
+            {"rows": [], "columnHeaders": self._HEADERS},
         ])
 
-        with mock.patch("youtube.analytics_api.time.sleep"):
-            rows = analytics_api._fetch_analytics_rows(service, {"startIndex": 1, "maxResults": 200})
+        with mock.patch("youtube.analytics_api.time.sleep") as sleep_mock:
+            rows = analytics_api._fetch_analytics_rows(service, {"startIndex": 1, "maxResults": 2})
 
         self.assertEqual(len(rows), 2)
         start_indexes = [
             call.kwargs["startIndex"] for call in service.reports.return_value.query.call_args_list
         ]
-        self.assertEqual(start_indexes, [1, 201, 401])
+        self.assertEqual(start_indexes, [1, 3])
+        self.assertEqual(sleep_mock.call_count, 1)
+
+    def test_full_pages_then_partial_page_returns_all_rows_in_order_and_stops(self) -> None:
+        service = self._service([
+            {
+                "rows": [["2024-01-01", 5], ["2024-01-02", 6]],
+                "columnHeaders": self._HEADERS,
+            },
+            {
+                "rows": [["2024-01-03", 7], ["2024-01-04", 8]],
+                "columnHeaders": self._HEADERS,
+            },
+            {"rows": [["2024-01-05", 9]], "columnHeaders": self._HEADERS},
+        ])
+
+        with mock.patch("youtube.analytics_api.time.sleep") as sleep_mock:
+            rows = analytics_api._fetch_analytics_rows(service, {"startIndex": 1, "maxResults": 2})
+
+        self.assertEqual(
+            rows,
+            [
+                {"day": "2024-01-01", "views": 5},
+                {"day": "2024-01-02", "views": 6},
+                {"day": "2024-01-03", "views": 7},
+                {"day": "2024-01-04", "views": 8},
+                {"day": "2024-01-05", "views": 9},
+            ],
+        )
+        self.assertEqual(service.reports.return_value.query.call_count, 3)
+        start_indexes = [
+            call.kwargs["startIndex"] for call in service.reports.return_value.query.call_args_list
+        ]
+        self.assertEqual(start_indexes, [1, 3, 5])
+        self.assertEqual(sleep_mock.call_count, 2)
 
 
 if __name__ == "__main__":

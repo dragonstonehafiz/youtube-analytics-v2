@@ -192,9 +192,10 @@ truncated Shorts set only mislabels some videos' `content_type`, which the next 
 sync corrects.
 
 The Analytics API paginator is unaffected. `_fetch_analytics_rows()`
-(`youtube/analytics_api.py:100`) is `startIndex`-based rather than token-based and
-already stops on the first empty `rows` response, independently of its index; it has no
-cursor to repeat and returns no truncation flag.
+(`youtube/analytics_api.py:100`) is `startIndex`-based rather than token-based and stops
+as soon as a page returns fewer rows than `maxResults` — including an empty page — and
+continues after a page that returns exactly `maxResults` rows; it has no cursor to
+repeat and returns no truncation flag.
 
 ## Authentication
 
