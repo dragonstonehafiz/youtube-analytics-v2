@@ -102,8 +102,9 @@ def get_aggregated_analytics(
     end_date: str | None = None,
     content_type: str | None = None,
     privacy_status: str | None = None,
+    title: str | None = None,
 ) -> list[dict]:
-    """Return daily analytics aggregated across all videos, grouped by date and content_type, filtered by date range, content_type, and privacy_status."""
+    """Return daily analytics aggregated across all videos, grouped by date and content_type, filtered by date range, content_type, privacy_status, and title."""
     conditions = ["1=1"]
     params: list = []
 
@@ -119,6 +120,9 @@ def get_aggregated_analytics(
     if end_date:
         conditions.append("va.date <= ?")
         params.append(end_date)
+    if title:
+        conditions.append("v.title LIKE ?")
+        params.append(f"%{title}%")
 
     where = " AND ".join(conditions)
     with get_connection() as conn:
@@ -162,6 +166,7 @@ def get_top_videos_by_views(
     privacy_status: str | None = None,
     limit: int = 10,
     sort_by: str = "views",
+    title: str | None = None,
 ) -> list[dict]:
     """Return top videos within the given filters, ranked by views or period watch time, with earnings in SGD
     for the same period. Unsupported sort_by values fall back to views."""
@@ -181,6 +186,9 @@ def get_top_videos_by_views(
     if end_date:
         conditions.append("va.date <= ?")
         params.append(end_date)
+    if title:
+        conditions.append("v.title LIKE ?")
+        params.append(f"%{title}%")
 
     where = " AND ".join(conditions)
     with get_connection() as conn:
@@ -212,6 +220,7 @@ def get_playlist_top_videos_by_views(
     privacy_status: str | None = None,
     limit: int = 10,
     sort_by: str = "views",
+    title: str | None = None,
 ) -> list[dict]:
     """Return top videos in a playlist within the given filters, ranked by views or period watch time, with
     earnings in SGD for the same period. Playlist membership is deduplicated by video ID before aggregation so
@@ -233,6 +242,9 @@ def get_playlist_top_videos_by_views(
     if end_date:
         conditions.append("va.date <= ?")
         params.append(end_date)
+    if title:
+        conditions.append("v.title LIKE ?")
+        params.append(f"%{title}%")
 
     where = " AND ".join(conditions)
     with get_connection() as conn:
@@ -262,8 +274,9 @@ def get_playlist_aggregated_analytics(
     end_date: str | None = None,
     content_type: str | None = None,
     privacy_status: str | None = None,
+    title: str | None = None,
 ) -> list[dict]:
-    """Return daily analytics aggregated across all videos in a playlist, grouped by date and content_type, filtered by date range, content_type, and privacy_status."""
+    """Return daily analytics aggregated across all videos in a playlist, grouped by date and content_type, filtered by date range, content_type, privacy_status, and title."""
     conditions = ["pi.playlist_id = ?"]
     params: list = [playlist_id]
 
@@ -279,6 +292,9 @@ def get_playlist_aggregated_analytics(
     if end_date:
         conditions.append("va.date <= ?")
         params.append(end_date)
+    if title:
+        conditions.append("v.title LIKE ?")
+        params.append(f"%{title}%")
 
     where = " AND ".join(conditions)
     with get_connection() as conn:

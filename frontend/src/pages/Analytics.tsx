@@ -24,6 +24,7 @@ export default function Analytics() {
   const [rows, setRows] = useState<AnalyticsRow[]>([])
   const startDate = searchParams.has('start_date') ? searchParams.get('start_date')! : last28Dates()[0]
   const endDate = searchParams.has('end_date') ? searchParams.get('end_date')! : last28Dates()[1]
+  const title = searchParams.get('title') ?? ''
   const contentType = searchParams.get('content_type') ?? ''
   const privacyStatus = searchParams.get('privacy_status') ?? ''
   const rawTopVideosSortBy = searchParams.get('top_videos_sort_by')
@@ -56,24 +57,27 @@ export default function Analytics() {
     if (endDate) params.end_date = endDate
     if (contentType) params.content_type = contentType
     if (privacyStatus) params.privacy_status = privacyStatus
+    if (title) params.title = title
     const sd = startDate || undefined
     const ed = endDate || undefined
     const ct = contentType || undefined
     const ps = privacyStatus || undefined
-    getVideoStats(undefined, sd, ed, ct, ps).then((data: VideoStats) => setStats(data))
+    const tt = title || undefined
+    getVideoStats(tt, sd, ed, ct, ps).then((data: VideoStats) => setStats(data))
     getChannelAnalytics(params).then((data: { items: AnalyticsRow[] }) => setRows(data.items ?? []))
-    getVideosPublished(sd, ed, ct, ps).then((data: { items: PublishedVideo[] }) => setPublishedVideos(data.items ?? []))
+    getVideosPublished(sd, ed, ct, ps, undefined, tt).then((data: { items: PublishedVideo[] }) => setPublishedVideos(data.items ?? []))
     getChannelTrafficSources(params).then((data: { items: TrafficSourceRow[] }) => setTrafficSources(data.items ?? []))
     getTopVideosByTrafficSource(params).then((data: { items: Record<string, TrafficSourceTopVideo[]> }) => setTopVideosBySource(data.items ?? {}))
-  }, [startDate, endDate, contentType, privacyStatus])
+  }, [startDate, endDate, contentType, privacyStatus, title])
 
   useEffect(() => {
     const sd = startDate || undefined
     const ed = endDate || undefined
     const ct = contentType || undefined
     const ps = privacyStatus || undefined
-    getTopVideosByViews(topVideosSortBy, sd, ed, ct, ps).then((data: { items: TopVideo[] }) => setTopVideos(data.items ?? []))
-  }, [startDate, endDate, contentType, privacyStatus, topVideosSortBy])
+    const tt = title || undefined
+    getTopVideosByViews(topVideosSortBy, sd, ed, ct, ps, tt).then((data: { items: TopVideo[] }) => setTopVideos(data.items ?? []))
+  }, [startDate, endDate, contentType, privacyStatus, topVideosSortBy, title])
 
   const updateParams = (updates: Record<string, string>) => {
     setSearchParams(prev => {
@@ -148,6 +152,16 @@ export default function Analytics() {
         <label>
           End
           <input type="date" value={endDate} onChange={e => updateDateParams({ end_date: e.target.value })} />
+        </label>
+        <div className="filter-bar-sep" />
+        <label>
+          Title
+          <input
+            type="text"
+            placeholder="Search…"
+            value={title}
+            onChange={e => updateParams({ title: e.target.value })}
+          />
         </label>
         <div className="filter-bar-sep" />
         <label>

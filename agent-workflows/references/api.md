@@ -45,7 +45,7 @@ GET  /videos/stats
   never date-restricted. Omitting both dates uses the full available dataset.
 
 GET  /videos/published
-  ?start_date, end_date, content_type, privacy_status, playlist_id
+  ?start_date, end_date, content_type, privacy_status, playlist_id, title
   → { items: PublishedVideo[] }   # id, title, published_at, thumbnail_url, content_type only
   Filters on published_at, not analytics date. No pagination.
   MUST be declared before /videos/{id} in routes/videos.py (path-matching order) — see below.
@@ -92,24 +92,24 @@ GET  /playlists/{playlist_id}/videos
 
 ```
 GET  /analytics/videos
-  ?start_date, end_date, content_type, privacy_status   (no title filter)
+  ?start_date, end_date, content_type, privacy_status, title
   → { items: AnalyticsRow[] }
   Grouped by (date, content_type); date filters va.date, not published_at.
   Video and short rows for the same date are separate entries, zero-filled independently per content_type.
 
 GET  /analytics/videos/top
-  ?start_date, end_date, content_type, privacy_status, sort_by=views
+  ?start_date, end_date, content_type, privacy_status, sort_by=views, title
   sort_by ∈ views | watch_time   (default: views; invalid values → 422)
   → { items: TopVideo[] }   # top 10 videos, channel-wide, ranked by the selected sort
   Each TopVideo has period_views, period_watch_time_hours, period_earnings_sgd — all summed
   within the given period only (not lifetime); ranking happens in SQL before LIMIT.
 
 GET  /analytics/traffic-sources
-  ?start_date, end_date, content_type, privacy_status   (no title filter)
+  ?start_date, end_date, content_type, privacy_status, title
   → { items: TrafficSourceRow[] }   # channel-wide, daily; date filters vts.date
 
 GET  /analytics/traffic-sources/top
-  ?start_date, end_date, content_type, privacy_status
+  ?start_date, end_date, content_type, privacy_status, title
   → { items: Record<traffic_source_type, TrafficSourceTopVideo[]> }
   Top 10 per traffic source type, channel-wide. limit=10 is passed explicitly by routes/analytics.py
   — the underlying database.get_top_videos_by_traffic_source() itself defaults to limit=3.
@@ -119,25 +119,32 @@ GET  /analytics/traffic-sources/top
 
 ```
 GET  /analytics/playlists/{playlist_id}
-  ?start_date, end_date, content_type, privacy_status   (no title filter)
+  ?start_date, end_date, content_type, privacy_status, title
   → { items: AnalyticsRow[] } | 404 if playlist not found
   Same one-row-per-(date, content_type) semantics as /analytics/videos, scoped to the playlist.
 
 GET  /analytics/playlists/{playlist_id}/top
-  ?start_date, end_date, content_type, privacy_status, sort_by=views
+  ?start_date, end_date, content_type, privacy_status, sort_by=views, title
   sort_by ∈ views | watch_time   (default: views; invalid values → 422)
   → { items: TopVideo[] } | 404 if playlist not found   # top 10 within the playlist, ranked by the selected sort
   Same TopVideo shape and period-based aggregation semantics as /analytics/videos/top.
 
 GET  /analytics/playlists/{playlist_id}/traffic-sources
-  ?start_date, end_date, content_type, privacy_status   (no title filter)
+  ?start_date, end_date, content_type, privacy_status, title
   → { items: TrafficSourceRow[] } | 404 if playlist not found
 
 GET  /analytics/playlists/{playlist_id}/traffic-sources/top
-  ?start_date, end_date, content_type, privacy_status
+  ?start_date, end_date, content_type, privacy_status, title
   → { items: Record<traffic_source_type, TrafficSourceTopVideo[]> } | 404 if playlist not found
   Same explicit limit=10 note as the channel-wide equivalent above.
 ```
+
+All nine routes above (the four channel-analytics routes, `/videos/published`, and the four
+playlist-analytics routes) accept `title` as an optional query parameter, applying the same
+parameterized `v.title LIKE ?` (bound to `%{title}%`) case-insensitive partial-match predicate as `/videos` and
+`/videos/stats` (see `database.md`) — combined with any other supplied filters via `AND`, and,
+on playlist routes, with the existing playlist-membership condition. Omitting `title` produces
+identical results to before this filter existed.
 
 ## Metadata
 

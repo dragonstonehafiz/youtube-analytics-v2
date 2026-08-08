@@ -42,11 +42,11 @@ export const getPlaylistVideos = (id: string, page: number = 1, pageSize: number
 export const getChannelAnalytics = (params?: Record<string, string>) =>
   fetch(buildUrl("/analytics/videos", params)).then(r => r.json())
 
-export const getTopVideosByViews = (sortBy: TopVideoSortBy, startDate?: string, endDate?: string, contentType?: string, privacyStatus?: string) =>
-  fetch(buildUrl("/analytics/videos/top", { sort_by: sortBy, ...(startDate && { start_date: startDate }), ...(endDate && { end_date: endDate }), ...(contentType && { content_type: contentType }), ...(privacyStatus && { privacy_status: privacyStatus }) })).then(r => r.json())
+export const getTopVideosByViews = (sortBy: TopVideoSortBy, startDate?: string, endDate?: string, contentType?: string, privacyStatus?: string, title?: string) =>
+  fetch(buildUrl("/analytics/videos/top", { sort_by: sortBy, ...(startDate && { start_date: startDate }), ...(endDate && { end_date: endDate }), ...(contentType && { content_type: contentType }), ...(privacyStatus && { privacy_status: privacyStatus }), ...(title && { title }) })).then(r => r.json())
 
-export const getPlaylistTopVideosByViews = (id: string, sortBy: TopVideoSortBy, startDate?: string, endDate?: string, contentType?: string, privacyStatus?: string) =>
-  fetch(buildUrl(`/analytics/playlists/${id}/top`, { sort_by: sortBy, ...(startDate && { start_date: startDate }), ...(endDate && { end_date: endDate }), ...(contentType && { content_type: contentType }), ...(privacyStatus && { privacy_status: privacyStatus }) })).then(r => r.json())
+export const getPlaylistTopVideosByViews = (id: string, sortBy: TopVideoSortBy, startDate?: string, endDate?: string, contentType?: string, privacyStatus?: string, title?: string) =>
+  fetch(buildUrl(`/analytics/playlists/${id}/top`, { sort_by: sortBy, ...(startDate && { start_date: startDate }), ...(endDate && { end_date: endDate }), ...(contentType && { content_type: contentType }), ...(privacyStatus && { privacy_status: privacyStatus }), ...(title && { title }) })).then(r => r.json())
 
 export const getPlaylistAnalytics = (id: string, params?: Record<string, string>) =>
   fetch(buildUrl(`/analytics/playlists/${id}`, params)).then(r => r.json())
@@ -66,8 +66,8 @@ export const getTopVideosByTrafficSource = (params?: Record<string, string>) =>
 export const getPlaylistTopVideosByTrafficSource = (id: string, params?: Record<string, string>) =>
   fetch(buildUrl(`/analytics/playlists/${id}/traffic-sources/top`, params)).then(r => r.json())
 
-export const getVideosPublished = (startDate?: string, endDate?: string, contentType?: string, privacyStatus?: string, playlistId?: string) =>
-  fetch(buildUrl("/videos/published", { ...(startDate && { start_date: startDate }), ...(endDate && { end_date: endDate }), ...(contentType && { content_type: contentType }), ...(privacyStatus && { privacy_status: privacyStatus }), ...(playlistId && { playlist_id: playlistId }) })).then(r => r.json())
+export const getVideosPublished = (startDate?: string, endDate?: string, contentType?: string, privacyStatus?: string, playlistId?: string, title?: string) =>
+  fetch(buildUrl("/videos/published", { ...(startDate && { start_date: startDate }), ...(endDate && { end_date: endDate }), ...(contentType && { content_type: contentType }), ...(privacyStatus && { privacy_status: privacyStatus }), ...(playlistId && { playlist_id: playlistId }), ...(title && { title }) })).then(r => r.json())
 
 export const getDateRange = () =>
   fetch(buildUrl("/meta/date-range")).then(r => r.json())
