@@ -40,9 +40,9 @@ class SyncPlanRequest(BaseModel):
 
 
 @router.get("/sync/status")
-def sync_status() -> dict:
-    """Return active sync status and progress."""
-    return sync.get_status()
+def sync_status() -> sync.SyncStatus:
+    """Return the current sync lifecycle state (idle/running/success/failed) and its safe message."""
+    return sync.get_sync_status()
 
 
 @router.post("/sync/trigger")
@@ -62,13 +62,13 @@ def trigger_sync(plan: SyncPlanRequest, background_tasks: BackgroundTasks) -> di
     except sync.PlanValidationError as exc:
         raise HTTPException(status_code=400, detail=str(exc)) from exc
 
-    if not sync.try_start("Sync queued..."):
+    if not sync.try_begin_sync("Starting sync..."):
         raise HTTPException(status_code=409, detail="Sync already in progress")
 
     try:
         background_tasks.add_task(sync.execute_plan, stages)
     except Exception:
-        sync.finish()
+        sync.reset_sync_status()
         raise
 
     return {"queued": True}

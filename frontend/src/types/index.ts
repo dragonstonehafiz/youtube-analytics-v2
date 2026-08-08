@@ -40,8 +40,10 @@ export interface AnalyticsRow {
   subscribers_lost: number
 }
 
-export interface SyncState {
-  is_syncing: boolean
+export type SyncLifecycleState = 'idle' | 'running' | 'success' | 'failed'
+
+export interface SyncStatusResponse {
+  state: SyncLifecycleState
   message: string
 }
 

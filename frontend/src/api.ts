@@ -1,4 +1,4 @@
-import type { VideoStats, TopVideoSortBy, SyncState, SyncPlan, SyncQueuedResponse } from '@/types'
+import type { VideoStats, TopVideoSortBy, SyncStatusResponse, SyncPlan, SyncQueuedResponse } from '@/types'
 
 const BASE = "http://localhost:8000"
 
@@ -72,8 +72,11 @@ export const getVideosPublished = (startDate?: string, endDate?: string, content
 export const getDateRange = () =>
   fetch(buildUrl("/meta/date-range")).then(r => r.json())
 
-export const getSyncStatus = (): Promise<SyncState> =>
-  fetch(buildUrl("/sync/status")).then(r => r.json())
+export const getSyncStatus = async (): Promise<SyncStatusResponse> => {
+  const response = await fetch(buildUrl("/sync/status"))
+  if (!response.ok) throw new Error(`Sync status request failed (${response.status})`)
+  return response.json() as Promise<SyncStatusResponse>
+}
 
 async function syncErrorMessage(response: Response): Promise<string> {
   try {

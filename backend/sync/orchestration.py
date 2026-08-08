@@ -50,6 +50,24 @@ _STAGE_MESSAGES: dict[str, str | None] = {
     "fx_rates": "Syncing FX rates...",
 }
 
+# Fixed, safe operation labels for public failure text. Never combined with exception
+# content: `str(exc)` may carry headers, credentials, tokens, or API response bodies.
+_STAGE_FAILURE_LABELS: dict[str, str] = {
+    "playlists": "syncing playlists",
+    "videos": "syncing videos",
+    "pruning": "pruning videos",
+    "video_analytics": "syncing video analytics",
+    "video_traffic_sources": "syncing video traffic sources",
+    "fx_rates": "syncing FX rates",
+}
+
+
+def _failure_message(stage_name: str | None) -> str:
+    """Build safe, operation-specific failure text with no exception content."""
+    if stage_name is None:
+        return "Sync failed during plan validation"
+    return f"Sync failed while {_STAGE_FAILURE_LABELS[stage_name]}"
+
 
 def _run_stage(
     batch_id: str,
@@ -127,6 +145,7 @@ def execute_plan(stages: Sequence[PlanStage]) -> None:
     """
     playlist_video_ids: set[str] = set()
     channel_owned_ids: set[str] = set()
+    current_stage: str | None = None
 
     try:
         # Revalidated here, not just at the API boundary, so no caller can drive the
@@ -144,9 +163,10 @@ def execute_plan(stages: Sequence[PlanStage]) -> None:
             stage = plan.get(name)
             if stage is None:
                 continue
+            current_stage = name
             message = _STAGE_MESSAGES[name]
             if message:
-                status.set_message(message)
+                status.update_sync_progress(message)
 
             run: Callable[[SyncCounts], None]
             if name == "playlists":
@@ -171,14 +191,11 @@ def execute_plan(stages: Sequence[PlanStage]) -> None:
                     sync_fx_rates(counts)
 
             _run_stage(batch_id, name, recorded_scope(stage), recorded_year(stage), run)
-        status.set_message("Sync complete.")
+        status.complete_sync("Sync complete")
 
-    except Exception as exc:
-        status.set_message(f"Sync failed: {exc}")
+    except Exception:
+        status.fail_sync(_failure_message(current_stage))
         raise
-
-    finally:
-        status.finish()
 
 
 def run_plan(stages: Sequence[PlanStage]) -> bool:
@@ -188,7 +205,7 @@ def run_plan(stages: Sequence[PlanStage]) -> bool:
     already reserved — the manual trigger route — must use execute_plan instead, which
     would otherwise be blocked by their own reservation.
     """
-    if not status.try_start("Starting sync..."):
+    if not status.try_begin_sync("Starting sync..."):
         _logger.warning("Sync plan skipped reason=already_active")
         return False
     execute_plan(stages)

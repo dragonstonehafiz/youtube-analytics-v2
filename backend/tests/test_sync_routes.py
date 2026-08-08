@@ -24,16 +24,18 @@ class SyncRoutesTestCase(unittest.TestCase):
         app.include_router(router)
         self.client = TestClient(app)
 
-        sync.finish()
-        self.addCleanup(sync.finish)
+        sync.reset_sync_status()
+        self.addCleanup(sync.reset_sync_status)
 
         # A plain Mock would swallow execute_plan's reservation-release contract, since
-        # the route only ever calls try_start() and never finish() itself — the real
-        # execute_plan releases it in a finally. Mimic that here so tests asserting the
-        # reservation clears after a successful post exercise a real invariant rather
-        # than one the stub silently preserved by doing nothing.
+        # the route only ever calls try_begin_sync() and never a terminal transition
+        # itself — the real execute_plan releases it by completing or failing. Mimic
+        # that here so tests asserting the reservation clears after a successful post
+        # exercise a real invariant rather than one the stub silently preserved by doing
+        # nothing.
         self.execute = self._patch(
-            "routes.synchronization.sync.execute_plan", side_effect=lambda stages: sync.finish()
+            "routes.synchronization.sync.execute_plan",
+            side_effect=lambda stages: sync.complete_sync("Sync complete"),
         )
         self._patch("sync.plans.available_years", return_value=(2025, 2024, 2023))
 
@@ -103,7 +105,7 @@ class ValidPlanTest(SyncRoutesTestCase):
         response = self._post({"stages": [{"stage": "videos"}]})
 
         self.assertEqual(response.status_code, 200)
-        self.assertFalse(sync.is_syncing())
+        self.assertEqual(sync.get_sync_status()["state"], "success")
 
 
 class SemanticRejectionTest(SyncRoutesTestCase):
@@ -111,7 +113,7 @@ class SemanticRejectionTest(SyncRoutesTestCase):
         response = self._post(body)
         self.assertEqual(response.status_code, status_code)
         self.execute.assert_not_called()
-        self.assertFalse(sync.is_syncing())
+        self.assertEqual(sync.get_sync_status()["state"], "idle")
 
     def test_empty_stage_list_is_rejected(self) -> None:
         self._assert_rejected({"stages": []}, 400)
@@ -166,7 +168,7 @@ class StructuralRejectionTest(SyncRoutesTestCase):
         response = self._post(body)
         self.assertEqual(response.status_code, 422)
         self.execute.assert_not_called()
-        self.assertFalse(sync.is_syncing())
+        self.assertEqual(sync.get_sync_status()["state"], "idle")
 
     def test_missing_stages_field_is_unprocessable(self) -> None:
         self._assert_unprocessable({})
@@ -196,7 +198,7 @@ class StructuralRejectionTest(SyncRoutesTestCase):
 
 class ConflictTest(SyncRoutesTestCase):
     def test_returns_409_while_a_sync_is_active(self) -> None:
-        self.assertTrue(sync.try_start("already running"))
+        self.assertTrue(sync.try_begin_sync("already running"))
 
         response = self._post({"stages": [{"stage": "videos"}]})
 
@@ -204,34 +206,44 @@ class ConflictTest(SyncRoutesTestCase):
         self.execute.assert_not_called()
 
     def test_active_sync_state_survives_a_rejected_request(self) -> None:
-        self.assertTrue(sync.try_start("already running"))
+        self.assertTrue(sync.try_begin_sync("already running"))
 
         self._post({"stages": [{"stage": "videos"}]})
 
-        self.assertTrue(sync.is_syncing())
-        self.assertEqual(sync.get_status()["message"], "already running")
+        self.assertEqual(sync.get_sync_status(), {"state": "running", "message": "already running"})
 
 
 class StatusRouteTest(SyncRoutesTestCase):
-    def test_status_shape_is_unchanged(self) -> None:
+    def test_status_shape_reports_the_explicit_lifecycle(self) -> None:
         response = self.client.get("/sync/status")
 
         self.assertEqual(response.status_code, 200)
-        self.assertEqual(set(response.json()), {"is_syncing", "message"})
+        self.assertEqual(set(response.json()), {"state", "message"})
+        self.assertEqual(response.json()["state"], "idle")
 
-    def test_status_reports_the_queued_message_before_work_begins(self) -> None:
+    def test_status_reports_the_starting_message_before_work_begins(self) -> None:
         observed: list[dict] = []
 
         def fake_execute(stages: object) -> None:
-            observed.append(sync.get_status())
-            sync.finish()
+            observed.append(sync.get_sync_status())
+            sync.complete_sync("Sync complete")
 
         self.execute.side_effect = fake_execute
 
         self._post({"stages": [{"stage": "videos"}]})
 
-        self.assertTrue(observed[0]["is_syncing"])
-        self.assertEqual(observed[0]["message"], "Sync queued...")
+        self.assertEqual(observed[0], {"state": "running", "message": "Starting sync..."})
+
+
+class AddTaskFailureTest(SyncRoutesTestCase):
+    def test_reservation_is_rolled_back_when_enqueueing_fails(self) -> None:
+        self._patch("fastapi.BackgroundTasks.add_task", side_effect=RuntimeError("queue full"))
+
+        with self.assertRaises(RuntimeError):
+            self._post({"stages": [{"stage": "videos"}]})
+
+        self.assertEqual(sync.get_sync_status(), {"state": "idle", "message": ""})
+        self.execute.assert_not_called()
 
 
 if __name__ == "__main__":

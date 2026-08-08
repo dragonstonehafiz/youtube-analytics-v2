@@ -12,7 +12,16 @@ from .plans import (
     validate_plan,
 )
 from .scheduler import start_background_scheduler, synced_today
-from .status import finish, get_status, is_syncing, try_start
+from .status import (
+    SyncLifecycleState,
+    SyncStatus,
+    complete_sync,
+    fail_sync,
+    get_sync_status,
+    reset_sync_status,
+    try_begin_sync,
+    update_sync_progress,
+)
 
 __all__ = [
     "FULL_SYNC_TYPES",
@@ -21,15 +30,19 @@ __all__ = [
     "PlanValidationError",
     "SCOPES",
     "STAGE_ORDER",
+    "SyncLifecycleState",
+    "SyncStatus",
     "available_years",
+    "complete_sync",
     "execute_plan",
-    "finish",
+    "fail_sync",
     "full_incremental_plan",
-    "get_status",
-    "is_syncing",
+    "get_sync_status",
+    "reset_sync_status",
     "run_plan",
     "start_background_scheduler",
     "synced_today",
-    "try_start",
+    "try_begin_sync",
+    "update_sync_progress",
     "validate_plan",
 ]

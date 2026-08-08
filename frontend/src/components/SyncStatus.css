@@ -16,6 +16,15 @@
   background: var(--blue-light);
 }
 
+.sync-status.failed {
+  border-color: var(--red-mid);
+  background: var(--red-light);
+}
+
+.sync-status.failed .sync-status-message {
+  color: var(--red);
+}
+
 .sync-status-dot {
   width: 8px;
   height: 8px;

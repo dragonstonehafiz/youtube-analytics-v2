@@ -325,7 +325,7 @@ class VideoAnalyticsStageDetailLoggingTest(unittest.TestCase):
 
     def setUp(self) -> None:
         self.addCleanup(mock.patch.stopall)
-        mock.patch("sync.stages.status.set_message").start()
+        mock.patch("sync.stages.status.update_sync_progress").start()
 
     def test_video_skipped_without_publish_date(self) -> None:
         mock.patch("sync.stages.database.get_all_video_ids", return_value=["v1"]).start()
@@ -395,7 +395,7 @@ class VideoTrafficSourcesStageDetailLoggingTest(unittest.TestCase):
 
     def setUp(self) -> None:
         self.addCleanup(mock.patch.stopall)
-        mock.patch("sync.stages.status.set_message").start()
+        mock.patch("sync.stages.status.update_sync_progress").start()
 
     def test_video_skipped_without_publish_date(self) -> None:
         mock.patch("sync.stages.database.get_all_video_ids", return_value=["v1"]).start()

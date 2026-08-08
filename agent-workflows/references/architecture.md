@@ -89,7 +89,7 @@ indefinitely and are safe to delete between runs.
 |---|---|
 | `server.py` | FastAPI app construction, CORS, lifespan (`init_db` → `start_background_scheduler`) |
 | `routes/videos.py`, `routes/playlists.py`, `routes/analytics.py`, `routes/synchronization.py`, `routes/metadata.py` | API route handlers, grouped by resource — thin wrappers around `database` helpers; `routes/__init__.py` aggregates them in a fixed order into one `router` |
-| `sync/status.py` | Global sync-status state (`is_syncing`, `message`) and the `try_start()` reservation primitive, behind one lock |
+| `sync/status.py` | Global sync-status lifecycle (`idle \| running \| success \| failed`, plus message) and the `try_begin_sync()` reservation primitive, behind one lock |
 | `sync/plans.py` | Plan types, canonical `STAGE_ORDER`, derived `FULL_SYNC_TYPES`, available years, `validate_plan()` |
 | `sync/orchestration.py` | `execute_plan()`/`run_plan()`, stage registry, selected-stage sequencing, `sync_runs` tracking |
 | `sync/stages.py` | The five sync stage implementations plus the shared incremental-lookback calculation |

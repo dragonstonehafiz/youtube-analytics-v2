@@ -150,7 +150,12 @@ GET  /meta/date-range
 
 ```
 GET  /sync/status
-  → { is_syncing, message }
+  → { state, message }
+    state ∈ idle | running | success | failed
+    message is a safe, operation-specific string; on failure it never contains raw
+    exception text, headers, credentials, tokens, or API response content.
+    A terminal result (success/failed) is retained until the next reservation replaces
+    it with running; a fresh backend starts idle with no message.
 
 POST /sync/trigger
   Body (JSON): { stages: [ { stage, scope?, year? }, ... ] }

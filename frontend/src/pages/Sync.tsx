@@ -5,7 +5,7 @@ import type {
   SyncPlan,
   SyncPlanStage,
   SyncStage,
-  SyncState,
+  SyncStatusResponse,
 } from '@/types'
 import './Sync.css'
 
@@ -93,8 +93,8 @@ export default function Sync() {
   const [included, setIncluded] = useState<IncludedMap>(ALL_INCLUDED)
   const [periods, setPeriods] = useState<PeriodMap>(DEFAULT_PERIODS)
   const [earliestYear, setEarliestYear] = useState<number | null>(null)
-  const [status, setStatus] = useState<SyncState | null>(null)
-  const [statusError, setStatusError] = useState(false)
+  const [status, setStatus] = useState<SyncStatusResponse | null>(null)
+  const [statusUnavailable, setStatusUnavailable] = useState(false)
   const [submitting, setSubmitting] = useState(false)
   const [error, setError] = useState<string | null>(null)
 
@@ -103,9 +103,9 @@ export default function Sync() {
       getSyncStatus()
         .then(s => {
           setStatus(s)
-          setStatusError(false)
+          setStatusUnavailable(false)
         })
-        .catch(() => setStatusError(true))
+        .catch(() => setStatusUnavailable(true))
     poll()
     const id = setInterval(poll, STATUS_POLL_MS)
     return () => clearInterval(id)
@@ -122,9 +122,9 @@ export default function Sync() {
     ? Array.from({ length: currentYear - earliestYear + 1 }, (_, i) => currentYear - i)
     : []
 
-  const isSyncing = status?.is_syncing ?? false
-  const statusUnknown = status === null || statusError
-  const locked = isSyncing || submitting || statusUnknown
+  const isSyncing = status?.state === 'running'
+  const awaitingFirstStatus = status === null
+  const locked = isSyncing || submitting || awaitingFirstStatus || statusUnavailable
   const selectedCount = STAGE_ROWS.filter(row => included[row.stage]).length
 
   const buildPlan = (): SyncPlan => ({
@@ -137,7 +137,14 @@ export default function Sync() {
     setSubmitting(true)
     setError(null)
     triggerSync(buildPlan())
-      .then(() => getSyncStatus().then(setStatus))
+      .then(() =>
+        getSyncStatus()
+          .then(s => {
+            setStatus(s)
+            setStatusUnavailable(false)
+          })
+          .catch(() => setStatusUnavailable(true))
+      )
       .catch((err: unknown) => {
         setError(err instanceof Error ? err.message : 'Could not start sync')
       })
@@ -168,9 +175,15 @@ export default function Sync() {
         <h1>Sync</h1>
       </div>
 
-      {statusUnknown && (
+      {(statusUnavailable || awaitingFirstStatus) && (
         <div className="sync-status-banner" role="status">
-          {statusError ? 'Could not reach the sync status endpoint. Controls are locked until it recovers.' : 'Checking sync status...'}
+          {statusUnavailable ? 'Status unavailable' : 'Checking sync status...'}
+        </div>
+      )}
+
+      {status && !isSyncing && (status.state === 'success' || status.state === 'failed') && (
+        <div className={`sync-result sync-result-${status.state}`} role="status">
+          {status.message}
         </div>
       )}
 
@@ -235,11 +248,13 @@ export default function Sync() {
       >
         {isSyncing
           ? 'Sync in progress'
-          : statusUnknown
-            ? 'Waiting for status...'
-            : submitting
-              ? 'Starting...'
-              : 'Sync selected'}
+          : statusUnavailable
+            ? 'Status unavailable'
+            : awaitingFirstStatus
+              ? 'Waiting for status...'
+              : submitting
+                ? 'Starting...'
+                : 'Sync selected'}
       </button>
     </div>
   )
