@@ -103,9 +103,9 @@
 }
 
 .sync-result-success {
-  border: 1px solid var(--blue-mid);
-  background: var(--blue-light);
-  color: var(--blue-dark);
+  border: 1px solid var(--border);
+  background: var(--surface);
+  color: var(--text-secondary);
 }
 
 .sync-result-failed {

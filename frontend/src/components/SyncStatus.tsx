@@ -51,8 +51,8 @@ export default function SyncStatus() {
 
   if (status.state === 'success') {
     return (
-      <div className="sync-status syncing">
-        <span className="sync-status-message">{status.message || 'Sync complete'}</span>
+      <div className="sync-status">
+        <span className="sync-status-idle">{status.message || 'Sync complete'}</span>
       </div>
     )
   }
