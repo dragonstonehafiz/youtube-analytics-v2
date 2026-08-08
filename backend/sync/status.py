@@ -1,48 +1,76 @@
 from __future__ import annotations
 
 import threading
+from typing import Literal, TypedDict
+
+SyncLifecycleState = Literal["idle", "running", "success", "failed"]
+
+
+class SyncStatus(TypedDict):
+    """The public sync status shape returned by `/sync/status`."""
+
+    state: SyncLifecycleState
+    message: str
+
 
 _lock = threading.Lock()
-_is_syncing: bool = False
+_state: SyncLifecycleState = "idle"
 _message: str = ""
 
 
-def get_status() -> dict:
-    """Return current sync status. Safe to call from any thread."""
+def get_sync_status() -> SyncStatus:
+    """Return the current sync lifecycle state and its safe message. Thread-safe."""
     with _lock:
-        return {"is_syncing": _is_syncing, "message": _message}
+        return {"state": _state, "message": _message}
 
 
-def is_syncing() -> bool:
-    """Return True if a sync is currently running."""
-    with _lock:
-        return _is_syncing
+def try_begin_sync(message: str = "") -> bool:
+    """Reserve the running state if no sync is already running. Returns whether it was acquired.
 
-
-def set_message(msg: str) -> None:
-    """Update the current sync message."""
-    global _message
-    with _lock:
-        _message = msg
-
-
-def try_start(message: str = "") -> bool:
-    """Mark a sync as in-progress if one isn't already running. Returns whether it was acquired.
-
-    Sets `message` under the same lock acquisition, so a status poll can never observe an
-    active sync still carrying the previous run's message.
+    Sets `message` under the same lock acquisition, so a status poll can never observe
+    the running state still carrying the previous run's terminal message. A successful
+    reservation replaces any retained terminal result.
     """
-    global _is_syncing, _message
+    global _state, _message
     with _lock:
-        if _is_syncing:
+        if _state == "running":
             return False
-        _is_syncing = True
+        _state = "running"
         _message = message
         return True
 
 
-def finish() -> None:
-    """Mark the current sync as no longer in-progress."""
-    global _is_syncing
+def update_sync_progress(message: str) -> None:
+    """Update the progress message of the currently running sync.
+
+    No-op if no sync is running, so a stray call cannot fabricate a running state.
+    """
+    global _message
     with _lock:
-        _is_syncing = False
+        if _state != "running":
+            return
+        _message = message
+
+
+def complete_sync(message: str) -> None:
+    """Mark the running sync as successfully finished with a safe terminal message."""
+    global _state, _message
+    with _lock:
+        _state = "success"
+        _message = message
+
+
+def fail_sync(message: str) -> None:
+    """Mark the running sync as failed with a safe, operation-specific terminal message."""
+    global _state, _message
+    with _lock:
+        _state = "failed"
+        _message = message
+
+
+def reset_sync_status() -> None:
+    """Reset to the initial idle state with no message. Intended for test cleanup."""
+    global _state, _message
+    with _lock:
+        _state = "idle"
+        _message = ""

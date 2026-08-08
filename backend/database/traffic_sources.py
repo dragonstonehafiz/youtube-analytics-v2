@@ -93,8 +93,9 @@ def get_aggregated_traffic_sources(
     end_date: str | None = None,
     content_type: str | None = None,
     privacy_status: str | None = None,
+    title: str | None = None,
 ) -> list[dict]:
-    """Return daily traffic sources aggregated across all videos, filtered by date range, content_type, and privacy_status."""
+    """Return daily traffic sources aggregated across all videos, filtered by date range, content_type, privacy_status, and title."""
     conditions = ["1=1"]
     params: list = []
 
@@ -110,6 +111,9 @@ def get_aggregated_traffic_sources(
     if end_date:
         conditions.append("vts.date <= ?")
         params.append(end_date)
+    if title:
+        conditions.append("v.title LIKE ?")
+        params.append(f"%{title}%")
 
     where = " AND ".join(conditions)
     with get_connection() as conn:
@@ -137,8 +141,9 @@ def get_playlist_aggregated_traffic_sources(
     end_date: str | None = None,
     content_type: str | None = None,
     privacy_status: str | None = None,
+    title: str | None = None,
 ) -> list[dict]:
-    """Return daily traffic sources aggregated across all videos in a playlist, filtered by date range, content_type, and privacy_status."""
+    """Return daily traffic sources aggregated across all videos in a playlist, filtered by date range, content_type, privacy_status, and title."""
     conditions = ["pi.playlist_id = ?"]
     params: list = [playlist_id]
 
@@ -154,6 +159,9 @@ def get_playlist_aggregated_traffic_sources(
     if end_date:
         conditions.append("vts.date <= ?")
         params.append(end_date)
+    if title:
+        conditions.append("v.title LIKE ?")
+        params.append(f"%{title}%")
 
     where = " AND ".join(conditions)
     with get_connection() as conn:
@@ -182,8 +190,9 @@ def get_top_videos_by_traffic_source(
     content_type: str | None = None,
     privacy_status: str | None = None,
     limit: int = 3,
+    title: str | None = None,
 ) -> dict[str, list[dict]]:
-    """Return the top N videos by views for each traffic source type, filtered by date range, content_type, and privacy_status."""
+    """Return the top N videos by views for each traffic source type, filtered by date range, content_type, privacy_status, and title."""
     conditions = ["1=1"]
     params: list = []
 
@@ -199,6 +208,9 @@ def get_top_videos_by_traffic_source(
     if end_date:
         conditions.append("vts.date <= ?")
         params.append(end_date)
+    if title:
+        conditions.append("v.title LIKE ?")
+        params.append(f"%{title}%")
 
     where = " AND ".join(conditions)
     with get_connection() as conn:
@@ -227,8 +239,9 @@ def get_playlist_top_videos_by_traffic_source(
     content_type: str | None = None,
     privacy_status: str | None = None,
     limit: int = 3,
+    title: str | None = None,
 ) -> dict[str, list[dict]]:
-    """Return the top N videos in a playlist by views for each traffic source type, filtered by date range, content_type, and privacy_status."""
+    """Return the top N videos in a playlist by views for each traffic source type, filtered by date range, content_type, privacy_status, and title."""
     conditions = ["pi.playlist_id = ?"]
     params: list = [playlist_id]
 
@@ -244,6 +257,9 @@ def get_playlist_top_videos_by_traffic_source(
     if end_date:
         conditions.append("vts.date <= ?")
         params.append(end_date)
+    if title:
+        conditions.append("v.title LIKE ?")
+        params.append(f"%{title}%")
 
     where = " AND ".join(conditions)
     with get_connection() as conn:

@@ -42,6 +42,7 @@ export default function PlaylistAnalytics() {
   const [stats, setStats] = useState<VideoStats | null>(null)
   const analyticsStartDate = searchParams.has('analytics_start_date') ? searchParams.get('analytics_start_date')! : last28Dates()[0]
   const analyticsEndDate = searchParams.has('analytics_end_date') ? searchParams.get('analytics_end_date')! : last28Dates()[1]
+  const analyticsTitle = searchParams.get('analytics_title') ?? ''
   const analyticsContentType = searchParams.get('analytics_content_type') ?? ''
   const analyticsPrivacyStatus = searchParams.get('analytics_privacy_status') ?? ''
   const rawTopVideosSortBy = searchParams.get('top_videos_sort_by')
@@ -91,16 +92,18 @@ export default function PlaylistAnalytics() {
     if (analyticsEndDate) params.end_date = analyticsEndDate
     if (analyticsContentType) params.content_type = analyticsContentType
     if (analyticsPrivacyStatus) params.privacy_status = analyticsPrivacyStatus
+    if (analyticsTitle) params.title = analyticsTitle
     const sd = analyticsStartDate || undefined
     const ed = analyticsEndDate || undefined
     const ct = analyticsContentType || undefined
     const ps = analyticsPrivacyStatus || undefined
-    getPlaylistVideoStats(id, undefined, sd, ed, ct, ps).then((data: VideoStats) => setStats(data))
+    const tt = analyticsTitle || undefined
+    getPlaylistVideoStats(id, tt, sd, ed, ct, ps).then((data: VideoStats) => setStats(data))
     getPlaylistAnalytics(id, params).then((data: { items: AnalyticsRow[] }) => setRows(data.items ?? []))
-    getVideosPublished(sd, ed, ct, ps, id).then((data: { items: PublishedVideo[] }) => setPublishedVideos(data.items ?? []))
+    getVideosPublished(sd, ed, ct, ps, id, tt).then((data: { items: PublishedVideo[] }) => setPublishedVideos(data.items ?? []))
     getPlaylistTrafficSources(id, params).then((data: { items: TrafficSourceRow[] }) => setTrafficSources(data.items ?? []))
     getPlaylistTopVideosByTrafficSource(id, params).then((data: { items: Record<string, TrafficSourceTopVideo[]> }) => setTopVideosBySource(data.items ?? {}))
-  }, [id, analyticsStartDate, analyticsEndDate, analyticsContentType, analyticsPrivacyStatus])
+  }, [id, analyticsStartDate, analyticsEndDate, analyticsContentType, analyticsPrivacyStatus, analyticsTitle])
 
   useEffect(() => {
     if (!id) return
@@ -108,8 +111,9 @@ export default function PlaylistAnalytics() {
     const ed = analyticsEndDate || undefined
     const ct = analyticsContentType || undefined
     const ps = analyticsPrivacyStatus || undefined
-    getPlaylistTopVideosByViews(id, topVideosSortBy, sd, ed, ct, ps).then((data: { items: TopVideo[] }) => setTopVideos(data.items ?? []))
-  }, [id, analyticsStartDate, analyticsEndDate, analyticsContentType, analyticsPrivacyStatus, topVideosSortBy])
+    const tt = analyticsTitle || undefined
+    getPlaylistTopVideosByViews(id, topVideosSortBy, sd, ed, ct, ps, tt).then((data: { items: TopVideo[] }) => setTopVideos(data.items ?? []))
+  }, [id, analyticsStartDate, analyticsEndDate, analyticsContentType, analyticsPrivacyStatus, topVideosSortBy, analyticsTitle])
 
   const setPage = (p: number) => {
     setSearchParams(prev => {
@@ -280,6 +284,16 @@ export default function PlaylistAnalytics() {
             <label>
               End
               <input type="date" value={analyticsEndDate} onChange={e => updateAnalyticsDateParams({ analytics_end_date: e.target.value })} />
+            </label>
+            <div className="filter-bar-sep" />
+            <label>
+              Title
+              <input
+                type="text"
+                placeholder="Search…"
+                value={analyticsTitle}
+                onChange={e => updateAnalyticsParams({ analytics_title: e.target.value })}
+              />
             </label>
             <div className="filter-bar-sep" />
             <label>

@@ -39,8 +39,8 @@ class OrchestrationTestCase(unittest.TestCase):
     """Base case that stubs every stage function and all sync_runs persistence."""
 
     def setUp(self) -> None:
-        status.finish()
-        self.addCleanup(status.finish)
+        status.reset_sync_status()
+        self.addCleanup(status.reset_sync_status)
 
         self.calls: list[str] = []
         self.stage_mocks: dict[str, mock.Mock] = {
@@ -197,37 +197,49 @@ class FailFastTest(OrchestrationTestCase):
     def test_failure_still_releases_active_state(self) -> None:
         self.stage_mocks["sync_videos"].side_effect = RuntimeError("boom")
 
-        self.assertTrue(status.try_start())
+        self.assertTrue(status.try_begin_sync())
         with self.assertRaises(RuntimeError):
             execute_plan([PlanStage("videos")])
 
-        self.assertFalse(status.is_syncing())
+        self.assertEqual(status.get_sync_status()["state"], "failed")
 
     def test_invalid_plan_releases_active_state_without_running_anything(self) -> None:
-        self.assertTrue(status.try_start())
+        self.assertTrue(status.try_begin_sync())
 
         with self.assertRaises(PlanValidationError):
             execute_plan([])
 
-        self.assertFalse(status.is_syncing())
+        self.assertEqual(status.get_sync_status()["state"], "failed")
         self.db.create_sync_run.assert_not_called()
 
 
 class StatusTest(OrchestrationTestCase):
     def test_releases_active_state_on_success(self) -> None:
-        self.assertTrue(status.try_start())
+        self.assertTrue(status.try_begin_sync())
         execute_plan([PlanStage("videos")])
 
-        self.assertFalse(status.is_syncing())
-        self.assertEqual(status.get_status()["message"], "Sync complete.")
+        self.assertEqual(status.get_sync_status(), {"state": "success", "message": "Sync complete"})
 
-    def test_reports_failure_message(self) -> None:
+    def test_reports_a_safe_operation_specific_failure_message(self) -> None:
         self.stage_mocks["sync_videos"].side_effect = RuntimeError("boom")
 
         with self.assertRaises(RuntimeError):
             execute_plan([PlanStage("videos")])
 
-        self.assertIn("boom", status.get_status()["message"])
+        result = status.get_sync_status()
+        self.assertEqual(result["state"], "failed")
+        self.assertEqual(result["message"], "Sync failed while syncing videos")
+        self.assertNotIn("boom", result["message"])
+
+    def test_pre_stage_validation_failure_reports_a_safe_message(self) -> None:
+        status.try_begin_sync()
+
+        with self.assertRaises(PlanValidationError):
+            execute_plan([])
+
+        result = status.get_sync_status()
+        self.assertEqual(result["state"], "failed")
+        self.assertEqual(result["message"], "Sync failed during plan validation")
 
 
 class RunPlanTest(OrchestrationTestCase):
@@ -235,21 +247,21 @@ class RunPlanTest(OrchestrationTestCase):
         self.assertTrue(run_plan([PlanStage("videos")]))
 
         self.assertEqual(self.calls, ["sync_videos"])
-        self.assertFalse(status.is_syncing())
+        self.assertEqual(status.get_sync_status()["state"], "success")
 
     def test_declines_when_a_sync_is_already_active(self) -> None:
-        self.assertTrue(status.try_start("manual sync"))
+        self.assertTrue(status.try_begin_sync("manual sync"))
 
         self.assertFalse(run_plan(full_incremental_plan()))
 
         self.assertEqual(self.calls, [])
         self.db.create_sync_run.assert_not_called()
-        self.assertTrue(status.is_syncing())
+        self.assertEqual(status.get_sync_status()["state"], "running")
 
     def test_two_concurrent_reservations_cannot_both_succeed(self) -> None:
-        self.assertTrue(status.try_start("first"))
-        self.assertFalse(status.try_start("second"))
-        self.assertEqual(status.get_status()["message"], "first")
+        self.assertTrue(status.try_begin_sync("first"))
+        self.assertFalse(status.try_begin_sync("second"))
+        self.assertEqual(status.get_sync_status()["message"], "first")
 
 
 class PlanLevelLoggingTest(OrchestrationTestCase):
@@ -275,7 +287,7 @@ class PlanLevelLoggingTest(OrchestrationTestCase):
             self.assertEqual(record.levelname, "ERROR")
 
     def test_already_active_logs_warning_and_returns_false(self) -> None:
-        self.assertTrue(status.try_start("already running"))
+        self.assertTrue(status.try_begin_sync("already running"))
 
         with self.assertLogs("youtube_analytics.sync", level="WARNING") as captured:
             result = run_plan(full_incremental_plan())
@@ -364,6 +376,11 @@ class StageFailureLoggingTest(OrchestrationTestCase):
             self.db.fail_sync_run.call_args[0][1],
             'access_token=FAKE_OAUTH_TOKEN body={"quotaExceeded": true}',
         )
+
+        result = status.get_sync_status()
+        self.assertEqual(result, {"state": "failed", "message": "Sync failed while syncing videos"})
+        self.assertNotIn("FAKE_OAUTH_TOKEN", result["message"])
+        self.assertNotIn("quotaExceeded", result["message"])
 
 
 class PersistenceFailureLoggingTest(OrchestrationTestCase):

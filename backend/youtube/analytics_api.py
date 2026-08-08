@@ -102,9 +102,11 @@ def _fetch_analytics_rows(
 ) -> list[dict[str, Any]]:
     """Fetch all paginated rows from an Analytics reports.query call.
 
-    Pagination here is `startIndex`-based rather than token-based, and an empty page
-    already terminates the loop, so a page record is routine DEBUG detail. `owner_name`
-    names the video the report is filtered to; its id is read back from the filter.
+    Pagination here is `startIndex`-based rather than token-based. A page shorter
+    than `maxResults` (including an empty page) terminates the loop, since fewer
+    rows than requested means the result set is exhausted; a page record is
+    routine DEBUG detail. `owner_name` names the video the report is filtered to;
+    its id is read back from the filter.
     """
     results: list[dict[str, Any]] = []
     headers: list[str] | None = None
@@ -121,7 +123,7 @@ def _fetch_analytics_rows(
             results.append({headers[i]: row[i] for i in range(len(headers))})
         page += 1
         _log_page(resource, page, len(rows), params.get("startIndex", 1), owner, owner_name)
-        if not rows:
+        if len(rows) < max_results:
             break
         params = {**params, "startIndex": params.get("startIndex", 1) + max_results}
         time.sleep(0.2)

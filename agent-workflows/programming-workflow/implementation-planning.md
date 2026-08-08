@@ -8,12 +8,14 @@ Procedure for turning an approved issue, local issue file, or scoped request int
 
 - The approved issue, local issue file, or current scoped request, and its acceptance criteria.
 - Related issues, PRs, or dependencies already identified.
+- An existing plan file at the request's canonical path, when one already exists (see [Establish plan identity and location](#establish-plan-identity-and-location)).
 - The destination repository's own documentation (architecture, data model, API, UI, or equivalent layer references) and local instructions.
 - The current source code and current working-tree state — both take priority over documentation and any prior plan when they disagree.
 
 ## Contents
 
 - [When this applies](#when-this-applies)
+- [Establish plan identity and location](#establish-plan-identity-and-location)
 - [Establish scope](#establish-scope)
 - [Select references by affected area](#select-references-by-affected-area)
 - [Inspect the implementation](#inspect-the-implementation)
@@ -24,7 +26,7 @@ Procedure for turning an approved issue, local issue file, or scoped request int
 - [Order implementation steps](#order-implementation-steps)
 - [Plan existing-data handling](#plan-existing-data-handling)
 - [Define focused verification](#define-focused-verification)
-- [Render the plan](#render-the-plan)
+- [Write the plan file](#write-the-plan-file)
 - [Review boundary](#review-boundary)
 - [Final checklist](#final-checklist)
 
@@ -44,6 +46,21 @@ Three distinct activities live under this umbrella:
 - **Producing or revising a plan** — still just planning, even across multiple rounds of feedback.
 - **Implementing the plan** — writing actual code changes. A separate action, never implied by having a plan (see [Review boundary](#review-boundary)).
 
+## Establish plan identity and location
+
+Every implementation plan is a repository-local Markdown file under `<repository-root>/plans/`, not response text. Determine the canonical path before investigating:
+
+- Locate the repository root using the destination repository's own workspace conventions (for example, the directory containing its root instructions file) rather than assuming a path from another project.
+- If a canonical plan path was already handed off explicitly — by the user or a prior agent/session — use that path unchanged; do not recompute one.
+- Otherwise derive the canonical filename:
+  - a single referenced issue number → `plans/issue-<number>.md`;
+  - no issue number → `plans/task-<slug>.md`, where `<slug>` comes from, in priority order: an explicitly supplied task identifier, a referenced local request filename stem, or the request's first non-empty line.
+  - Normalize any slug source by lowercasing it, replacing each run of non-alphanumeric characters with a single hyphen, trimming leading/trailing hyphens, and truncating the readable portion to a reasonable length (for example, 60 characters).
+  - If the computed path already belongs to a different source identity than the current request (see the identity block below), append a short deterministic digest of the normalized full source identity — not a sequential suffix — so the two artifacts get distinct, reproducible names.
+- Every plan file carries a small **Plan identity** block (see [Write the plan file](#write-the-plan-file)) recording its source, canonical path, and status, so a later discovery pass can confirm whether two artifacts refer to the same work.
+
+This convention applies prospectively. Plan files created before it existed are not renamed, migrated, or archived because of this procedure.
+
 ## Establish scope
 
 Start from:
@@ -56,6 +73,14 @@ Start from:
 - current working-tree state, when local uncommitted changes could affect the plan (check `git status` before assuming a clean baseline).
 
 If the request and the issue or file it references disagree, record the conflict explicitly rather than silently picking one interpretation.
+
+Before writing a new plan file, determine whether one already exists for this work, in this order:
+
+1. Use an explicitly handed-off or supplied canonical plan path, if one was given.
+2. Otherwise, check whether a file already exists at the deterministic canonical path derived above.
+3. If identity is still uncertain, inspect the **Plan identity** blocks of files under `plans/` for a matching source before creating anything new.
+
+When a matching plan exists, treat it as the current authoritative draft rather than starting over: reconcile it against the current request, current source, and current working tree — which still take priority over prior plan text and documentation when they disagree — preserve still-valid evidence and decisions, replace stale content, update its status, and write the result back to that same canonical file in place. Never create a competing copy under a different name (for example, a `-v2`, `-revised`, `-final`, or numbered suffix); the canonical path stays fixed across revisions even when the plan's title, scope, or status changes. If multiple existing plans plausibly match the same work, stop and ask which one is authoritative instead of guessing or creating another.
 
 ## Select references by affected area
 
@@ -126,10 +151,18 @@ Select checks proportional to what actually changed, using the destination repos
 
 A full build is never the default verification step — it still requires explicit approval per the destination repository's own policy. Verification should prove the acceptance criteria are met, not merely that files compile.
 
-## Render the plan
+## Write the plan file
+
+Create the canonical plan file at the path established in [Establish plan identity and location](#establish-plan-identity-and-location), or open the existing matching file and revise it in place. The file is the plan; nothing about the required content changes when it is a revision rather than a first draft.
 
 ```markdown
-# Implementation Plan
+# Implementation Plan: <short descriptive title>
+
+## Plan identity
+
+- **Source:** <issue number/file, or a short description of the request>
+- **Canonical path:** `plans/...`
+- **Status:** <Draft / Ready for review / Revised — brief reason>
 
 ## Objective
 ## Confirmed current behavior
@@ -161,21 +194,25 @@ Each numbered step:
 
 Omit a section only when its absence is obvious; state "None identified" for Assumptions or Unresolved decisions when that confirmation itself improves confidence in the plan.
 
+Save the file before responding. The response that follows is a pointer to it plus a concise summary, not a duplicate of its content (see [Review boundary](#review-boundary)).
+
 ## Review boundary
 
 Before declaring the plan ready:
 
-1. Present the complete plan.
-2. Summarize assumptions and unresolved decisions.
-3. Identify any destructive or compatibility-sensitive steps.
-4. Confirm every acceptance criterion is covered by at least one step or verification item.
-5. Ask for direction on any material unresolved decision.
-6. Wait for explicit authorization before implementing anything.
+1. Confirm the plan file was created, or an existing matching plan was revised in place, at its canonical path — and that no competing copy was created.
+2. In the response, give the canonical path (as a clickable link where the surface supports it) plus a concise status summary: readiness/status, major scope, assumptions or unresolved decisions worth flagging, and any destructive or compatibility-sensitive steps. Do not reproduce the complete plan in the response — the file is authoritative.
+3. Confirm every acceptance criterion is covered by at least one step or verification item.
+4. Ask for direction on any material unresolved decision.
+5. Wait for explicit authorization before implementing anything.
 
-Producing a plan is never itself authorization to implement it, and the destination repository's own git and safety restrictions apply throughout — no commits, no pushes, no remote publication, regardless of how much of the plan has been reviewed.
+When handing the plan to another agent or a later session, communicate its unchanged canonical path so it can be reopened and revised there instead of recreated.
+
+Producing or revising a plan file is never itself authorization to implement it, and the destination repository's own git and safety restrictions apply throughout — no commits, no pushes, no remote publication, regardless of how much of the plan has been reviewed.
 
 ## Final checklist
 
+- [ ] Plan identity resolved: canonical path determined, any existing matching plan discovered first, no competing copy created
 - [ ] Scope established from the approved issue/request, with any conflict against it recorded
 - [ ] Only relevant local documentation loaded, expanded as needed
 - [ ] Relevant files and symbols actually inspected, not assumed
@@ -187,4 +224,4 @@ Producing a plan is never itself authorization to implement it, and the destinat
 - [ ] Existing-data handling addressed explicitly wherever schema or persistent state changes
 - [ ] Verification is focused per layer, not a default full build
 - [ ] Every acceptance criterion maps to a step or verification item
-- [ ] Plan presented for review; implementation requires explicit authorization, while commits, pushes, and remote publication remain prohibited
+- [ ] Plan file saved at its canonical path; response gives that path plus a concise summary, not the full plan; implementation requires explicit authorization, while commits, pushes, and remote publication remain prohibited

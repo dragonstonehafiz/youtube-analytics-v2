@@ -51,9 +51,10 @@ def get_videos_published(
     content_type: str | None = Query(default=None),
     privacy_status: str | None = Query(default=None),
     playlist_id: str | None = Query(default=None),
+    title: str | None = Query(default=None),
 ) -> dict:
     """Return id, title, published_at, thumbnail_url for all videos matching the filters."""
-    items = database.get_videos_published(start_date, end_date, content_type, privacy_status, playlist_id)
+    items = database.get_videos_published(start_date, end_date, content_type, privacy_status, playlist_id, title)
     return {"items": items}
 
 

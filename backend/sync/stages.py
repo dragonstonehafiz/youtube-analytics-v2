@@ -174,7 +174,7 @@ def sync_video_analytics(scope: str, year: int | None, counts: SyncCounts) -> No
     video_ids = database.get_all_video_ids()
     total = len(video_ids)
     for i, video_id in enumerate(video_ids, start=1):
-        status.set_message(f"Syncing video analytics ({i}/{total})...")
+        status.update_sync_progress(f"Syncing video analytics ({i}/{total})...")
         video = database.get_video(video_id)
         if not video or not video.get("published_at"):
             _logger.debug(
@@ -232,7 +232,7 @@ def sync_video_traffic_sources(scope: str, year: int | None, counts: SyncCounts)
     video_ids = database.get_all_video_ids()
     total = len(video_ids)
     for i, video_id in enumerate(video_ids, start=1):
-        status.set_message(f"Syncing traffic sources ({i}/{total})...")
+        status.update_sync_progress(f"Syncing traffic sources ({i}/{total})...")
         video = database.get_video(video_id)
         if not video or not video.get("published_at"):
             _logger.debug(

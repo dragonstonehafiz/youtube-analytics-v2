@@ -119,6 +119,7 @@ def get_videos_published(
     content_type: str | None = None,
     privacy_status: str | None = None,
     playlist_id: str | None = None,
+    title: str | None = None,
 ) -> list[dict]:
     """Return id, title, published_at, thumbnail_url for videos matching filters, ordered by published_at."""
     conditions = ["1=1"]
@@ -138,6 +139,9 @@ def get_videos_published(
     if privacy_status:
         conditions.append("v.privacy_status = ?")
         params.append(privacy_status)
+    if title:
+        conditions.append("v.title LIKE ?")
+        params.append(f"%{title}%")
     where = " AND ".join(conditions)
     with get_connection() as conn:
         rows = conn.execute(
