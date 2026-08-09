@@ -1,4 +1,12 @@
-import type { VideoStats, TopVideoSortBy, SyncStatusResponse, SyncPlan, SyncQueuedResponse } from '@/types'
+import type {
+  CommentsResponse,
+  CommentSort,
+  VideoStats,
+  TopVideoSortBy,
+  SyncStatusResponse,
+  SyncPlan,
+  SyncQueuedResponse,
+} from '@/types'
 
 const BASE = "http://localhost:8000"
 
@@ -68,6 +76,48 @@ export const getPlaylistTopVideosByTrafficSource = (id: string, params?: Record<
 
 export const getVideosPublished = (startDate?: string, endDate?: string, contentType?: string, privacyStatus?: string, playlistId?: string, title?: string) =>
   fetch(buildUrl("/videos/published", { ...(startDate && { start_date: startDate }), ...(endDate && { end_date: endDate }), ...(contentType && { content_type: contentType }), ...(privacyStatus && { privacy_status: privacyStatus }), ...(playlistId && { playlist_id: playlistId }), ...(title && { title }) })).then(r => r.json())
+
+/** Filters accepted by all three comment endpoints. Scope comes from the path, not here. */
+export interface CommentQuery {
+  page?: number
+  pageSize?: number
+  sortBy?: CommentSort
+  text?: string
+  videoTitle?: string
+  author?: string
+  startDate?: string
+  endDate?: string
+  contentType?: string
+}
+
+function commentParams(query: CommentQuery): Record<string, string> {
+  return {
+    ...(query.page && { page: String(query.page) }),
+    ...(query.pageSize && { page_size: String(query.pageSize) }),
+    ...(query.sortBy && { sort_by: query.sortBy }),
+    ...(query.text && { text: query.text }),
+    ...(query.videoTitle && { video_title: query.videoTitle }),
+    ...(query.author && { author: query.author }),
+    ...(query.startDate && { start_date: query.startDate }),
+    ...(query.endDate && { end_date: query.endDate }),
+    ...(query.contentType && { content_type: query.contentType }),
+  }
+}
+
+async function fetchComments(path: string, query: CommentQuery): Promise<CommentsResponse> {
+  const response = await fetch(buildUrl(path, commentParams(query)))
+  if (!response.ok) throw new Error(`Comments request failed (${response.status})`)
+  return response.json() as Promise<CommentsResponse>
+}
+
+export const getComments = (query: CommentQuery = {}): Promise<CommentsResponse> =>
+  fetchComments("/comments", query)
+
+export const getVideoComments = (id: string, query: CommentQuery = {}): Promise<CommentsResponse> =>
+  fetchComments(`/comments/videos/${id}`, query)
+
+export const getPlaylistComments = (id: string, query: CommentQuery = {}): Promise<CommentsResponse> =>
+  fetchComments(`/comments/playlists/${id}`, query)
 
 export const getDateRange = () =>
   fetch(buildUrl("/meta/date-range")).then(r => r.json())

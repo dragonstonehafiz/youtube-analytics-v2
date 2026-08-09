@@ -4,6 +4,7 @@ import { getVideo, getVideoAnalytics, getVideoTrafficSources } from '@/api'
 import type { Video, AnalyticsRow, TrafficSourceRow } from '@/types'
 import PeriodSelect, { last28Dates } from '@/components/PeriodSelect'
 import AnalyticsChart from '@/components/AnalyticsChart'
+import CommentsPanel from '@/components/CommentsPanel'
 import TrafficSourceChart from '@/components/TrafficSourceChart'
 import TrafficSourcesTable from '@/components/TrafficSourcesTable'
 import { useReplaceSearchParams } from '@/hooks/useReplaceSearchParams'
@@ -11,7 +12,7 @@ import '@/components/VideoMetaCard.css'
 import './Analytics.css'
 import './VideoAnalytics.css'
 
-type Tab = 'analytics' | 'traffic-sources'
+type Tab = 'analytics' | 'traffic-sources' | 'comments'
 
 function formatDuration(seconds: number): string {
   const h = Math.floor(seconds / 3600)
@@ -153,8 +154,18 @@ export default function VideoAnalytics() {
             >
               Traffic Sources
             </button>
+            <button
+              type="button"
+              className={`tab${tab === 'comments' ? ' active' : ''}`}
+              onClick={() => handleTabChange('comments')}
+            >
+              Comments
+            </button>
           </div>
 
+          {/* Comments filter on their own publication dates and carry their own filter
+              bar, so the shared analytics date range does not apply to that tab. */}
+          {tab !== 'comments' && (
           <div className="filter-bar">
             <PeriodSelect
               startDate={startDate}
@@ -183,8 +194,11 @@ export default function VideoAnalytics() {
               })} />
             </label>
           </div>
+          )}
 
-          {tab === 'analytics' ? (
+          {tab === 'comments' ? (
+            <CommentsPanel scope={{ kind: 'video', videoId: id! }} />
+          ) : tab === 'analytics' ? (
             rows.length === 0 ? (
               <div className="chart-placeholder">
                 <svg width="48" height="48" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round">

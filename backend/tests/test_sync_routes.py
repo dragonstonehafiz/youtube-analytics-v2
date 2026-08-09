@@ -174,7 +174,13 @@ class StructuralRejectionTest(SyncRoutesTestCase):
         self._assert_unprocessable({})
 
     def test_unknown_stage_is_unprocessable(self) -> None:
-        self._assert_unprocessable({"stages": [{"stage": "comments"}]})
+        self._assert_unprocessable({"stages": [{"stage": "chapters"}]})
+
+    def test_year_on_comments_is_rejected(self) -> None:
+        response = self.client.post(
+            "/sync/trigger", json={"stages": [{"stage": "comments", "scope": "all", "year": 2024}]}
+        )
+        self.assertEqual(response.status_code, 400)
 
     def test_unknown_scope_is_unprocessable(self) -> None:
         self._assert_unprocessable(

@@ -3,6 +3,8 @@ from __future__ import annotations
 from .orchestration import FULL_SYNC_TYPES, execute_plan, run_plan
 from .plans import (
     PERIOD_AWARE_STAGES,
+    SCOPE_AWARE_SCOPES,
+    SCOPE_AWARE_STAGES,
     SCOPES,
     STAGE_ORDER,
     PlanStage,
@@ -29,6 +31,8 @@ __all__ = [
     "PlanStage",
     "PlanValidationError",
     "SCOPES",
+    "SCOPE_AWARE_SCOPES",
+    "SCOPE_AWARE_STAGES",
     "STAGE_ORDER",
     "SyncLifecycleState",
     "SyncStatus",

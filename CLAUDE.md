@@ -34,7 +34,7 @@ Run backend commands through `backend/.venv`'s interpreter, not a global `python
 cd backend && .venv/Scripts/python.exe -m mypy database/connection.py   # Windows
 cd backend && .venv/bin/python -m mypy database/connection.py            # macOS/Linux
 cd backend && uvicorn server:app --reload
-cd frontend && npx eslint src/pages/Videos.tsx --fix
+cd frontend && npx oxlint src/pages/Videos.tsx --fix
 cd frontend && npx tsc --noEmit
 ```
 

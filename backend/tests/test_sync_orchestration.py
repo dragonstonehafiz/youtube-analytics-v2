@@ -48,6 +48,7 @@ class OrchestrationTestCase(unittest.TestCase):
             for name in (
                 "sync_videos",
                 "sync_playlists",
+                "sync_comments",
                 "sync_pruning",
                 "sync_video_analytics",
                 "sync_video_traffic_sources",
@@ -118,8 +119,23 @@ class SelectedStageExecutionTest(OrchestrationTestCase):
         execute_plan(full_incremental_plan())
 
         batch_ids = {args[0] for args in self.created}
-        self.assertEqual(len(self.created), 5)
+        self.assertEqual(len(self.created), 6)
         self.assertEqual(len(batch_ids), 1)
+
+    def test_comments_runs_immediately_after_videos(self) -> None:
+        execute_plan([
+            PlanStage("fx_rates"),
+            PlanStage("comments", "incremental"),
+            PlanStage("videos"),
+        ])
+
+        self.assertEqual(self.calls, ["sync_videos", "sync_comments", "sync_fx_rates"])
+
+    def test_passes_the_requested_scope_to_the_comments_stage(self) -> None:
+        execute_plan([PlanStage("comments", "all")])
+
+        self.assertEqual(self.stage_mocks["sync_comments"].call_args[0][0], "all")
+        self.assertEqual(self.created[0][2:], ("all", None))
 
     def test_records_independent_scopes_for_period_aware_stages(self) -> None:
         with mock.patch("sync.plans.available_years", return_value=(2025, 2024)):
@@ -303,7 +319,10 @@ class StageLoggingTest(OrchestrationTestCase):
             execute_plan(list(full_incremental_plan()))
 
         messages = [record.getMessage() for record in captured.records]
-        for sync_type in ("videos", "playlists", "video_analytics", "video_traffic_sources", "fx_rates"):
+        for sync_type in (
+            "videos", "playlists", "comments", "video_analytics",
+            "video_traffic_sources", "fx_rates",
+        ):
             self.assertIn(
                 f"Sync stage started sync_type={sync_type} rows_fetched=0 rows_written=0 rows_deleted=0",
                 messages,

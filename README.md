@@ -15,6 +15,7 @@ A local dashboard for analysing your own YouTube channel showing video and Short
 - Daily, weekly, and monthly charts, with a cumulative-total mode
 - Views, watch time, and estimated earnings (converted to SGD)
 - Traffic-source charts, breakdown tables, and top-performing videos per source
+- Top-level comments, browsable channel-wide or scoped to a video or playlist, with search by comment text, commenter, or video
 - Filter by date range, content type (video/Short), and privacy status
 - Automatic sync every 24 hours, plus manual sync (incremental, a specific year, or full resync)
 
@@ -59,6 +60,8 @@ Frontend runs on `http://localhost:5173`.
 On first backend startup, a browser window opens for the OAuth consent flow. The resulting token is saved to `backend/secrets/token.json` and reused on future runs; the SQLite database is created at `backend/data/youtube.db`.
 
 The initial sync pulls your channel's full history and can take a while for larger channels. After that, a background sync runs automatically every 24 hours, pulling only new data. You can also trigger a sync manually from the dashboard, choosing incremental (new data only), a specific year, or a full resync.
+
+Comments are the one exception to "full history on first sync": the automatic sync imports top-level comments no further back than December 1 of the previous year. Choose **Full data** on the Comments row of the Sync page to pull the rest. Only top-level comments are stored — replies are counted but never downloaded.
 
 ## Docker
 

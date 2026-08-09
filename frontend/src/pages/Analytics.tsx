@@ -11,12 +11,13 @@ import TopPerformersCard from '@/components/TopPerformersCard'
 import TrafficSourceChart from '@/components/TrafficSourceChart'
 import TrafficSourcesTable from '@/components/TrafficSourcesTable'
 import TrafficSourceTopVideosPanel from '@/components/TrafficSourceTopVideosPanel'
+import CommentsPanel from '@/components/CommentsPanel'
 import { useReplaceSearchParams } from '@/hooks/useReplaceSearchParams'
 import './Analytics.css'
 
 const RECENT_COUNT = 10
 
-type Tab = 'analytics' | 'traffic-sources'
+type Tab = 'analytics' | 'traffic-sources' | 'comments'
 
 export default function Analytics() {
   const [searchParams, setSearchParams] = useReplaceSearchParams()
@@ -137,8 +138,18 @@ export default function Analytics() {
         >
           Traffic Sources
         </button>
+        <button
+          type="button"
+          className={`tab${tab === 'comments' ? ' active' : ''}`}
+          onClick={() => handleTabChange('comments')}
+        >
+          Comments
+        </button>
       </div>
 
+      {/* Comments filter on their own publication dates and carry their own filter bar,
+          so the shared analytics date range does not apply to that tab. */}
+      {tab !== 'comments' && (
       <div className="filter-bar">
         <PeriodSelect
           startDate={startDate}
@@ -183,8 +194,11 @@ export default function Analytics() {
           </select>
         </label>
       </div>
+      )}
 
-      {tab === 'analytics' ? (
+      {tab === 'comments' ? (
+        <CommentsPanel scope={{ kind: 'channel' }} />
+      ) : tab === 'analytics' ? (
         rows.length === 0 ? (
           <div className="chart-placeholder">
             <svg width="48" height="48" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round">

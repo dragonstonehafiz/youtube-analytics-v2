@@ -1,0 +1,64 @@
+.comments-table {
+  min-width: 900px;
+}
+
+.comments-col-author {
+  width: 200px;
+}
+
+.comments-col-text {
+  width: 40%;
+}
+
+.comments-col-video {
+  width: 22%;
+}
+
+.comments-col-date {
+  width: 120px;
+}
+
+.comments-col-count {
+  width: 90px;
+}
+
+.comments-author {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  min-width: 0;
+}
+
+.comments-avatar,
+.comments-avatar-placeholder {
+  width: 28px;
+  height: 28px;
+  flex-shrink: 0;
+  border-radius: 50%;
+}
+
+.comments-avatar-placeholder {
+  background: var(--border);
+}
+
+.comments-author-name {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+/* Comment bodies are arbitrary user text: wrap them, including unbroken runs, so one
+   long word cannot force the fixed-layout table wider than its scroll container. */
+.comments-text {
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+}
+
+.comments-error {
+  margin: 0 0 1rem;
+  padding: 0.75rem 1rem;
+  border: 1px solid var(--red-mid);
+  border-radius: var(--radius-sm);
+  background: var(--red-light);
+  color: var(--red);
+}

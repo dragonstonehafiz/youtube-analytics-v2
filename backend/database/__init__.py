@@ -9,6 +9,15 @@ from .analytics import (
     get_video_analytics,
     upsert_video_analytics,
 )
+from .comments import (
+    delete_orphan_comment_authors,
+    get_comment_ids_for_video,
+    get_comments,
+    get_playlist_comments,
+    get_video_comments,
+    upsert_comment,
+    upsert_comment_author,
+)
 from .connection import get_connection, init_db
 from .fx_rates import get_fx_rates, get_last_fx_rate, upsert_fx_rate
 from .playlists import (
@@ -51,6 +60,7 @@ from .videos import (
 __all__ = [
     "complete_sync_run",
     "create_sync_run",
+    "delete_orphan_comment_authors",
     "delete_playlist_items",
     "delete_playlists_not_in",
     "delete_videos_not_in",
@@ -60,6 +70,8 @@ __all__ = [
     "get_all_playlists",
     "get_all_video_ids",
     "get_all_videos",
+    "get_comment_ids_for_video",
+    "get_comments",
     "get_connection",
     "get_earliest_published_year",
     "get_fx_rates",
@@ -69,6 +81,7 @@ __all__ = [
     "get_last_traffic_source_date",
     "get_playlist",
     "get_playlist_aggregated_analytics",
+    "get_playlist_comments",
     "get_playlist_aggregated_traffic_sources",
     "get_playlist_top_videos_by_traffic_source",
     "get_playlist_top_videos_by_views",
@@ -79,10 +92,13 @@ __all__ = [
     "get_top_videos_by_views",
     "get_video",
     "get_video_analytics",
+    "get_video_comments",
     "get_video_stats",
     "get_video_traffic_sources",
     "get_videos_published",
     "init_db",
+    "upsert_comment",
+    "upsert_comment_author",
     "upsert_fx_rate",
     "upsert_playlist",
     "upsert_playlist_item",

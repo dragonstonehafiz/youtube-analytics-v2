@@ -18,12 +18,12 @@ Commands to run when checking work, and recurring patterns for extending the cod
 
 ## Git restrictions
 
-The agent must never run `git commit`, `git push`, or any other command that creates commits or uploads changes to a remote, regardless of what verification or implementation task is in progress. Verification in this file means running local checks (`mypy`, `eslint`, `tsc`, `git diff`) — it never extends to committing or pushing the result. Staging (`git add`) and committing are the user's call to make, not something a verification pass triggers automatically.
+The agent must never run `git commit`, `git push`, or any other command that creates commits or uploads changes to a remote, regardless of what verification or implementation task is in progress. Verification in this file means running local checks (`mypy`, `oxlint`, `tsc`, `git diff`) — it never extends to committing or pushing the result. Staging (`git add`) and committing are the user's call to make, not something a verification pass triggers automatically.
 
 ## Verification principles
 
 - Prefer a file-scoped check over a project-wide build. Run the full frontend build (`npm run build`) only when explicitly requested — it is not part of the default verification loop.
-- Match the check to the layer touched: a backend-only change doesn't need `tsc`/`eslint`; a docs-only change doesn't need either.
+- Match the check to the layer touched: a backend-only change doesn't need `tsc`/`oxlint`; a docs-only change doesn't need either.
 - Current code is authoritative. If a reference file conflicts with what a verification command reveals, trust the command output and correct the reference — don't assume the doc predates the drift without checking.
 
 ## Backend verification
@@ -48,7 +48,7 @@ section for what each test group mocks/isolates.
 ## Frontend verification
 
 ```bash
-cd frontend && npx eslint src/pages/Videos.tsx --fix   # lint a single changed file
+cd frontend && npx oxlint src/pages/Videos.tsx --fix   # lint a single changed file (oxlint, not eslint — no eslint config exists; `npm run lint` runs oxlint over the project)
 cd frontend && npx tsc --noEmit                          # type check (whole project — tsc has no cheap single-file mode here)
 cd frontend && npm run build                              # full build — requires explicit approval before running
 ```
@@ -67,7 +67,7 @@ The last command should produce no output when the change is genuinely docs-only
 
 ## Adding a backend route
 
-1. Add the handler in the matching `backend/routes/<resource>.py` (`videos.py`, `playlists.py`, `analytics.py`, `synchronization.py`, or `metadata.py`).
+1. Add the handler in the matching `backend/routes/<resource>.py` (`videos.py`, `playlists.py`, `analytics.py`, `comments.py`, `synchronization.py`, or `metadata.py`).
 2. Add the corresponding DB helper in the matching `backend/database/<domain>.py` if the query doesn't already exist — follow the parameterized-query and table-alias conventions in `database.md`.
 3. Update `api.md` with the new route's method, path, params, and response shape.
 4. Run `.venv/Scripts/python.exe -m mypy routes/<resource>.py database/<domain>.py` (from `backend/`, using the venv interpreter — see [Backend verification](#backend-verification)).
@@ -79,7 +79,7 @@ The last command should produce no output when the change is genuinely docs-only
 3. Add a `<Route>` entry in `frontend/src/App.tsx`.
 4. Follow the URL-param-as-state convention described in `frontend.md` if the page has any filters.
 5. Update `frontend.md`'s page table with the new page's behavior.
-6. Run `npx eslint src/pages/<PageName>.tsx --fix` and `npx tsc --noEmit`.
+6. Run `npx oxlint src/pages/<PageName>.tsx --fix` and `npx tsc --noEmit`.
 
 ## Layer-specific checks
 
@@ -88,15 +88,15 @@ The last command should produce no output when the change is genuinely docs-only
 | Database query change | `database.md` | `mypy` on the changed file under `database/` |
 | Sync bug | `sync.md`, possibly `database.md` | `mypy` on the changed file(s) under `sync/`/`youtube/`; manual `POST /sync/trigger` against a local run if behavior-sensitive |
 | New endpoint | `api.md`, likely `database.md` | `mypy` on the changed file(s) under `routes/`/`database/`; update `api.md` |
-| Frontend API integration | `api.md`, `frontend.md` | `tsc --noEmit`; `eslint --fix` on changed files |
-| Page or component change | `frontend.md` | `eslint --fix`, `tsc --noEmit`; manual check in a running dev server for UI-facing changes |
+| Frontend API integration | `api.md`, `frontend.md` | `tsc --noEmit`; `oxlint --fix` on changed files |
+| Page or component change | `frontend.md` | `oxlint --fix`, `tsc --noEmit`; manual check in a running dev server for UI-facing changes |
 | Verification selection itself | this file | — |
 | Cross-layer feature | `architecture.md` plus every affected layer reference | all of the above, scoped to what actually changed |
 
 ## Pull request checks
 
 - `mypy <file>.py` (via the `backend/.venv` interpreter — see [Backend verification](#backend-verification)) on every changed backend file
-- `npx eslint src/... --fix` on every changed frontend file — no errors left afterward
+- `npx oxlint src/... --fix` on every changed frontend file — no errors left afterward
 - `npx tsc --noEmit` — no type errors
 - No `console.log` in frontend code
 - No hardcoded colors or magic numbers (use `index.css` tokens / named constants)

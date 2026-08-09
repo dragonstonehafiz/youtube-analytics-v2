@@ -73,7 +73,7 @@ class ValidatePlanTest(unittest.TestCase):
 
     def test_rejects_unknown_stage(self) -> None:
         with self.assertRaises(PlanValidationError):
-            validate_plan([PlanStage("comments")])
+            validate_plan([PlanStage("chapters")])
 
     def test_rejects_period_aware_stage_without_scope(self) -> None:
         with self.assertRaises(PlanValidationError):
@@ -102,6 +102,32 @@ class ValidatePlanTest(unittest.TestCase):
     def test_rejects_year_on_non_period_stage(self) -> None:
         with self.assertRaises(PlanValidationError):
             validate_plan([PlanStage("fx_rates", None, 2024)])
+
+    def test_accepts_comments_scopes(self) -> None:
+        for scope in ("incremental", "all"):
+            with self.subTest(scope=scope):
+                stages = validate_plan([PlanStage("comments", scope)])
+                self.assertEqual([s.stage for s in stages], ["comments"])
+
+    def test_accepts_comments_without_a_scope(self) -> None:
+        stages = validate_plan([PlanStage("comments")])
+        self.assertEqual(recorded_scope(stages[0]), "incremental")
+
+    def test_rejects_year_scope_on_comments(self) -> None:
+        with self.assertRaises(PlanValidationError):
+            validate_plan([PlanStage("comments", "year", 2024)])
+
+    def test_rejects_year_on_comments(self) -> None:
+        with self.assertRaises(PlanValidationError):
+            validate_plan([PlanStage("comments", "all", 2024)])
+
+    def test_comments_runs_immediately_after_videos(self) -> None:
+        stages = validate_plan([
+            PlanStage("fx_rates"),
+            PlanStage("comments", "incremental"),
+            PlanStage("videos"),
+        ])
+        self.assertEqual([s.stage for s in stages], ["videos", "comments", "fx_rates"])
 
     def test_rejects_scope_on_pruning(self) -> None:
         with self.assertRaises(PlanValidationError):
@@ -160,11 +186,19 @@ class RecordedValuesTest(unittest.TestCase):
 
 
 class FullIncrementalPlanTest(unittest.TestCase):
-    def test_contains_all_five_non_destructive_stages_in_canonical_order(self) -> None:
+    def test_contains_all_six_non_destructive_stages_in_canonical_order(self) -> None:
         self.assertEqual(
             [s.stage for s in full_incremental_plan()],
-            ["playlists", "videos", "video_analytics", "video_traffic_sources", "fx_rates"],
+            [
+                "playlists", "videos", "comments", "video_analytics",
+                "video_traffic_sources", "fx_rates",
+            ],
         )
+
+    def test_comments_is_incremental(self) -> None:
+        stage = next(s for s in full_incremental_plan() if s.stage == "comments")
+        self.assertEqual(stage.scope, "incremental")
+        self.assertIsNone(stage.year)
 
     def test_excludes_pruning(self) -> None:
         self.assertNotIn("pruning", [s.stage for s in full_incremental_plan()])

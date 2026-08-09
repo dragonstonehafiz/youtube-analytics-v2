@@ -13,6 +13,7 @@ router = APIRouter()
 SyncStage = Literal[
     "videos",
     "playlists",
+    "comments",
     "pruning",
     "video_analytics",
     "video_traffic_sources",

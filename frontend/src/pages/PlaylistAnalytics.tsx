@@ -15,12 +15,13 @@ import TopPerformersCard from '@/components/TopPerformersCard'
 import TrafficSourceChart from '@/components/TrafficSourceChart'
 import TrafficSourcesTable from '@/components/TrafficSourcesTable'
 import TrafficSourceTopVideosPanel from '@/components/TrafficSourceTopVideosPanel'
+import CommentsPanel from '@/components/CommentsPanel'
 import '@/components/VideoMetaCard.css'
 import './Analytics.css'
 
 const RECENT_COUNT = 10
 
-type Tab = 'analytics' | 'videos' | 'traffic-sources'
+type Tab = 'analytics' | 'videos' | 'traffic-sources' | 'comments'
 
 export default function PlaylistAnalytics() {
   const { id } = useParams<{ id: string }>()
@@ -250,9 +251,18 @@ export default function PlaylistAnalytics() {
         >
           Videos {total > 0 && `(${total})`}
         </button>
+        <button
+          type="button"
+          className={`tab${tab === 'comments' ? ' active' : ''}`}
+          onClick={() => handleTabChange('comments')}
+        >
+          Comments
+        </button>
       </div>
 
-      {tab === 'videos' ? (
+      {tab === 'comments' ? (
+        <CommentsPanel scope={{ kind: 'playlist', playlistId: id! }} />
+      ) : tab === 'videos' ? (
         <VideoTable
           videos={videos}
           total={total}
