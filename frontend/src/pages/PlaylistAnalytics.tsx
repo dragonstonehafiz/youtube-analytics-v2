@@ -21,7 +21,7 @@ import './Analytics.css'
 
 const RECENT_COUNT = 10
 
-type Tab = 'analytics' | 'videos' | 'traffic-sources' | 'comments'
+type Tab = 'analytics' | 'traffic-sources' | 'comments' | 'videos'
 
 export default function PlaylistAnalytics() {
   const { id } = useParams<{ id: string }>()
@@ -246,17 +246,17 @@ export default function PlaylistAnalytics() {
         </button>
         <button
           type="button"
-          className={`tab${tab === 'videos' ? ' active' : ''}`}
-          onClick={() => handleTabChange('videos')}
-        >
-          Videos {total > 0 && `(${total})`}
-        </button>
-        <button
-          type="button"
           className={`tab${tab === 'comments' ? ' active' : ''}`}
           onClick={() => handleTabChange('comments')}
         >
           Comments
+        </button>
+        <button
+          type="button"
+          className={`tab${tab === 'videos' ? ' active' : ''}`}
+          onClick={() => handleTabChange('videos')}
+        >
+          Videos {total > 0 && `(${total})`}
         </button>
       </div>
 

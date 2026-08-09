@@ -141,6 +141,11 @@ function CommentRow({ comment }: { comment: Comment }) {
         <p className="comment-text">{comment.text}</p>
         <div className="comment-stats">
           <span>
+            {comment.like_count === 1
+              ? '1 like'
+              : `${comment.like_count.toLocaleString()} likes`}
+          </span>
+          <span>
             {comment.total_reply_count === 1
               ? '1 reply'
               : `${comment.total_reply_count.toLocaleString()} replies`}
