@@ -160,8 +160,8 @@ GET  /comments
   → { items: Comment[], total, page, page_size }
   text/video_title/author are case-insensitive substring matches on the comment body, the parent
   video's title, and the commenter's display name. start_date/end_date filter the comment's own
-  published_at, not the video's. Every row carries the joined author snapshot plus video_title and
-  video_content_type — see database.md.
+  published_at, not the video's. Every row carries the joined author snapshot plus video_title,
+  video_content_type, and video_thumbnail_url — see database.md.
 
 GET  /comments/videos/{video_id}
   ?page=1, page_size=50 (max 200), sort_by=newest, text, author, start_date, end_date

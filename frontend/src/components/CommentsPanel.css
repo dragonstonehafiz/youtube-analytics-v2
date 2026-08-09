@@ -1,57 +1,8 @@
-.comments-table {
-  min-width: 900px;
-}
-
-.comments-col-author {
-  width: 200px;
-}
-
-.comments-col-text {
-  width: 40%;
-}
-
-.comments-col-video {
-  width: 22%;
-}
-
-.comments-col-date {
-  width: 120px;
-}
-
-.comments-col-count {
-  width: 90px;
-}
-
-.comments-author {
-  display: flex;
-  align-items: center;
-  gap: 0.5rem;
-  min-width: 0;
-}
-
-.comments-avatar,
-.comments-avatar-placeholder {
-  width: 28px;
-  height: 28px;
-  flex-shrink: 0;
-  border-radius: 50%;
-}
-
-.comments-avatar-placeholder {
-  background: var(--border);
-}
-
-.comments-author-name {
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-}
-
-/* Comment bodies are arbitrary user text: wrap them, including unbroken runs, so one
-   long word cannot force the fixed-layout table wider than its scroll container. */
-.comments-text {
-  white-space: pre-wrap;
-  overflow-wrap: anywhere;
+.comments-empty {
+  margin: 0;
+  padding: 3rem;
+  text-align: center;
+  color: var(--text-secondary);
 }
 
 .comments-error {
@@ -61,4 +12,131 @@
   border-radius: var(--radius-sm);
   background: var(--red-light);
   color: var(--red);
+}
+
+/* Shared neutral fill for a missing avatar or video thumbnail. */
+.comments-thumb-placeholder {
+  background: var(--border);
+}
+
+/* Each video's comments are their own card, matching every other section on the site.
+   `.card` supplies the surface, border, radius and shadow; only spacing is set here. */
+.comments-group {
+  margin-bottom: 1.25rem;
+  padding: 1.25rem 1.5rem;
+}
+
+.comments-group-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 1rem;
+  padding-bottom: 0.875rem;
+  border-bottom: 1px solid var(--border);
+}
+
+.comments-group-video {
+  display: flex;
+  align-items: center;
+  gap: 0.75rem;
+  min-width: 0;
+  color: var(--text-heading);
+}
+
+.comments-group-thumb {
+  width: 72px;
+  height: 40px;
+  flex-shrink: 0;
+  object-fit: cover;
+  border-radius: 6px;
+}
+
+.comments-group-title {
+  overflow: hidden;
+  font-weight: 600;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.comments-group-count {
+  flex-shrink: 0;
+  color: var(--text-secondary);
+  font-size: 0.8125rem;
+}
+
+.comments-list {
+  display: flex;
+  flex-direction: column;
+}
+
+/* The video-scoped tab has no group header, so the list is the card itself. */
+.card.comments-list {
+  padding: 0.25rem 1.5rem;
+}
+
+.comment {
+  display: flex;
+  gap: 0.875rem;
+  padding: 1rem 0;
+}
+
+.comment-avatar {
+  width: 40px;
+  height: 40px;
+  flex-shrink: 0;
+  border-radius: 50%;
+  object-fit: cover;
+}
+
+/* min-width:0 lets the body shrink inside the flex row so long text wraps
+   instead of pushing the row wider than the panel. */
+.comment-body {
+  flex: 1;
+  min-width: 0;
+}
+
+.comment-meta {
+  display: flex;
+  align-items: baseline;
+  gap: 0.5rem;
+  flex-wrap: wrap;
+}
+
+.comment-author {
+  color: var(--text-heading);
+  font-size: 0.875rem;
+  font-weight: 600;
+}
+
+.comment-time {
+  color: var(--text-secondary);
+  font-size: 0.8125rem;
+}
+
+/* Comment bodies are arbitrary user text: preserve their line breaks and break
+   unbroken runs, so a pasted URL cannot widen the panel. */
+.comment-text {
+  margin: 0.25rem 0 0.5rem;
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+}
+
+.comment-stats {
+  display: flex;
+  gap: 1rem;
+  color: var(--text-secondary);
+  font-size: 0.8125rem;
+}
+
+@media (max-width: 640px) {
+  .comments-group-header {
+    align-items: flex-start;
+    flex-direction: column;
+    gap: 0.5rem;
+  }
+
+  .comment-avatar {
+    width: 32px;
+    height: 32px;
+  }
 }

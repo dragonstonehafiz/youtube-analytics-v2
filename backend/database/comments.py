@@ -168,7 +168,8 @@ def _query_comments(
                 ca.profile_image_url AS author_profile_image_url,
                 ca.channel_url AS author_channel_url,
                 v.title AS video_title,
-                v.content_type AS video_content_type
+                v.content_type AS video_content_type,
+                v.thumbnail_url AS video_thumbnail_url
             {joins}
             {where}
             ORDER BY {order_by}

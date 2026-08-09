@@ -66,6 +66,7 @@ export interface Comment extends CommentAuthor {
   updated_at: string
   video_title: string
   video_content_type: ContentType
+  video_thumbnail_url: string | null
 }
 
 export type CommentSort = 'newest' | 'oldest' | 'likes'

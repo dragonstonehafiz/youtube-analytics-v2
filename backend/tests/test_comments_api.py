@@ -231,6 +231,7 @@ class ChannelCommentsRouteTest(SeededCommentsTestCase):
         self.assertEqual(item["author_youtube_channel_id"], "UC1")
         self.assertEqual(item["video_title"], "Unrelated Vlog")
         self.assertEqual(item["video_content_type"], "video")
+        self.assertIn("video_thumbnail_url", item)
 
     def test_sorts_oldest_first(self) -> None:
         body = self.client.get("/comments", params={"sort_by": "oldest"}).json()

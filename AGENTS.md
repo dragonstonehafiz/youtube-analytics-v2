@@ -17,7 +17,7 @@ The programming, GitHub, and documentation skills are portable and project-indep
 - qualify all column names with table aliases in any query that joins multiple tables
 - use type hints and docstrings on all backend functions
 - use explicit TypeScript types; avoid `any`
-- use HTML `<table>` with `table-layout: fixed` for all data tables
+- use HTML `<table>` with `table-layout: fixed` for all data tables — the comments feed (`CommentsPanel`) is a deliberate exception; comment bodies are prose, not cells
 - keep CSS in colocated `.css` files; no inline styles
 - use `@/` alias imports (e.g. `import { getVideos } from '@/api'`)
 - keep `.method()` on the same line as its object in Python — no chained calls starting on a new line

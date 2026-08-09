@@ -54,6 +54,103 @@ function fetchForScope(scope: CommentsScope, query: CommentQuery): Promise<Comme
   return getComments(query)
 }
 
+const MINUTE_MS = 60 * 1000
+const HOUR_MS = 60 * MINUTE_MS
+const DAY_MS = 24 * HOUR_MS
+const MONTH_MS = 30 * DAY_MS
+const YEAR_MS = 365 * DAY_MS
+
+/** Render an absolute timestamp the way YouTube does: "3 hours ago", "2 months ago". */
+function relativeTime(iso: string): string {
+  const elapsed = Date.now() - new Date(iso).getTime()
+  if (!Number.isFinite(elapsed) || elapsed < MINUTE_MS) return 'just now'
+
+  const [amount, unit] =
+    elapsed >= YEAR_MS ? [elapsed / YEAR_MS, 'year'] :
+    elapsed >= MONTH_MS ? [elapsed / MONTH_MS, 'month'] :
+    elapsed >= DAY_MS ? [elapsed / DAY_MS, 'day'] :
+    elapsed >= HOUR_MS ? [elapsed / HOUR_MS, 'hour'] :
+    [elapsed / MINUTE_MS, 'minute']
+
+  const rounded = Math.floor(amount as number)
+  return `${rounded} ${unit}${rounded === 1 ? '' : 's'} ago`
+}
+
+interface CommentGroup {
+  videoId: string
+  videoTitle: string
+  videoThumbnailUrl: string | null
+  comments: Comment[]
+}
+
+/**
+ * Bucket a page of comments by their parent video, keeping both the page's sort order
+ * within each group and the order the videos first appear in it.
+ *
+ * Grouping is applied to the fetched page only, so one video's comments can still span a
+ * page boundary — the backend paginates over comments, not over videos.
+ */
+function groupByVideo(comments: Comment[]): CommentGroup[] {
+  const groups = new Map<string, CommentGroup>()
+  for (const comment of comments) {
+    const existing = groups.get(comment.video_id)
+    if (existing) {
+      existing.comments.push(comment)
+      continue
+    }
+    groups.set(comment.video_id, {
+      videoId: comment.video_id,
+      videoTitle: comment.video_title,
+      videoThumbnailUrl: comment.video_thumbnail_url,
+      comments: [comment],
+    })
+  }
+  return [...groups.values()]
+}
+
+/**
+ * One comment, laid out as a feed entry rather than a table row: a comment body is prose
+ * of arbitrary length, which a fixed-layout cell either truncates or stretches.
+ */
+function CommentRow({ comment }: { comment: Comment }) {
+  const edited = comment.youtube_updated_at !== comment.published_at
+
+  return (
+    <article className="comment">
+      {comment.author_profile_image_url
+        ? <img src={comment.author_profile_image_url} alt="" className="comment-avatar" />
+        : <div className="comment-avatar comments-thumb-placeholder" />}
+      <div className="comment-body">
+        <div className="comment-meta">
+          {comment.author_channel_url ? (
+            <a
+              href={comment.author_channel_url}
+              target="_blank"
+              rel="noreferrer"
+              className="comment-author"
+            >
+              {comment.author_display_name}
+            </a>
+          ) : (
+            <span className="comment-author">{comment.author_display_name}</span>
+          )}
+          <time className="comment-time" dateTime={comment.published_at}>
+            {relativeTime(comment.published_at)}{edited ? ' (edited)' : ''}
+          </time>
+        </div>
+        <p className="comment-text">{comment.text}</p>
+        <div className="comment-stats">
+          <span>
+            {comment.total_reply_count === 1
+              ? '1 reply'
+              : `${comment.total_reply_count.toLocaleString()} replies`}
+          </span>
+        </div>
+      </div>
+    </article>
+  )
+}
+
 interface CommentsPanelProps {
   scope: CommentsScope
 }
@@ -150,7 +247,9 @@ export default function CommentsPanel({ scope }: CommentsPanelProps) {
   }
 
   const totalPages = Math.ceil(total / PAGE_SIZE)
-  const columnCount = scopedToOneVideo ? 5 : 6
+  // A video scope has exactly one parent video, so grouping there would add a heading
+  // repeating what the page already says.
+  const groups = scopedToOneVideo ? [] : groupByVideo(comments)
 
   return (
     <div className="comments-panel">
@@ -232,74 +331,41 @@ export default function CommentsPanel({ scope }: CommentsPanelProps) {
         <p className="loading">Loading...</p>
       ) : (
         <>
-          <div className="table-overflow-wrap">
-            <table className="data-table comments-table">
-              <colgroup>
-                <col className="comments-col-author" />
-                <col className="comments-col-text" />
-                {!scopedToOneVideo && <col className="comments-col-video" />}
-                <col className="comments-col-date" />
-                <col className="comments-col-count" />
-                <col className="comments-col-count" />
-              </colgroup>
-              <thead>
-                <tr>
-                  <th>Commenter</th>
-                  <th>Comment</th>
-                  {!scopedToOneVideo && <th>Video</th>}
-                  <th>Published</th>
-                  <th>Likes</th>
-                  <th>Replies</th>
-                </tr>
-              </thead>
-              <tbody>
-                {comments.length === 0 && (
-                  <tr>
-                    <td colSpan={columnCount} className="table-empty">
-                      {error ? 'Comments unavailable' : 'No comments found'}
-                    </td>
-                  </tr>
-                )}
-                {comments.map(comment => (
-                  <tr key={comment.id}>
-                    <td>
-                      <div className="comments-author">
-                        {comment.author_profile_image_url
-                          ? <img src={comment.author_profile_image_url} alt="" className="comments-avatar" />
-                          : <div className="comments-avatar-placeholder" />}
-                        {comment.author_channel_url ? (
-                          <a
-                            href={comment.author_channel_url}
-                            target="_blank"
-                            rel="noreferrer"
-                            className="comments-author-name"
-                          >
-                            {comment.author_display_name}
-                          </a>
-                        ) : (
-                          <span className="comments-author-name">{comment.author_display_name}</span>
-                        )}
-                      </div>
-                    </td>
-                    <td className="comments-text">{comment.text}</td>
-                    {!scopedToOneVideo && (
-                      <td className="cell-title">
-                        <Link to={`/analytics/videos/${comment.video_id}?tab=comments`}>
-                          {comment.video_title}
-                        </Link>
-                        <span className={`badge${comment.video_content_type === 'short' ? ' short' : ''}`}>
-                          {comment.video_content_type === 'short' ? 'Short' : 'Video'}
-                        </span>
-                      </td>
-                    )}
-                    <td>{comment.published_at?.slice(0, 10)}</td>
-                    <td>{comment.like_count?.toLocaleString()}</td>
-                    <td>{comment.total_reply_count?.toLocaleString()}</td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
-          </div>
+          {comments.length === 0 ? (
+            <p className="card comments-empty">
+              {error ? 'Comments unavailable' : 'No comments found'}
+            </p>
+          ) : scopedToOneVideo ? (
+            <div className="card comments-list">
+              {comments.map(comment => (
+                <CommentRow key={comment.id} comment={comment} />
+              ))}
+            </div>
+          ) : (
+            groups.map(group => (
+              <section className="card comments-group" key={group.videoId}>
+                <header className="comments-group-header">
+                  <Link
+                    to={`/analytics/videos/${group.videoId}?tab=comments`}
+                    className="comments-group-video"
+                  >
+                    {group.videoThumbnailUrl
+                      ? <img src={group.videoThumbnailUrl} alt="" className="comments-group-thumb" />
+                      : <div className="comments-group-thumb comments-thumb-placeholder" />}
+                    <span className="comments-group-title">{group.videoTitle}</span>
+                  </Link>
+                  <span className="comments-group-count">
+                    {group.comments.length === 1 ? '1 comment' : `${group.comments.length} comments`}
+                  </span>
+                </header>
+                <div className="comments-list">
+                  {group.comments.map(comment => (
+                    <CommentRow key={comment.id} comment={comment} />
+                  ))}
+                </div>
+              </section>
+            ))
+          )}
           {totalPages > 1 && (
             <div className="pagination">
               <button
