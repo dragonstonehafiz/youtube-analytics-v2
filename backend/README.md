@@ -120,9 +120,9 @@ select any combination of stages and give video analytics and traffic sources in
 periods.
 
 The comments stage imports top-level comments for videos already stored locally; reply
-bodies are never fetched. It offers two scopes rather than a period: **New data only**
+bodies are never fetched. It offers two scopes rather than a period: **Incremental**
 (the default, used by the startup sync) reads each video back to the comments it already
-holds, or to December 1 of the previous year for a video with none, and **Full data**
+holds, or to December 1 of the previous year for a video with none, and **All**
 re-reads every comment. Neither scope ever deletes a comment.
 
 ## Logging

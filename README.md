@@ -61,7 +61,7 @@ On first backend startup, a browser window opens for the OAuth consent flow. The
 
 The initial sync pulls your channel's full history and can take a while for larger channels. After that, a background sync runs automatically every 24 hours, pulling only new data. You can also trigger a sync manually from the dashboard, choosing incremental (new data only), a specific year, or a full resync.
 
-Comments are the one exception to "full history on first sync": the automatic sync imports top-level comments no further back than December 1 of the previous year. Choose **Full data** on the Comments row of the Sync page to pull the rest. Only top-level comments are stored — replies are counted but never downloaded.
+Comments are the one exception to "full history on first sync": the automatic sync imports top-level comments no further back than December 1 of the previous year. Choose **All** on the Comments row of the Sync page to pull the rest. Only top-level comments are stored — replies are counted but never downloaded.
 
 ## Docker
 

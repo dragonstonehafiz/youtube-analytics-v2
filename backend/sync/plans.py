@@ -35,7 +35,7 @@ PERIOD_AWARE_STAGES: frozenset[str] = frozenset({"video_analytics", "video_traff
 # a boundary rather than over a date range, which is what makes a year meaningless here.
 SCOPE_AWARE_STAGES: frozenset[str] = frozenset({"comments"})
 
-# Scopes accepted for the scope-aware stages. "all" is surfaced as "Full data" in the UI.
+# Scopes accepted for the scope-aware stages.
 SCOPE_AWARE_SCOPES: tuple[str, ...] = ("incremental", "all")
 
 # Stages that require both of these stages to run in the same plan, because they act on

@@ -95,7 +95,7 @@ Scopes are per-stage, not per-sync: `video_analytics`, `video_traffic_sources`, 
 - `scope`/`year` affect **only** `sync_video_analytics` and `sync_video_traffic_sources`; `scope` alone also affects `sync_comments` (`sync/stages.py`). Videos, playlists, pruning, and FX rates always sync incrementally (or, for pruning, run once against current state) and must not be given a scope at all — `validate_plan()` rejects a plan that tries.
 - `"incremental"`: for the analytics stages, resume each video from `INCREMENTAL_LOOKBACK_DAYS` before its own last-synced date, clamped to its publish date (see [Shared incremental lookback](#shared-incremental-lookback)); for `comments`, stop at each video's own boundary (see [Comment synchronization](#comment-synchronization)).
 - `"year"`: refetch the given calendar year for every video, ignoring any resume checkpoint, clamped to `[publish_date, yesterday]`. Period-aware stages only.
-- `"all"`: refetch each video's entire history (`publish_date` → yesterday) for the analytics stages, ignoring any resume checkpoint; for `comments`, re-read every page of every stored video. Surfaced as **Full data** in the Sync page's Comments row.
+- `"all"`: refetch each video's entire history (`publish_date` → yesterday) for the analytics stages, ignoring any resume checkpoint; for `comments`, re-read every page of every stored video. Labelled **All** in the Sync page's Comments row.
 
 ## Stage tracking
 

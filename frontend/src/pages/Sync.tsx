@@ -118,8 +118,8 @@ function StageScopeSelect({ stage, label, value, disabled, onChange }: ScopeSele
       disabled={disabled}
       onChange={e => onChange(stage, e.target.value as ScopeAwareSyncScope)}
     >
-      <option value={INCREMENTAL}>New data only</option>
-      <option value={ALL}>Full data</option>
+      <option value={INCREMENTAL}>Incremental</option>
+      <option value={ALL}>All</option>
     </select>
   )
 }

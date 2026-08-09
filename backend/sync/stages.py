@@ -180,7 +180,7 @@ def sync_comments(scope: str, counts: SyncCounts) -> None:
     `_comment_bootstrap_cutoff()`. Because the boundary is per video, a first run that
     failed part-way resumes correctly — populated videos use their boundary, untouched
     ones use the cutoff — and neither case escalates itself to a full history scan.
-    scope="all" ("Full data" in the UI) re-reads and refreshes every page of every video.
+    scope="all" re-reads and refreshes every page of every video.
 
     This stage only ever inserts and updates. Comments removed on YouTube keep their
     stored rows; the only deletions are commenter rows left unreferenced once a pruned
