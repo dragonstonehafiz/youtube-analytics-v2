@@ -239,12 +239,6 @@ export default function Sync() {
         </div>
       )}
 
-      {status && !isSyncing && (status.state === 'success' || status.state === 'failed') && (
-        <div className={`sync-result sync-result-${status.state}`} role="status">
-          {status.message}
-        </div>
-      )}
-
       <table className="data-table sync-table">
         <colgroup>
           <col className="sync-col-include" />
