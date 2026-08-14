@@ -8,12 +8,14 @@ import database
 
 # Canonical execution order for every sync stage. The backend — not the client — owns
 # this order: a submitted plan always runs in this sequence regardless of the order its
-# stages appear in the request. `pruning` sits between `videos` and `video_analytics` so
-# it always runs after both discovery stages it depends on and before any stage whose
-# rows would otherwise be cascade-deleted out from under it.
+# stages appear in the request. `pruning` sits after both discovery stages it depends on
+# and before any stage whose rows would otherwise be cascade-deleted out from under it.
+# `comments` reads the video rows `videos` just wrote, so it follows that stage directly;
+# a video pruned afterwards cascade-deletes the comments collected for it here.
 STAGE_ORDER: tuple[str, ...] = (
     "playlists",
     "videos",
+    "comments",
     "pruning",
     "video_analytics",
     "video_traffic_sources",
@@ -27,6 +29,14 @@ DESTRUCTIVE_STAGES: frozenset[str] = frozenset({"pruning"})
 # The stages whose date range is configurable. Every other stage is always incremental
 # and must not carry a scope or year.
 PERIOD_AWARE_STAGES: frozenset[str] = frozenset({"video_analytics", "video_traffic_sources"})
+
+# Stages that choose how far back to scan but have no per-year view, so they accept a
+# scope and never a year. `comments` walks each video's threads newest-first and stops at
+# a boundary rather than over a date range, which is what makes a year meaningless here.
+SCOPE_AWARE_STAGES: frozenset[str] = frozenset({"comments"})
+
+# Scopes accepted for the scope-aware stages.
+SCOPE_AWARE_SCOPES: tuple[str, ...] = ("incremental", "all")
 
 # Stages that require both of these stages to run in the same plan, because they act on
 # a discovery set only those stages populate.
@@ -76,7 +86,7 @@ def available_years() -> tuple[int, ...]:
 
 def recorded_scope(stage: PlanStage) -> str:
     """Return the scope to record in sync_runs for a validated stage."""
-    if stage.stage in PERIOD_AWARE_STAGES and stage.scope is not None:
+    if stage.stage in PERIOD_AWARE_STAGES | SCOPE_AWARE_STAGES and stage.scope is not None:
         return stage.scope
     return IMPLICIT_SCOPE
 
@@ -106,6 +116,8 @@ def validate_plan(stages: Sequence[PlanStage]) -> tuple[PlanStage, ...]:
 
         if stage.stage in PERIOD_AWARE_STAGES:
             _validate_period(stage)
+        elif stage.stage in SCOPE_AWARE_STAGES:
+            _validate_scope_only(stage)
         elif stage.scope is not None or stage.year is not None:
             raise PlanValidationError(f"{stage.stage} does not accept a scope or year")
 
@@ -141,6 +153,18 @@ def _validate_period(stage: PlanStage) -> None:
         raise PlanValidationError(f"year is only allowed when scope=year, not scope={stage.scope}")
 
 
+def _validate_scope_only(stage: PlanStage) -> None:
+    """Validate the scope of one scope-aware stage, which must never carry a year.
+
+    An omitted scope is the incremental default rather than an error, so a client can
+    select the stage without restating the setting it would get anyway.
+    """
+    if stage.scope is not None and stage.scope not in SCOPE_AWARE_SCOPES:
+        raise PlanValidationError(f"scope must be one of: {', '.join(SCOPE_AWARE_SCOPES)}")
+    if stage.year is not None:
+        raise PlanValidationError(f"{stage.stage} does not accept a year")
+
+
 def full_incremental_plan() -> tuple[PlanStage, ...]:
     """Return the non-destructive startup plan: every stage except pruning.
 
@@ -148,7 +172,10 @@ def full_incremental_plan() -> tuple[PlanStage, ...]:
     truncated or unattended run can never remove data.
     """
     return tuple(
-        PlanStage(name, IMPLICIT_SCOPE if name in PERIOD_AWARE_STAGES else None)
+        PlanStage(
+            name,
+            IMPLICIT_SCOPE if name in PERIOD_AWARE_STAGES | SCOPE_AWARE_STAGES else None,
+        )
         for name in STAGE_ORDER
         if name not in DESTRUCTIVE_STAGES
     )

@@ -1,6 +1,8 @@
 from __future__ import annotations
 
+import json
 import re
+from collections.abc import Iterator
 from typing import Any
 
 from googleapiclient.discovery import build
@@ -13,6 +15,22 @@ from .auth import get_credentials
 _DURATION_RE = re.compile(
     r"^PT(?:(?P<hours>\d+)H)?(?:(?P<minutes>\d+)M)?(?:(?P<seconds>\d+)S)?$"
 )
+
+# The maximum commentThreads.list page size. Each request costs one quota unit whatever
+# the page size, so always asking for the maximum minimises quota spent per comment.
+COMMENT_THREADS_PAGE_SIZE = 100
+
+# Namespaces for comment_authors.id. Every author key carries exactly one of these, so a
+# key derived from a channel ID and one derived from a comment ID can never collide. The
+# unprefixed channel ID is stored separately in comment_authors.youtube_channel_id.
+AUTHOR_CHANNEL_KEY_PREFIX = "channel:"
+AUTHOR_COMMENT_KEY_PREFIX = "comment:"
+
+# Per-video commentThreads failures meaning "this video has no readable comments" rather
+# than "the request was wrong". Anything else — notably quotaExceeded, which also arrives
+# as a 403 — must propagate and fail the stage instead of silently skipping every
+# remaining video.
+_RECOVERABLE_COMMENT_REASONS = frozenset({"commentsDisabled", "videoNotFound"})
 
 _logger = get_logger("sync")
 
@@ -345,3 +363,136 @@ def fetch_playlist_items(
             break
 
     return items, truncated
+
+
+def _http_error_reason(exc: HttpError) -> str | None:
+    """Return the Data API's machine-readable reason for an HttpError, when it carries one.
+
+    The HTTP status alone can't separate a video with comments turned off from an
+    exhausted quota — both are 403 — so this reason string is what decides whether one
+    video is skipped or the whole stage fails.
+    """
+    try:
+        payload = json.loads(exc.content.decode("utf-8"))
+    except (AttributeError, UnicodeDecodeError, ValueError):
+        return None
+    errors = payload.get("error", {}).get("errors") or []
+    if not errors:
+        return None
+    reason = errors[0].get("reason")
+    return str(reason) if reason else None
+
+
+def _normalize_comment_thread(item: dict, video_id: str) -> dict | None:
+    """Split one commentThreads item into its author and top-level comment rows.
+
+    Returns None when the item lacks a field the schema requires, which the caller logs
+    and skips. `authorChannelId` is genuinely optional — a commenter whose channel no
+    longer resolves keeps a display name but loses that identifier — so those authors get
+    a comment-scoped key, which keeps two such commenters apart rather than merging them
+    on a shared display name.
+    """
+    thread_snippet = item.get("snippet") or {}
+    top_level = thread_snippet.get("topLevelComment") or {}
+    snippet = top_level.get("snippet") or {}
+
+    thread_id = item.get("id")
+    comment_id = top_level.get("id")
+    text = snippet.get("textDisplay")
+    display_name = snippet.get("authorDisplayName")
+    published_at = snippet.get("publishedAt")
+    if not (thread_id and comment_id and display_name and published_at) or text is None:
+        return None
+
+    channel_id = (snippet.get("authorChannelId") or {}).get("value")
+    author_id = (
+        f"{AUTHOR_CHANNEL_KEY_PREFIX}{channel_id}" if channel_id
+        else f"{AUTHOR_COMMENT_KEY_PREFIX}{comment_id}"
+    )
+    return {
+        "author": {
+            "id": author_id,
+            "youtube_channel_id": channel_id,
+            "display_name": display_name,
+            "profile_image_url": snippet.get("authorProfileImageUrl"),
+            "channel_url": snippet.get("authorChannelUrl"),
+        },
+        "comment": {
+            "id": comment_id,
+            "thread_id": thread_id,
+            "video_id": video_id,
+            "author_id": author_id,
+            "text": text,
+            "like_count": max(int(snippet.get("likeCount") or 0), 0),
+            "total_reply_count": max(int(thread_snippet.get("totalReplyCount") or 0), 0),
+            "published_at": published_at,
+            "youtube_updated_at": snippet.get("updatedAt") or published_at,
+        },
+    }
+
+
+def iter_comment_threads(video_id: str, title: str | None = None) -> Iterator[dict]:
+    """Yield one video's top-level comments newest first, fetching a page at a time.
+
+    Each yielded item is `{"author": {...}, "comment": {...}}`, shaped for
+    `database.upsert_comment_author()` and `database.upsert_comment()` respectively.
+
+    One request carries at most COMMENT_THREADS_PAGE_SIZE comments and the next is only
+    made once the consumer has worked through the previous ones, so a caller that stops
+    early — as the incremental scan does once it reaches comments it already stores —
+    spends no further quota.
+
+    Requesting `part="snippet"` omits the optional `replies` part, so reply bodies are
+    never transferred while `snippet.totalReplyCount` still is. `order="time"` is what
+    makes stopping early meaningful: the newest comments arrive first.
+
+    A video with comments disabled or one that has disappeared from YouTube yields
+    nothing and is logged; every other API error propagates. The truncation signal from
+    `_next_page_token()` is only logged, since nothing downstream infers a deletion from
+    a comment's absence — an incomplete walk costs freshness, not correctness.
+    """
+    yt = _data_client()
+    seen_tokens: set[str] = set()
+    page_token = None
+    page = 0
+
+    while True:
+        try:
+            response = yt.commentThreads().list(
+                part="snippet",
+                videoId=video_id,
+                maxResults=COMMENT_THREADS_PAGE_SIZE,
+                order="time",
+                textFormat="plainText",
+                pageToken=page_token,
+            ).execute()
+        except HttpError as exc:
+            reason = _http_error_reason(exc)
+            if reason in _RECOVERABLE_COMMENT_REASONS:
+                _logger.warning(
+                    "comment_threads skipped video=%s reason=%s title=%r", video_id, reason, title
+                )
+                return
+            raise
+
+        page += 1
+        items = response.get("items", [])
+        for item in items:
+            try:
+                normalized = _normalize_comment_thread(item, video_id)
+            except (AttributeError, TypeError, ValueError):
+                normalized = None
+            if normalized is None:
+                _logger.warning(
+                    "comment_threads item skipped video=%s reason=malformed_item thread=%r",
+                    video_id, (item or {}).get("id"),
+                )
+                continue
+            yield normalized
+
+        page_token, _truncated = _next_page_token(
+            "comment_threads", page, len(items), response.get("nextPageToken"), seen_tokens,
+            owner=video_id, owner_name=title,
+        )
+        if not page_token:
+            break

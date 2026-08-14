@@ -6,7 +6,7 @@ Public FastAPI contracts: every route, its parameters, defaults, and response sh
 
 ## Authoritative source files
 
-- `backend/routes/videos.py`, `backend/routes/playlists.py`, `backend/routes/analytics.py`, `backend/routes/synchronization.py`, `backend/routes/metadata.py` (`backend/routes/__init__.py` aggregates these into one `router`, in that order)
+- `backend/routes/videos.py`, `backend/routes/playlists.py`, `backend/routes/analytics.py`, `backend/routes/comments.py`, `backend/routes/synchronization.py`, `backend/routes/metadata.py` (`backend/routes/__init__.py` aggregates these into one `router`, in that order)
 - `backend/database/` (response-producing helpers only — see `database.md` for their internals)
 
 ## Contents
@@ -16,6 +16,7 @@ Public FastAPI contracts: every route, its parameters, defaults, and response sh
 - [Playlists](#playlists)
 - [Channel analytics](#channel-analytics)
 - [Playlist analytics](#playlist-analytics)
+- [Comments](#comments)
 - [Metadata](#metadata)
 - [Synchronization](#synchronization)
 - [Route-order and compatibility constraints](#route-order-and-compatibility-constraints)
@@ -146,6 +147,37 @@ parameterized `v.title LIKE ?` (bound to `%{title}%`) case-insensitive partial-m
 on playlist routes, with the existing playlist-membership condition. Omitting `title` produces
 identical results to before this filter existed.
 
+## Comments
+
+Read-only: `routes/comments.py` declares `GET` handlers and nothing else, so every other
+method on these paths is a `405`. There are no comment mutation or moderation endpoints.
+
+```
+GET  /comments
+  ?page=1, page_size=50 (max 200), sort_by=newest,
+   text, video_title, author, start_date, end_date, content_type
+  sort_by ∈ newest | oldest | likes — a value outside that set is a 422, not a silent fallback
+  → { items: Comment[], total, page, page_size }
+  text/video_title/author are case-insensitive substring matches on the comment body, the parent
+  video's title, and the commenter's display name. start_date/end_date filter the comment's own
+  published_at, not the video's. Every row carries the joined author snapshot plus video_title,
+  video_content_type, and video_thumbnail_url — see database.md.
+
+GET  /comments/videos/{video_id}
+  ?page=1, page_size=50 (max 200), sort_by=newest, text, author, start_date, end_date
+  → { items: Comment[], total, page, page_size } | 404 if video not found
+  Accepts no video_title or content_type filter: a fixed video determines both.
+
+GET  /comments/playlists/{playlist_id}
+  ?page=1, page_size=50 (max 200), sort_by=newest,
+   text, video_title, author, start_date, end_date, content_type
+  → { items: Comment[], total, page, page_size } | 404 if playlist not found
+  A video listed twice in the playlist still yields each of its comments once — see database.md.
+```
+
+Only top-level comments are served. Reply bodies are never fetched or stored; each row's
+`total_reply_count` is the thread's reply count as metadata (see `sync.md`).
+
 ## Metadata
 
 ```
@@ -166,10 +198,14 @@ GET  /sync/status
 
 POST /sync/trigger
   Body (JSON): { stages: [ { stage, scope?, year? }, ... ] }
-    stage ∈ videos | playlists | pruning | video_analytics | video_traffic_sources | fx_rates
+    stage ∈ videos | playlists | comments | pruning | video_analytics |
+            video_traffic_sources | fx_rates
     scope ∈ incremental | year | all   # video_analytics / video_traffic_sources only,
                                        # required for those two, forbidden on the rest
-    year  (int)                        # required with scope=year, forbidden otherwise
+                                       # except comments, which takes incremental | all
+                                       # (optional; omitted means incremental)
+    year  (int)                        # required with scope=year, forbidden otherwise —
+                                       # and always rejected on comments
   → { queued: true }
   422 malformed body, missing `stages`, unknown stage, unknown scope, non-numeric year
   400 empty `stages`, duplicate stage, missing/misapplied scope or year, unavailable year,
@@ -177,7 +213,10 @@ POST /sync/trigger
   409 a sync is already in progress
   Each period-aware stage carries its own scope/year — the two can differ in one plan.
   Submission order is irrelevant: the backend always executes in canonical stage order
-  (playlists → videos → pruning → video_analytics → video_traffic_sources → fx_rates).
+  (playlists → videos → comments → pruning → video_analytics → video_traffic_sources →
+  fx_rates).
+  `comments` only inserts and updates; scope=all re-reads full comment history but still
+  deletes no comments (see sync.md).
   `pruning` is the only stage that deletes video rows (cascades to video_analytics/
   video_traffic_sources) and is never selected automatically — omit it from a plan and
   nothing is deleted.
@@ -190,14 +229,15 @@ GET  /sync/runs
   → { items: SyncRun[] }   # newest first
   SyncRun: { id, batch_id, sync_type, scope, year, status, started_at, completed_at,
              rows_fetched, rows_written, rows_deleted, error_message }
-  sync_type ∈ videos | playlists | pruning | video_analytics | video_traffic_sources | fx_rates
+  sync_type ∈ videos | playlists | comments | pruning | video_analytics |
+              video_traffic_sources | fx_rates
   status ∈ running | success | failed
   Only stages that actually started have rows; a plan's rows share one batch_id.
 ```
 
 ## Route-order and compatibility constraints
 
-- **`/videos/published` must be declared before `/videos/{video_id}`** in `routes/videos.py` — FastAPI matches routes in declaration order, and a literal path segment (`published`) would otherwise be captured by the `{video_id}` path parameter on an earlier-declared dynamic route. Confirmed current order in `routes/videos.py` has `/videos/published` (line 47) before `/videos/{video_id}` (line 60). `routes/__init__.py` includes the five sub-routers in a fixed order (videos, playlists, analytics, synchronization, metadata), but that inter-file order carries no matching-order risk here since no two files declare overlapping path prefixes with the same ambiguity — only the intra-file `/videos/published` vs `/videos/{video_id}` ordering matters.
+- **`/videos/published` must be declared before `/videos/{video_id}`** in `routes/videos.py` — FastAPI matches routes in declaration order, and a literal path segment (`published`) would otherwise be captured by the `{video_id}` path parameter on an earlier-declared dynamic route. Confirmed current order in `routes/videos.py` has `/videos/published` (line 47) before `/videos/{video_id}` (line 60). `routes/__init__.py` includes the six sub-routers in a fixed order (videos, playlists, analytics, comments, synchronization, metadata), but that inter-file order carries no matching-order risk here since no two files declare overlapping path prefixes with the same ambiguity — only the intra-file `/videos/published` vs `/videos/{video_id}` ordering matters. The comments routes are likewise unambiguous: `/comments` has no dynamic sibling, and `/comments/videos/{id}` and `/comments/playlists/{id}` are distinguished by a literal second segment.
 - Frontend's `api.ts` exposes two identically-implemented functions for the same endpoint — `getPlaylistAnalytics(id, params)` and `getPlaylistAggregatedAnalytics(id, params)` both call `GET /analytics/playlists/{id}` with no difference in behavior. Only `getPlaylistAnalytics` is actually used by `PlaylistAnalytics.tsx`; treat the other as a redundant alias, not a second endpoint.
 - Adding a new sortable column to any `sort_by` requires updating the backend's allow-list (`database/videos.py`'s `VIDEO_SORT_COLUMNS` / `database/playlists.py`'s `_PLAYLIST_SORT_COLUMNS`, see `database.md`) — an unrecognized value is silently ignored (falls back to the default sort) rather than rejected with an error.
 - The Top Videos routes' `sort_by` is different: it's typed `Literal["views", "watch_time"]` in `routes/analytics.py`, so FastAPI rejects an invalid value with 422 instead of silently falling back. The DB helpers (`get_top_videos_by_views()` / `get_playlist_top_videos_by_views()`, in `database/analytics.py`) still fall back to `"views"` defensively if called directly with an unrecognized value — see `database.md`.

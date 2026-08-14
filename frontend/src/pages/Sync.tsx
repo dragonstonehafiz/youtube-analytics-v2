@@ -2,6 +2,8 @@ import { useEffect, useState } from 'react'
 import { getDateRange, getSyncStatus, triggerSync } from '@/api'
 import type {
   PeriodAwareSyncStage,
+  ScopeAwareSyncScope,
+  ScopeAwareSyncStage,
   SyncPlan,
   SyncPlanStage,
   SyncStage,
@@ -24,6 +26,7 @@ interface StageRow {
 const STAGE_ROWS: readonly StageRow[] = [
   { stage: 'playlists', label: 'Playlists', description: 'Playlists metadata and playlist items' },
   { stage: 'videos', label: 'Videos', description: 'Video and video metadata' },
+  { stage: 'comments', label: 'Comments', description: 'Top-level comments and commenters on stored videos' },
   { stage: 'pruning', label: 'Pruning', description: 'Removes videos no longer found during complete discovery' },
   { stage: 'video_analytics', label: 'Video Analytics', description: 'Daily per-video metrics' },
   { stage: 'video_traffic_sources', label: 'Traffic Sources', description: 'Daily video traffic metrics' },
@@ -32,16 +35,24 @@ const STAGE_ROWS: readonly StageRow[] = [
 
 const PERIOD_AWARE_STAGES: readonly PeriodAwareSyncStage[] = ['video_analytics', 'video_traffic_sources']
 
+const SCOPE_AWARE_STAGES: readonly ScopeAwareSyncStage[] = ['comments']
+
 function isPeriodAware(stage: SyncStage): stage is PeriodAwareSyncStage {
   return (PERIOD_AWARE_STAGES as readonly SyncStage[]).includes(stage)
 }
 
+function isScopeAware(stage: SyncStage): stage is ScopeAwareSyncStage {
+  return (SCOPE_AWARE_STAGES as readonly SyncStage[]).includes(stage)
+}
+
 type IncludedMap = Record<SyncStage, boolean>
 type PeriodMap = Record<PeriodAwareSyncStage, string>
+type ScopeMap = Record<ScopeAwareSyncStage, ScopeAwareSyncScope>
 
 const ALL_INCLUDED: IncludedMap = {
   playlists: true,
   videos: true,
+  comments: true,
   pruning: false,
   video_analytics: true,
   video_traffic_sources: true,
@@ -51,6 +62,10 @@ const ALL_INCLUDED: IncludedMap = {
 const DEFAULT_PERIODS: PeriodMap = {
   video_analytics: INCREMENTAL,
   video_traffic_sources: INCREMENTAL,
+}
+
+const DEFAULT_SCOPES: ScopeMap = {
+  comments: INCREMENTAL,
 }
 
 interface PeriodSelectProps {
@@ -81,8 +96,39 @@ function StagePeriodSelect({ stage, label, value, years, disabled, onChange }: P
   )
 }
 
+interface ScopeSelectProps {
+  stage: ScopeAwareSyncStage
+  label: string
+  value: ScopeAwareSyncScope
+  disabled: boolean
+  onChange: (stage: ScopeAwareSyncStage, value: ScopeAwareSyncScope) => void
+}
+
+/**
+ * Scope selector for one scope-aware stage. Deliberately offers no year: a comments scan
+ * walks each video's threads newest-first to a boundary, so a single year cannot be
+ * requested without reading everything newer than it anyway.
+ */
+function StageScopeSelect({ stage, label, value, disabled, onChange }: ScopeSelectProps) {
+  return (
+    <select
+      className="sync-period-select"
+      aria-label={`${label} scope`}
+      value={value}
+      disabled={disabled}
+      onChange={e => onChange(stage, e.target.value as ScopeAwareSyncScope)}
+    >
+      <option value={INCREMENTAL}>Incremental</option>
+      <option value={ALL}>All</option>
+    </select>
+  )
+}
+
 /** Convert one selector value into the stage entry the API expects. */
 function toPlanStage(stage: SyncStage, period: string): SyncPlanStage {
+  if (isScopeAware(stage)) {
+    return { stage, scope: period === ALL ? ALL : INCREMENTAL }
+  }
   if (!isPeriodAware(stage)) return { stage }
   if (period === INCREMENTAL) return { stage, scope: INCREMENTAL }
   if (period === ALL) return { stage, scope: ALL }
@@ -92,6 +138,7 @@ function toPlanStage(stage: SyncStage, period: string): SyncPlanStage {
 export default function Sync() {
   const [included, setIncluded] = useState<IncludedMap>(ALL_INCLUDED)
   const [periods, setPeriods] = useState<PeriodMap>(DEFAULT_PERIODS)
+  const [scopes, setScopes] = useState<ScopeMap>(DEFAULT_SCOPES)
   const [earliestYear, setEarliestYear] = useState<number | null>(null)
   const [status, setStatus] = useState<SyncStatusResponse | null>(null)
   const [statusUnavailable, setStatusUnavailable] = useState(false)
@@ -127,10 +174,17 @@ export default function Sync() {
   const locked = isSyncing || submitting || awaitingFirstStatus || statusUnavailable
   const selectedCount = STAGE_ROWS.filter(row => included[row.stage]).length
 
+  /** The selector value backing one stage row, or the incremental default when it has none. */
+  const selectorValue = (stage: SyncStage): string => {
+    if (isPeriodAware(stage)) return periods[stage]
+    if (isScopeAware(stage)) return scopes[stage]
+    return INCREMENTAL
+  }
+
   const buildPlan = (): SyncPlan => ({
     stages: STAGE_ROWS
       .filter(row => included[row.stage])
-      .map(row => toPlanStage(row.stage, isPeriodAware(row.stage) ? periods[row.stage] : INCREMENTAL)),
+      .map(row => toPlanStage(row.stage, selectorValue(row.stage))),
   })
 
   const handleSubmit = () => {
@@ -169,6 +223,10 @@ export default function Sync() {
     setPeriods(prev => ({ ...prev, [stage]: value }))
   }
 
+  const setScope = (stage: ScopeAwareSyncStage, value: ScopeAwareSyncScope) => {
+    setScopes(prev => ({ ...prev, [stage]: value }))
+  }
+
   return (
     <div className="page">
       <div className="page-header">
@@ -178,12 +236,6 @@ export default function Sync() {
       {(statusUnavailable || awaitingFirstStatus) && (
         <div className="sync-status-banner" role="status">
           {statusUnavailable ? 'Status unavailable' : 'Checking sync status...'}
-        </div>
-      )}
-
-      {status && !isSyncing && (status.state === 'success' || status.state === 'failed') && (
-        <div className={`sync-result sync-result-${status.state}`} role="status">
-          {status.message}
         </div>
       )}
 
@@ -228,6 +280,14 @@ export default function Sync() {
                     years={years}
                     disabled={locked || !included[stage]}
                     onChange={setPeriod}
+                  />
+                ) : isScopeAware(stage) ? (
+                  <StageScopeSelect
+                    stage={stage}
+                    label={label}
+                    value={scopes[stage]}
+                    disabled={locked || !included[stage]}
+                    onChange={setScope}
                   />
                 ) : (
                   <span className="sync-period-na">Not applicable</span>

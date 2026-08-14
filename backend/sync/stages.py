@@ -5,7 +5,7 @@ from datetime import date, timedelta
 
 import database
 import youtube
-from logging_config import get_logger
+from logging_config import exception_context, get_logger
 
 from . import status
 
@@ -13,6 +13,11 @@ from . import status
 # both analytics and traffic-source metrics for recent days are not fully
 # settled by the API until some time after the day ends.
 INCREMENTAL_LOOKBACK_DAYS = 7
+
+# How many further comments an incremental scan keeps reading after it recognises the
+# first one it already stores. One maximum-size page, so the overlap costs no extra
+# request while still catching edits and late arrivals just behind the boundary.
+COMMENT_INCREMENTAL_OVERLAP = youtube.COMMENT_THREADS_PAGE_SIZE
 
 _logger = get_logger("sync")
 
@@ -150,6 +155,86 @@ def sync_playlists(counts: SyncCounts) -> set[str]:
 
     counts.rows_deleted += database.delete_playlists_not_in([p["id"] for p in playlists])
     return playlist_video_ids
+
+
+def _comment_bootstrap_cutoff(today: date) -> str:
+    """Return the inclusive lower bound for a video that has no stored comments yet:
+    January 1 of the current year, minus one calendar month.
+
+    Recomputed per run from the local date, so the window rolls forward with the year
+    rather than being pinned to whenever the feature was installed.
+    """
+    return date(today.year - 1, 12, 1).isoformat()
+
+
+def sync_comments(scope: str, counts: SyncCounts) -> None:
+    """Fetch and upsert top-level comments for every video already stored locally.
+
+    The worklist is `database.get_all_video_ids()` and nothing else: this stage never
+    discovers, refreshes, or looks up videos through YouTube, so a video absent from
+    SQLite simply has no comments imported until the videos stage adds it.
+
+    scope="incremental" bounds each video independently. A video with stored comments is
+    read newest-first only until the first comment already held locally, plus
+    COMMENT_INCREMENTAL_OVERLAP further items; a video with none is read back to
+    `_comment_bootstrap_cutoff()`. Because the boundary is per video, a first run that
+    failed part-way resumes correctly — populated videos use their boundary, untouched
+    ones use the cutoff — and neither case escalates itself to a full history scan.
+    scope="all" re-reads and refreshes every page of every video.
+
+    This stage only ever inserts and updates. Comments removed on YouTube keep their
+    stored rows; the only deletions are commenter rows left unreferenced once a pruned
+    video's comments have cascaded away.
+    """
+    cutoff = _comment_bootstrap_cutoff(date.today())
+    video_ids = database.get_all_video_ids()
+    total = len(video_ids)
+
+    for i, video_id in enumerate(video_ids, start=1):
+        status.update_sync_progress(f"Syncing comments ({i}/{total})...")
+        video = database.get_video(video_id)
+        title = video.get("title") if video else None
+        known_ids = database.get_comment_ids_for_video(video_id)
+        fetched_before = counts.rows_fetched
+        written_before = counts.rows_written
+        overlap_remaining: int | None = None
+
+        for item in youtube.iter_comment_threads(video_id, title=title):
+            counts.rows_fetched += 1
+            comment = item["comment"]
+
+            if scope != "all":
+                if overlap_remaining is not None:
+                    if overlap_remaining <= 0:
+                        break
+                    overlap_remaining -= 1
+                elif comment["id"] in known_ids:
+                    overlap_remaining = COMMENT_INCREMENTAL_OVERLAP
+                elif not known_ids and comment["published_at"] < cutoff:
+                    # Only a video with nothing stored falls back to the date cutoff. One
+                    # that has comments but whose boundary never appears — every stored
+                    # comment since deleted — reads to the end instead of stopping short
+                    # of history it may still be missing.
+                    break
+
+            try:
+                database.upsert_comment_author(item["author"])
+                counts.rows_written += 1
+                database.upsert_comment(comment)
+                counts.rows_written += 1
+            except Exception as exc:
+                _logger.warning(
+                    "comments item skipped video=%s comment=%s %s",
+                    video_id, comment["id"], exception_context(exc),
+                )
+
+        _logger.debug(
+            "comments %d/%d video=%s scope=%s fetched=%d written=%d title=%r",
+            i, total, video_id, scope, counts.rows_fetched - fetched_before,
+            counts.rows_written - written_before, title,
+        )
+
+    counts.rows_deleted += database.delete_orphan_comment_authors()
 
 
 def sync_pruning(counts: SyncCounts, channel_owned_ids: set[str]) -> None:

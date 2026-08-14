@@ -17,6 +17,7 @@ from .plans import (
 )
 from .stages import (
     SyncCounts,
+    sync_comments,
     sync_fx_rates,
     sync_playlists,
     sync_pruning,
@@ -44,6 +45,7 @@ def _format_stage_counts(sync_type: str, counts: SyncCounts) -> str:
 _STAGE_MESSAGES: dict[str, str | None] = {
     "playlists": "Syncing playlists...",
     "videos": "Syncing videos...",
+    "comments": None,
     "pruning": "Pruning videos...",
     "video_analytics": None,
     "video_traffic_sources": None,
@@ -55,6 +57,7 @@ _STAGE_MESSAGES: dict[str, str | None] = {
 _STAGE_FAILURE_LABELS: dict[str, str] = {
     "playlists": "syncing playlists",
     "videos": "syncing videos",
+    "comments": "syncing comments",
     "pruning": "pruning videos",
     "video_analytics": "syncing video analytics",
     "video_traffic_sources": "syncing video traffic sources",
@@ -177,6 +180,9 @@ def execute_plan(stages: Sequence[PlanStage]) -> None:
                 def run(counts: SyncCounts) -> None:
                     nonlocal channel_owned_ids
                     channel_owned_ids = sync_videos(counts, playlist_video_ids)
+            elif name == "comments":
+                def run(counts: SyncCounts, stage: PlanStage = stage) -> None:
+                    sync_comments(recorded_scope(stage), counts)
             elif name == "pruning":
                 def run(counts: SyncCounts) -> None:
                     sync_pruning(counts, channel_owned_ids)

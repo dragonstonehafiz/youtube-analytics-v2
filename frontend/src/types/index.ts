@@ -40,6 +40,44 @@ export interface AnalyticsRow {
   subscribers_lost: number
 }
 
+/**
+ * The commenter snapshot joined onto every comment row. `author_youtube_channel_id` is
+ * null for a commenter whose channel no longer resolves, which is also why the backend
+ * keys those authors per comment rather than merging them by display name.
+ */
+export interface CommentAuthor {
+  author_id: string
+  author_youtube_channel_id: string | null
+  author_display_name: string
+  author_profile_image_url: string | null
+  author_channel_url: string | null
+}
+
+/** One top-level comment with its author and parent video joined in. Replies are never stored. */
+export interface Comment extends CommentAuthor {
+  id: string
+  thread_id: string
+  video_id: string
+  text: string
+  like_count: number
+  total_reply_count: number
+  published_at: string
+  youtube_updated_at: string
+  updated_at: string
+  video_title: string
+  video_content_type: ContentType
+  video_thumbnail_url: string | null
+}
+
+export type CommentSort = 'newest' | 'oldest' | 'likes'
+
+export interface CommentsResponse {
+  items: Comment[]
+  total: number
+  page: number
+  page_size: number
+}
+
 export type SyncLifecycleState = 'idle' | 'running' | 'success' | 'failed'
 
 export interface SyncStatusResponse {
@@ -50,10 +88,13 @@ export interface SyncStatusResponse {
 /** Sync stages whose date range is configurable. */
 export type PeriodAwareSyncStage = 'video_analytics' | 'video_traffic_sources'
 
+/** Sync stages that choose how far back to scan but have no per-year view. */
+export type ScopeAwareSyncStage = 'comments'
+
 /** Sync stages that are always incremental and accept no scope or year. */
 export type IncrementalOnlySyncStage = 'videos' | 'playlists' | 'pruning' | 'fx_rates'
 
-export type SyncStage = PeriodAwareSyncStage | IncrementalOnlySyncStage
+export type SyncStage = PeriodAwareSyncStage | ScopeAwareSyncStage | IncrementalOnlySyncStage
 
 export type SyncScope = 'incremental' | 'year' | 'all'
 
@@ -63,12 +104,16 @@ export type SyncPeriod =
   | { scope: 'all' }
   | { scope: 'year'; year: number }
 
+/** The two scopes a scope-aware stage accepts. 'all' is labelled Full data in the UI. */
+export type ScopeAwareSyncScope = 'incremental' | 'all'
+
 /**
- * One stage of a manual sync plan. Period-aware stages must carry a period; the
- * always-incremental stages must not.
+ * One stage of a manual sync plan. Period-aware stages must carry a period, scope-aware
+ * stages carry a scope but never a year, and the always-incremental stages carry neither.
  */
 export type SyncPlanStage =
   | ({ stage: PeriodAwareSyncStage } & SyncPeriod)
+  | { stage: ScopeAwareSyncStage; scope: ScopeAwareSyncScope; year?: never }
   | { stage: IncrementalOnlySyncStage; scope?: never; year?: never }
 
 export interface SyncPlan {

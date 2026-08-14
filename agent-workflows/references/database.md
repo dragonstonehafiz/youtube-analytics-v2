@@ -7,7 +7,7 @@ Persistence layer, schema, and query conventions. Owns everything about how data
 ## Authoritative source files
 
 - `backend/schema.sql`
-- `backend/database/connection.py`, `backend/database/videos.py`, `backend/database/playlists.py`, `backend/database/analytics.py`, `backend/database/traffic_sources.py`, `backend/database/fx_rates.py`, `backend/database/sync_runs.py`
+- `backend/database/connection.py`, `backend/database/videos.py`, `backend/database/playlists.py`, `backend/database/analytics.py`, `backend/database/traffic_sources.py`, `backend/database/comments.py`, `backend/database/fx_rates.py`, `backend/database/sync_runs.py`
 
 ## Contents
 
@@ -32,7 +32,7 @@ Persistence layer, schema, and query conventions. Owns everything about how data
 
 ## Schema
 
-Seven tables:
+Nine tables:
 
 ```sql
 videos                  -- id, channel_id, title, description, published_at, duration_seconds, thumbnail_url,
@@ -47,12 +47,24 @@ video_traffic_sources   -- video_id, date, traffic_source_type, views, watch_tim
                         --   PRIMARY KEY (video_id, date, traffic_source_type)
 playlists               -- id, title, description, published_at, thumbnail_url, item_count, updated_at
 playlist_items          -- id, playlist_id, video_id, position, updated_at
+comment_authors         -- id, youtube_channel_id, display_name, profile_image_url, channel_url, updated_at
+                        --   id is namespace-prefixed: "channel:<youtube channel id>" when the commenter's
+                        --   channel resolves, otherwise "comment:<top-level comment id>". The prefixes keep
+                        --   the two key forms disjoint; youtube_channel_id holds the raw, unprefixed ID and
+                        --   is NULL for the fallback form (see sync.md)
+comments                -- id, thread_id, video_id, author_id, text, like_count, total_reply_count,
+                        --   published_at, youtube_updated_at, updated_at
+                        --   id is the top-level comment ID and thread_id is UNIQUE; only top-level comments
+                        --   are stored, with total_reply_count as the thread's reply metadata
+                        --   like_count and total_reply_count are NOT NULL DEFAULT 0 CHECK (... >= 0)
 fx_rates                -- date, usd_to_sgd, updated_at  (daily USD→SGD close; weekends/holidays forward-filled)
 sync_runs                -- id, batch_id, sync_type, scope, year, status, started_at, completed_at,
                         --   rows_fetched, rows_written, rows_deleted, error_message
 ```
 
-Indexes: `idx_video_analytics_date`, `idx_video_analytics_video`, `idx_video_traffic_sources_date`, `idx_video_traffic_sources_video`, `idx_playlist_items_playlist`, `idx_sync_runs_started_at`, `idx_sync_runs_type_started`.
+Indexes: `idx_video_analytics_date`, `idx_video_analytics_video`, `idx_video_traffic_sources_date`, `idx_video_traffic_sources_video`, `idx_playlist_items_playlist`, `idx_comments_video`, `idx_comments_author`, `idx_comments_published_at`, `idx_comments_like_count`, `idx_comments_video_published_at`, `idx_sync_runs_started_at`, `idx_sync_runs_type_started`.
+
+The comment-ID, thread-ID, and author-channel lookups are already covered by the primary-key and `UNIQUE` constraints and have no separate index.
 
 There is no `sync_state` table — the scheduler derives its checkpoint from `sync_runs` directly (see [Query conventions](#query-conventions) below and `sync.md`), rather than from a separately persisted `last_synced_at` value.
 
@@ -62,7 +74,11 @@ There is no `sync_state` table — the scheduler derives its checkpoint from `sy
 - `video_traffic_sources.video_id → videos.id` **ON DELETE CASCADE**
 - `playlist_items.playlist_id → playlists.id` **ON DELETE CASCADE**
 - `playlist_items.video_id` has **no FK** — it's a raw YouTube video ID that may not exist in `videos` (e.g. a playlist item referencing a video not in the channel's own uploads)
+- `comments.video_id → videos.id` **ON DELETE CASCADE**
+- `comments.author_id → comment_authors.id` **ON DELETE RESTRICT** — a commenter row cannot be deleted while any comment still references it
 - Cascades only take effect because `PRAGMA foreign_keys = ON` is set on every connection
+
+Comments are never deleted to reflect their removal on YouTube. Both sync scopes only insert and update, so a comment deleted upstream keeps its stored row; the only comment deletions come from the cascade when the `pruning` stage removes its parent video. `delete_orphan_comment_authors()` (`database/comments.py`) is the one commenter-side delete: it removes only rows no comment references any more, which is how the authors left behind by that cascade are cleaned up on the next successful Comments run. Because `author_id` is `RESTRICT`, this can never orphan a live comment.
 
 Deletion helpers report only rows they directly deleted via `cursor.rowcount` — cascaded child-row deletes (e.g. `video_analytics` rows removed when their parent `videos` row is deleted) are **not** included in that count. See `delete_videos_not_in()` (`database/videos.py:381-395`), `delete_playlists_not_in()` (`database/playlists.py:199-206`), `delete_playlist_items()` (`database/playlists.py:209-213`).
 
@@ -83,6 +99,7 @@ Every upsert helper sets `updated_at = _now()` on the Python side before the que
   - `VIDEO_SORT_COLUMNS = {"published_at", "view_count", "comment_count", "total_revenue_sgd"}` (`database/videos.py:33`) — exported without a leading underscore because `database/playlists.py` imports it directly for `get_playlist_videos()`'s own sort validation.
   - `_PLAYLIST_SORT_COLUMNS = {"published_at", "item_count", "last_item_added", "total_views", "total_earnings_sgd"}` (`database/playlists.py:28`)
   - An invalid `sort_by` silently falls back to the default column rather than erroring.
+- `COMMENT_SORT_CLAUSES` (`database/comments.py`) maps each public comment sort value to a full `ORDER BY` fragment rather than a bare column, each ending in `c.id` so equal timestamps or like counts cannot shuffle rows between pages: `"newest"` → `c.published_at DESC, c.id DESC`; `"oldest"` → `c.published_at ASC, c.id ASC`; `"likes"` → `c.like_count DESC, c.published_at DESC, c.id DESC`. An unrecognized value falls back to `DEFAULT_COMMENT_SORT` (`"newest"`); the HTTP layer rejects it first (see `api.md`).
 - `get_top_videos_by_views()` and `get_playlist_top_videos_by_views()` (`database/analytics.py:162-268`) validate `sort_by` against `_TOP_VIDEO_SORT_ORDER_BY` (`database/analytics.py:156-159`), a mapping from public sort value to a full `ORDER BY` clause (aggregate plus deterministic tie-breakers), not a bare column name:
   - `"views"` → `period_views DESC, v.id ASC`
   - `"watch_time"` → `period_watch_time_hours DESC, period_views DESC, v.id ASC`
@@ -105,6 +122,8 @@ Every upsert helper sets `updated_at = _now()` on the Python side before the que
 - **Playlist stats join**: `get_playlist_video_stats()` (`database/videos.py`) and the playlist-scoped analytics helpers (`database/analytics.py`, `database/traffic_sources.py`) join through `playlist_items` — `playlist_items.video_id` has no FK (see above), so a stale/dangling `video_id` in a playlist item simply produces no match in the `JOIN videos v ON v.id = pi.video_id`, silently excluding that item rather than erroring. `get_playlist_video_stats()` further deduplicates membership via `v.id IN (SELECT DISTINCT pi.video_id FROM playlist_items pi WHERE pi.playlist_id = ?)` before any counting or aggregation, so a duplicate `playlist_items` row for the same video cannot double-count it. `get_playlist_top_videos_by_views()` (`database/analytics.py:215-268`) uses the same `v.id IN (SELECT DISTINCT pi.video_id ...)` pattern rather than a direct `JOIN playlist_items`, for the same dedup reason.
 - **Top videos — period metrics**: `get_top_videos_by_views()` and `get_playlist_top_videos_by_views()` (`database/analytics.py`) both return `period_views`, `period_earnings_sgd`, and `period_watch_time_hours` (`SUM(va.watch_time_minutes) / 60.0`) computed from the same filtered `video_analytics` rows, scoped by the optional `start_date`/`end_date`/`content_type`/`privacy_status` filters (applied to `va.date` and `v.*`, not `v.published_at`). `LIMIT` is applied after the `ORDER BY`, so ranking always happens over the full filtered set before truncating to the top N.
 - **Video stats — Legacy/New classification**: `get_video_stats()` (`database/videos.py:180-275`, plus the shared `_empty_video_stats()` default template at `database/videos.py:168-177`) and `get_playlist_video_stats()` (`database/videos.py:278-378`) classify each video as Legacy (`published_at` strictly before the effective start date) or New (`published_at` between the effective start and end dates, inclusive), or neither if published after the effective end date. Each function runs three queries against one `get_connection()` connection: (1) the available `video_analytics` date range plus the catalog's `published_at` range, used to derive the effective start/end when `start_date`/`end_date` are omitted; (2) a catalog query that counts Legacy/New videos per content type and computes lifetime comment/privacy-status totals directly from `videos` (no analytics join, so no multiplication risk); (3) a period-performance query that pre-aggregates `video_analytics` per `video_id` in a subquery (summing views and `estimated_revenue * fx_rates.usd_to_sgd`) before joining to `videos`, then groups by Legacy/New bucket and content type — the subquery pre-aggregation is what keeps the `fx_rates` join (1 row per `date`, per the `fx_rates` schema) from inflating sums. Effective start/end fall back, in order, to the `video_analytics` date range, then the catalog's `published_at` range (truncated to a date) if no analytics rows exist at all — in that fallback case period views/earnings are zero but Legacy/New classification and counts still work. A video with a `NULL` `published_at` is never classified Legacy or New but still contributes to comment/status totals. Lifetime comments and current privacy status are never restricted by date. Both functions live in `database/videos.py`, not `database/analytics.py`, since they're keyed off the video catalog with analytics as a secondary join.
+
+- **Comment reads**: `get_comments()`, `get_video_comments()`, and `get_playlist_comments()` (`database/comments.py`) all delegate to one private `_query_comments()`, which joins `comments c` to `comment_authors ca` and `videos v` and returns the author snapshot (`author_youtube_channel_id`, `author_display_name`, `author_profile_image_url`, `author_channel_url`) plus `video_title`, `video_content_type`, and `video_thumbnail_url` alongside every comment column. Filters are `c.text`, `v.title`, and `ca.display_name` via `LIKE ?` bound to `f"%{value}%"`, `v.content_type`, and a `c.published_at` range using the full-timestamp convention above (`>= start_date`, `<= end_date + "T23:59:59"`). The video scope adds `c.video_id = ?`; the playlist scope adds `EXISTS (SELECT 1 FROM playlist_items pi WHERE pi.playlist_id = ? AND pi.video_id = c.video_id)`, so a video listed twice in a playlist still yields each of its comments once — the `EXISTS` is the comment-side equivalent of the `SELECT DISTINCT` dedup the playlist stats helpers use. Both scopes count and page over the same filtered set. The video-scoped helper accepts no `video_title` or `content_type` filter, since a fixed video determines both.
 
 ## Compatibility constraints
 

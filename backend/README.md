@@ -60,6 +60,7 @@ backend/
     videos.py
     playlists.py
     analytics.py
+    comments.py
     synchronization.py
     metadata.py
 
@@ -69,6 +70,7 @@ backend/
     playlists.py
     analytics.py
     traffic_sources.py
+    comments.py
     fx_rates.py
     sync_runs.py
 
@@ -97,6 +99,9 @@ GET  /videos/{id}             Single video detail
 GET  /videos/{id}/analytics   Daily analytics for a video
 GET  /playlists               List all playlists
 GET  /playlists/{id}/videos   Videos in a playlist
+GET  /comments                Top-level comments across the channel
+GET  /comments/videos/{id}    Top-level comments on one video
+GET  /comments/playlists/{id} Top-level comments on a playlist's videos
 GET  /sync/status             Active sync status and progress
 POST /sync/trigger            Queue a manual sync of the selected stages (JSON plan body)
 GET  /sync/runs               Recent sync-stage records, newest first
@@ -113,6 +118,12 @@ There is no recurring timer — restarting the server the same day does nothing,
 freshness is otherwise driven manually from the `/sync` page in the frontend, which can
 select any combination of stages and give video analytics and traffic sources independent
 periods.
+
+The comments stage imports top-level comments for videos already stored locally; reply
+bodies are never fetched. It offers two scopes rather than a period: **Incremental**
+(the default, used by the startup sync) reads each video back to the comments it already
+holds, or to December 1 of the previous year for a video with none, and **All**
+re-reads every comment. Neither scope ever deletes a comment.
 
 ## Logging
 
@@ -140,10 +151,11 @@ The sync-only `DEBUG` detail events, each one line emitted after the work comple
 
 | Event | Where | Fields |
 |---|---|---|
-| Page fetched | the four `youtube/data_api.py` token-pagination loops | resource, page number, item count, owning entity id and name where one exists, that page's `nextPageToken` |
+| Page fetched | the five `youtube/data_api.py` token-pagination loops | resource, page number, item count, owning entity id and name where one exists, that page's `nextPageToken` |
 | Analytics page fetched | `youtube/analytics_api.py::_fetch_analytics_rows()` | resource, page number, row count, `startIndex`, owning `video_id` and title |
 | Video processed | the per-video loops in both analytics stages | ordinal/total, `video_id`, rows fetched for that video, title |
 | Video skipped | the two `continue` branches in each analytics stage | ordinal/total, `video_id`, reason (`no_publish_date` or `empty_range`), title |
+| Comments processed | the per-video loop in `sync/stages.py::sync_comments()` | ordinal/total, `video_id`, scope, comments fetched and rows written for that video, title |
 | FX rates downloaded | `sync/stages.py::sync_fx_rates()` | requested start/end dates, days written, or the no-work condition |
 
 Two conditions are anomalies rather than routine detail and are logged at `WARNING`, so
@@ -153,6 +165,7 @@ they reach `application.log` as well:
 |---|---|
 | Empty page with a token / repeated pagination cursor | `_log_page()` in `youtube/data_api.py` |
 | Cleanup skipped due to truncated pagination | `sync_videos()`/`sync_playlists()` |
+| Comment video or item skipped | `iter_comment_threads()` (comments disabled, video gone, malformed thread) and `sync_comments()` (write failure) |
 | Request retried | `youtube/analytics_api.py::_analytics_query()` |
 
 Every logged field is an identifier, counter, date, name, or pagination token. Titles

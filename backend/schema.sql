@@ -65,6 +65,34 @@ CREATE TABLE IF NOT EXISTS playlist_items (
 
 CREATE INDEX IF NOT EXISTS idx_playlist_items_playlist ON playlist_items(playlist_id);
 
+CREATE TABLE IF NOT EXISTS comment_authors (
+    id TEXT PRIMARY KEY,
+    youtube_channel_id TEXT UNIQUE,
+    display_name TEXT NOT NULL,
+    profile_image_url TEXT,
+    channel_url TEXT,
+    updated_at TEXT NOT NULL
+);
+
+CREATE TABLE IF NOT EXISTS comments (
+    id TEXT PRIMARY KEY,
+    thread_id TEXT NOT NULL UNIQUE,
+    video_id TEXT NOT NULL REFERENCES videos(id) ON DELETE CASCADE,
+    author_id TEXT NOT NULL REFERENCES comment_authors(id) ON DELETE RESTRICT,
+    text TEXT NOT NULL,
+    like_count INTEGER NOT NULL DEFAULT 0 CHECK (like_count >= 0),
+    total_reply_count INTEGER NOT NULL DEFAULT 0 CHECK (total_reply_count >= 0),
+    published_at TEXT NOT NULL,
+    youtube_updated_at TEXT NOT NULL,
+    updated_at TEXT NOT NULL
+);
+
+CREATE INDEX IF NOT EXISTS idx_comments_video ON comments(video_id);
+CREATE INDEX IF NOT EXISTS idx_comments_author ON comments(author_id);
+CREATE INDEX IF NOT EXISTS idx_comments_published_at ON comments(published_at);
+CREATE INDEX IF NOT EXISTS idx_comments_like_count ON comments(like_count);
+CREATE INDEX IF NOT EXISTS idx_comments_video_published_at ON comments(video_id, published_at);
+
 CREATE TABLE IF NOT EXISTS fx_rates (
     date TEXT PRIMARY KEY,
     usd_to_sgd REAL NOT NULL,

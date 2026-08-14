@@ -80,7 +80,10 @@ class StartBackgroundSchedulerTest(unittest.TestCase):
         stages = self.run_plan.call_args[0][0]
         self.assertEqual(
             [s.stage for s in stages],
-            ["playlists", "videos", "video_analytics", "video_traffic_sources", "fx_rates"],
+            [
+                "playlists", "videos", "comments", "video_analytics",
+                "video_traffic_sources", "fx_rates",
+            ],
         )
         by_stage = {s.stage: s for s in stages}
         self.assertEqual(by_stage["video_analytics"].scope, "incremental")
