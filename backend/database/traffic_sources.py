@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import sqlite3
+from collections.abc import Collection
 from datetime import date
 
 from .connection import _now, get_connection
@@ -94,11 +95,23 @@ def get_aggregated_traffic_sources(
     content_type: str | None = None,
     privacy_status: str | None = None,
     title: str | None = None,
+    video_ids: Collection[str] | None = None,
 ) -> list[dict]:
-    """Return daily traffic sources aggregated across all videos, filtered by date range, content_type, privacy_status, and title."""
+    """Return daily traffic sources aggregated across videos, filtered by date range, content_type, privacy_status, and title.
+
+    video_ids scopes the aggregation: None covers every video in the channel, a populated collection
+    covers only those videos, and an empty collection returns no rows.
+    """
+    scoped_ids = None if video_ids is None else list(video_ids)
+    if scoped_ids is not None and not scoped_ids:
+        return []
+
     conditions = ["1=1"]
     params: list = []
 
+    if scoped_ids:
+        conditions.append(f"v.id IN ({','.join('?' * len(scoped_ids))})")
+        params.extend(scoped_ids)
     if content_type:
         conditions.append("v.content_type = ?")
         params.append(content_type)
@@ -126,55 +139,6 @@ def get_aggregated_traffic_sources(
                 SUM(vts.watch_time_minutes) AS watch_time_minutes
             FROM video_traffic_sources vts
             JOIN videos v ON v.id = vts.video_id
-            WHERE {where}
-            GROUP BY vts.date, vts.traffic_source_type
-            ORDER BY vts.date, vts.traffic_source_type
-            """,
-            params,
-        ).fetchall()
-    return _zero_fill_traffic_sources([dict(r) for r in rows], start_date, end_date)
-
-
-def get_playlist_aggregated_traffic_sources(
-    playlist_id: str,
-    start_date: str | None = None,
-    end_date: str | None = None,
-    content_type: str | None = None,
-    privacy_status: str | None = None,
-    title: str | None = None,
-) -> list[dict]:
-    """Return daily traffic sources aggregated across all videos in a playlist, filtered by date range, content_type, privacy_status, and title."""
-    conditions = ["pi.playlist_id = ?"]
-    params: list = [playlist_id]
-
-    if content_type:
-        conditions.append("v.content_type = ?")
-        params.append(content_type)
-    if privacy_status:
-        conditions.append("v.privacy_status = ?")
-        params.append(privacy_status)
-    if start_date:
-        conditions.append("vts.date >= ?")
-        params.append(start_date)
-    if end_date:
-        conditions.append("vts.date <= ?")
-        params.append(end_date)
-    if title:
-        conditions.append("v.title LIKE ?")
-        params.append(f"%{title}%")
-
-    where = " AND ".join(conditions)
-    with get_connection() as conn:
-        rows = conn.execute(
-            f"""
-            SELECT
-                vts.date,
-                vts.traffic_source_type,
-                SUM(vts.views) AS views,
-                SUM(vts.watch_time_minutes) AS watch_time_minutes
-            FROM video_traffic_sources vts
-            JOIN videos v ON v.id = vts.video_id
-            JOIN playlist_items pi ON pi.video_id = vts.video_id
             WHERE {where}
             GROUP BY vts.date, vts.traffic_source_type
             ORDER BY vts.date, vts.traffic_source_type
@@ -191,11 +155,23 @@ def get_top_videos_by_traffic_source(
     privacy_status: str | None = None,
     limit: int = 3,
     title: str | None = None,
+    video_ids: Collection[str] | None = None,
 ) -> dict[str, list[dict]]:
-    """Return the top N videos by views for each traffic source type, filtered by date range, content_type, privacy_status, and title."""
+    """Return the top N videos by views for each traffic source type, filtered by date range, content_type, privacy_status, and title.
+
+    video_ids scopes the ranking: None covers every video in the channel, a populated collection covers
+    only those videos, and an empty collection returns no source groups.
+    """
+    scoped_ids = None if video_ids is None else list(video_ids)
+    if scoped_ids is not None and not scoped_ids:
+        return {}
+
     conditions = ["1=1"]
     params: list = []
 
+    if scoped_ids:
+        conditions.append(f"v.id IN ({','.join('?' * len(scoped_ids))})")
+        params.extend(scoped_ids)
     if content_type:
         conditions.append("v.content_type = ?")
         params.append(content_type)
@@ -223,56 +199,6 @@ def get_top_videos_by_traffic_source(
                 SUM(vts.watch_time_minutes) AS watch_time_minutes
             FROM video_traffic_sources vts
             JOIN videos v ON v.id = vts.video_id
-            WHERE {where}
-            GROUP BY vts.traffic_source_type, v.id
-            ORDER BY vts.traffic_source_type, views DESC
-            """,
-            params,
-        ).fetchall()
-    return _top_n_per_source(rows, limit)
-
-
-def get_playlist_top_videos_by_traffic_source(
-    playlist_id: str,
-    start_date: str | None = None,
-    end_date: str | None = None,
-    content_type: str | None = None,
-    privacy_status: str | None = None,
-    limit: int = 3,
-    title: str | None = None,
-) -> dict[str, list[dict]]:
-    """Return the top N videos in a playlist by views for each traffic source type, filtered by date range, content_type, privacy_status, and title."""
-    conditions = ["pi.playlist_id = ?"]
-    params: list = [playlist_id]
-
-    if content_type:
-        conditions.append("v.content_type = ?")
-        params.append(content_type)
-    if privacy_status:
-        conditions.append("v.privacy_status = ?")
-        params.append(privacy_status)
-    if start_date:
-        conditions.append("vts.date >= ?")
-        params.append(start_date)
-    if end_date:
-        conditions.append("vts.date <= ?")
-        params.append(end_date)
-    if title:
-        conditions.append("v.title LIKE ?")
-        params.append(f"%{title}%")
-
-    where = " AND ".join(conditions)
-    with get_connection() as conn:
-        rows = conn.execute(
-            f"""
-            SELECT
-                vts.traffic_source_type,
-                v.id, v.title, v.thumbnail_url, v.content_type,
-                SUM(vts.views) AS views,
-                SUM(vts.watch_time_minutes) AS watch_time_minutes
-            FROM video_traffic_sources vts
-            JOIN videos v ON v.id = vts.video_id
-            JOIN playlist_items pi ON pi.video_id = vts.video_id
             WHERE {where}
             GROUP BY vts.traffic_source_type, v.id
             ORDER BY vts.traffic_source_type, views DESC

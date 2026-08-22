@@ -114,6 +114,25 @@ def get_playlist(playlist_id: str) -> dict | None:
     return dict(row) if row else None
 
 
+def get_playlist_video_ids(playlist_id: str) -> list[str]:
+    """Return the distinct video IDs in a playlist that have a matching videos row.
+
+    Duplicate playlist_items rows for the same video collapse to one ID, and null or dangling
+    memberships are dropped. Returns an empty list when the playlist has no valid members.
+    """
+    with get_connection() as conn:
+        rows = conn.execute(
+            """
+            SELECT DISTINCT v.id AS video_id
+            FROM playlist_items pi
+            JOIN videos v ON v.id = pi.video_id
+            WHERE pi.playlist_id = ?
+            """,
+            (playlist_id,),
+        ).fetchall()
+    return [row["video_id"] for row in rows]
+
+
 def upsert_playlist_item(item: dict) -> None:
     """Insert or replace a playlist item row."""
     row = {**item, "updated_at": _now()}

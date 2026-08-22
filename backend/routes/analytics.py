@@ -9,6 +9,17 @@ import database
 router = APIRouter()
 
 
+def _resolve_playlist_video_ids(playlist_id: str) -> list[str]:
+    """Return the playlist's distinct member video IDs, raising 404 when the playlist does not exist.
+
+    An existing playlist with no valid members yields an empty list, which scopes the shared analytics
+    helpers to an empty result rather than channel-wide data.
+    """
+    if not database.get_playlist(playlist_id):
+        raise HTTPException(status_code=404, detail="Playlist not found")
+    return database.get_playlist_video_ids(playlist_id)
+
+
 @router.get("/analytics/videos")
 def get_aggregated_analytics(
     start_date: str | None = Query(default=None),
@@ -78,10 +89,8 @@ def get_playlist_top_videos_by_views(
     Metrics are aggregated over the selected analytics period. Results include period views, watch time hours,
     and estimated SGD earnings.
     """
-    playlist = database.get_playlist(playlist_id)
-    if not playlist:
-        raise HTTPException(status_code=404, detail="Playlist not found")
-    return {"items": database.get_playlist_top_videos_by_views(playlist_id, start_date, end_date, content_type, privacy_status, sort_by=sort_by, title=title)}
+    video_ids = _resolve_playlist_video_ids(playlist_id)
+    return {"items": database.get_top_videos_by_views(start_date, end_date, content_type, privacy_status, sort_by=sort_by, title=title, video_ids=video_ids)}
 
 
 @router.get("/analytics/playlists/{playlist_id}")
@@ -94,10 +103,8 @@ def get_playlist_aggregated_analytics(
     title: str | None = Query(default=None),
 ) -> dict:
     """Return daily analytics aggregated across all videos in a playlist, grouped by date and content_type."""
-    playlist = database.get_playlist(playlist_id)
-    if not playlist:
-        raise HTTPException(status_code=404, detail="Playlist not found")
-    return {"items": database.get_playlist_aggregated_analytics(playlist_id, start_date, end_date, content_type, privacy_status, title)}
+    video_ids = _resolve_playlist_video_ids(playlist_id)
+    return {"items": database.get_aggregated_analytics(start_date, end_date, content_type, privacy_status, title, video_ids=video_ids)}
 
 
 @router.get("/analytics/playlists/{playlist_id}/traffic-sources")
@@ -110,10 +117,8 @@ def get_playlist_aggregated_traffic_sources(
     title: str | None = Query(default=None),
 ) -> dict:
     """Return daily traffic sources aggregated across all videos in a playlist."""
-    playlist = database.get_playlist(playlist_id)
-    if not playlist:
-        raise HTTPException(status_code=404, detail="Playlist not found")
-    return {"items": database.get_playlist_aggregated_traffic_sources(playlist_id, start_date, end_date, content_type, privacy_status, title)}
+    video_ids = _resolve_playlist_video_ids(playlist_id)
+    return {"items": database.get_aggregated_traffic_sources(start_date, end_date, content_type, privacy_status, title, video_ids=video_ids)}
 
 
 @router.get("/analytics/playlists/{playlist_id}/traffic-sources/top")
@@ -126,7 +131,5 @@ def get_playlist_top_videos_by_traffic_source(
     title: str | None = Query(default=None),
 ) -> dict:
     """Return the top 10 videos in a playlist by views for each traffic source type."""
-    playlist = database.get_playlist(playlist_id)
-    if not playlist:
-        raise HTTPException(status_code=404, detail="Playlist not found")
-    return {"items": database.get_playlist_top_videos_by_traffic_source(playlist_id, start_date, end_date, content_type, privacy_status, limit=10, title=title)}
+    video_ids = _resolve_playlist_video_ids(playlist_id)
+    return {"items": database.get_top_videos_by_traffic_source(start_date, end_date, content_type, privacy_status, limit=10, title=title, video_ids=video_ids)}
