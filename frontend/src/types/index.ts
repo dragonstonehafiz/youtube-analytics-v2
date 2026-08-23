@@ -124,6 +124,35 @@ export interface SyncQueuedResponse {
   queued: boolean
 }
 
+/** The lifecycle of one recorded sync stage. A running stage has no completion time yet. */
+export type SyncRunStatus = 'running' | 'success' | 'failed'
+
+/**
+ * One recorded sync-stage run. `error_message` is carried by the API contract but is
+ * deliberately never rendered — history cells are built from an explicit display list.
+ */
+export interface SyncRun {
+  id: number
+  batch_id: string
+  sync_type: string
+  scope: string | null
+  year: number | null
+  status: SyncRunStatus
+  started_at: string
+  completed_at: string | null
+  rows_fetched: number
+  rows_written: number
+  rows_deleted: number
+  error_message: string | null
+}
+
+export interface SyncRunsResponse {
+  items: SyncRun[]
+  total: number
+  page: number
+  page_size: number
+}
+
 export interface TopVideo {
   id: string
   title: string

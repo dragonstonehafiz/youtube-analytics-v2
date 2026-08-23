@@ -241,6 +241,55 @@ class StatusRouteTest(SyncRoutesTestCase):
         self.assertEqual(observed[0], {"state": "running", "message": "Starting sync..."})
 
 
+class RunsRouteTest(SyncRoutesTestCase):
+    """Covers the paginated history contract with the database helper stubbed out."""
+
+    def setUp(self) -> None:
+        super().setUp()
+        self.get_runs = self._patch(
+            "routes.synchronization.database.get_sync_runs",
+            return_value=([{"id": 1, "sync_type": "videos"}], 42),
+        )
+
+    def test_defaults_to_the_first_page_of_twenty_five(self) -> None:
+        response = self.client.get("/sync/runs")
+
+        self.assertEqual(response.status_code, 200)
+        self.get_runs.assert_called_once_with(1, 25)
+
+    def test_page_and_page_size_are_forwarded(self) -> None:
+        self.client.get("/sync/runs", params={"page": 3, "page_size": 10})
+
+        self.get_runs.assert_called_once_with(3, 10)
+
+    def test_response_carries_the_standard_pagination_metadata(self) -> None:
+        body = self.client.get("/sync/runs", params={"page": 2, "page_size": 5}).json()
+
+        self.assertEqual(body, {
+            "items": [{"id": 1, "sync_type": "videos"}],
+            "total": 42,
+            "page": 2,
+            "page_size": 5,
+        })
+
+    def test_page_below_one_is_unprocessable(self) -> None:
+        self.assertEqual(self.client.get("/sync/runs", params={"page": 0}).status_code, 422)
+        self.get_runs.assert_not_called()
+
+    def test_page_size_below_one_is_unprocessable(self) -> None:
+        self.assertEqual(self.client.get("/sync/runs", params={"page_size": 0}).status_code, 422)
+        self.get_runs.assert_not_called()
+
+    def test_page_size_above_the_maximum_is_unprocessable(self) -> None:
+        self.assertEqual(self.client.get("/sync/runs", params={"page_size": 500}).status_code, 422)
+        self.get_runs.assert_not_called()
+
+    def test_the_legacy_limit_parameter_no_longer_controls_paging(self) -> None:
+        self.client.get("/sync/runs", params={"limit": 100})
+
+        self.get_runs.assert_called_once_with(1, 25)
+
+
 class AddTaskFailureTest(SyncRoutesTestCase):
     def test_reservation_is_rolled_back_when_enqueueing_fails(self) -> None:
         self._patch("fastapi.BackgroundTasks.add_task", side_effect=RuntimeError("queue full"))

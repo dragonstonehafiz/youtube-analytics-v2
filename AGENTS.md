@@ -36,6 +36,7 @@ cd backend && .venv/bin/python -m mypy database/connection.py            # macOS
 cd backend && uvicorn server:app --reload
 cd frontend && npx oxlint src/pages/Videos.tsx --fix
 cd frontend && npx tsc --noEmit
+cd frontend && npm test
 ```
 
 Run the relevant command against every changed file, not just the ones above. A full frontend build (`npm run build`) requires explicit approval — it is not part of the default verification loop.

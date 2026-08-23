@@ -50,8 +50,16 @@ section for what each test group mocks/isolates.
 ```bash
 cd frontend && npx oxlint src/pages/Videos.tsx --fix   # lint a single changed file (oxlint, not eslint — no eslint config exists; `npm run lint` runs oxlint over the project)
 cd frontend && npx tsc --noEmit                          # type check (whole project — tsc has no cheap single-file mode here)
+cd frontend && npm test                                   # run every component test (`vitest run`)
+cd frontend && npx vitest run src/pages/Sync.test.tsx     # run a single test file
 cd frontend && npm run build                              # full build — requires explicit approval before running
 ```
+
+Component tests run on Vitest with `@testing-library/react` and `jsdom`. There is no Vitest
+config or setup file — Vitest reads `vite.config.ts`, and each test file declares its own
+`// @vitest-environment jsdom`; see `frontend.md`'s Tests section for the conventions a new
+test file must follow. Prefer the focused single-file form while iterating, the same way
+`mypy` is run against the file actually changed.
 
 ## Documentation verification
 
@@ -89,7 +97,7 @@ The last command should produce no output when the change is genuinely docs-only
 | Sync bug | `sync.md`, possibly `database.md` | `mypy` on the changed file(s) under `sync/`/`youtube/`; manual `POST /sync/trigger` against a local run if behavior-sensitive |
 | New endpoint | `api.md`, likely `database.md` | `mypy` on the changed file(s) under `routes/`/`database/`; update `api.md` |
 | Frontend API integration | `api.md`, `frontend.md` | `tsc --noEmit`; `oxlint --fix` on changed files |
-| Page or component change | `frontend.md` | `oxlint --fix`, `tsc --noEmit`; manual check in a running dev server for UI-facing changes |
+| Page or component change | `frontend.md` | `oxlint --fix`, `tsc --noEmit`; `npx vitest run` on the page's test file where one exists; manual check in a running dev server for UI-facing changes |
 | Verification selection itself | this file | — |
 | Cross-layer feature | `architecture.md` plus every affected layer reference | all of the above, scoped to what actually changed |
 
@@ -98,6 +106,7 @@ The last command should produce no output when the change is genuinely docs-only
 - `mypy <file>.py` (via the `backend/.venv` interpreter — see [Backend verification](#backend-verification)) on every changed backend file
 - `npx oxlint src/... --fix` on every changed frontend file — no errors left afterward
 - `npx tsc --noEmit` — no type errors
+- `npm test` — every component test passes
 - No `console.log` in frontend code
 - No hardcoded colors or magic numbers (use `index.css` tokens / named constants)
 - No new heavy dependencies without prior approval

@@ -248,10 +248,11 @@ POST /sync/trigger
   returns before the sync completes.
 
 GET  /sync/runs
-  ?limit=100 (1-500)
-  → { items: SyncRun[] }   # newest first
+  ?page=1 &page_size=25 (1-200)
+  → { items: SyncRun[], total, page, page_size }   # newest first
   SyncRun: { id, batch_id, sync_type, scope, year, status, started_at, completed_at,
              rows_fetched, rows_written, rows_deleted, error_message }
+  error_message is part of the contract but is never rendered by the frontend.
   sync_type ∈ videos | playlists | comments | pruning | video_analytics |
               video_traffic_sources | fx_rates
   status ∈ running | success | failed

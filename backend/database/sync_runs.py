@@ -50,14 +50,24 @@ def fail_sync_run(
         )
 
 
-def get_sync_runs(limit: int = 100) -> list[dict]:
-    """Return recent sync-stage records, newest first."""
+def get_sync_runs(page: int = 1, page_size: int = 25) -> tuple[list[dict], int]:
+    """Return one page of sync-stage records newest first, plus the unfiltered total.
+
+    Rows are ordered by started_at descending with a descending ID tie-breaker so stages
+    started within the same timestamp keep a stable order across page requests.
+    """
+    offset = (page - 1) * page_size
     with get_connection() as conn:
+        total = conn.execute("SELECT COUNT(*) FROM sync_runs").fetchone()[0]
         rows = conn.execute(
-            "SELECT * FROM sync_runs ORDER BY started_at DESC LIMIT ?",
-            (limit,),
+            """
+            SELECT * FROM sync_runs
+            ORDER BY started_at DESC, id DESC
+            LIMIT ? OFFSET ?
+            """,
+            (page_size, offset),
         ).fetchall()
-    return [dict(r) for r in rows]
+    return [dict(r) for r in rows], total
 
 
 def get_last_successful_run_completed_at() -> str | None:

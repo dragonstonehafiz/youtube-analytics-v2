@@ -6,6 +6,7 @@ import type {
   SyncStatusResponse,
   SyncPlan,
   SyncQueuedResponse,
+  SyncRunsResponse,
 } from '@/types'
 
 const BASE = "http://localhost:8000"
@@ -151,4 +152,17 @@ export const triggerSync = async (plan: SyncPlan): Promise<SyncQueuedResponse> =
   })
   if (!response.ok) throw new Error(await syncErrorMessage(response))
   return response.json() as Promise<SyncQueuedResponse>
+}
+
+/**
+ * Fetch one page of sync history. Failures reject with a message derived only from the
+ * HTTP status, so a backend exception body can never reach the history UI.
+ */
+export const getSyncRuns = async (page: number, pageSize: number): Promise<SyncRunsResponse> => {
+  const response = await fetch(buildUrl("/sync/runs", {
+    page: String(page),
+    page_size: String(pageSize),
+  }))
+  if (!response.ok) throw new Error(`Sync history request failed (${response.status})`)
+  return response.json() as Promise<SyncRunsResponse>
 }
