@@ -18,7 +18,7 @@ vi.mock('@/api', () => ({
 }))
 
 import { getDateRange, getSyncRuns, getSyncStatus, triggerSync } from '@/api'
-import Sync from './Sync'
+import Sync from '@/pages/Sync'
 
 const mockGetSyncStatus = vi.mocked(getSyncStatus)
 const mockGetSyncRuns = vi.mocked(getSyncRuns)

@@ -13,7 +13,7 @@ Client-side behavior: shared types, API client, shared libraries, components, pa
 - `frontend/src/pages/*.tsx` and colocated `.css`
 - `frontend/src/components/*.tsx` and colocated `.css`
 - `frontend/src/index.css`
-- `frontend/src/pages/*.test.tsx`
+- `frontend/tests/*.test.tsx`
 - `frontend/vite.config.ts`, `frontend/tsconfig.app.json`, `frontend/package.json`
 
 ## Contents
@@ -236,11 +236,13 @@ Global tokens and shared classes live in `src/index.css`:
 
 ## Tests
 
-Component tests run on Vitest with `@testing-library/react` and `jsdom`, all three development-only dependencies. `npm test` (`vitest run`) runs the suite; a single file runs via `npx vitest run src/pages/<Name>.test.tsx`.
+Component tests live in `frontend/tests/`, **not** beside the code they exercise, and are named `<Subject>.test.tsx`. They run on Vitest with `@testing-library/react` and `jsdom`, all three development-only dependencies. `npm test` (`vitest run`) runs the suite; a single file runs via `npx vitest run tests/<Name>.test.tsx`.
+
+Because the directory sits outside `src`, `tsconfig.app.json` includes `["src", "tests"]` — dropping `tests` there would silently exclude every test file from type checking, which is what catches a fixture left stale by a contract change. Tests import the subject through the `@/` alias like any other module (`import Sync from '@/pages/Sync'`); there are no relative `./` imports into `src`.
 
 There is no Vitest config block and no setup file. Vitest reads `vite.config.ts` directly, so the React plugin and the `@/` alias already apply. A test file opts into a DOM by declaring `// @vitest-environment jsdom` on its first line rather than configuring a global environment, and imports `describe`/`it`/`expect`/`vi` from `vitest` explicitly rather than enabling `globals`. Without `globals`, Testing Library's automatic cleanup is not registered either — each test file calls `cleanup()` in its own `afterEach`.
 
-`src/pages/Sync.test.tsx` is the current suite. It mocks `@/api` wholesale with `vi.mock` and renders the page inside a `MemoryRouter` with an `initialEntries` route, which is how URL-param behavior (`tab`, `history_page`) is exercised. Assertions use `toHaveProperty('disabled', …)` rather than jest-dom matchers, since `@testing-library/jest-dom` is deliberately not installed. Timestamp assertions go through a `localTime()` helper that formats the expected value with the same `toLocaleString()` the component uses, so the suite does not depend on the runner's locale or timezone.
+`tests/Sync.test.tsx` is the current suite. It mocks `@/api` wholesale with `vi.mock` and renders the page inside a `MemoryRouter` with an `initialEntries` route, which is how URL-param behavior (`tab`, `history_page`) is exercised. Assertions use `toHaveProperty('disabled', …)` rather than jest-dom matchers, since `@testing-library/jest-dom` is deliberately not installed. Timestamp assertions go through a `localTime()` helper that formats the expected value with the same `toLocaleString()` the component uses, so the suite does not depend on the runner's locale or timezone.
 
 History fixtures are built by a `run()` factory and a `batch()` factory that sums its children's counters the way the backend does, keeping a fixture from asserting a rollup the real contract could not produce. Because an expanded batch puts a second `<table>` in the document, tests scope queries with `within(parentTable())` / `within(nestedTable())` rather than bare `getAllByRole`, and count `screen.getAllByRole('table')` to assert expansion state.
 

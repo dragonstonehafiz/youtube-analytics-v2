@@ -51,7 +51,7 @@ section for what each test group mocks/isolates.
 cd frontend && npx oxlint src/pages/Videos.tsx --fix   # lint a single changed file (oxlint, not eslint — no eslint config exists; `npm run lint` runs oxlint over the project)
 cd frontend && npx tsc --noEmit                          # type check (whole project — tsc has no cheap single-file mode here)
 cd frontend && npm test                                   # run every component test (`vitest run`)
-cd frontend && npx vitest run src/pages/Sync.test.tsx     # run a single test file
+cd frontend && npx vitest run tests/Sync.test.tsx         # run a single test file (tests live in frontend/tests/)
 cd frontend && npm run build                              # full build — requires explicit approval before running
 ```
 
