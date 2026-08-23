@@ -313,7 +313,15 @@ class LifespanTest(_TempLoggingMixin, unittest.IsolatedAsyncioTestCase):
 
     async def test_logs_one_startup_and_one_shutdown_record_in_order(self) -> None:
         calls: list[str] = []
+
+        def record_sweep() -> int:
+            calls.append("mark_incomplete_sync_runs")
+            return 0
+
+        # Every startup step is stubbed, including the stranded-run sweep — it issues a
+        # real UPDATE, so leaving it unpatched would mutate the application database.
         with mock.patch("server.database.init_db", side_effect=lambda: calls.append("init_db")), \
+                mock.patch("server.database.mark_incomplete_sync_runs", side_effect=record_sweep), \
                 mock.patch(
                     "server.sync.start_background_scheduler",
                     side_effect=lambda: calls.append("start_background_scheduler"),
@@ -322,11 +330,24 @@ class LifespanTest(_TempLoggingMixin, unittest.IsolatedAsyncioTestCase):
                 async with server.lifespan(server.app):
                     pass
 
-        self.assertEqual(calls, ["init_db", "start_background_scheduler"])
+        self.assertEqual(
+            calls, ["init_db", "mark_incomplete_sync_runs", "start_background_scheduler"])
         messages = [record.getMessage() for record in captured.records]
         self.assertEqual(len(messages), 2)
         self.assertIn("startup", messages[0].lower())
         self.assertIn("shutdown", messages[1].lower())
+
+    async def test_a_stranded_run_sweep_adds_one_warning_between_the_two(self) -> None:
+        with mock.patch("server.database.init_db"), \
+                mock.patch("server.database.mark_incomplete_sync_runs", return_value=3), \
+                mock.patch("server.sync.start_background_scheduler"):
+            with self.assertLogs("youtube_analytics.lifecycle", level="INFO") as captured:
+                async with server.lifespan(server.app):
+                    pass
+
+        self.assertEqual(
+            [record.levelname for record in captured.records], ["INFO", "WARNING", "INFO"])
+        self.assertIn("count=3", captured.records[1].getMessage())
 
     async def test_startup_failure_is_logged_as_an_error_before_shutdown(self) -> None:
         """A failed startup must not look identical to a clean run.
@@ -334,7 +355,10 @@ class LifespanTest(_TempLoggingMixin, unittest.IsolatedAsyncioTestCase):
         Shutdown is still emitted (teardown after a failed startup stays visible), but an
         ERROR record between the two identifies the failure.
         """
+        # init_db raises before the sweep is reached, but it is stubbed anyway so that
+        # reordering the startup steps can never turn this test into a real UPDATE.
         with mock.patch("server.database.init_db", side_effect=RuntimeError("boom")), \
+                mock.patch("server.database.mark_incomplete_sync_runs", return_value=0), \
                 mock.patch("server.sync.start_background_scheduler"):
             with self.assertLogs("youtube_analytics.lifecycle", level="INFO") as captured:
                 with self.assertRaises(RuntimeError):
@@ -353,7 +377,10 @@ class LifespanTest(_TempLoggingMixin, unittest.IsolatedAsyncioTestCase):
         self.assertNotIn("boom", messages[1])
 
     async def test_successful_startup_logs_no_error_record(self) -> None:
+        # The sweep must be stubbed like every other startup step: it issues a real UPDATE,
+        # so an unpatched call here would rewrite statuses in the application database.
         with mock.patch("server.database.init_db"), \
+                mock.patch("server.database.mark_incomplete_sync_runs", return_value=0), \
                 mock.patch("server.sync.start_background_scheduler"):
             with self.assertLogs("youtube_analytics.lifecycle", level="INFO") as captured:
                 async with server.lifespan(server.app):

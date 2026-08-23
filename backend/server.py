@@ -22,6 +22,12 @@ async def lifespan(app: FastAPI):
         # emits shutdown in every case, so teardown after a failed startup stays visible.
         try:
             database.init_db()
+            # No sync can be in flight at startup — the reservation guarding one lives in
+            # memory and died with the previous process — so any row still marked running
+            # was stranded by a kill or crash and is safe to close out here.
+            stranded = database.mark_incomplete_sync_runs()
+            if stranded:
+                _logger.warning("Marked stranded sync stages incomplete count=%d", stranded)
             sync.start_background_scheduler()
         except Exception as exc:
             _logger.error("Application startup failed %s", exception_context(exc))

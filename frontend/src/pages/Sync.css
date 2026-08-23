@@ -1,16 +1,3 @@
-.sync-status-banner {
-  display: flex;
-  align-items: center;
-  padding: 0.75rem 1rem;
-  margin-bottom: 1rem;
-  border: 1px solid var(--border);
-  border-radius: var(--radius);
-  background: var(--surface);
-  color: var(--text-secondary);
-  font-size: 13px;
-  font-weight: 500;
-}
-
 .sync-table td {
   white-space: normal;
   vertical-align: middle;
@@ -104,6 +91,130 @@
   cursor: not-allowed;
   transform: none;
   box-shadow: none;
+}
+
+/* Both history tables keep a stable minimum width so .table-overflow-wrap owns the
+   horizontal scroll instead of widening the page. The nested stage table carries eight
+   columns inside an already-indented container, so it needs the larger floor. */
+.sync-history-table {
+  min-width: 740px;
+}
+
+.sync-stage-table {
+  min-width: 880px;
+}
+
+.sync-history-col-started {
+  width: 260px;
+}
+
+.sync-history-col-stages {
+  width: 100px;
+}
+
+.sync-history-col-stage {
+  width: 150px;
+}
+
+.sync-history-col-scope {
+  width: 110px;
+}
+
+.sync-history-col-status {
+  width: 100px;
+}
+
+.sync-history-col-time {
+  width: 170px;
+}
+
+.sync-history-col-count {
+  width: 100px;
+}
+
+.sync-batch-row {
+  cursor: pointer;
+  transition: background 0.15s;
+}
+
+.sync-batch-row:hover,
+.sync-batch-row.expanded {
+  background: var(--blue-light);
+}
+
+/* The disclosure control carries the row's visible start time, so it is styled as text
+   rather than as a button and inherits the cell's typography. */
+.sync-batch-toggle {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  padding: 0;
+  border: none;
+  background: none;
+  font: inherit;
+  color: var(--text);
+  cursor: pointer;
+}
+
+.sync-batch-toggle:focus-visible {
+  outline: 2px solid var(--blue);
+  outline-offset: 2px;
+  border-radius: var(--radius-sm);
+}
+
+.sync-batch-caret {
+  width: 0;
+  height: 0;
+  border-top: 4px solid transparent;
+  border-bottom: 4px solid transparent;
+  border-left: 6px solid var(--text-secondary);
+  transition: transform 0.15s;
+}
+
+.sync-batch-row.expanded .sync-batch-caret {
+  transform: rotate(90deg);
+}
+
+.sync-batch-detail-row > td {
+  padding: 0 0 0 1.5rem;
+  background: var(--bg);
+}
+
+.sync-history-status {
+  display: inline-block;
+  padding: 0.15rem 0.5rem;
+  border-radius: var(--radius-sm);
+  font-size: 12px;
+  font-weight: 600;
+}
+
+.sync-history-status-running {
+  background: var(--blue-light);
+  color: var(--blue-dark);
+}
+
+.sync-history-status-success {
+  background: var(--green-light);
+  color: var(--green);
+}
+
+/* A stage stranded by a killed process, closed out by the backend's startup sweep —
+   neither in progress nor a success. */
+.sync-history-status-incomplete {
+  background: var(--bg);
+  color: var(--text-secondary);
+}
+
+.sync-history-status-failed {
+  background: var(--red-light);
+  color: var(--red);
+}
+
+.sync-history-empty {
+  padding: 2rem 1rem;
+  text-align: center;
+  color: var(--text-secondary);
+  font-size: 13px;
 }
 
 @media (max-width: 720px) {

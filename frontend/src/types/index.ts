@@ -124,6 +124,59 @@ export interface SyncQueuedResponse {
   queued: boolean
 }
 
+/**
+ * The stored lifecycle of one recorded sync stage. `incomplete` is written by the backend's
+ * startup sweep for a stage stranded by a killed process — it never completed, so it keeps
+ * a null `completed_at`. `running` therefore means genuinely in flight; the UI renders this
+ * field directly and never re-derives it from timestamps.
+ */
+export type SyncRunStatus = 'running' | 'incomplete' | 'success' | 'failed'
+
+/**
+ * One recorded sync-stage run. `error_message` is carried by the API contract but is
+ * deliberately never rendered — history cells are built from an explicit display list.
+ */
+export interface SyncRun {
+  id: number
+  batch_id: string
+  sync_type: string
+  scope: string | null
+  year: number | null
+  status: SyncRunStatus
+  started_at: string
+  completed_at: string | null
+  rows_fetched: number
+  rows_written: number
+  rows_deleted: number
+  error_message: string | null
+}
+
+/**
+ * One sync batch — every stage sharing a `batch_id`, as generated once per submitted plan.
+ * `started_at` is the batch's earliest stage start; the three counters are summed by the
+ * backend from exactly the child rows in `runs`, so they always match the expanded detail.
+ * `batch_id` is an internal key for React identity and disclosure state, never displayed.
+ */
+export interface SyncRunBatch {
+  batch_id: string
+  started_at: string
+  /** The worst stage status in the batch, computed by the backend. */
+  status: SyncRunStatus
+  run_count: number
+  rows_fetched: number
+  rows_written: number
+  rows_deleted: number
+  runs: SyncRun[]
+}
+
+/** `total` counts distinct batches, not stage rows, so `page_size` is a batch count. */
+export interface SyncRunsResponse {
+  items: SyncRunBatch[]
+  total: number
+  page: number
+  page_size: number
+}
+
 export interface TopVideo {
   id: string
   title: string

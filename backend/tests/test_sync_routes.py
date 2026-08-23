@@ -241,6 +241,95 @@ class StatusRouteTest(SyncRoutesTestCase):
         self.assertEqual(observed[0], {"state": "running", "message": "Starting sync..."})
 
 
+BATCH_GROUP = {
+    "batch_id": "batch-a",
+    "started_at": "2024-05-01T10:00:00+00:00",
+    "status": "success",
+    "run_count": 2,
+    "rows_fetched": 17,
+    "rows_written": 8,
+    "rows_deleted": 1,
+    "runs": [
+        {
+            "id": 2, "batch_id": "batch-a", "sync_type": "comments", "scope": "incremental",
+            "year": None, "status": "success", "started_at": "2024-05-01T10:01:00+00:00",
+            "completed_at": "2024-05-01T10:02:00+00:00", "rows_fetched": 7,
+            "rows_written": 3, "rows_deleted": 0, "error_message": None,
+        },
+        {
+            "id": 1, "batch_id": "batch-a", "sync_type": "videos", "scope": "incremental",
+            "year": None, "status": "success", "started_at": "2024-05-01T10:00:00+00:00",
+            "completed_at": "2024-05-01T10:01:00+00:00", "rows_fetched": 10,
+            "rows_written": 5, "rows_deleted": 1, "error_message": None,
+        },
+    ],
+}
+
+
+class RunsRouteTest(SyncRoutesTestCase):
+    """Covers the batch-paginated history contract with the database helper stubbed out."""
+
+    def setUp(self) -> None:
+        super().setUp()
+        self.get_runs = self._patch(
+            "routes.synchronization.database.get_sync_runs",
+            return_value=([BATCH_GROUP], 42),
+        )
+
+    def test_defaults_to_the_first_page_of_twenty_five(self) -> None:
+        response = self.client.get("/sync/runs")
+
+        self.assertEqual(response.status_code, 200)
+        self.get_runs.assert_called_once_with(1, 25)
+
+    def test_page_and_page_size_are_forwarded(self) -> None:
+        self.client.get("/sync/runs", params={"page": 3, "page_size": 10})
+
+        self.get_runs.assert_called_once_with(3, 10)
+
+    def test_response_carries_the_standard_pagination_metadata(self) -> None:
+        body = self.client.get("/sync/runs", params={"page": 2, "page_size": 5}).json()
+
+        self.assertEqual(body, {
+            "items": [BATCH_GROUP],
+            "total": 42,
+            "page": 2,
+            "page_size": 5,
+        })
+
+    def test_batch_groups_survive_serialization_with_their_children(self) -> None:
+        group = self.client.get("/sync/runs").json()["items"][0]
+
+        self.assertEqual(group["batch_id"], "batch-a")
+        self.assertEqual(group["run_count"], 2)
+        self.assertEqual(group["started_at"], "2024-05-01T10:00:00+00:00")
+        self.assertEqual([r["sync_type"] for r in group["runs"]], ["comments", "videos"])
+        self.assertEqual(group["rows_fetched"], sum(r["rows_fetched"] for r in group["runs"]))
+
+    def test_total_reports_distinct_batches_rather_than_stage_rows(self) -> None:
+        body = self.client.get("/sync/runs").json()
+
+        self.assertEqual(body["total"], 42)
+        self.assertEqual(len(body["items"]), 1)
+
+    def test_page_below_one_is_unprocessable(self) -> None:
+        self.assertEqual(self.client.get("/sync/runs", params={"page": 0}).status_code, 422)
+        self.get_runs.assert_not_called()
+
+    def test_page_size_below_one_is_unprocessable(self) -> None:
+        self.assertEqual(self.client.get("/sync/runs", params={"page_size": 0}).status_code, 422)
+        self.get_runs.assert_not_called()
+
+    def test_page_size_above_the_maximum_is_unprocessable(self) -> None:
+        self.assertEqual(self.client.get("/sync/runs", params={"page_size": 500}).status_code, 422)
+        self.get_runs.assert_not_called()
+
+    def test_the_legacy_limit_parameter_no_longer_controls_paging(self) -> None:
+        self.client.get("/sync/runs", params={"limit": 100})
+
+        self.get_runs.assert_called_once_with(1, 25)
+
+
 class AddTaskFailureTest(SyncRoutesTestCase):
     def test_reservation_is_rolled_back_when_enqueueing_fails(self) -> None:
         self._patch("fastapi.BackgroundTasks.add_task", side_effect=RuntimeError("queue full"))

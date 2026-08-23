@@ -57,8 +57,9 @@ application module is imported first):
 
 1. Log an `INFO` "Application startup" record.
 2. `database.init_db()` — creates tables from `schema.sql` if they don't already exist.
-3. `sync.start_background_scheduler()` — runs one complete incremental sync on a daemon thread unless any sync run already succeeded today; no recurring timer is scheduled (see `sync.md`).
-4. Yield to serve requests, then — in a `finally`, so it runs after a normal shutdown or a startup/runtime failure alike — log an `INFO` "Application shutdown" record.
+3. `database.mark_incomplete_sync_runs()` — closes out `sync_runs` rows a killed process left marked `running`, setting them to `incomplete` and logging a `WARNING` with the count when any were found. This belongs at startup specifically: the reservation guarding a live sync is in-memory and died with the previous process, so nothing can legitimately still be running (see `database.md`).
+4. `sync.start_background_scheduler()` — runs one complete incremental sync on a daemon thread unless any sync run already succeeded today; no recurring timer is scheduled (see `sync.md`).
+5. Yield to serve requests, then — in a `finally`, so it runs after a normal shutdown or a startup/runtime failure alike — log an `INFO` "Application shutdown" record.
 
 CORS is configured to allow only `http://localhost:5173` (the Vite dev server). Both `python server.py` and `uvicorn server:app --reload` start the same app; neither hardcodes `reload=True` in `server.py` itself, so file-watching only happens when `--reload` is passed on the `uvicorn` command line (or via `uvicorn.run(..., reload=True)`, which `server.py`'s `__main__` block does not currently set).
 
@@ -87,7 +88,7 @@ indefinitely and are safe to delete between runs.
 
 | Path | Responsibility |
 |---|---|
-| `server.py` | FastAPI app construction, CORS, lifespan (`init_db` → `start_background_scheduler`) |
+| `server.py` | FastAPI app construction, CORS, lifespan (`init_db` → `mark_incomplete_sync_runs` → `start_background_scheduler`) |
 | `routes/videos.py`, `routes/playlists.py`, `routes/analytics.py`, `routes/comments.py`, `routes/synchronization.py`, `routes/metadata.py` | API route handlers, grouped by resource — thin wrappers around `database` helpers; `routes/__init__.py` aggregates them in a fixed order into one `router` |
 | `sync/status.py` | Global sync-status lifecycle (`idle \| running \| success \| failed`, plus message) and the `try_begin_sync()` reservation primitive, behind one lock |
 | `sync/plans.py` | Plan types, canonical `STAGE_ORDER`, derived `FULL_SYNC_TYPES`, available years, `validate_plan()` |

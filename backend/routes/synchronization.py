@@ -76,6 +76,15 @@ def trigger_sync(plan: SyncPlanRequest, background_tasks: BackgroundTasks) -> di
 
 
 @router.get("/sync/runs")
-def sync_runs(limit: int = Query(default=100, ge=1, le=500)) -> dict:
-    """Return recent sync-stage records, newest first."""
-    return {"items": database.get_sync_runs(limit)}
+def sync_runs(
+    page: int = Query(default=1, ge=1),
+    page_size: int = Query(default=25, ge=1, le=200),
+) -> dict:
+    """Return one page of sync batches, newest first, with the total distinct batch count.
+
+    Each item groups one batch_id's stages, carrying the batch's earliest start time, its
+    stage count, rolled-up counters, and every stage record in `runs`. `total` counts
+    distinct batches, not stage rows, so `page_size` is a number of batches.
+    """
+    items, total = database.get_sync_runs(page, page_size)
+    return {"items": items, "total": total, "page": page, "page_size": page_size}
