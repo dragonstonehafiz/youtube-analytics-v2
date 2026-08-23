@@ -51,23 +51,69 @@ def fail_sync_run(
 
 
 def get_sync_runs(page: int = 1, page_size: int = 25) -> tuple[list[dict], int]:
-    """Return one page of sync-stage records newest first, plus the unfiltered total.
+    """Return one page of sync batches newest first, plus the total distinct batch count.
 
-    Rows are ordered by started_at descending with a descending ID tie-breaker so stages
-    started within the same timestamp keep a stable order across page requests.
+    A batch is one batch_id — the ID execute_plan() generates once per submitted plan and
+    shares across every stage that starts. Paging happens over distinct batch IDs rather
+    than stage rows, so a batch is never split across two pages and a group's rolled-up
+    counters always cover all of its stages. Each group is
+    {batch_id, started_at, run_count, rows_fetched, rows_written, rows_deleted, runs},
+    where started_at is the batch's earliest stage start and the three counters are summed
+    from exactly the child rows in `runs`.
     """
     offset = (page - 1) * page_size
     with get_connection() as conn:
-        total = conn.execute("SELECT COUNT(*) FROM sync_runs").fetchone()[0]
-        rows = conn.execute(
+        total = conn.execute("SELECT COUNT(DISTINCT sr.batch_id) FROM sync_runs sr").fetchone()[0]
+        batch_rows = conn.execute(
             """
-            SELECT * FROM sync_runs
-            ORDER BY started_at DESC, id DESC
+            SELECT sr.batch_id, MIN(sr.started_at) AS started_at
+            FROM sync_runs sr
+            GROUP BY sr.batch_id
+            ORDER BY started_at DESC, sr.batch_id DESC
             LIMIT ? OFFSET ?
             """,
             (page_size, offset),
         ).fetchall()
-    return [dict(r) for r in rows], total
+
+        # A page past the end selects no batches; an empty IN () list is invalid SQL.
+        if not batch_rows:
+            return [], total
+
+        batch_ids = [row["batch_id"] for row in batch_rows]
+        placeholders = ",".join("?" * len(batch_ids))
+        child_rows = conn.execute(
+            f"""
+            SELECT sr.id, sr.batch_id, sr.sync_type, sr.scope, sr.year, sr.status,
+                   sr.started_at, sr.completed_at, sr.rows_fetched, sr.rows_written,
+                   sr.rows_deleted, sr.error_message
+            FROM sync_runs sr
+            WHERE sr.batch_id IN ({placeholders})
+            ORDER BY sr.started_at DESC, sr.id DESC
+            """,
+            batch_ids,
+        ).fetchall()
+
+    # Seeded in batch-page order, so the returned groups keep the newest-first ordering.
+    groups: dict[str, dict] = {
+        row["batch_id"]: {
+            "batch_id": row["batch_id"],
+            "started_at": row["started_at"],
+            "run_count": 0,
+            "rows_fetched": 0,
+            "rows_written": 0,
+            "rows_deleted": 0,
+            "runs": [],
+        }
+        for row in batch_rows
+    }
+    for child in child_rows:
+        group = groups[child["batch_id"]]
+        group["runs"].append(dict(child))
+        group["run_count"] += 1
+        group["rows_fetched"] += child["rows_fetched"]
+        group["rows_written"] += child["rows_written"]
+        group["rows_deleted"] += child["rows_deleted"]
+    return list(groups.values()), total
 
 
 def get_last_successful_run_completed_at() -> str | None:

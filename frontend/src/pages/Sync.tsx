@@ -1,4 +1,5 @@
-import { useEffect, useState } from 'react'
+import { Fragment, useEffect, useState } from 'react'
+import type { MouseEvent } from 'react'
 import { getDateRange, getSyncRuns, getSyncStatus, triggerSync } from '@/api'
 import type {
   PeriodAwareSyncStage,
@@ -7,6 +8,7 @@ import type {
   SyncPlan,
   SyncPlanStage,
   SyncRun,
+  SyncRunBatch,
   SyncRunStatus,
   SyncStage,
   SyncStatusResponse,
@@ -148,11 +150,20 @@ const STAGE_LABELS: Readonly<Record<string, string>> = Object.fromEntries(
   STAGE_ROWS.map(row => [row.stage, row.label]),
 )
 
-const RUN_STATUS_LABELS: Readonly<Record<SyncRunStatus, string>> = {
+/** Display statuses add `incomplete`, which the API has no stored equivalent for. */
+type DisplayStatus = SyncRunStatus | 'incomplete'
+
+const DISPLAY_STATUS_LABELS: Readonly<Record<DisplayStatus, string>> = {
   running: 'Running',
+  incomplete: 'Incomplete',
   success: 'Success',
   failed: 'Failed',
 }
+
+/** Most severe first — a batch reports the worst status among its stages. */
+const BATCH_STATUS_PRECEDENCE: readonly DisplayStatus[] = [
+  'failed', 'incomplete', 'running', 'success',
+]
 
 /** Human stage name, falling back to the stored value for a stage the UI no longer offers. */
 function stageLabel(syncType: string): string {
@@ -167,8 +178,25 @@ function scopeLabel(run: SyncRun): string {
   return EMPTY_CELL
 }
 
-function runStatusLabel(status: SyncRunStatus): string {
-  return RUN_STATUS_LABELS[status] ?? status
+/**
+ * A stage row stays `running` in the database until it completes or fails, so a sync that
+ * was interrupted — process killed, machine restarted — leaves one behind indefinitely.
+ * Report a running stage with no completion time as Incomplete rather than implying work
+ * is still in flight; the navbar's SyncStatus pill is what reports a live sync.
+ */
+function displayStatus(run: SyncRun): DisplayStatus {
+  if (run.status === 'running' && run.completed_at === null) return 'incomplete'
+  return run.status
+}
+
+/** The worst status among a batch's stages: failed > incomplete > running > success. */
+function batchStatus(batch: SyncRunBatch): DisplayStatus {
+  const present = new Set(batch.runs.map(displayStatus))
+  return BATCH_STATUS_PRECEDENCE.find(status => present.has(status)) ?? 'success'
+}
+
+function statusLabel(status: DisplayStatus): string {
+  return DISPLAY_STATUS_LABELS[status] ?? status
 }
 
 /** Render a stored UTC timestamp in the browser's locale, or an em dash when absent. */
@@ -190,10 +218,11 @@ export default function Sync() {
   const tab: Tab = searchParams.get('tab') === 'history' ? 'history' : 'sync'
   const historyPage = parsePage(searchParams.get('history_page'))
 
-  const [historyItems, setHistoryItems] = useState<SyncRun[]>([])
+  const [historyItems, setHistoryItems] = useState<SyncRunBatch[]>([])
   const [historyTotal, setHistoryTotal] = useState(0)
   const [historyLoading, setHistoryLoading] = useState(false)
   const [historyError, setHistoryError] = useState<string | null>(null)
+  const [expandedBatches, setExpandedBatches] = useState<ReadonlySet<string>>(new Set())
 
   const [included, setIncluded] = useState<IncludedMap>(ALL_INCLUDED)
   const [periods, setPeriods] = useState<PeriodMap>(DEFAULT_PERIODS)
@@ -235,6 +264,8 @@ export default function Sync() {
         if (!active) return
         setHistoryItems(data.items ?? [])
         setHistoryTotal(data.total ?? 0)
+        // Batches from the page being replaced must not reopen under new rows.
+        setExpandedBatches(new Set())
       })
       .catch((err: unknown) => {
         if (!active) return
@@ -328,6 +359,24 @@ export default function Sync() {
       else params.delete('history_page')
       return params
     })
+  }
+
+  const toggleBatch = (batchId: string) => {
+    setExpandedBatches(prev => {
+      const next = new Set(prev)
+      if (!next.delete(batchId)) next.add(batchId)
+      return next
+    })
+  }
+
+  /**
+   * The parent row is clickable for pointer users, but it also contains the semantic
+   * disclosure button. Without stopping propagation here the click would reach the row
+   * handler too and toggle the batch twice, leaving it visually unchanged.
+   */
+  const handleDisclosureClick = (event: MouseEvent<HTMLButtonElement>, batchId: string) => {
+    event.stopPropagation()
+    toggleBatch(batchId)
   }
 
   const historyTotalPages = Math.ceil(historyTotal / HISTORY_PAGE_SIZE)
@@ -432,50 +481,119 @@ export default function Sync() {
       ) : historyError ? (
         <p className="sync-error" role="alert">{historyError}</p>
       ) : historyItems.length === 0 ? (
-        <p className="sync-history-empty">No sync runs recorded.</p>
+        <p className="sync-history-empty">
+          {historyTotal === 0 ? 'No sync runs recorded.' : 'No sync batches found on this page.'}
+        </p>
       ) : (
         <>
           <div className="table-overflow-wrap">
             <table className="data-table sync-history-table">
               <colgroup>
-                <col className="sync-history-col-stage" />
-                <col className="sync-history-col-scope" />
+                <col className="sync-history-col-started" />
                 <col className="sync-history-col-status" />
-                <col className="sync-history-col-time" />
-                <col className="sync-history-col-time" />
+                <col className="sync-history-col-stages" />
                 <col className="sync-history-col-count" />
                 <col className="sync-history-col-count" />
                 <col className="sync-history-col-count" />
               </colgroup>
               <thead>
                 <tr>
-                  <th>Stage</th>
-                  <th>Scope</th>
-                  <th>Status</th>
                   <th>Started</th>
-                  <th>Completed</th>
+                  <th>Status</th>
+                  <th>Stages</th>
                   <th>Fetched</th>
                   <th>Written</th>
                   <th>Deleted</th>
                 </tr>
               </thead>
               <tbody>
-                {historyItems.map(run => (
-                  <tr key={run.id}>
-                    <td>{stageLabel(run.sync_type)}</td>
-                    <td>{scopeLabel(run)}</td>
-                    <td>
-                      <span className={`sync-history-status sync-history-status-${run.status}`}>
-                        {runStatusLabel(run.status)}
-                      </span>
-                    </td>
-                    <td>{formatTimestamp(run.started_at)}</td>
-                    <td>{formatTimestamp(run.completed_at)}</td>
-                    <td>{run.rows_fetched.toLocaleString()}</td>
-                    <td>{run.rows_written.toLocaleString()}</td>
-                    <td>{run.rows_deleted.toLocaleString()}</td>
-                  </tr>
-                ))}
+                {historyItems.map(batch => {
+                  const expanded = expandedBatches.has(batch.batch_id)
+                  const startedLabel = formatTimestamp(batch.started_at)
+                  const detailId = `sync-batch-detail-${batch.batch_id}`
+                  const status = batchStatus(batch)
+                  return (
+                    <Fragment key={batch.batch_id}>
+                      <tr
+                        className={`sync-batch-row${expanded ? ' expanded' : ''}`}
+                        onClick={() => toggleBatch(batch.batch_id)}
+                      >
+                        <td>
+                          <button
+                            type="button"
+                            className="sync-batch-toggle"
+                            aria-expanded={expanded}
+                            aria-controls={detailId}
+                            aria-label={`Sync batch started ${startedLabel}`}
+                            onClick={e => handleDisclosureClick(e, batch.batch_id)}
+                          >
+                            <span className="sync-batch-caret" aria-hidden="true" />
+                            {startedLabel}
+                          </button>
+                        </td>
+                        <td>
+                          <span className={`sync-history-status sync-history-status-${status}`}>
+                            {statusLabel(status)}
+                          </span>
+                        </td>
+                        <td>{batch.run_count.toLocaleString()}</td>
+                        <td>{batch.rows_fetched.toLocaleString()}</td>
+                        <td>{batch.rows_written.toLocaleString()}</td>
+                        <td>{batch.rows_deleted.toLocaleString()}</td>
+                      </tr>
+                      {expanded && (
+                        <tr className="sync-batch-detail-row">
+                          <td colSpan={6}>
+                            <div className="table-overflow-wrap" id={detailId}>
+                              <table className="data-table sync-stage-table">
+                                <colgroup>
+                                  <col className="sync-history-col-stage" />
+                                  <col className="sync-history-col-scope" />
+                                  <col className="sync-history-col-status" />
+                                  <col className="sync-history-col-time" />
+                                  <col className="sync-history-col-time" />
+                                  <col className="sync-history-col-count" />
+                                  <col className="sync-history-col-count" />
+                                  <col className="sync-history-col-count" />
+                                </colgroup>
+                                <thead>
+                                  <tr>
+                                    <th>Stage</th>
+                                    <th>Scope</th>
+                                    <th>Status</th>
+                                    <th>Started</th>
+                                    <th>Completed</th>
+                                    <th>Fetched</th>
+                                    <th>Written</th>
+                                    <th>Deleted</th>
+                                  </tr>
+                                </thead>
+                                <tbody>
+                                  {batch.runs.map(run => (
+                                    <tr key={run.id}>
+                                      <td>{stageLabel(run.sync_type)}</td>
+                                      <td>{scopeLabel(run)}</td>
+                                      <td>
+                                        <span className={`sync-history-status sync-history-status-${displayStatus(run)}`}>
+                                          {statusLabel(displayStatus(run))}
+                                        </span>
+                                      </td>
+                                      <td>{formatTimestamp(run.started_at)}</td>
+                                      <td>{formatTimestamp(run.completed_at)}</td>
+                                      <td>{run.rows_fetched.toLocaleString()}</td>
+                                      <td>{run.rows_written.toLocaleString()}</td>
+                                      <td>{run.rows_deleted.toLocaleString()}</td>
+                                    </tr>
+                                  ))}
+                                </tbody>
+                              </table>
+                            </div>
+                          </td>
+                        </tr>
+                      )}
+                    </Fragment>
+                  )
+                })}
               </tbody>
             </table>
           </div>

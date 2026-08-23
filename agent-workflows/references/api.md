@@ -249,10 +249,18 @@ POST /sync/trigger
 
 GET  /sync/runs
   ?page=1 &page_size=25 (1-200)
-  → { items: SyncRun[], total, page, page_size }   # newest first
+  → { items: SyncRunBatch[], total, page, page_size }   # newest batch first
+  SyncRunBatch: { batch_id, started_at, run_count,
+                  rows_fetched, rows_written, rows_deleted, runs: SyncRun[] }
   SyncRun: { id, batch_id, sync_type, scope, year, status, started_at, completed_at,
              rows_fetched, rows_written, rows_deleted, error_message }
-  error_message is part of the contract but is never rendered by the frontend.
+  One item per batch_id — the ID execute_plan() shares across every stage of one
+  submitted plan. page/page_size/total count BATCHES, not stage rows; a batch is
+  never split across pages. started_at is the batch's earliest stage start;
+  run_count and the three counters are summed from exactly the rows in `runs`,
+  so a group's totals always match its own children. Children are newest first.
+  Stages that never started have no row, so run_count omits them.
+  error_message and batch_id are part of the contract but are never rendered.
   sync_type ∈ videos | playlists | comments | pruning | video_analytics |
               video_traffic_sources | fx_rates
   status ∈ running | success | failed

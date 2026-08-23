@@ -146,8 +146,25 @@ export interface SyncRun {
   error_message: string | null
 }
 
+/**
+ * One sync batch — every stage sharing a `batch_id`, as generated once per submitted plan.
+ * `started_at` is the batch's earliest stage start; the three counters are summed by the
+ * backend from exactly the child rows in `runs`, so they always match the expanded detail.
+ * `batch_id` is an internal key for React identity and disclosure state, never displayed.
+ */
+export interface SyncRunBatch {
+  batch_id: string
+  started_at: string
+  run_count: number
+  rows_fetched: number
+  rows_written: number
+  rows_deleted: number
+  runs: SyncRun[]
+}
+
+/** `total` counts distinct batches, not stage rows, so `page_size` is a batch count. */
 export interface SyncRunsResponse {
-  items: SyncRun[]
+  items: SyncRunBatch[]
   total: number
   page: number
   page_size: number

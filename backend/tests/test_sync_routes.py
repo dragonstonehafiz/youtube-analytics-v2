@@ -241,14 +241,38 @@ class StatusRouteTest(SyncRoutesTestCase):
         self.assertEqual(observed[0], {"state": "running", "message": "Starting sync..."})
 
 
+BATCH_GROUP = {
+    "batch_id": "batch-a",
+    "started_at": "2024-05-01T10:00:00+00:00",
+    "run_count": 2,
+    "rows_fetched": 17,
+    "rows_written": 8,
+    "rows_deleted": 1,
+    "runs": [
+        {
+            "id": 2, "batch_id": "batch-a", "sync_type": "comments", "scope": "incremental",
+            "year": None, "status": "success", "started_at": "2024-05-01T10:01:00+00:00",
+            "completed_at": "2024-05-01T10:02:00+00:00", "rows_fetched": 7,
+            "rows_written": 3, "rows_deleted": 0, "error_message": None,
+        },
+        {
+            "id": 1, "batch_id": "batch-a", "sync_type": "videos", "scope": "incremental",
+            "year": None, "status": "success", "started_at": "2024-05-01T10:00:00+00:00",
+            "completed_at": "2024-05-01T10:01:00+00:00", "rows_fetched": 10,
+            "rows_written": 5, "rows_deleted": 1, "error_message": None,
+        },
+    ],
+}
+
+
 class RunsRouteTest(SyncRoutesTestCase):
-    """Covers the paginated history contract with the database helper stubbed out."""
+    """Covers the batch-paginated history contract with the database helper stubbed out."""
 
     def setUp(self) -> None:
         super().setUp()
         self.get_runs = self._patch(
             "routes.synchronization.database.get_sync_runs",
-            return_value=([{"id": 1, "sync_type": "videos"}], 42),
+            return_value=([BATCH_GROUP], 42),
         )
 
     def test_defaults_to_the_first_page_of_twenty_five(self) -> None:
@@ -266,11 +290,26 @@ class RunsRouteTest(SyncRoutesTestCase):
         body = self.client.get("/sync/runs", params={"page": 2, "page_size": 5}).json()
 
         self.assertEqual(body, {
-            "items": [{"id": 1, "sync_type": "videos"}],
+            "items": [BATCH_GROUP],
             "total": 42,
             "page": 2,
             "page_size": 5,
         })
+
+    def test_batch_groups_survive_serialization_with_their_children(self) -> None:
+        group = self.client.get("/sync/runs").json()["items"][0]
+
+        self.assertEqual(group["batch_id"], "batch-a")
+        self.assertEqual(group["run_count"], 2)
+        self.assertEqual(group["started_at"], "2024-05-01T10:00:00+00:00")
+        self.assertEqual([r["sync_type"] for r in group["runs"]], ["comments", "videos"])
+        self.assertEqual(group["rows_fetched"], sum(r["rows_fetched"] for r in group["runs"]))
+
+    def test_total_reports_distinct_batches_rather_than_stage_rows(self) -> None:
+        body = self.client.get("/sync/runs").json()
+
+        self.assertEqual(body["total"], 42)
+        self.assertEqual(len(body["items"]), 1)
 
     def test_page_below_one_is_unprocessable(self) -> None:
         self.assertEqual(self.client.get("/sync/runs", params={"page": 0}).status_code, 422)

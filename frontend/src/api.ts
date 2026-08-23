@@ -155,8 +155,10 @@ export const triggerSync = async (plan: SyncPlan): Promise<SyncQueuedResponse> =
 }
 
 /**
- * Fetch one page of sync history. Failures reject with a message derived only from the
- * HTTP status, so a backend exception body can never reach the history UI.
+ * Fetch one page of sync history, grouped into batches — `page`/`pageSize` count batches,
+ * not stage rows, and each item carries its own stages in `runs`. Failures reject with a
+ * message derived only from the HTTP status, so a backend exception body can never reach
+ * the history UI.
  */
 export const getSyncRuns = async (page: number, pageSize: number): Promise<SyncRunsResponse> => {
   const response = await fetch(buildUrl("/sync/runs", {
