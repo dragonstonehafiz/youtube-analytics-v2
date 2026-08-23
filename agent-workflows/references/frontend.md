@@ -88,7 +88,7 @@ export interface CommentsResponse {
 }
 export type SyncLifecycleState = 'idle' | 'running' | 'success' | 'failed'
 export interface SyncStatusResponse { state: SyncLifecycleState; message: string }
-export type SyncRunStatus = 'running' | 'success' | 'failed'   // stored; UI adds 'incomplete'
+export type SyncRunStatus = 'running' | 'incomplete' | 'success' | 'failed'   // all stored
 export interface SyncRun {
   id: number; batch_id: string; sync_type: string
   scope: string | null; year: number | null; status: SyncRunStatus
@@ -99,6 +99,7 @@ export interface SyncRun {
 export interface SyncRunBatch {          // one batch_id — all stages of one submitted plan
   batch_id: string                        // internal key only, never displayed
   started_at: string                      // the batch's EARLIEST stage start
+  status: SyncRunStatus                   // worst stage status, computed server-side
   run_count: number
   rows_fetched: number; rows_written: number; rows_deleted: number
   runs: SyncRun[]                         // the batch's own stages, newest first
@@ -182,9 +183,11 @@ The History tab renders server-paginated **sync batches**, newest first, via `ge
 
 The empty branch keys on `historyItems.length === 0` but picks its copy from `historyTotal`: `No sync runs recorded.` only at zero, otherwise `No sync batches found on this page.` — an out-of-range page is reachable by hand-editing `history_page`, since Next disables at the last page. Neither case renders pagination or triggers a redirect.
 
-**Parent rows** carry six columns — Started \| Status \| Stages \| Fetched \| Written \| Deleted. `started_at` is the batch's earliest stage start and the three counters are the API's rollups, both rendered as given: the client never re-derives a *counter*. Status is the exception — it has no stored equivalent and is derived client-side by `batchStatus()` from the eagerly-returned `runs`, taking the worst stage status by the `BATCH_STATUS_PRECEDENCE` order **failed > incomplete > running > success**.
+**Parent rows** carry six columns — Started \| Status \| Stages \| Fetched \| Written \| Deleted. Every value is rendered exactly as the API sent it: `started_at`, the batch `status`, and the three counters are all computed server-side, and the page derives **none** of them. `statusLabel()` only capitalizes.
 
-**`incomplete` is a display-only status.** The API's `SyncRunStatus` is `running | success | failed`; a row stays `running` in the database until a stage completes or fails, so a sync interrupted by a killed process or restart leaves one stranded indefinitely. `displayStatus()` reports a `running` stage whose `completed_at` is null as **Incomplete**, reserving Running for the degenerate case of a running row that does carry a completion time. Live progress is the navbar `SyncStatus` pill's job, not History's. Both the parent and the expanded stage cells route through `displayStatus()`/`statusLabel()` and share the `.sync-history-status-*` badge classes, so the two tables can never disagree about one batch.
+This is deliberate and load-bearing. A `running` row carries `completed_at = null` from creation until its stage finishes, so that shape describes a live stage and a stranded one identically — a client-side rule keyed on the null timestamp mislabels genuinely active work as Incomplete. Distinguishing them requires knowing no sync is in flight, which only the backend's startup sweep can establish (see `database.md`'s `mark_incomplete_sync_runs()`). `incomplete` is therefore a real stored status, not a display concept, and `SyncRunStatus` carries all four values. Do not reintroduce a timestamp-derived status here.
+
+Batch `status` is likewise the backend's, computed by the same **failed > incomplete > running > success** precedence over the batch's stages. Parent and stage cells share `statusLabel()` and the `.sync-history-status-*` badge classes, so the collapsed row and its expanded detail cannot disagree.
 
 **Disclosure** is local state (`expandedBatches: ReadonlySet<string>`, keyed by `batch_id`), never URL state — several batches can be open at once, and a successful page load clears the set so batches from the previous page cannot reopen under unrelated rows. Both the whole `<tr>` and a real `<button>` in the Started cell drive one shared `toggleBatch(batchId)`. The button's handler **must** call `event.stopPropagation()` first: without it the click also bubbles to the row handler, toggling twice and leaving the row visually unchanged. `Sync.test.tsx` asserts one click produces one transition, and removing the guard fails it. The button carries `aria-expanded`, `aria-controls` pointing at the detail container's `batch_id`-derived DOM id, and an `aria-label` of `Sync batch started <local time>` — which contains its visible text and never the raw UUID. The expanded detail is a sibling `<tr>`, so clicking inside it does not reach the parent row's handler.
 

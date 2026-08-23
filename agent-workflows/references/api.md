@@ -250,7 +250,7 @@ POST /sync/trigger
 GET  /sync/runs
   ?page=1 &page_size=25 (1-200)
   → { items: SyncRunBatch[], total, page, page_size }   # newest batch first
-  SyncRunBatch: { batch_id, started_at, run_count,
+  SyncRunBatch: { batch_id, started_at, status, run_count,
                   rows_fetched, rows_written, rows_deleted, runs: SyncRun[] }
   SyncRun: { id, batch_id, sync_type, scope, year, status, started_at, completed_at,
              rows_fetched, rows_written, rows_deleted, error_message }
@@ -263,7 +263,10 @@ GET  /sync/runs
   error_message and batch_id are part of the contract but are never rendered.
   sync_type ∈ videos | playlists | comments | pruning | video_analytics |
               video_traffic_sources | fx_rates
-  status ∈ running | success | failed
+  status ∈ running | incomplete | success | failed
+  incomplete is written by the startup sweep for a stage a killed process left
+  running; it keeps completed_at = null. A batch's status is the worst status
+  among its stages: failed > incomplete > running > success.
   Only stages that actually started have rows; a plan's rows share one batch_id.
 ```
 

@@ -244,6 +244,7 @@ class StatusRouteTest(SyncRoutesTestCase):
 BATCH_GROUP = {
     "batch_id": "batch-a",
     "started_at": "2024-05-01T10:00:00+00:00",
+    "status": "success",
     "run_count": 2,
     "rows_fetched": 17,
     "rows_written": 8,

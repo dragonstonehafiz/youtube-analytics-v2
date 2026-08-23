@@ -198,8 +198,8 @@
   color: var(--green);
 }
 
-/* A stage the database still calls running but that never completed — the sync was
-   interrupted, so it is neither in progress nor a success. */
+/* A stage stranded by a killed process, closed out by the backend's startup sweep —
+   neither in progress nor a success. */
 .sync-history-status-incomplete {
   background: var(--bg);
   color: var(--text-secondary);

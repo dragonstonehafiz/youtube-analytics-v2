@@ -150,20 +150,12 @@ const STAGE_LABELS: Readonly<Record<string, string>> = Object.fromEntries(
   STAGE_ROWS.map(row => [row.stage, row.label]),
 )
 
-/** Display statuses add `incomplete`, which the API has no stored equivalent for. */
-type DisplayStatus = SyncRunStatus | 'incomplete'
-
-const DISPLAY_STATUS_LABELS: Readonly<Record<DisplayStatus, string>> = {
+const STATUS_LABELS: Readonly<Record<SyncRunStatus, string>> = {
   running: 'Running',
   incomplete: 'Incomplete',
   success: 'Success',
   failed: 'Failed',
 }
-
-/** Most severe first — a batch reports the worst status among its stages. */
-const BATCH_STATUS_PRECEDENCE: readonly DisplayStatus[] = [
-  'failed', 'incomplete', 'running', 'success',
-]
 
 /** Human stage name, falling back to the stored value for a stage the UI no longer offers. */
 function stageLabel(syncType: string): string {
@@ -179,24 +171,13 @@ function scopeLabel(run: SyncRun): string {
 }
 
 /**
- * A stage row stays `running` in the database until it completes or fails, so a sync that
- * was interrupted — process killed, machine restarted — leaves one behind indefinitely.
- * Report a running stage with no completion time as Incomplete rather than implying work
- * is still in flight; the navbar's SyncStatus pill is what reports a live sync.
+ * Statuses are rendered exactly as stored. Distinguishing a stranded stage from a live one
+ * is the backend's startup sweep's job (`mark_incomplete_sync_runs()`) — inferring it here
+ * from a null `completed_at` would mislabel genuinely running work, since a row carries
+ * that shape from the moment it is created until its stage finishes.
  */
-function displayStatus(run: SyncRun): DisplayStatus {
-  if (run.status === 'running' && run.completed_at === null) return 'incomplete'
-  return run.status
-}
-
-/** The worst status among a batch's stages: failed > incomplete > running > success. */
-function batchStatus(batch: SyncRunBatch): DisplayStatus {
-  const present = new Set(batch.runs.map(displayStatus))
-  return BATCH_STATUS_PRECEDENCE.find(status => present.has(status)) ?? 'success'
-}
-
-function statusLabel(status: DisplayStatus): string {
-  return DISPLAY_STATUS_LABELS[status] ?? status
+function statusLabel(status: SyncRunStatus): string {
+  return STATUS_LABELS[status] ?? status
 }
 
 /** Render a stored UTC timestamp in the browser's locale, or an em dash when absent. */
@@ -511,7 +492,6 @@ export default function Sync() {
                   const expanded = expandedBatches.has(batch.batch_id)
                   const startedLabel = formatTimestamp(batch.started_at)
                   const detailId = `sync-batch-detail-${batch.batch_id}`
-                  const status = batchStatus(batch)
                   return (
                     <Fragment key={batch.batch_id}>
                       <tr
@@ -532,8 +512,8 @@ export default function Sync() {
                           </button>
                         </td>
                         <td>
-                          <span className={`sync-history-status sync-history-status-${status}`}>
-                            {statusLabel(status)}
+                          <span className={`sync-history-status sync-history-status-${batch.status}`}>
+                            {statusLabel(batch.status)}
                           </span>
                         </td>
                         <td>{batch.run_count.toLocaleString()}</td>
@@ -574,8 +554,8 @@ export default function Sync() {
                                       <td>{stageLabel(run.sync_type)}</td>
                                       <td>{scopeLabel(run)}</td>
                                       <td>
-                                        <span className={`sync-history-status sync-history-status-${displayStatus(run)}`}>
-                                          {statusLabel(displayStatus(run))}
+                                        <span className={`sync-history-status sync-history-status-${run.status}`}>
+                                          {statusLabel(run.status)}
                                         </span>
                                       </td>
                                       <td>{formatTimestamp(run.started_at)}</td>

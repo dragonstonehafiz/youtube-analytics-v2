@@ -124,8 +124,13 @@ export interface SyncQueuedResponse {
   queued: boolean
 }
 
-/** The lifecycle of one recorded sync stage. A running stage has no completion time yet. */
-export type SyncRunStatus = 'running' | 'success' | 'failed'
+/**
+ * The stored lifecycle of one recorded sync stage. `incomplete` is written by the backend's
+ * startup sweep for a stage stranded by a killed process — it never completed, so it keeps
+ * a null `completed_at`. `running` therefore means genuinely in flight; the UI renders this
+ * field directly and never re-derives it from timestamps.
+ */
+export type SyncRunStatus = 'running' | 'incomplete' | 'success' | 'failed'
 
 /**
  * One recorded sync-stage run. `error_message` is carried by the API contract but is
@@ -155,6 +160,8 @@ export interface SyncRun {
 export interface SyncRunBatch {
   batch_id: string
   started_at: string
+  /** The worst stage status in the batch, computed by the backend. */
+  status: SyncRunStatus
   run_count: number
   rows_fetched: number
   rows_written: number

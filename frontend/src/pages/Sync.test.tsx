@@ -47,12 +47,20 @@ function run(overrides: Partial<SyncRun> = {}): SyncRun {
   }
 }
 
-/** Build a batch whose rollups are summed from its children, as the backend does. */
+/**
+ * Build a batch the way the backend does: rollups summed from the children, and a status
+ * chosen by the same failed > incomplete > running > success precedence. Fixtures that
+ * need a specific status pass it explicitly rather than relying on this default.
+ */
+const BATCH_STATUS_PRECEDENCE = ['failed', 'incomplete', 'running', 'success'] as const
+
 function batch(runs: SyncRun[] = [run()], overrides: Partial<SyncRunBatch> = {}): SyncRunBatch {
   const batchId = overrides.batch_id ?? runs[0]?.batch_id ?? 'batch-1'
+  const present = new Set(runs.map(r => r.status))
   return {
     batch_id: batchId,
     started_at: runs.map(r => r.started_at).sort()[0] ?? '2024-05-02T10:00:00+00:00',
+    status: BATCH_STATUS_PRECEDENCE.find(s => present.has(s)) ?? 'success',
     run_count: runs.length,
     rows_fetched: runs.reduce((sum, r) => sum + r.rows_fetched, 0),
     rows_written: runs.reduce((sum, r) => sum + r.rows_written, 0),
@@ -390,62 +398,65 @@ describe('parent batch rows', () => {
 })
 
 describe('status reporting', () => {
-  const stage = (id: number, overrides: Partial<SyncRun>) =>
-    run({ id, started_at: `2024-05-01T10:0${id}:00+00:00`, ...overrides })
+  const parentStatus = () => within(parentTable()).getAllByRole('cell')[1].textContent
 
-  const renderStatuses = async (runs: SyncRun[]) => {
-    mockGetSyncRuns.mockResolvedValue(page([batch(runs)]))
+  const renderBatch = async (overrides: Partial<SyncRunBatch>, runs = [run()]) => {
+    mockGetSyncRuns.mockResolvedValue(page([batch(runs, overrides)]))
     renderSync('/sync?tab=history')
     await screen.findByRole('table')
   }
 
-  const parentStatus = () => within(parentTable()).getAllByRole('cell')[1].textContent
+  it.each([
+    ['success', 'Success'],
+    ['failed', 'Failed'],
+    ['running', 'Running'],
+    ['incomplete', 'Incomplete'],
+  ] as const)('renders the backend batch status %s as %s', async (status, label) => {
+    await renderBatch({ status })
 
-  it('reports a stage still marked running with no completion as Incomplete', async () => {
-    await renderStatuses([stage(1, { status: 'running', completed_at: null })])
-    fireEvent.click(disclosures()[0])
-
-    expect(within(nestedTable()).getAllByRole('cell')[2].textContent).toBe('Incomplete')
-    expect(document.body.textContent).not.toContain('Running')
+    expect(parentStatus()).toBe(label)
   })
 
-  it('still reports Running when a running stage carries a completion time', async () => {
-    await renderStatuses([
-      stage(1, { status: 'running', completed_at: '2024-05-01T10:05:00+00:00' }),
+  it('renders the batch status the API sent, never one derived from the children', async () => {
+    // A live batch: the running stage has no completion time, which must NOT read as
+    // Incomplete. Deriving status on the client is exactly what gets this wrong.
+    await renderBatch({ status: 'running' }, [
+      run({ id: 2, sync_type: 'videos', status: 'running', completed_at: null }),
+      run({ id: 1, sync_type: 'playlists', status: 'success' }),
+    ])
+
+    expect(parentStatus()).toBe('Running')
+    expect(document.body.textContent).not.toContain('Incomplete')
+  })
+
+  it('renders each stage status as stored, including a live running stage', async () => {
+    await renderBatch({ status: 'running' }, [
+      run({ id: 2, sync_type: 'videos', status: 'running', completed_at: null,
+            started_at: '2024-05-01T10:01:00+00:00' }),
+      run({ id: 1, sync_type: 'playlists', status: 'success',
+            started_at: '2024-05-01T10:00:00+00:00' }),
     ])
     fireEvent.click(disclosures()[0])
 
-    expect(within(nestedTable()).getAllByRole('cell')[2].textContent).toBe('Running')
+    const rows = within(nestedTable()).getAllByRole('row').slice(1)
+    expect(within(rows[0]).getAllByRole('cell')[2].textContent).toBe('Running')
+    expect(within(rows[0]).getAllByRole('cell')[4].textContent).toBe('—')
+    expect(within(rows[1]).getAllByRole('cell')[2].textContent).toBe('Success')
   })
 
-  it('rolls an all-success batch up to Success', async () => {
-    await renderStatuses([stage(1, {}), stage(2, {})])
-
-    expect(parentStatus()).toBe('Success')
-  })
-
-  it('rolls a batch containing an interrupted stage up to Incomplete', async () => {
-    await renderStatuses([
-      stage(1, {}),
-      stage(2, { status: 'running', completed_at: null }),
+  it('renders a swept incomplete stage with no completion time', async () => {
+    await renderBatch({ status: 'incomplete' }, [
+      run({ status: 'incomplete', completed_at: null }),
     ])
+    fireEvent.click(disclosures()[0])
 
-    expect(parentStatus()).toBe('Incomplete')
-  })
-
-  it('lets a failed stage outrank an interrupted one', async () => {
-    await renderStatuses([
-      stage(1, {}),
-      stage(2, { status: 'running', completed_at: null }),
-      stage(3, { status: 'failed', error_message: SECRET_ERROR }),
-    ])
-
-    expect(parentStatus()).toBe('Failed')
-    expect(document.body.textContent).not.toContain(SECRET_ERROR)
+    const cells = within(nestedTable()).getAllByRole('cell')
+    expect(cells[2].textContent).toBe('Incomplete')
+    expect(cells[4].textContent).toBe('—')
   })
 
   it('gives the parent status the same styling hook as a stage status', async () => {
-    await renderStatuses([stage(1, {})])
+    await renderBatch({ status: 'success' })
 
     const badge = within(parentTable()).getAllByRole('cell')[1].firstElementChild
     expect(badge?.className).toContain('sync-history-status-success')
@@ -616,14 +627,14 @@ describe('expanded stage details', () => {
     expect(within(rows[2]).getAllByRole('cell')[1].textContent).toBe('Incremental')
   })
 
-  it('renders an em dash for an interrupted stage with no completion time', async () => {
+  it('renders an em dash for a running stage with no completion time', async () => {
     mockGetSyncRuns.mockResolvedValue(page([
       batch([run({ status: 'running', completed_at: null })]),
     ]))
     await expandFirst()
 
     const cells = within(nestedTable()).getAllByRole('cell')
-    expect(cells[2].textContent).toBe('Incomplete')
+    expect(cells[2].textContent).toBe('Running')
     expect(cells[4].textContent).toBe('—')
   })
 

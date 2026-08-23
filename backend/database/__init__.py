@@ -34,6 +34,7 @@ from .sync_runs import (
     fail_sync_run,
     get_last_successful_run_completed_at,
     get_sync_runs,
+    mark_incomplete_sync_runs,
 )
 from .traffic_sources import (
     get_aggregated_traffic_sources,
@@ -82,6 +83,7 @@ __all__ = [
     "get_playlist_video_stats",
     "get_playlist_videos",
     "get_sync_runs",
+    "mark_incomplete_sync_runs",
     "get_top_videos_by_traffic_source",
     "get_top_videos_by_views",
     "get_video",
