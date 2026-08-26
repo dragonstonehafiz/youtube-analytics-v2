@@ -33,11 +33,16 @@ body:
     id: acceptance-criteria
     attributes:
       label: Acceptance criteria
-      description: Add each verifiable condition that confirms the bug is fixed as a Markdown checkbox.
+      description: >-
+        Add each verifiable condition that confirms the bug is fixed as a Markdown
+        checkbox, numbered sequentially (AC-1, AC-2, ...). Keep only essential,
+        non-overlapping outcomes and consolidate criteria that describe the same
+        result. Use no more than five by default; add more only for distinct
+        essential outcomes that cannot reasonably be consolidated.
       placeholder: |
-        - [ ] First verifiable outcome
-        - [ ] Second verifiable outcome
-        - [ ] Relevant edge cases are handled
+        - [ ] **AC-1:** The reported behavior no longer occurs under the reproduction steps
+        - [ ] **AC-2:** The named edge case produces the expected result
+        - [ ] **AC-3:** Existing behavior in the affected area is unchanged
     validations:
       required: true
 

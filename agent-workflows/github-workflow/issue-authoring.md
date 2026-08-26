@@ -105,11 +105,17 @@ Implementation detail may be included only when: it was confirmed by inspected c
 
 Each criterion:
 
-- is a Markdown checkbox;
+- is a Markdown checkbox carrying a sequential identifier — `- [ ] **AC-1:** ...`, `- [ ] **AC-2:** ...`, and so on, numbered without gaps;
 - describes exactly one observable result;
+- covers an outcome that is essential to considering the issue done;
+- does not duplicate or substantially overlap another criterion;
 - is independently verifiable (someone else could check it without asking the author what they meant);
 - avoids vague wording like "works correctly" or "handles edge cases properly" — name the actual edge case;
 - includes compatibility/non-regression expectations where relevant.
+
+Consolidate criteria that describe the same observable result. Two checkboxes that a reviewer would verify with the same check are one criterion, not two — merge them and keep the wording that names the outcome most concretely.
+
+Five criteria is the default maximum. Exceeding it is allowed only when the additional criteria are independently essential, describe distinct outcomes, and cannot reasonably be consolidated — never as a way to enumerate implementation steps or restate the same result in different words.
 
 For documentation-only work, criteria should name the expected files, which document canonically owns the content, what validation was run, and confirm no runtime/application files changed.
 
@@ -158,8 +164,8 @@ Logs or screenshots
 Acceptance criteria
 
 ```markdown
-- [ ] First verifiable outcome
-- [ ] Second verifiable outcome
+- [ ] **AC-1:** First verifiable outcome confirming the reported behavior is fixed
+- [ ] **AC-2:** Second verifiable outcome covering the named edge case
 ```
 
 Confirmation
@@ -189,8 +195,8 @@ Description
 Acceptance criteria
 
 ```markdown
-- [ ] First verifiable outcome
-- [ ] Second verifiable outcome
+- [ ] **AC-1:** First verifiable outcome describing the completed behavior
+- [ ] **AC-2:** Second verifiable outcome covering compatibility or a named edge case
 ```
 
 Additional context
@@ -225,6 +231,9 @@ Creating or editing an actual GitHub issue is a separate, explicit action outsid
 - [ ] Desired outcome stated as observable behavior, not an unverified implementation
 - [ ] Edge cases and non-goals included
 - [ ] Acceptance criteria are observable, verifiable, and free of vague wording
+- [ ] Every criterion is essential; overlapping or duplicate criteria consolidated into one
+- [ ] Criteria carry sequential `AC-1`, `AC-2`, ... identifiers with no gaps
+- [ ] No more than five criteria, unless the extras are distinct essential outcomes that cannot reasonably be consolidated
 - [ ] Title and field labels rendered as ordinary text; each populated field has its own `markdown` code block containing only pasteable field content
 - [ ] No single code block wraps multiple issue-form fields or handoff commentary
 - [ ] Draft presented for review, with assumptions/unresolved decisions summarized
