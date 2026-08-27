@@ -151,7 +151,7 @@ Notable naming quirks (source of truth is the function body, not the name):
 
 ## Async card composition
 
-Every asynchronously populated card-style surface follows one composition, supplied by `components/AsyncCard.tsx` (+ `AsyncCard.css`):
+Every asynchronously populated card-style surface follows one composition, supplied by `components/AsyncCard.tsx` (+ `AsyncCard.css`). Any new component of this kind must use `AsyncCard` and provide its own loading, error, empty, and content states; request states are combined only when the component consumes multiple results (see "One request, one card" below):
 
 - The **outer shell** is mounted from the first render and never branches away. Only the **inner state region** (`.async-card-body`) switches. A card therefore holds its place in the layout during its first load and during every later refetch, and a table's card shell is a wrapper element rather than the `<table>` itself.
 - States are mutually exclusive and resolve in a fixed **loading → error → empty → content** order. Loading first is what stops a pending request from rendering an empty or error message; a resolved zero-result response is what produces the empty message.
