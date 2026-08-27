@@ -4,7 +4,14 @@ import type { Video, VideoStats } from '@/types'
 import VideoTable, { PAGE_SIZE } from '@/components/VideoTable'
 import type { SortKey, SortDir } from '@/components/VideoTable'
 import VideoStatsBar from '@/components/VideoStatsBar'
+import type { RequestState } from '@/lib/requestState'
+import { pending, track } from '@/lib/requestState'
 import { useReplaceSearchParams } from '@/hooks/useReplaceSearchParams'
+
+interface VideoPage {
+  items: Video[]
+  total: number
+}
 
 export default function Videos() {
   const [searchParams, setSearchParams] = useReplaceSearchParams()
@@ -17,23 +24,32 @@ export default function Videos() {
   const contentType = searchParams.get('content_type') ?? ''
   const privacyStatus = searchParams.get('privacy_status') ?? ''
 
-  const [videos, setVideos] = useState<Video[]>([])
-  const [total, setTotal] = useState(0)
-  const [initialLoading, setInitialLoading] = useState(true)
-  const [stats, setStats] = useState<VideoStats | null>(null)
+  const [listing, setListing] = useState<RequestState<VideoPage>>(pending({ items: [], total: 0 }))
+  const [stats, setStats] = useState<RequestState<VideoStats | null>>(pending(null))
 
   useEffect(() => {
-    getVideos(page, PAGE_SIZE, sortKey, sortDir, title || undefined, startDate || undefined, endDate || undefined, contentType || undefined, privacyStatus || undefined)
-      .then((data: { items: Video[]; total: number }) => {
-        setVideos(data.items ?? [])
-        setTotal(data.total ?? 0)
-      })
-      .finally(() => setInitialLoading(false))
+    let active = true
+    track(
+      getVideos(page, PAGE_SIZE, sortKey, sortDir, title || undefined, startDate || undefined, endDate || undefined, contentType || undefined, privacyStatus || undefined)
+        .then((data: { items: Video[]; total: number }) => ({ items: data.items ?? [], total: data.total ?? 0 })),
+      setListing,
+      () => active,
+      'Could not load videos',
+    )
+    return () => { active = false }
   }, [page, sortKey, sortDir, title, startDate, endDate, contentType, privacyStatus])
 
+  // Statistics are their own request: they ignore paging and resolve independently of the table.
   useEffect(() => {
-    getVideoStats(title || undefined, startDate || undefined, endDate || undefined, contentType || undefined, privacyStatus || undefined)
-      .then((data: VideoStats) => setStats(data))
+    let active = true
+    track(
+      getVideoStats(title || undefined, startDate || undefined, endDate || undefined, contentType || undefined, privacyStatus || undefined)
+        .then((data: VideoStats) => data),
+      setStats,
+      () => active,
+      'Could not load statistics',
+    )
+    return () => { active = false }
   }, [title, startDate, endDate, contentType, privacyStatus])
 
   const setPage = (p: number) => {
@@ -74,11 +90,12 @@ export default function Videos() {
       <div className="page-header">
         <h1>Videos</h1>
       </div>
-      {stats && <VideoStatsBar stats={stats} />}
+      <VideoStatsBar stats={stats.data} loading={stats.loading} error={stats.error} />
       <VideoTable
-        videos={videos}
-        total={total}
-        initialLoading={initialLoading}
+        videos={listing.data.items}
+        total={listing.data.total}
+        loading={listing.loading}
+        error={listing.error}
         page={page}
         sortKey={sortKey}
         sortDir={sortDir}

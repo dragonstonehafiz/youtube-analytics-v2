@@ -3,6 +3,8 @@ import { getVideoStats, getChannelAnalytics, getTopVideosByViews, getVideosPubli
 import type { AnalyticsRow, VideoStats, TopVideo, TopVideoSortBy, PublishedVideo, Video, TrafficSourceRow, TrafficSourceTopVideo } from '@/types'
 import PeriodSelect, { last28Dates } from '@/components/PeriodSelect'
 import { toTopVideoShape, last7Dates } from '@/lib/topVideos'
+import type { RequestState } from '@/lib/requestState'
+import { pending, track } from '@/lib/requestState'
 import VideoStatsBar from '@/components/VideoStatsBar'
 import AnalyticsChart from '@/components/AnalyticsChart'
 import TopVideosList from '@/components/TopVideosList'
@@ -22,7 +24,7 @@ type Tab = 'analytics' | 'traffic-sources' | 'comments'
 export default function Analytics() {
   const [searchParams, setSearchParams] = useReplaceSearchParams()
   const tab = (searchParams.get('tab') as Tab) ?? 'analytics'
-  const [rows, setRows] = useState<AnalyticsRow[]>([])
+  const [rows, setRows] = useState<RequestState<AnalyticsRow[]>>(pending([]))
   const startDate = searchParams.has('start_date') ? searchParams.get('start_date')! : last28Dates()[0]
   const endDate = searchParams.has('end_date') ? searchParams.get('end_date')! : last28Dates()[1]
   const title = searchParams.get('title') ?? ''
@@ -30,29 +32,34 @@ export default function Analytics() {
   const privacyStatus = searchParams.get('privacy_status') ?? ''
   const rawTopVideosSortBy = searchParams.get('top_videos_sort_by')
   const topVideosSortBy: TopVideoSortBy = rawTopVideosSortBy === 'views' ? 'views' : 'watch_time'
-  const [stats, setStats] = useState<VideoStats | null>(null)
-  const [topVideos, setTopVideos] = useState<TopVideo[]>([])
-  const [publishedVideos, setPublishedVideos] = useState<PublishedVideo[]>([])
-  const [recentVideos, setRecentVideos] = useState<TopVideo[]>([])
-  const [recentShorts, setRecentShorts] = useState<TopVideo[]>([])
-  const [topPerformingVideos, setTopPerformingVideos] = useState<TopVideo[]>([])
-  const [topPerformingShorts, setTopPerformingShorts] = useState<TopVideo[]>([])
-  const [trafficSources, setTrafficSources] = useState<TrafficSourceRow[]>([])
-  const [topVideosBySource, setTopVideosBySource] = useState<Record<string, TrafficSourceTopVideo[]>>({})
+  const [stats, setStats] = useState<RequestState<VideoStats | null>>(pending(null))
+  const [topVideos, setTopVideos] = useState<RequestState<TopVideo[]>>(pending([]))
+  const [publishedVideos, setPublishedVideos] = useState<RequestState<PublishedVideo[]>>(pending([]))
+  const [recentVideos, setRecentVideos] = useState<RequestState<TopVideo[]>>(pending([]))
+  const [recentShorts, setRecentShorts] = useState<RequestState<TopVideo[]>>(pending([]))
+  const [topPerformingVideos, setTopPerformingVideos] = useState<RequestState<TopVideo[]>>(pending([]))
+  const [topPerformingShorts, setTopPerformingShorts] = useState<RequestState<TopVideo[]>>(pending([]))
+  const [trafficSources, setTrafficSources] = useState<RequestState<TrafficSourceRow[]>>(pending([]))
+  const [topVideosBySource, setTopVideosBySource] = useState<RequestState<Record<string, TrafficSourceTopVideo[]>>>(pending({}))
 
+  // The four sidebar cards read fixed periods, so they never reload with the page filters.
   useEffect(() => {
-    getVideos(1, RECENT_COUNT, 'published_at', 'desc', undefined, undefined, undefined, 'video', 'public')
-      .then((data: { items: Video[] }) => setRecentVideos((data.items ?? []).map(toTopVideoShape)))
-    getVideos(1, RECENT_COUNT, 'published_at', 'desc', undefined, undefined, undefined, 'short', 'public')
-      .then((data: { items: Video[] }) => setRecentShorts((data.items ?? []).map(toTopVideoShape)))
+    let active = true
+    track(getVideos(1, RECENT_COUNT, 'published_at', 'desc', undefined, undefined, undefined, 'video', 'public')
+      .then((data: { items: Video[] }) => (data.items ?? []).map(toTopVideoShape)), setRecentVideos, () => active)
+    track(getVideos(1, RECENT_COUNT, 'published_at', 'desc', undefined, undefined, undefined, 'short', 'public')
+      .then((data: { items: Video[] }) => (data.items ?? []).map(toTopVideoShape)), setRecentShorts, () => active)
     const [sevenStart, sevenEnd] = last7Dates()
-    getTopVideosByViews('views', sevenStart, sevenEnd, 'video', 'public')
-      .then((data: { items: TopVideo[] }) => setTopPerformingVideos(data.items ?? []))
-    getTopVideosByViews('views', sevenStart, sevenEnd, 'short', 'public')
-      .then((data: { items: TopVideo[] }) => setTopPerformingShorts(data.items ?? []))
+    track(getTopVideosByViews('views', sevenStart, sevenEnd, 'video', 'public')
+      .then((data: { items: TopVideo[] }) => data.items ?? []), setTopPerformingVideos, () => active)
+    track(getTopVideosByViews('views', sevenStart, sevenEnd, 'short', 'public')
+      .then((data: { items: TopVideo[] }) => data.items ?? []), setTopPerformingShorts, () => active)
+    return () => { active = false }
   }, [])
 
+  // One filter change starts five requests, each owning the state of the card it feeds.
   useEffect(() => {
+    let active = true
     const params: Record<string, string> = {}
     if (startDate) params.start_date = startDate
     if (endDate) params.end_date = endDate
@@ -64,20 +71,30 @@ export default function Analytics() {
     const ct = contentType || undefined
     const ps = privacyStatus || undefined
     const tt = title || undefined
-    getVideoStats(tt, sd, ed, ct, ps).then((data: VideoStats) => setStats(data))
-    getChannelAnalytics(params).then((data: { items: AnalyticsRow[] }) => setRows(data.items ?? []))
-    getVideosPublished(sd, ed, ct, ps, undefined, tt).then((data: { items: PublishedVideo[] }) => setPublishedVideos(data.items ?? []))
-    getChannelTrafficSources(params).then((data: { items: TrafficSourceRow[] }) => setTrafficSources(data.items ?? []))
-    getTopVideosByTrafficSource(params).then((data: { items: Record<string, TrafficSourceTopVideo[]> }) => setTopVideosBySource(data.items ?? {}))
+    track(getVideoStats(tt, sd, ed, ct, ps)
+      .then((data: VideoStats) => data), setStats, () => active, 'Could not load statistics')
+    track(getChannelAnalytics(params)
+      .then((data: { items: AnalyticsRow[] }) => data.items ?? []), setRows, () => active, 'Could not load analytics')
+    track(getVideosPublished(sd, ed, ct, ps, undefined, tt)
+      .then((data: { items: PublishedVideo[] }) => data.items ?? []), setPublishedVideos, () => active, 'Could not load uploads')
+    track(getChannelTrafficSources(params)
+      .then((data: { items: TrafficSourceRow[] }) => data.items ?? []), setTrafficSources, () => active, 'Could not load traffic sources')
+    track(getTopVideosByTrafficSource(params)
+      .then((data: { items: Record<string, TrafficSourceTopVideo[]> }) => data.items ?? {}), setTopVideosBySource, () => active, 'Could not load traffic sources')
+    return () => { active = false }
   }, [startDate, endDate, contentType, privacyStatus, title])
 
+  // The sortable top-video table reloads on its own sort change, and on nothing else's.
   useEffect(() => {
+    let active = true
     const sd = startDate || undefined
     const ed = endDate || undefined
     const ct = contentType || undefined
     const ps = privacyStatus || undefined
     const tt = title || undefined
-    getTopVideosByViews(topVideosSortBy, sd, ed, ct, ps, tt).then((data: { items: TopVideo[] }) => setTopVideos(data.items ?? []))
+    track(getTopVideosByViews(topVideosSortBy, sd, ed, ct, ps, tt)
+      .then((data: { items: TopVideo[] }) => data.items ?? []), setTopVideos, () => active, 'Could not load top videos')
+    return () => { active = false }
   }, [startDate, endDate, contentType, privacyStatus, topVideosSortBy, title])
 
   const updateParams = (updates: Record<string, string>) => {
@@ -199,46 +216,73 @@ export default function Analytics() {
       {tab === 'comments' ? (
         <CommentsPanel scope={{ kind: 'channel' }} />
       ) : tab === 'analytics' ? (
-        rows.length === 0 ? (
-          <div className="chart-placeholder">
-            <svg width="48" height="48" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round">
-              <path d="M3 3v18h18"/><path d="M7 16l4-4 4 4 4-8"/>
-            </svg>
-            <p>No data for this period</p>
-          </div>
-        ) : (
-          <>
-            {stats && <VideoStatsBar stats={stats} />}
-            <div className="analytics-layout">
-              <div className="analytics-main">
-                <AnalyticsChart rows={rows} uploadedVideos={publishedVideos} />
-                <TopVideosList videos={topVideos} sortBy={topVideosSortBy} onSort={handleTopVideosSort} />
-              </div>
-              <div className="analytics-sidebar">
-                <TopPerformersCard title="Top Videos (Last 7 Days)" videos={topPerformingVideos} />
-                <TopPerformersCard title="Top Shorts (Last 7 Days)" videos={topPerformingShorts} />
-                <VideoCarouselCard title="Latest Videos" videos={recentVideos} />
-                <VideoCarouselCard title="Latest Shorts" videos={recentShorts} />
-              </div>
+        <>
+          <VideoStatsBar stats={stats.data} loading={stats.loading} error={stats.error} />
+          <div className="analytics-layout">
+            <div className="analytics-main">
+              <AnalyticsChart
+                rows={rows.data}
+                uploadedVideos={publishedVideos.data}
+                loading={rows.loading || publishedVideos.loading}
+                error={rows.error ?? publishedVideos.error}
+              />
+              <TopVideosList
+                videos={topVideos.data}
+                sortBy={topVideosSortBy}
+                onSort={handleTopVideosSort}
+                loading={topVideos.loading}
+                error={topVideos.error}
+              />
             </div>
-          </>
-        )
-      ) : (
-        trafficSources.length === 0 ? (
-          <div className="chart-placeholder">
-            <svg width="48" height="48" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round">
-              <path d="M3 3v18h18"/><path d="M7 16l4-4 4 4 4-8"/>
-            </svg>
-            <p>No data for this period</p>
+            <div className="analytics-sidebar">
+              <TopPerformersCard
+                title="Top Videos (Last 7 Days)"
+                videos={topPerformingVideos.data}
+                loading={topPerformingVideos.loading}
+                error={topPerformingVideos.error}
+              />
+              <TopPerformersCard
+                title="Top Shorts (Last 7 Days)"
+                videos={topPerformingShorts.data}
+                loading={topPerformingShorts.loading}
+                error={topPerformingShorts.error}
+              />
+              <VideoCarouselCard
+                title="Latest Videos"
+                videos={recentVideos.data}
+                loading={recentVideos.loading}
+                error={recentVideos.error}
+              />
+              <VideoCarouselCard
+                title="Latest Shorts"
+                videos={recentShorts.data}
+                loading={recentShorts.loading}
+                error={recentShorts.error}
+              />
+            </div>
           </div>
-        ) : (
-          <>
-            {stats && <VideoStatsBar stats={stats} />}
-            <TrafficSourceChart rows={trafficSources} uploadedVideos={publishedVideos} />
-            <TrafficSourcesTable rows={trafficSources} />
-            <TrafficSourceTopVideosPanel rows={trafficSources} bySource={topVideosBySource} />
-          </>
-        )
+        </>
+      ) : (
+        <>
+          <VideoStatsBar stats={stats.data} loading={stats.loading} error={stats.error} />
+          <TrafficSourceChart
+            rows={trafficSources.data}
+            uploadedVideos={publishedVideos.data}
+            loading={trafficSources.loading || publishedVideos.loading}
+            error={trafficSources.error ?? publishedVideos.error}
+          />
+          <TrafficSourcesTable
+            rows={trafficSources.data}
+            loading={trafficSources.loading}
+            error={trafficSources.error}
+          />
+          <TrafficSourceTopVideosPanel
+            rows={trafficSources.data}
+            bySource={topVideosBySource.data}
+            loading={trafficSources.loading || topVideosBySource.loading}
+            error={trafficSources.error ?? topVideosBySource.error}
+          />
+        </>
       )}
     </div>
   )

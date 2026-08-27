@@ -388,26 +388,6 @@ input, select {
   overflow-x: auto;
 }
 
-/* Chart placeholder */
-.chart-placeholder {
-  display: flex;
-  flex-direction: column;
-  align-items: center;
-  justify-content: center;
-  gap: 0.75rem;
-  height: 280px;
-  background: var(--surface);
-  border: 2px dashed var(--border);
-  border-radius: var(--radius);
-  color: var(--text-secondary);
-  font-size: 14px;
-  margin-bottom: 1.5rem;
-}
-
-.chart-placeholder svg {
-  opacity: 0.35;
-}
-
 /* Analytics table */
 .analytics-table {
   width: 100%;
@@ -476,14 +456,6 @@ input, select {
   border-bottom-color: var(--blue);
 }
 
-
-/* Loading */
-.loading {
-  text-align: center;
-  padding: 3rem;
-  color: var(--text-secondary);
-  font-size: 14px;
-}
 
 /* Shared pulse for sync activity indicators (navbar status, sync page banner) */
 @keyframes sync-pulse {

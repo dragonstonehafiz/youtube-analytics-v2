@@ -2,12 +2,20 @@ import { useEffect, useState } from 'react'
 import { Link } from 'react-router-dom'
 import { getPlaylists } from '@/api'
 import type { Playlist } from '@/types'
+import type { RequestState } from '@/lib/requestState'
+import { pending, track } from '@/lib/requestState'
+import AsyncCard from '@/components/AsyncCard'
 import { useReplaceSearchParams } from '@/hooks/useReplaceSearchParams'
 
 type SortKey = 'published_at' | 'item_count' | 'last_item_added' | 'total_views' | 'total_earnings_sgd'
 type SortDir = 'asc' | 'desc'
 
 const PAGE_SIZE = 25
+
+interface PlaylistPage {
+  items: Playlist[]
+  total: number
+}
 
 export default function Playlists() {
   const [searchParams, setSearchParams] = useReplaceSearchParams()
@@ -16,20 +24,22 @@ export default function Playlists() {
   const sortDir = (searchParams.get('sort_dir') as SortDir) ?? 'desc'
   const title = searchParams.get('title') ?? ''
 
-  const [playlists, setPlaylists] = useState<Playlist[]>([])
-  const [total, setTotal] = useState(0)
-  const [initialLoading, setInitialLoading] = useState(true)
+  const [listing, setListing] = useState<RequestState<PlaylistPage>>(pending({ items: [], total: 0 }))
 
   useEffect(() => {
-    getPlaylists(page, PAGE_SIZE, sortKey, sortDir, title || undefined)
-      .then((data: { items: Playlist[]; total: number }) => {
-        setPlaylists(data.items ?? [])
-        setTotal(data.total ?? 0)
-      })
-      .finally(() => setInitialLoading(false))
+    let active = true
+    track(
+      getPlaylists(page, PAGE_SIZE, sortKey, sortDir, title || undefined)
+        .then((data: { items: Playlist[]; total: number }) => ({ items: data.items ?? [], total: data.total ?? 0 })),
+      setListing,
+      () => active,
+      'Could not load playlists',
+    )
+    return () => { active = false }
   }, [page, sortKey, sortDir, title])
 
-  const totalPages = Math.ceil(total / PAGE_SIZE)
+  const playlists = listing.data.items
+  const totalPages = Math.ceil(listing.data.total / PAGE_SIZE)
 
   const setPage = (p: number) => {
     setSearchParams(prev => {
@@ -78,10 +88,13 @@ export default function Playlists() {
           />
         </label>
       </div>
-      {initialLoading ? (
-        <p className="loading">Loading...</p>
-      ) : (
-        <>
+      <AsyncCard
+        variant="table"
+        loading={listing.loading}
+        error={listing.error}
+        className="playlists-table-card"
+      >
+        <div className="table-overflow-wrap">
           <table className="data-table">
             <colgroup>
               <col style={{ width: 110 }} />
@@ -104,6 +117,11 @@ export default function Playlists() {
               </tr>
             </thead>
             <tbody>
+              {playlists.length === 0 && (
+                <tr>
+                  <td colSpan={7} className="table-empty">No playlists found</td>
+                </tr>
+              )}
               {playlists.map(p => (
                 <tr key={p.id}>
                   <td>
@@ -123,19 +141,19 @@ export default function Playlists() {
               ))}
             </tbody>
           </table>
-          {totalPages > 1 && (
-            <div className="pagination">
-              <button type="button" className="btn-ghost" onClick={() => setPage(page - 1)} disabled={page <= 1}>
-                Previous
-              </button>
-              <span className="pagination-info">Page {page} of {totalPages}</span>
-              <button type="button" className="btn-ghost" onClick={() => setPage(page + 1)} disabled={page >= totalPages}>
-                Next
-              </button>
-            </div>
-          )}
-        </>
-      )}
+        </div>
+        {totalPages > 1 && (
+          <div className="pagination">
+            <button type="button" className="btn-ghost" onClick={() => setPage(page - 1)} disabled={page <= 1}>
+              Previous
+            </button>
+            <span className="pagination-info">Page {page} of {totalPages}</span>
+            <button type="button" className="btn-ghost" onClick={() => setPage(page + 1)} disabled={page >= totalPages}>
+              Next
+            </button>
+          </div>
+        )}
+      </AsyncCard>
     </div>
   )
 }

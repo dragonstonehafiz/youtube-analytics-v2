@@ -1,18 +1,25 @@
 import { Link } from 'react-router-dom'
 import type { TopVideo } from '@/types'
+import AsyncCard from '@/components/AsyncCard'
 import './TopPerformersCard.css'
 
 interface Props {
   title: string
   videos: TopVideo[]
+  loading: boolean
+  error?: string | null
 }
 
-export default function TopPerformersCard({ title, videos }: Props) {
-  if (videos.length === 0) return null
-
+export default function TopPerformersCard({ title, videos, loading, error = null }: Props) {
   return (
-    <div className="card top-performers-card">
-      <div className="section-header">{title}</div>
+    <AsyncCard
+      loading={loading}
+      error={error}
+      empty={videos.length === 0}
+      emptyMessage="No videos for this period"
+      className="top-performers-card"
+      heading={<div className="section-header">{title}</div>}
+    >
       <div className="top-performers-list">
         {videos.map((v, i) => (
           <Link key={v.id} to={`/analytics/videos/${v.id}`} className="top-performers-row">
@@ -26,6 +33,6 @@ export default function TopPerformersCard({ title, videos }: Props) {
           </Link>
         ))}
       </div>
-    </div>
+    </AsyncCard>
   )
 }
