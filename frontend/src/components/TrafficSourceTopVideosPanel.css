@@ -71,10 +71,12 @@
   width: 120px;
 }
 
-.traffic-source-top-videos-rank {
+td.traffic-source-top-videos-rank {
   color: var(--text-secondary);
   font-weight: 600;
   text-align: center;
+  padding-left: 0;
+  padding-right: 0;
 }
 
 .traffic-source-top-videos-thumb {
