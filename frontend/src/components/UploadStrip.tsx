@@ -3,7 +3,12 @@ import type { PublishedVideo } from '@/types'
 
 export const YAXIS_WIDTH = 56
 export const CHART_RIGHT = 16
-export const BUCKET_WIDTH = 52
+/** Diameter of an `.upload-badge` circle (kept in sync with `AnalyticsChart.css`). */
+export const BADGE_DIAMETER = 22
+/** Minimum center-to-center clearance between adjacent bucket badges. */
+export const BUCKET_CLEARANCE = 8
+/** Per-bucket pixel allocation used to size `maxBuckets`/`bucketDays` — a badge width plus its clearance, so adjacent bucket badges never overlap. */
+export const BUCKET_WIDTH = BADGE_DIAMETER + BUCKET_CLEARANCE
 
 export function daysBetween(a: string, b: string): number {
   return Math.round((new Date(b).getTime() - new Date(a).getTime()) / 86400000)
@@ -86,13 +91,71 @@ export function computeUploadBuckets(
     else bucket.videos.push(v)
   }
 
-  return Array.from(bucketMap.entries())
+  const radius = BADGE_DIAMETER / 2
+
+  const positioned: PositionedBucket[] = Array.from(bucketMap.entries())
     .sort(([a], [b]) => a.localeCompare(b))
     .map(([bucketStart, { videos, shorts }]) => {
       const offset = daysBetween(firstDate, bucketStart)
-      const leftPct = Math.min((offset + bucketDays / 2) / totalDays, 1)
-      return { bucketStart, videos, shorts, leftPct }
+      const rawPct = (offset + bucketDays / 2) / totalDays
+      const rawCenterPx = rawPct * chartAreaWidth
+      const centerPx = chartAreaWidth > radius * 2
+        ? Math.min(Math.max(rawCenterPx, radius), chartAreaWidth - radius)
+        : chartAreaWidth / 2
+      return { bucketStart, videos, shorts, centerPx, clamped: centerPx !== rawCenterPx }
     })
+
+  mergeClampedEdgeCollisions(positioned)
+
+  return positioned.map(({ bucketStart, videos, shorts, centerPx }) => ({
+    bucketStart,
+    videos,
+    shorts,
+    leftPct: centerPx / chartAreaWidth,
+  }))
+}
+
+interface PositionedBucket {
+  bucketStart: string
+  videos: PublishedVideo[]
+  shorts: PublishedVideo[]
+  centerPx: number
+  clamped: boolean
+}
+
+function collides(a: PositionedBucket, b: PositionedBucket): boolean {
+  return Math.abs(a.centerPx - b.centerPx) < BADGE_DIAMETER
+}
+
+/**
+ * A boundary-clamped edge column keeps its own timeline position (`bucketStart`,
+ * `centerPx`) but is merged wholesale into whichever neighboring column it visually
+ * overlaps — full `videos`/`shorts` arrays combined, chronologically ordered.
+ * Only clamping-induced overlap triggers a merge; ordinary interior buckets, however
+ * close, are left untouched.
+ */
+function mergeClampedEdgeCollisions(buckets: PositionedBucket[]): void {
+  while (buckets.length >= 2 && buckets[0].clamped && collides(buckets[0], buckets[1])) {
+    const [first, second] = buckets
+    buckets[1] = {
+      ...second,
+      videos: [...first.videos, ...second.videos],
+      shorts: [...first.shorts, ...second.shorts],
+    }
+    buckets.shift()
+  }
+
+  while (buckets.length >= 2 && buckets[buckets.length - 1].clamped
+    && collides(buckets[buckets.length - 2], buckets[buckets.length - 1])) {
+    const last = buckets[buckets.length - 1]
+    const prev = buckets[buckets.length - 2]
+    buckets[buckets.length - 2] = {
+      ...prev,
+      videos: [...prev.videos, ...last.videos],
+      shorts: [...prev.shorts, ...last.shorts],
+    }
+    buckets.pop()
+  }
 }
 
 function VideoPopover({ videos, label }: { videos: PublishedVideo[]; label: string }) {
@@ -119,34 +182,34 @@ function VideoPopover({ videos, label }: { videos: PublishedVideo[]; label: stri
   )
 }
 
+function badgeLeftStyle(leftPct: number): { left: string } {
+  return { left: `calc(${YAXIS_WIDTH}px + ${leftPct} * (100% - ${YAXIS_WIDTH + CHART_RIGHT}px))` }
+}
+
 export function UploadStrip({ buckets }: { buckets: UploadBucket[] }) {
   if (buckets.length === 0) return null
 
+  const videoBuckets = buckets.filter(b => b.videos.length > 0)
+  const shortBuckets = buckets.filter(b => b.shorts.length > 0)
+
   return (
     <div className="upload-strip">
-      {buckets.map(({ bucketStart, videos, shorts, leftPct }) => {
-        const hasBoth = videos.length > 0 && shorts.length > 0
-        return (
-          <div
-            key={bucketStart}
-            className="upload-bucket"
-            style={{ left: `calc(${YAXIS_WIDTH}px + ${leftPct} * (100% - ${YAXIS_WIDTH + CHART_RIGHT}px))` }}
-          >
-            {videos.length > 0 && (
-              <div className={`upload-badge-slot${!hasBoth ? ' upload-badge-slot--solo' : ''}`}>
-                <div className="upload-badge upload-badge--video">{videos.length}</div>
-                <VideoPopover videos={videos} label="video" />
-              </div>
-            )}
-            {shorts.length > 0 && (
-              <div className={`upload-badge-slot${!hasBoth ? ' upload-badge-slot--solo' : ''}`}>
-                <div className="upload-badge upload-badge--short">{shorts.length}</div>
-                <VideoPopover videos={shorts} label="short" />
-              </div>
-            )}
+      <div className="upload-row upload-row--video">
+        {videoBuckets.map(({ bucketStart, videos, leftPct }) => (
+          <div key={bucketStart} className="upload-badge-slot" style={badgeLeftStyle(leftPct)}>
+            <div className="upload-badge upload-badge--video">{videos.length}</div>
+            <VideoPopover videos={videos} label="video" />
           </div>
-        )
-      })}
+        ))}
+      </div>
+      <div className="upload-row upload-row--short">
+        {shortBuckets.map(({ bucketStart, shorts, leftPct }) => (
+          <div key={bucketStart} className="upload-badge-slot" style={badgeLeftStyle(leftPct)}>
+            <div className="upload-badge upload-badge--short">{shorts.length}</div>
+            <VideoPopover videos={shorts} label="short" />
+          </div>
+        ))}
+      </div>
     </div>
   )
 }
