@@ -1,7 +1,7 @@
 // @vitest-environment jsdom
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { cleanup, fireEvent, render, screen, waitFor, within } from '@testing-library/react'
-import { MemoryRouter } from 'react-router-dom'
+import { Link, MemoryRouter, Route, Routes, useLocation } from 'react-router-dom'
 import type {
   SyncRun,
   SyncRunBatch,
@@ -79,12 +79,40 @@ function localTime(iso: string): string {
   return new Date(iso).toLocaleString()
 }
 
+/** Exposes the current route's search string so tests can assert on it without parsing the DOM. */
+function LocationProbe({ onLocation }: { onLocation: (search: string) => void }) {
+  onLocation(useLocation().search)
+  return null
+}
+
 function renderSync(route = '/sync') {
-  return render(
+  let search = ''
+  const utils = render(
     <MemoryRouter initialEntries={[route]}>
+      <LocationProbe onLocation={s => { search = s }} />
       <Sync />
     </MemoryRouter>,
   )
+  return { ...utils, getSearch: () => search }
+}
+
+/**
+ * Mounts Sync behind a real route transition rather than an initial entry, so normalization
+ * is proven for in-app navigation to a bare route, not just direct load.
+ */
+function renderSyncViaNavigation() {
+  let search = ''
+  const utils = render(
+    <MemoryRouter initialEntries={['/elsewhere']}>
+      <LocationProbe onLocation={s => { search = s }} />
+      <Routes>
+        <Route path="/elsewhere" element={<Link to="/sync">Go to Sync</Link>} />
+        <Route path="/sync" element={<Sync />} />
+      </Routes>
+    </MemoryRouter>,
+  )
+  fireEvent.click(screen.getByRole('link', { name: 'Go to Sync' }))
+  return { ...utils, getSearch: () => search }
 }
 
 /** Wait for the initial status poll and date-range fetch to settle. */
@@ -171,6 +199,45 @@ describe('tab selection and URL state', () => {
     fireEvent.click(screen.getByRole('button', { name: 'History' }))
 
     await waitFor(() => expect(mockGetSyncRuns).toHaveBeenLastCalledWith(2, 25))
+  })
+
+  it('writes the explicit default tab into the URL on bare entry', async () => {
+    const { getSearch } = renderSync('/sync')
+    await settled()
+
+    await waitFor(() => expect(getSearch()).toBe('?tab=sync'))
+  })
+
+  it('normalizes a bare route reached through in-app navigation, not just direct load', async () => {
+    const { getSearch } = renderSyncViaNavigation()
+    await settled()
+
+    await waitFor(() => expect(getSearch()).toBe('?tab=sync'))
+    expect(screen.getByRole('button', { name: 'Sync selected' })).toBeDefined()
+  })
+
+  it('preserves unrelated query parameters while writing the default tab', async () => {
+    const { getSearch } = renderSync('/sync?sentinel=kept')
+    await settled()
+
+    await waitFor(() => {
+      const params = new URLSearchParams(getSearch())
+      expect(params.get('tab')).toBe('sync')
+      expect(params.get('sentinel')).toBe('kept')
+    })
+  })
+
+  it('sets tab=sync explicitly, rather than deleting it, when switching back from History', async () => {
+    const { getSearch } = renderSync('/sync?tab=history&sentinel=kept')
+    await screen.findByRole('table')
+
+    fireEvent.click(screen.getByRole('button', { name: 'Sync' }))
+
+    await waitFor(() => {
+      const params = new URLSearchParams(getSearch())
+      expect(params.get('tab')).toBe('sync')
+      expect(params.get('sentinel')).toBe('kept')
+    })
   })
 })
 

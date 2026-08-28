@@ -219,6 +219,16 @@ export default function Sync() {
   const historyKey = String(historyPage)
   const historyLoading = history.key !== historyKey
 
+  // A bare route has no explicit tab; write the derived default back so the URL matches what renders.
+  useEffect(() => {
+    if (searchParams.has('tab')) return
+    setSearchParams(prev => {
+      const next = new URLSearchParams(prev)
+      next.set('tab', 'sync')
+      return next
+    })
+  }, [searchParams, setSearchParams])
+
   const [included, setIncluded] = useState<IncludedMap>(ALL_INCLUDED)
   const [periods, setPeriods] = useState<PeriodMap>(DEFAULT_PERIODS)
   const [scopes, setScopes] = useState<ScopeMap>(DEFAULT_SCOPES)
@@ -343,8 +353,7 @@ export default function Sync() {
   const handleTabChange = (next: Tab) => {
     setSearchParams(prev => {
       const params = new URLSearchParams(prev)
-      if (next === 'history') params.set('tab', next)
-      else params.delete('tab')
+      params.set('tab', next)
       return params
     })
   }

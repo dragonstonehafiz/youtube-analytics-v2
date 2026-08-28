@@ -42,6 +42,16 @@ export default function Analytics() {
   const [trafficSources, setTrafficSources] = useState<RequestState<TrafficSourceRow[]>>(pending([]))
   const [topVideosBySource, setTopVideosBySource] = useState<RequestState<Record<string, TrafficSourceTopVideo[]>>>(pending({}))
 
+  // A bare route has no explicit tab; write the derived default back so the URL matches what renders.
+  useEffect(() => {
+    if (searchParams.has('tab')) return
+    setSearchParams(prev => {
+      const next = new URLSearchParams(prev)
+      next.set('tab', 'analytics')
+      return next
+    })
+  }, [searchParams, setSearchParams])
+
   // The four sidebar cards read fixed periods, so they never reload with the page filters.
   useEffect(() => {
     let active = true
