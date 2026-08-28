@@ -15,6 +15,7 @@ import TrafficSourcesTable from '@/components/TrafficSourcesTable'
 import TrafficSourceTopVideosPanel from '@/components/TrafficSourceTopVideosPanel'
 import CommentsPanel from '@/components/CommentsPanel'
 import { useReplaceSearchParams } from '@/hooks/useReplaceSearchParams'
+import { useDebouncedInput } from '@/hooks/useDebouncedInput'
 import './Analytics.css'
 
 const RECENT_COUNT = 10
@@ -151,6 +152,8 @@ export default function Analytics() {
     })
   }
 
+  const [titleDraft, setTitleDraft] = useDebouncedInput(title, t => updateParams({ title: t }))
+
   const handleTabChange = (t: Tab) => {
     setSearchParams(prev => {
       const next = new URLSearchParams(prev)
@@ -212,8 +215,8 @@ export default function Analytics() {
           <input
             type="text"
             placeholder="Search…"
-            value={title}
-            onChange={e => updateParams({ title: e.target.value })}
+            value={titleDraft}
+            onChange={e => setTitleDraft(e.target.value)}
           />
         </label>
         <div className="filter-bar-sep" />

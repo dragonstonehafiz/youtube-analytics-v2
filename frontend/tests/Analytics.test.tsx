@@ -1,6 +1,6 @@
 // @vitest-environment jsdom
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
-import { cleanup, fireEvent, render, screen, waitFor } from '@testing-library/react'
+import { act, cleanup, fireEvent, render, screen, waitFor } from '@testing-library/react'
 import { Link, MemoryRouter, Route, Routes, useLocation } from 'react-router-dom'
 
 vi.mock('@/api', () => ({
@@ -29,6 +29,7 @@ import {
   getVideosPublished,
 } from '@/api'
 import Analytics from '@/pages/Analytics'
+import { SEARCH_DEBOUNCE_MS } from '@/hooks/useDebouncedInput'
 
 const mockGetVideoStats = vi.mocked(getVideoStats)
 const mockGetChannelAnalytics = vi.mocked(getChannelAnalytics)
@@ -240,5 +241,36 @@ describe('sidebar cards', () => {
 
     expect(mockGetVideos.mock.calls.some(c => c[7] === 'video')).toBe(false)
     expect(sidebarTopCalls().some(c => c[3] === 'video')).toBe(false)
+  })
+})
+
+describe('Title search debounce', () => {
+  beforeEach(() => {
+    vi.useFakeTimers({ shouldAdvanceTime: true })
+  })
+
+  afterEach(() => {
+    vi.useRealTimers()
+  })
+
+  it('does not commit the URL or fan out requests until the user pauses typing', async () => {
+    const { getSearch } = renderAnalytics('/analytics?tab=analytics')
+    const input = await screen.findByPlaceholderText('Search…')
+    mockGetChannelAnalytics.mockClear()
+    mockGetVideoStats.mockClear()
+
+    fireEvent.change(input, { target: { value: 'f' } })
+    fireEvent.change(input, { target: { value: 'fo' } })
+    fireEvent.change(input, { target: { value: 'foo' } })
+
+    expect((input as HTMLInputElement).value).toBe('foo')
+    expect(new URLSearchParams(getSearch()).has('title')).toBe(false)
+    expect(mockGetChannelAnalytics).not.toHaveBeenCalled()
+
+    await act(async () => { vi.advanceTimersByTime(SEARCH_DEBOUNCE_MS) })
+
+    expect(new URLSearchParams(getSearch()).get('title')).toBe('foo')
+    await waitFor(() => expect(mockGetChannelAnalytics).toHaveBeenCalled())
+    expect(mockGetVideoStats.mock.calls.some(c => c[0] === 'foo')).toBe(true)
   })
 })

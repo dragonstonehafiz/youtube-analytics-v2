@@ -4,6 +4,7 @@ import { getComments, getPlaylistComments, getVideoComments } from '@/api'
 import type { CommentQuery } from '@/api'
 import type { Comment, CommentSort, CommentsResponse } from '@/types'
 import { useReplaceSearchParams } from '@/hooks/useReplaceSearchParams'
+import { useDebouncedFields } from '@/hooks/useDebouncedInput'
 import AsyncCard from '@/components/AsyncCard'
 import '@/components/CommentsPanel.css'
 
@@ -240,6 +241,15 @@ export default function CommentsPanel({ scope }: CommentsPanelProps) {
     })
   }
 
+  const [searchDrafts, setSearchDraft] = useDebouncedFields(
+    { text, author, videoTitle },
+    values => updateFilter({
+      [PARAM.text]: values.text,
+      [PARAM.author]: values.author,
+      [PARAM.videoTitle]: values.videoTitle,
+    }),
+  )
+
   const goToPage = (nextPage: number) => {
     setSearchParams(prev => {
       const next = new URLSearchParams(prev)
@@ -282,8 +292,8 @@ export default function CommentsPanel({ scope }: CommentsPanelProps) {
           <input
             type="text"
             placeholder="Search…"
-            value={text}
-            onChange={e => updateFilter({ [PARAM.text]: e.target.value })}
+            value={searchDrafts.text}
+            onChange={e => setSearchDraft('text', e.target.value)}
           />
         </label>
         <label>
@@ -291,8 +301,8 @@ export default function CommentsPanel({ scope }: CommentsPanelProps) {
           <input
             type="text"
             placeholder="Search…"
-            value={author}
-            onChange={e => updateFilter({ [PARAM.author]: e.target.value })}
+            value={searchDrafts.author}
+            onChange={e => setSearchDraft('author', e.target.value)}
           />
         </label>
         {!scopedToOneVideo && (
@@ -302,8 +312,8 @@ export default function CommentsPanel({ scope }: CommentsPanelProps) {
               <input
                 type="text"
                 placeholder="Search…"
-                value={videoTitle}
-                onChange={e => updateFilter({ [PARAM.videoTitle]: e.target.value })}
+                value={searchDrafts.videoTitle}
+                onChange={e => setSearchDraft('videoTitle', e.target.value)}
               />
             </label>
             <div className="filter-bar-sep" />

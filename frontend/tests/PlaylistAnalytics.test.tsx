@@ -1,7 +1,7 @@
 // @vitest-environment jsdom
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
-import { cleanup, render, screen, waitFor } from '@testing-library/react'
-import { MemoryRouter, Route, Routes } from 'react-router-dom'
+import { act, cleanup, fireEvent, render, screen, waitFor } from '@testing-library/react'
+import { MemoryRouter, Route, Routes, useLocation } from 'react-router-dom'
 
 vi.mock('@/api', () => ({
   getPlaylist: vi.fn(),
@@ -27,6 +27,7 @@ import {
   getVideosPublished,
 } from '@/api'
 import PlaylistAnalytics from '@/pages/PlaylistAnalytics'
+import { SEARCH_DEBOUNCE_MS } from '@/hooks/useDebouncedInput'
 
 const mockGetPlaylist = vi.mocked(getPlaylist)
 const mockGetPlaylistVideos = vi.mocked(getPlaylistVideos)
@@ -54,6 +55,25 @@ function renderPlaylistAnalytics(route: string) {
       </Routes>
     </MemoryRouter>,
   )
+}
+
+/** Exposes the current route's search string so tests can assert on it without parsing the DOM. */
+function LocationProbe({ onLocation }: { onLocation: (search: string) => void }) {
+  onLocation(useLocation().search)
+  return null
+}
+
+function renderPlaylistAnalyticsWithSearch(route: string) {
+  let search = ''
+  const utils = render(
+    <MemoryRouter initialEntries={[route]}>
+      <LocationProbe onLocation={s => { search = s }} />
+      <Routes>
+        <Route path="/playlists/:id" element={<PlaylistAnalytics />} />
+      </Routes>
+    </MemoryRouter>,
+  )
+  return { ...utils, getSearch: () => search }
 }
 
 beforeEach(() => {
@@ -137,5 +157,37 @@ describe('playlist sidebar cards', () => {
 
     expect(sidebarRecentCalls().some(c => c[8] === 'short')).toBe(false)
     expect(sidebarTopCalls().some(c => c[4] === 'short')).toBe(false)
+  })
+})
+
+describe('Analytics Title search debounce', () => {
+  beforeEach(() => {
+    vi.useFakeTimers({ shouldAdvanceTime: true })
+  })
+
+  afterEach(() => {
+    vi.useRealTimers()
+  })
+
+  it('debounces analytics_title independently from the Videos tab title namespace', async () => {
+    const { getSearch } = renderPlaylistAnalyticsWithSearch('/playlists/pl1?tab=analytics&title=videostab')
+    const input = await screen.findByPlaceholderText('Search…')
+    mockGetPlaylistAnalytics.mockClear()
+
+    fireEvent.change(input, { target: { value: 'f' } })
+    fireEvent.change(input, { target: { value: 'fo' } })
+    fireEvent.change(input, { target: { value: 'foo' } })
+
+    expect((input as HTMLInputElement).value).toBe('foo')
+    expect(new URLSearchParams(getSearch()).has('analytics_title')).toBe(false)
+    expect(mockGetPlaylistAnalytics).not.toHaveBeenCalled()
+
+    await act(async () => { vi.advanceTimersByTime(SEARCH_DEBOUNCE_MS) })
+
+    const params = new URLSearchParams(getSearch())
+    expect(params.get('analytics_title')).toBe('foo')
+    expect(params.get('title')).toBe('videostab')
+    await waitFor(() => expect(mockGetPlaylistAnalytics).toHaveBeenCalled())
+    expect(mockGetPlaylistVideoStats.mock.calls.some(c => c[1] === 'foo')).toBe(true)
   })
 })

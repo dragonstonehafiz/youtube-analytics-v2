@@ -2,6 +2,7 @@ import { Link } from 'react-router-dom'
 import type { Video } from '@/types'
 import PeriodSelect from '@/components/PeriodSelect'
 import AsyncCard from '@/components/AsyncCard'
+import { useDebouncedInput } from '@/hooks/useDebouncedInput'
 import '@/components/VideoTable.css'
 
 export type SortKey = 'published_at' | 'view_count' | 'comment_count' | 'total_revenue_sgd'
@@ -47,6 +48,10 @@ export default function VideoTable({
 }: VideoTableProps) {
   const totalPages = Math.ceil(total / PAGE_SIZE)
   const arrow = (key: SortKey) => sortKey === key ? (sortDir === 'asc' ? ' ↑' : ' ↓') : ''
+  const [titleDraft, setTitleDraft] = useDebouncedInput(
+    title,
+    t => onFilterChange(t, startDate, endDate, contentType, privacyStatus),
+  )
 
   return (
     <>
@@ -70,8 +75,8 @@ export default function VideoTable({
           <input
             type="text"
             placeholder="Search…"
-            value={title}
-            onChange={e => onFilterChange(e.target.value, startDate, endDate, contentType, privacyStatus)}
+            value={titleDraft}
+            onChange={e => setTitleDraft(e.target.value)}
           />
         </label>
         <div className="filter-bar-sep" />

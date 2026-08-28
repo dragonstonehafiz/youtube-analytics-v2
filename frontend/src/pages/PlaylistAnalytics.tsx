@@ -19,6 +19,7 @@ import TrafficSourceChart from '@/components/TrafficSourceChart'
 import TrafficSourcesTable from '@/components/TrafficSourcesTable'
 import TrafficSourceTopVideosPanel from '@/components/TrafficSourceTopVideosPanel'
 import CommentsPanel from '@/components/CommentsPanel'
+import { useDebouncedInput } from '@/hooks/useDebouncedInput'
 import '@/components/VideoMetaCard.css'
 import './Analytics.css'
 
@@ -211,6 +212,11 @@ export default function PlaylistAnalytics() {
     })
   }
 
+  const [analyticsTitleDraft, setAnalyticsTitleDraft] = useDebouncedInput(
+    analyticsTitle,
+    t => updateAnalyticsParams({ analytics_title: t }),
+  )
+
   const handleTopVideosSort = (sortBy: TopVideoSortBy) => {
     if (sortBy === topVideosSortBy) return
     setSearchParams(prev => {
@@ -353,8 +359,8 @@ export default function PlaylistAnalytics() {
               <input
                 type="text"
                 placeholder="Search…"
-                value={analyticsTitle}
-                onChange={e => updateAnalyticsParams({ analytics_title: e.target.value })}
+                value={analyticsTitleDraft}
+                onChange={e => setAnalyticsTitleDraft(e.target.value)}
               />
             </label>
             <div className="filter-bar-sep" />

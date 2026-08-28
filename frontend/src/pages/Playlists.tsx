@@ -6,6 +6,7 @@ import type { RequestState } from '@/lib/requestState'
 import { pending, track } from '@/lib/requestState'
 import AsyncCard from '@/components/AsyncCard'
 import { useReplaceSearchParams } from '@/hooks/useReplaceSearchParams'
+import { useDebouncedInput } from '@/hooks/useDebouncedInput'
 
 type SortKey = 'published_at' | 'item_count' | 'last_item_added' | 'total_views' | 'total_earnings_sgd'
 type SortDir = 'asc' | 'desc'
@@ -71,6 +72,7 @@ export default function Playlists() {
   }
 
   const arrow = (key: SortKey) => sortKey === key ? (sortDir === 'asc' ? ' ↑' : ' ↓') : ''
+  const [titleDraft, setTitleDraft] = useDebouncedInput(title, handleFilterChange)
 
   return (
     <div className="page">
@@ -83,8 +85,8 @@ export default function Playlists() {
           <input
             type="text"
             placeholder="Search…"
-            value={title}
-            onChange={e => handleFilterChange(e.target.value)}
+            value={titleDraft}
+            onChange={e => setTitleDraft(e.target.value)}
           />
         </label>
       </div>
