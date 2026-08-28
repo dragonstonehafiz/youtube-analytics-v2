@@ -72,21 +72,36 @@ export default function PlaylistAnalytics() {
     return () => { active = false }
   }, [id])
 
-  // The four sidebar cards read fixed periods, so they never reload with the page filters.
+  // The four sidebar cards keep their fixed periods (no date filter for Latest, last-7-days for Top)
+  // but otherwise track the analytics title/type/privacy filters, with each card kept to its Video/Short identity.
   useEffect(() => {
     if (!id) return
     let active = true
-    track(getPlaylistVideos(id, 1, RECENT_COUNT, 'published_at', 'desc', undefined, undefined, undefined, 'video', 'public')
-      .then((data: { items: Video[] }) => (data.items ?? []).map(toTopVideoShape)), setRecentVideos, () => active)
-    track(getPlaylistVideos(id, 1, RECENT_COUNT, 'published_at', 'desc', undefined, undefined, undefined, 'short', 'public')
-      .then((data: { items: Video[] }) => (data.items ?? []).map(toTopVideoShape)), setRecentShorts, () => active)
-    const [sevenStart, sevenEnd] = last7Dates()
-    track(getPlaylistTopVideosByViews(id, 'views', sevenStart, sevenEnd, 'video', 'public')
-      .then((data: { items: TopVideo[] }) => data.items ?? []), setTopPerformingVideos, () => active)
-    track(getPlaylistTopVideosByViews(id, 'views', sevenStart, sevenEnd, 'short', 'public')
-      .then((data: { items: TopVideo[] }) => data.items ?? []), setTopPerformingShorts, () => active)
+    const tt = analyticsTitle || undefined
+    const ps = analyticsPrivacyStatus || undefined
+    const emptyResolved = { data: [], loading: false, error: null }
+    if (analyticsContentType === 'short') {
+      setRecentVideos(emptyResolved)
+      setTopPerformingVideos(emptyResolved)
+    } else {
+      track(getPlaylistVideos(id, 1, RECENT_COUNT, 'published_at', 'desc', tt, undefined, undefined, 'video', ps)
+        .then((data: { items: Video[] }) => (data.items ?? []).map(toTopVideoShape)), setRecentVideos, () => active)
+      const [sevenStart, sevenEnd] = last7Dates()
+      track(getPlaylistTopVideosByViews(id, 'views', sevenStart, sevenEnd, 'video', ps, tt)
+        .then((data: { items: TopVideo[] }) => data.items ?? []), setTopPerformingVideos, () => active)
+    }
+    if (analyticsContentType === 'video') {
+      setRecentShorts(emptyResolved)
+      setTopPerformingShorts(emptyResolved)
+    } else {
+      track(getPlaylistVideos(id, 1, RECENT_COUNT, 'published_at', 'desc', tt, undefined, undefined, 'short', ps)
+        .then((data: { items: Video[] }) => (data.items ?? []).map(toTopVideoShape)), setRecentShorts, () => active)
+      const [sevenStart, sevenEnd] = last7Dates()
+      track(getPlaylistTopVideosByViews(id, 'views', sevenStart, sevenEnd, 'short', ps, tt)
+        .then((data: { items: TopVideo[] }) => data.items ?? []), setTopPerformingShorts, () => active)
+    }
     return () => { active = false }
-  }, [id])
+  }, [id, analyticsContentType, analyticsPrivacyStatus, analyticsTitle])
 
   useEffect(() => {
     if (!id) return

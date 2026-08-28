@@ -173,3 +173,72 @@ describe('tab selection and URL state', () => {
     expect(screen.queryByText('No comments found')).toBeNull()
   })
 })
+
+/** Sidebar Top-card calls always sort by views; the main table call uses the page's own sort. */
+function sidebarTopCalls() {
+  return mockGetTopVideosByViews.mock.calls.filter(call => call[0] === 'views')
+}
+
+describe('sidebar cards', () => {
+  it('forwards title and privacy to all four sidebar surfaces while keeping their fixed periods', async () => {
+    renderAnalytics('/analytics?tab=analytics&title=foo&privacy_status=private')
+
+    await waitFor(() => expect(mockGetVideos).toHaveBeenCalledTimes(2))
+    for (const call of mockGetVideos.mock.calls) {
+      expect(call[4]).toBe('foo')
+      expect(call[5]).toBeUndefined()
+      expect(call[6]).toBeUndefined()
+      expect(call[8]).toBe('private')
+    }
+    expect(mockGetVideos.mock.calls.map(c => c[7]).sort()).toEqual(['short', 'video'])
+
+    await waitFor(() => expect(sidebarTopCalls()).toHaveLength(2))
+    for (const call of sidebarTopCalls()) {
+      expect(call[1]).toEqual(expect.any(String))
+      expect(call[2]).toEqual(expect.any(String))
+      expect(call[4]).toBe('private')
+      expect(call[5]).toBe('foo')
+    }
+    expect(sidebarTopCalls().map(c => c[3]).sort()).toEqual(['short', 'video'])
+  })
+
+  it('resolves the opposite type empty without requesting it when Type=Video is selected', async () => {
+    renderAnalytics('/analytics?tab=analytics&content_type=video')
+
+    await waitFor(() => expect(mockGetVideos).toHaveBeenCalledTimes(1))
+    expect(mockGetVideos.mock.calls[0][7]).toBe('video')
+    await waitFor(() => expect(sidebarTopCalls()).toHaveLength(1))
+    expect(sidebarTopCalls()[0][3]).toBe('video')
+
+    const shortsHeading = await screen.findByText('Top Shorts (Last 7 Days)')
+    const shortsCard = shortsHeading.closest('.async-card')
+    expect(shortsCard?.textContent).toContain('No videos for this period')
+
+    const latestShortsHeading = screen.getByText('Latest Shorts')
+    const latestShortsCard = latestShortsHeading.closest('.async-card')
+    expect(latestShortsCard?.textContent).toContain('No videos for this period')
+
+    expect(mockGetVideos.mock.calls.some(c => c[7] === 'short')).toBe(false)
+    expect(sidebarTopCalls().some(c => c[3] === 'short')).toBe(false)
+  })
+
+  it('resolves the opposite type empty without requesting it when Type=Short is selected', async () => {
+    renderAnalytics('/analytics?tab=analytics&content_type=short')
+
+    await waitFor(() => expect(mockGetVideos).toHaveBeenCalledTimes(1))
+    expect(mockGetVideos.mock.calls[0][7]).toBe('short')
+    await waitFor(() => expect(sidebarTopCalls()).toHaveLength(1))
+    expect(sidebarTopCalls()[0][3]).toBe('short')
+
+    const videosHeading = await screen.findByText('Top Videos (Last 7 Days)')
+    const videosCard = videosHeading.closest('.async-card')
+    expect(videosCard?.textContent).toContain('No videos for this period')
+
+    const latestVideosHeading = screen.getByText('Latest Videos')
+    const latestVideosCard = latestVideosHeading.closest('.async-card')
+    expect(latestVideosCard?.textContent).toContain('No videos for this period')
+
+    expect(mockGetVideos.mock.calls.some(c => c[7] === 'video')).toBe(false)
+    expect(sidebarTopCalls().some(c => c[3] === 'video')).toBe(false)
+  })
+})

@@ -52,20 +52,35 @@ export default function Analytics() {
     })
   }, [searchParams, setSearchParams])
 
-  // The four sidebar cards read fixed periods, so they never reload with the page filters.
+  // The four sidebar cards keep their fixed periods (no date filter for Latest, last-7-days for Top)
+  // but otherwise track the page's title/type/privacy filters, with each card kept to its Video/Short identity.
   useEffect(() => {
     let active = true
-    track(getVideos(1, RECENT_COUNT, 'published_at', 'desc', undefined, undefined, undefined, 'video', 'public')
-      .then((data: { items: Video[] }) => (data.items ?? []).map(toTopVideoShape)), setRecentVideos, () => active)
-    track(getVideos(1, RECENT_COUNT, 'published_at', 'desc', undefined, undefined, undefined, 'short', 'public')
-      .then((data: { items: Video[] }) => (data.items ?? []).map(toTopVideoShape)), setRecentShorts, () => active)
-    const [sevenStart, sevenEnd] = last7Dates()
-    track(getTopVideosByViews('views', sevenStart, sevenEnd, 'video', 'public')
-      .then((data: { items: TopVideo[] }) => data.items ?? []), setTopPerformingVideos, () => active)
-    track(getTopVideosByViews('views', sevenStart, sevenEnd, 'short', 'public')
-      .then((data: { items: TopVideo[] }) => data.items ?? []), setTopPerformingShorts, () => active)
+    const tt = title || undefined
+    const ps = privacyStatus || undefined
+    const emptyResolved = { data: [], loading: false, error: null }
+    if (contentType === 'short') {
+      setRecentVideos(emptyResolved)
+      setTopPerformingVideos(emptyResolved)
+    } else {
+      track(getVideos(1, RECENT_COUNT, 'published_at', 'desc', tt, undefined, undefined, 'video', ps)
+        .then((data: { items: Video[] }) => (data.items ?? []).map(toTopVideoShape)), setRecentVideos, () => active)
+      const [sevenStart, sevenEnd] = last7Dates()
+      track(getTopVideosByViews('views', sevenStart, sevenEnd, 'video', ps, tt)
+        .then((data: { items: TopVideo[] }) => data.items ?? []), setTopPerformingVideos, () => active)
+    }
+    if (contentType === 'video') {
+      setRecentShorts(emptyResolved)
+      setTopPerformingShorts(emptyResolved)
+    } else {
+      track(getVideos(1, RECENT_COUNT, 'published_at', 'desc', tt, undefined, undefined, 'short', ps)
+        .then((data: { items: Video[] }) => (data.items ?? []).map(toTopVideoShape)), setRecentShorts, () => active)
+      const [sevenStart, sevenEnd] = last7Dates()
+      track(getTopVideosByViews('views', sevenStart, sevenEnd, 'short', ps, tt)
+        .then((data: { items: TopVideo[] }) => data.items ?? []), setTopPerformingShorts, () => active)
+    }
     return () => { active = false }
-  }, [])
+  }, [contentType, privacyStatus, title])
 
   // One filter change starts five requests, each owning the state of the card it feeds.
   useEffect(() => {
