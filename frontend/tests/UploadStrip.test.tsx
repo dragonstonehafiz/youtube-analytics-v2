@@ -9,6 +9,7 @@ import {
   CHART_RIGHT,
   UploadStrip,
   YAXIS_WIDTH,
+  collides,
   computeUploadBuckets,
   type UploadBucket,
 } from '@/components/UploadStrip'
@@ -112,7 +113,8 @@ describe('computeUploadBuckets', () => {
     const chartAreaWidth = cardWidth - YAXIS_WIDTH - CHART_RIGHT
     const totalDays = 29
     const bucketDays = Math.max(1, Math.ceil(totalDays / Math.floor(chartAreaWidth / BUCKET_WIDTH)))
-    // Two uploads this many days apart share one bucket under the finer allocation...
+    // A 52px-per-bucket allocation would have made this window span >5 days, collapsing
+    // two uploads 4 days apart into one bucket; the 30px allocation keeps it under 5.
     expect(bucketDays).toBeLessThan(5)
 
     const uploads = [
@@ -120,7 +122,7 @@ describe('computeUploadBuckets', () => {
       pv({ id: 'day5', published_at: '2024-01-05T00:00:00+00:00' }),
     ]
     const buckets = computeUploadBuckets(rows, uploads, cardWidth)
-    // ...4 days apart, they land in separate buckets rather than being aggregated together.
+    // ...so these two, 4 days apart, land in separate buckets rather than being aggregated together.
     expect(buckets).toHaveLength(2)
     expect(buckets[0].videos).toHaveLength(1)
     expect(buckets[1].videos).toHaveLength(1)
@@ -143,27 +145,46 @@ describe('computeUploadBuckets', () => {
     expect(gapMidToLate).toBeGreaterThan(gapEarlyToMid * 3)
   })
 
-  it('merges a boundary-clamped last bucket into its neighbor when their badges overlap, combining both content types', () => {
-    // 7 daily rows (Jan 1-7, totalDays=6) at cardWidth=192 (chartAreaWidth=120) give
-    // maxBuckets=4, bucketDays=2. The Jan 7 upload's bucket then computes a raw center
-    // past the chart's right edge; clamping it inward lands it within BADGE_DIAMETER
-    // (22px) of the Jan 5 bucket, so the two are expected to merge into one column.
+  it('collides() treats exactly BADGE_DIAMETER apart as touching, not overlapping', () => {
+    expect(collides({ centerPx: 0 }, { centerPx: BADGE_DIAMETER })).toBe(false)
+    expect(collides({ centerPx: 0 }, { centerPx: BADGE_DIAMETER - 0.01 })).toBe(true)
+  })
+
+  it('merges a boundary-clamped last bucket into its interior neighbor, adopting that neighbor\'s position and combining both content types in chronological order', () => {
+    // 7 daily rows (Jan 1-7, totalDays=6) at cardWidth=192 (chartAreaWidth=120,
+    // radius=11) give maxBuckets=4, bucketDays=2, and exact-integer bucket centers:
+    // Jan1=20px, Jan3=60px, Jan5=100px, Jan7 raw=140px (clamped to 109px).
+    // Jan7's clamped center is only 9px from Jan5's — under BADGE_DIAMETER (22px) — so
+    // it merges into Jan5, which keeps its own bucketStart/position as the survivor.
     const rows: { date: string }[] = []
     for (let d = 1; d <= 7; d++) rows.push(row(`2024-01-0${d}`))
     const uploads = [
-      pv({ id: 'jan1', published_at: '2024-01-01T00:00:00+00:00', content_type: 'video' }),
-      pv({ id: 'jan3', published_at: '2024-01-03T00:00:00+00:00', content_type: 'short' }),
-      pv({ id: 'jan5', published_at: '2024-01-05T00:00:00+00:00', content_type: 'video' }),
-      pv({ id: 'jan7', published_at: '2024-01-07T00:00:00+00:00', content_type: 'short' }),
+      pv({ id: 'jan1v', published_at: '2024-01-01T00:00:00+00:00', content_type: 'video' }),
+      pv({ id: 'jan3s', published_at: '2024-01-03T00:00:00+00:00', content_type: 'short' }),
+      pv({ id: 'jan5v', published_at: '2024-01-05T00:00:00+00:00', content_type: 'video' }),
+      pv({ id: 'jan5s', published_at: '2024-01-05T00:00:00+00:00', content_type: 'short' }),
+      pv({ id: 'jan7v', published_at: '2024-01-07T00:00:00+00:00', content_type: 'video' }),
+      pv({ id: 'jan7s', published_at: '2024-01-07T00:00:00+00:00', content_type: 'short' }),
     ]
+    const chartAreaWidth = 192 - YAXIS_WIDTH - CHART_RIGHT // 120
     const buckets = computeUploadBuckets(rows, uploads, 192)
 
+    // Jan1 and Jan3 are interior/unclamped and far apart (40px) — never merged, and
+    // each keeps its own original calendar-derived position.
     expect(buckets).toHaveLength(3)
-    const merged = buckets[buckets.length - 1]
-    // The merge is triggered purely by column proximity, regardless of which row
-    // (video/short) each side occupies — the combined column carries both.
-    expect(merged.videos.map(v => v.id)).toEqual(['jan5'])
-    expect(merged.shorts.map(v => v.id)).toEqual(['jan7'])
+    expect(buckets[0].bucketStart).toBe('2024-01-01')
+    expect(buckets[0].leftPct).toBeCloseTo(20 / chartAreaWidth, 6)
+    expect(buckets[1].bucketStart).toBe('2024-01-03')
+    expect(buckets[1].leftPct).toBeCloseTo(60 / chartAreaWidth, 6)
+
+    // The merged column keeps Jan5 (the interior neighbor) as its identity...
+    const merged = buckets[2]
+    expect(merged.bucketStart).toBe('2024-01-05')
+    expect(merged.leftPct).toBeCloseTo(100 / chartAreaWidth, 6)
+    // ...while carrying both buckets' videos and both buckets' shorts, each combined
+    // array ordered chronologically (Jan5's entries before Jan7's).
+    expect(merged.videos.map(v => v.id)).toEqual(['jan5v', 'jan7v'])
+    expect(merged.shorts.map(v => v.id)).toEqual(['jan5s', 'jan7s'])
   })
 })
 

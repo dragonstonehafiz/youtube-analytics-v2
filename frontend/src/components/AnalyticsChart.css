@@ -154,6 +154,18 @@
   z-index: 20;
 }
 
+/* Invisible hover bridge across the badge/popover gap, so the popover stays
+   hovered while the cursor crosses it instead of the popover closing early. */
+.upload-badge-slot::before {
+  content: '';
+  position: absolute;
+  top: 100%;
+  left: 50%;
+  transform: translateX(-50%);
+  width: 300px;
+  height: 2px;
+}
+
 .upload-badge {
   width: 22px;
   height: 22px;
@@ -204,7 +216,7 @@
   opacity: 0;
   visibility: hidden;
   pointer-events: none;
-  transition: opacity 0s 0.1s, visibility 0s 0.1s;
+  transition: none;
 }
 
 .upload-badge-slot:hover .upload-popover {

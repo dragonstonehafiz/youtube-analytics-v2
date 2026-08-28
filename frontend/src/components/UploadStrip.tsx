@@ -5,7 +5,7 @@ export const YAXIS_WIDTH = 56
 export const CHART_RIGHT = 16
 /** Diameter of an `.upload-badge` circle (kept in sync with `AnalyticsChart.css`). */
 export const BADGE_DIAMETER = 22
-/** Minimum center-to-center clearance between adjacent bucket badges. */
+/** Minimum edge-to-edge clearance reserved beyond a bucket badge's own diameter. */
 export const BUCKET_CLEARANCE = 8
 /** Per-bucket pixel allocation used to size `maxBuckets`/`bucketDays` — a badge width plus its clearance, so adjacent bucket badges never overlap. */
 export const BUCKET_WIDTH = BADGE_DIAMETER + BUCKET_CLEARANCE
@@ -123,16 +123,18 @@ interface PositionedBucket {
   clamped: boolean
 }
 
-function collides(a: PositionedBucket, b: PositionedBucket): boolean {
+/** Exported for direct unit testing of the exact touching-vs-overlapping boundary. */
+export function collides(a: { centerPx: number }, b: { centerPx: number }): boolean {
   return Math.abs(a.centerPx - b.centerPx) < BADGE_DIAMETER
 }
 
 /**
- * A boundary-clamped edge column keeps its own timeline position (`bucketStart`,
- * `centerPx`) but is merged wholesale into whichever neighboring column it visually
- * overlaps — full `videos`/`shorts` arrays combined, chronologically ordered.
- * Only clamping-induced overlap triggers a merge; ordinary interior buckets, however
- * close, are left untouched.
+ * A boundary-clamped edge column is merged wholesale into whichever interior
+ * neighbor it visually overlaps — that neighbor's own timeline position
+ * (`bucketStart`, `centerPx`) wins, and the full `videos`/`shorts` arrays from
+ * both columns are combined, chronologically ordered. Only clamping-induced
+ * overlap triggers a merge; ordinary interior buckets, however close, are left
+ * untouched.
  */
 function mergeClampedEdgeCollisions(buckets: PositionedBucket[]): void {
   while (buckets.length >= 2 && buckets[0].clamped && collides(buckets[0], buckets[1])) {
