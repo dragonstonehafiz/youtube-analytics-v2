@@ -28,9 +28,9 @@ export function pending<T>(data: T): RequestState<T> {
  * page or tab change mid-flight — must not clear the newer request's indicator or replace
  * its results, so a stale completion is dropped entirely.
  */
-export function track<T>(
-  promise: Promise<T>,
-  setState: Dispatch<SetStateAction<RequestState<T>>>,
+export function track<TState, TResult extends TState = TState>(
+  promise: Promise<TResult>,
+  setState: Dispatch<SetStateAction<RequestState<TState>>>,
   isActive: () => boolean,
   errorMessage: string = DEFAULT_ERROR,
 ): void {

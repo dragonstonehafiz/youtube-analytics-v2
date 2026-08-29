@@ -54,11 +54,25 @@ mocks/isolates.
 
 ```bash
 cd frontend && npx oxlint src/pages/Videos.tsx --fix   # lint a single changed file (oxlint, not eslint — no eslint config exists; `npm run lint` runs oxlint over the project)
-cd frontend && npx tsc --noEmit                          # type check (whole project — tsc has no cheap single-file mode here)
+cd frontend && npm run typecheck                          # type check — the exact command CI runs (`tsc -b`)
 cd frontend && npm test                                   # run every component test (`vitest run`)
 cd frontend && npx vitest run tests/Sync.test.tsx         # run a single test file (tests live in frontend/tests/)
 cd frontend && npm run build                              # full build — requires explicit approval before running
 ```
+
+Always type check with `npm run typecheck` (`tsc -b`), never bare `npx tsc --noEmit`.
+`tsconfig.json` at the project root declares `"files": []` with only
+`references` to `tsconfig.app.json`/`tsconfig.node.json` — a solution file with no
+source of its own. Plain `tsc`/`tsc --noEmit` reads that root config and, finding no
+files, does essentially nothing; it does **not** build the referenced projects. Only
+`-b` (project-reference build mode) follows `references` and actually type-checks
+`tsconfig.app.json`, which is what caught a real generic-inference mismatch in
+`src/lib/requestState.ts`'s `track()` that a plain `tsc --noEmit` run had silently
+missed. `npm run build`'s first step is the same `tsc -b`, and CI runs a dedicated
+`npm run typecheck` step before `npm run build`, so `npm run typecheck` locally is
+exactly what CI checks — not an approximation of it. Vitest is not a substitute either:
+it transpiles TypeScript for speed but does not type-check it, so a test suite passing
+under `npm test` says nothing about type errors.
 
 Component tests run on Vitest with `@testing-library/react` and `jsdom`. There is no Vitest
 config or setup file — Vitest reads `vite.config.ts`, and each test file declares its own
@@ -92,7 +106,7 @@ The last command should produce no output when the change is genuinely docs-only
 3. Add a `<Route>` entry in `frontend/src/App.tsx`.
 4. Follow the URL-param-as-state convention described in `frontend.md` if the page has any filters.
 5. Update `frontend.md`'s page table with the new page's behavior.
-6. Run `npx oxlint src/pages/<PageName>.tsx --fix` and `npx tsc --noEmit`.
+6. Run `npx oxlint src/pages/<PageName>.tsx --fix` and `npm run typecheck`.
 
 ## Layer-specific checks
 
@@ -101,8 +115,8 @@ The last command should produce no output when the change is genuinely docs-only
 | Database query change | `database.md` | `mypy` on the changed file under `database/` |
 | Sync bug | `sync.md`, possibly `database.md` | `mypy` on the changed file(s) under `sync/`/`youtube/`; manual `POST /sync/trigger` against a local run if behavior-sensitive |
 | New endpoint | `api.md`, likely `database.md` | `mypy` on the changed file(s) under `routes/`/`database/`; update `api.md` |
-| Frontend API integration | `api.md`, `frontend.md` | `tsc --noEmit`; `oxlint --fix` on changed files |
-| Page or component change | `frontend.md` | `oxlint --fix`, `tsc --noEmit`; `npx vitest run` on the page's test file where one exists; manual check in a running dev server for UI-facing changes |
+| Frontend API integration | `api.md`, `frontend.md` | `npm run typecheck`; `oxlint --fix` on changed files |
+| Page or component change | `frontend.md` | `oxlint --fix`, `npm run typecheck`; `npx vitest run` on the page's test file where one exists; manual check in a running dev server for UI-facing changes |
 | Verification selection itself | this file | — |
 | Cross-layer feature | `architecture.md` plus every affected layer reference | all of the above, scoped to what actually changed |
 
@@ -110,7 +124,7 @@ The last command should produce no output when the change is genuinely docs-only
 
 - `mypy <file>.py` (via the `backend/.venv` interpreter — see [Backend verification](#backend-verification)) on every changed backend file
 - `npx oxlint src/... --fix` on every changed frontend file — no errors left afterward
-- `npx tsc --noEmit` — no type errors
+- `npm run typecheck` (`tsc -b`) — no type errors; this is the exact command CI runs, not `npx tsc --noEmit`
 - `npm test` — every component test passes
 - No `console.log` in frontend code
 - No hardcoded colors or magic numbers (use `index.css` tokens / named constants)

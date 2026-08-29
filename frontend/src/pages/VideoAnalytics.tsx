@@ -64,7 +64,7 @@ export default function VideoAnalytics() {
     if (!id) return
     let active = true
     track(getVideo(id)
-      .then((data: { item: Video }) => data.item ?? null), setVideo, () => active, 'Could not load this video')
+      .then((data: { item: Video | null }) => data.item ?? null), setVideo, () => active, 'Could not load this video')
     return () => { active = false }
   }, [id])
 

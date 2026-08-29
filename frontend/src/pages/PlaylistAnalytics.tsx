@@ -69,7 +69,7 @@ export default function PlaylistAnalytics() {
     if (!id) return
     let active = true
     track(getPlaylist(id)
-      .then((data: { item: Playlist }) => data.item ?? null), setPlaylist, () => active, 'Could not load this playlist')
+      .then((data: { item: Playlist | null }) => data.item ?? null), setPlaylist, () => active, 'Could not load this playlist')
     return () => { active = false }
   }, [id])
 
