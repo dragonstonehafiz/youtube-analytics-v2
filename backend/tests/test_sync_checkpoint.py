@@ -1,29 +1,15 @@
 from __future__ import annotations
 
-import tempfile
 import unittest
-from pathlib import Path
-from unittest import mock
 
 import database
 from database import connection
 from sync.plans import FULL_SYNC_TYPES
+from tests.support import IsolatedDatabaseTestCase
 
 
-class CheckpointTestCase(unittest.TestCase):
+class CheckpointTestCase(IsolatedDatabaseTestCase):
     """Runs against a throwaway SQLite file so the app database is never touched."""
-
-    def setUp(self) -> None:
-        # get_connection() commits but never closes, so Windows still holds the WAL file
-        # open at teardown; leaving the temp file behind is harmless.
-        tmpdir = tempfile.TemporaryDirectory(ignore_cleanup_errors=True)
-        self.addCleanup(tmpdir.cleanup)
-
-        patcher = mock.patch.object(connection, "_DB_PATH", Path(tmpdir.name) / "test.db")
-        self.addCleanup(patcher.stop)
-        patcher.start()
-
-        database.init_db()
 
     def _succeed(self, batch_id: str, sync_type: str) -> None:
         run_id = database.create_sync_run(batch_id, sync_type, "incremental", None)

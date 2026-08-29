@@ -1,37 +1,19 @@
 from __future__ import annotations
 
-import tempfile
 import unittest
-from pathlib import Path
-from unittest import mock
-
-from fastapi import FastAPI
-from fastapi.testclient import TestClient
 
 import database
-from database import connection
 from routes.analytics import router as analytics_router
 from routes.videos import router as videos_router
+from tests.support import IsolatedDatabaseTestCase, create_test_client
 
 
-class TitleFilterTestCase(unittest.TestCase):
+class TitleFilterTestCase(IsolatedDatabaseTestCase):
     """Runs against a throwaway SQLite file so the app database is never touched."""
 
     def setUp(self) -> None:
-        tmpdir = tempfile.TemporaryDirectory(ignore_cleanup_errors=True)
-        self.addCleanup(tmpdir.cleanup)
-
-        patcher = mock.patch.object(connection, "_DB_PATH", Path(tmpdir.name) / "test.db")
-        self.addCleanup(patcher.stop)
-        patcher.start()
-
-        database.init_db()
-
-        app = FastAPI()
-        app.include_router(analytics_router)
-        app.include_router(videos_router)
-        self.client = TestClient(app)
-
+        super().setUp()
+        self.client = create_test_client(analytics_router, videos_router)
         self._seed()
 
     def _seed(self) -> None:

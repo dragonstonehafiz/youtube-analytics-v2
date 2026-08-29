@@ -1,26 +1,14 @@
 from __future__ import annotations
 
-import tempfile
 import unittest
-from pathlib import Path
-from unittest import mock
 
 import database
 from database import connection
+from tests.support import IsolatedDatabaseTestCase
 
 
-class SyncRunsTestCase(unittest.TestCase):
+class SyncRunsTestCase(IsolatedDatabaseTestCase):
     """Runs against a throwaway SQLite file so the app database is never touched."""
-
-    def setUp(self) -> None:
-        tmpdir = tempfile.TemporaryDirectory(ignore_cleanup_errors=True)
-        self.addCleanup(tmpdir.cleanup)
-
-        patcher = mock.patch.object(connection, "_DB_PATH", Path(tmpdir.name) / "test.db")
-        self.addCleanup(patcher.stop)
-        patcher.start()
-
-        database.init_db()
 
     def _seed(
         self,

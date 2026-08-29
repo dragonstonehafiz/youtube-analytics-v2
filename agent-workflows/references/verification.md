@@ -41,9 +41,14 @@ uvicorn server:app --reload                                 # run the server loc
 
 Run `mypy` against every backend `.py` file actually changed, not just the example above — substitute the path, e.g. `routes/videos.py`, `sync/orchestration.py`, `youtube/auth.py`. `database.py`, `routes.py`, `sync.py`, and `youtube.py` no longer exist as single files — each is now a package (`database/`, `routes/`, `sync/`, `youtube/`) of focused modules; see `architecture.md` for the layout.
 
-Run the test suite the same way: `.venv/Scripts/python.exe -m pytest tests/` (Windows) or
-`.venv/bin/python -m pytest tests/` (macOS/Linux) — see `backend/README.md`'s Testing
-section for what each test group mocks/isolates.
+Run the test suite the same way: `.venv/Scripts/python.exe -m pytest` (Windows) or
+`.venv/bin/python -m pytest` (macOS/Linux) — `pytest.ini` sets `testpaths = tests`, so no
+path argument is needed, and this is the exact command CI runs. `pytest` is the only
+supported runner: an autouse `tests/conftest.py` fixture fails any real network
+connection or OAuth credential fetch, and running the same test classes through raw
+`unittest discover` skips that fixture. See `backend/README.md`'s Testing section for
+the isolated-database harness (`tests/support.py`) and what each test group
+mocks/isolates.
 
 ## Frontend verification
 

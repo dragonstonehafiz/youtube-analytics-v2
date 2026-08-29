@@ -1,23 +1,17 @@
 ﻿from __future__ import annotations
 
-import tempfile
 import unittest
-from pathlib import Path
-from unittest import mock
-
-from fastapi import FastAPI
-from fastapi.testclient import TestClient
 
 import database
-from database import connection
 from routes.analytics import router as analytics_router
+from tests.support import IsolatedDatabaseTestCase, create_test_client
 
 START_DATE = "2024-01-01"
 END_DATE = "2024-01-31"
 DATE_RANGE = {"start_date": START_DATE, "end_date": END_DATE}
 
 
-class VideoScopeTestCase(unittest.TestCase):
+class VideoScopeTestCase(IsolatedDatabaseTestCase):
     """Runs against a throwaway SQLite file so the app database is never touched.
 
     The fixture covers duplicate playlist membership, a dangling membership row, a null membership
@@ -25,19 +19,8 @@ class VideoScopeTestCase(unittest.TestCase):
     """
 
     def setUp(self) -> None:
-        tmpdir = tempfile.TemporaryDirectory(ignore_cleanup_errors=True)
-        self.addCleanup(tmpdir.cleanup)
-
-        patcher = mock.patch.object(connection, "_DB_PATH", Path(tmpdir.name) / "test.db")
-        self.addCleanup(patcher.stop)
-        patcher.start()
-
-        database.init_db()
-
-        app = FastAPI()
-        app.include_router(analytics_router)
-        self.client = TestClient(app)
-
+        super().setUp()
+        self.client = create_test_client(analytics_router)
         self._seed()
 
     def _seed(self) -> None:

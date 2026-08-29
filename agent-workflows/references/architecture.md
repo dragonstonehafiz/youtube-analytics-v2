@@ -141,10 +141,13 @@ backend/
   server.py
   logging_config.py
 
-  tests/                 # stdlib unittest; run with
-                         # python -m unittest discover -s tests
-    test_sync_plans.py, test_sync_orchestration.py,
-    test_sync_scheduler.py, test_sync_routes.py, test_sync_checkpoint.py,
+  tests/                 # stdlib unittest classes, run via pytest (the only safety-guarded runner)
+    conftest.py            # autouse fixture: fails any real network/OAuth access
+    support.py              # IsolatedDatabaseTestCase, row factories, seed_dataset(), create_test_app()
+    test_test_harness.py, test_database_catalog.py, test_database_analytics.py, test_api_contracts.py,
+    test_analytics_video_scopes.py, test_analytics_title_filters.py,
+    test_sync_plans.py, test_sync_orchestration.py, test_sync_status.py,
+    test_sync_scheduler.py, test_sync_routes.py, test_sync_checkpoint.py, test_sync_runs.py,
     test_application_logging.py, test_sync_detail_logging.py,
     test_pagination_safety.py, test_comment_sync.py, test_comments_api.py
   schema.sql
