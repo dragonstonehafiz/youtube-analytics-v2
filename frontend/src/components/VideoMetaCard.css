@@ -1,9 +1,22 @@
+/* The shell owns the padding and page spacing; the state region inside it owns the
+   thumbnail-beside-details layout, so a pending request keeps the card in place. */
 .video-meta-card {
-  display: flex;
-  gap: 1.25rem;
   padding: 1.25rem;
   margin-bottom: 1.5rem;
+}
+
+.video-meta-card-body {
+  display: flex;
+  gap: 1.25rem;
   align-items: flex-start;
+}
+
+/* Loading, error and empty states are single flex items here, so without this they size
+   to their content and sit against the left edge instead of filling the card. */
+.video-meta-card-body > .async-card-loading,
+.video-meta-card-body > .async-card-empty,
+.video-meta-card-body > .async-card-error {
+  flex: 1;
 }
 
 .video-meta-thumb-wrap {
@@ -88,7 +101,7 @@
 }
 
 @media (max-width: 640px) {
-  .video-meta-card {
+  .video-meta-card-body {
     flex-wrap: wrap;
   }
 

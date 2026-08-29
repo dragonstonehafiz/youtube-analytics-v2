@@ -2,11 +2,17 @@
   margin-top: 1.5rem;
 }
 
+/* The card shell carries the gap under the heading. */
+.traffic-source-top-videos-card {
+  margin-top: 0.75rem;
+}
+
+/* The switcher shares the card with the table it filters, so it supplies its own inset. */
 .traffic-source-top-videos-switcher {
   display: flex;
   flex-wrap: wrap;
   gap: 0.5rem;
-  margin-bottom: 1rem;
+  padding: 1rem 1rem 0;
 }
 
 .traffic-source-top-videos-tab {
@@ -42,7 +48,7 @@
 }
 
 .traffic-source-top-videos-table-wrap {
-  margin-top: 0.75rem;
+  margin-top: 1rem;
 }
 
 .traffic-source-top-videos-table {
@@ -65,10 +71,12 @@
   width: 120px;
 }
 
-.traffic-source-top-videos-rank {
+td.traffic-source-top-videos-rank {
   color: var(--text-secondary);
   font-weight: 600;
   text-align: center;
+  padding-left: 0;
+  padding-right: 0;
 }
 
 .traffic-source-top-videos-thumb {
@@ -94,5 +102,5 @@
   color: var(--text-secondary);
   font-size: 13px;
   text-align: center;
-  padding: 1rem 0;
+  padding: 2rem 1rem;
 }

@@ -126,33 +126,44 @@
   flex-shrink: 0;
 }
 
-/* Upload strip */
+/* Upload strip: two full-width rows, Video markers above Shorts markers */
 .upload-strip {
   position: relative;
-  height: 32px;
+  height: 48px;
   margin-top: 4px;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
 }
 
-.upload-bucket {
-  position: absolute;
-  transform: translateX(-50%);
-  display: flex;
-  gap: 3px;
-  align-items: flex-start;
-  width: 52px;
-  justify-content: center;
+.upload-row {
+  position: relative;
+  height: 22px;
 }
 
 .upload-badge-slot {
-  position: relative;
+  position: absolute;
+  transform: translateX(-50%);
   display: flex;
   flex-direction: column;
   align-items: center;
+  z-index: 1;
 }
 
-.upload-badge-slot--solo {
-  width: 52px;
-  align-items: center;
+.upload-badge-slot:hover {
+  z-index: 20;
+}
+
+/* Invisible hover bridge across the badge/popover gap, so the popover stays
+   hovered while the cursor crosses it instead of the popover closing early. */
+.upload-badge-slot::before {
+  content: '';
+  position: absolute;
+  top: 100%;
+  left: 50%;
+  transform: translateX(-50%);
+  width: 300px;
+  height: 2px;
 }
 
 .upload-badge {
@@ -205,7 +216,7 @@
   opacity: 0;
   visibility: hidden;
   pointer-events: none;
-  transition: opacity 0s 0.1s, visibility 0s 0.1s;
+  transition: none;
 }
 
 .upload-badge-slot:hover .upload-popover {

@@ -42,6 +42,9 @@ jobs:
       - name: Import FastAPI application
         run: python -c "import server; assert server.app is not None"
 
+      - name: Run backend tests
+        run: python -m pytest
+
   frontend:
     name: Frontend checks
     runs-on: ubuntu-latest
@@ -68,6 +71,9 @@ jobs:
 
       - name: Lint
         run: npm run lint
+
+      - name: Type check
+        run: npm run typecheck
 
       - name: Build
         run: npm run build

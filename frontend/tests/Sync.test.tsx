@@ -1,7 +1,7 @@
 // @vitest-environment jsdom
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { cleanup, fireEvent, render, screen, waitFor, within } from '@testing-library/react'
-import { MemoryRouter } from 'react-router-dom'
+import { Link, MemoryRouter, Route, Routes, useLocation } from 'react-router-dom'
 import type {
   SyncRun,
   SyncRunBatch,
@@ -79,12 +79,40 @@ function localTime(iso: string): string {
   return new Date(iso).toLocaleString()
 }
 
+/** Exposes the current route's search string so tests can assert on it without parsing the DOM. */
+function LocationProbe({ onLocation }: { onLocation: (search: string) => void }) {
+  onLocation(useLocation().search)
+  return null
+}
+
 function renderSync(route = '/sync') {
-  return render(
+  let search = ''
+  const utils = render(
     <MemoryRouter initialEntries={[route]}>
+      <LocationProbe onLocation={s => { search = s }} />
       <Sync />
     </MemoryRouter>,
   )
+  return { ...utils, getSearch: () => search }
+}
+
+/**
+ * Mounts Sync behind a real route transition rather than an initial entry, so normalization
+ * is proven for in-app navigation to a bare route, not just direct load.
+ */
+function renderSyncViaNavigation() {
+  let search = ''
+  const utils = render(
+    <MemoryRouter initialEntries={['/elsewhere']}>
+      <LocationProbe onLocation={s => { search = s }} />
+      <Routes>
+        <Route path="/elsewhere" element={<Link to="/sync">Go to Sync</Link>} />
+        <Route path="/sync" element={<Sync />} />
+      </Routes>
+    </MemoryRouter>,
+  )
+  fireEvent.click(screen.getByRole('link', { name: 'Go to Sync' }))
+  return { ...utils, getSearch: () => search }
 }
 
 /** Wait for the initial status poll and date-range fetch to settle. */
@@ -171,6 +199,45 @@ describe('tab selection and URL state', () => {
     fireEvent.click(screen.getByRole('button', { name: 'History' }))
 
     await waitFor(() => expect(mockGetSyncRuns).toHaveBeenLastCalledWith(2, 25))
+  })
+
+  it('writes the explicit default tab into the URL on bare entry', async () => {
+    const { getSearch } = renderSync('/sync')
+    await settled()
+
+    await waitFor(() => expect(getSearch()).toBe('?tab=sync'))
+  })
+
+  it('normalizes a bare route reached through in-app navigation, not just direct load', async () => {
+    const { getSearch } = renderSyncViaNavigation()
+    await settled()
+
+    await waitFor(() => expect(getSearch()).toBe('?tab=sync'))
+    expect(screen.getByRole('button', { name: 'Sync selected' })).toBeDefined()
+  })
+
+  it('preserves unrelated query parameters while writing the default tab', async () => {
+    const { getSearch } = renderSync('/sync?sentinel=kept')
+    await settled()
+
+    await waitFor(() => {
+      const params = new URLSearchParams(getSearch())
+      expect(params.get('tab')).toBe('sync')
+      expect(params.get('sentinel')).toBe('kept')
+    })
+  })
+
+  it('sets tab=sync explicitly, rather than deleting it, when switching back from History', async () => {
+    const { getSearch } = renderSync('/sync?tab=history&sentinel=kept')
+    await screen.findByRole('table')
+
+    fireEvent.click(screen.getByRole('button', { name: 'Sync' }))
+
+    await waitFor(() => {
+      const params = new URLSearchParams(getSearch())
+      expect(params.get('tab')).toBe('sync')
+      expect(params.get('sentinel')).toBe('kept')
+    })
   })
 })
 
@@ -277,12 +344,76 @@ describe('the manual form is preserved', () => {
 })
 
 describe('history states', () => {
-  it('renders a loading state while the page is in flight', () => {
+  it('renders the card shell and its indicator while the page is in flight', () => {
+    mockGetSyncRuns.mockReturnValue(new Promise(() => {}))
+    const { container } = renderSync('/sync?tab=history')
+
+    expect(container.querySelector('.async-card')).not.toBeNull()
+    expect(screen.getByRole('status').textContent).toBe('Loading...')
+    expect(screen.queryByRole('table')).toBeNull()
+  })
+
+  it('never renders the empty copy before the first request has been made', () => {
     mockGetSyncRuns.mockReturnValue(new Promise(() => {}))
     renderSync('/sync?tab=history')
 
-    expect(screen.getByText('Loading...')).toBeDefined()
+    // The pending state is derived, not set in an effect: a direct History URL cannot
+    // paint "No sync runs recorded." on the frame before the request starts.
+    expect(screen.queryByText('No sync runs recorded.')).toBeNull()
+    expect(screen.queryByText('No sync batches found on this page.')).toBeNull()
+    expect(screen.getByRole('status')).toBeDefined()
+  })
+
+  it('returns to the indicator on a page change without showing the previous page', async () => {
+    mockGetSyncRuns.mockResolvedValue(page([
+      batch([run({ id: 1, batch_id: 'batch-one', started_at: '2024-05-01T10:00:00+00:00' })]),
+    ], 60, 1))
+    renderSync('/sync?tab=history')
+    await screen.findByRole('table')
+
+    mockGetSyncRuns.mockReturnValue(new Promise(() => {}))
+    fireEvent.click(screen.getByRole('button', { name: 'Next' }))
+
+    expect(screen.getByRole('status')).toBeDefined()
     expect(screen.queryByRole('table')).toBeNull()
+    expect(document.body.textContent).not.toContain(localTime('2024-05-01T10:00:00+00:00'))
+  })
+
+  it('returns to the indicator when the tab is reopened rather than showing cached rows', async () => {
+    renderSync('/sync?tab=history')
+    await screen.findByRole('table')
+
+    fireEvent.click(screen.getByRole('button', { name: 'Sync' }))
+    await settled()
+    mockGetSyncRuns.mockReturnValue(new Promise(() => {}))
+    fireEvent.click(screen.getByRole('button', { name: 'History' }))
+
+    expect(screen.getByRole('status')).toBeDefined()
+    expect(screen.queryByRole('table')).toBeNull()
+  })
+
+  it('transitions the same shell from the indicator to the history table', async () => {
+    let resolveRuns: (value: SyncRunsResponse) => void = () => {}
+    mockGetSyncRuns.mockReturnValue(new Promise<SyncRunsResponse>(resolve => { resolveRuns = resolve }))
+    const { container } = renderSync('/sync?tab=history')
+    const shell = container.querySelector('.async-card')
+    expect(screen.getByRole('status')).toBeDefined()
+
+    resolveRuns(page([batch()]))
+
+    await screen.findByRole('table')
+    expect(container.querySelector('.async-card')).toBe(shell)
+    expect(screen.getByRole('table').closest('.async-card')).toBe(shell)
+    expect(screen.queryByRole('status')).toBeNull()
+  })
+
+  it('keeps the error inside the same shell rather than replacing it', async () => {
+    mockGetSyncRuns.mockRejectedValue(new Error('Sync history request failed (500)'))
+    const { container } = renderSync('/sync?tab=history')
+
+    const alert = await screen.findByRole('alert')
+    expect(alert.closest('.async-card')).toBe(container.querySelector('.async-card'))
+    expect(screen.queryByRole('status')).toBeNull()
   })
 
   it('renders a generic request error and no table', async () => {

@@ -4,6 +4,8 @@ import { getComments, getPlaylistComments, getVideoComments } from '@/api'
 import type { CommentQuery } from '@/api'
 import type { Comment, CommentSort, CommentsResponse } from '@/types'
 import { useReplaceSearchParams } from '@/hooks/useReplaceSearchParams'
+import { useDebouncedFields } from '@/hooks/useDebouncedInput'
+import AsyncCard from '@/components/AsyncCard'
 import '@/components/CommentsPanel.css'
 
 export const PAGE_SIZE = 25
@@ -239,6 +241,15 @@ export default function CommentsPanel({ scope }: CommentsPanelProps) {
     })
   }
 
+  const [searchDrafts, setSearchDraft] = useDebouncedFields(
+    { text, author, videoTitle },
+    values => updateFilter({
+      [PARAM.text]: values.text,
+      [PARAM.author]: values.author,
+      [PARAM.videoTitle]: values.videoTitle,
+    }),
+  )
+
   const goToPage = (nextPage: number) => {
     setSearchParams(prev => {
       const next = new URLSearchParams(prev)
@@ -281,8 +292,8 @@ export default function CommentsPanel({ scope }: CommentsPanelProps) {
           <input
             type="text"
             placeholder="Search…"
-            value={text}
-            onChange={e => updateFilter({ [PARAM.text]: e.target.value })}
+            value={searchDrafts.text}
+            onChange={e => setSearchDraft('text', e.target.value)}
           />
         </label>
         <label>
@@ -290,8 +301,8 @@ export default function CommentsPanel({ scope }: CommentsPanelProps) {
           <input
             type="text"
             placeholder="Search…"
-            value={author}
-            onChange={e => updateFilter({ [PARAM.author]: e.target.value })}
+            value={searchDrafts.author}
+            onChange={e => setSearchDraft('author', e.target.value)}
           />
         </label>
         {!scopedToOneVideo && (
@@ -301,8 +312,8 @@ export default function CommentsPanel({ scope }: CommentsPanelProps) {
               <input
                 type="text"
                 placeholder="Search…"
-                value={videoTitle}
-                onChange={e => updateFilter({ [PARAM.videoTitle]: e.target.value })}
+                value={searchDrafts.videoTitle}
+                onChange={e => setSearchDraft('videoTitle', e.target.value)}
               />
             </label>
             <div className="filter-bar-sep" />
@@ -330,70 +341,69 @@ export default function CommentsPanel({ scope }: CommentsPanelProps) {
         </label>
       </div>
 
-      {error && <p className="comments-error" role="alert">{error}</p>}
-
-      {loading ? (
-        <p className="loading">Loading...</p>
-      ) : (
-        <>
-          {comments.length === 0 ? (
-            <p className="card comments-empty">
-              {error ? 'Comments unavailable' : 'No comments found'}
-            </p>
-          ) : scopedToOneVideo ? (
-            <div className="card comments-list">
-              {comments.map(comment => (
-                <CommentRow key={comment.id} comment={comment} />
-              ))}
-            </div>
-          ) : (
-            groups.map(group => (
-              <section className="card comments-group" key={group.videoId}>
-                <header className="comments-group-header">
-                  <Link
-                    to={`/analytics/videos/${group.videoId}?tab=comments`}
-                    className="comments-group-video"
-                  >
-                    {group.videoThumbnailUrl
-                      ? <img src={group.videoThumbnailUrl} alt="" className="comments-group-thumb" />
-                      : <div className="comments-group-thumb comments-thumb-placeholder" />}
-                    <span className="comments-group-title">{group.videoTitle}</span>
-                  </Link>
-                  <span className="comments-group-count">
-                    {group.comments.length === 1 ? '1 comment' : `${group.comments.length} comments`}
-                  </span>
-                </header>
-                <div className="comments-list">
-                  {group.comments.map(comment => (
-                    <CommentRow key={comment.id} comment={comment} />
-                  ))}
-                </div>
-              </section>
-            ))
-          )}
-          {totalPages > 1 && (
-            <div className="pagination">
-              <button
-                type="button"
-                className="btn-ghost"
-                onClick={() => goToPage(page - 1)}
-                disabled={page <= 1}
-              >
-                Previous
-              </button>
-              <span className="pagination-info">Page {page} of {totalPages}</span>
-              <button
-                type="button"
-                className="btn-ghost"
-                onClick={() => goToPage(page + 1)}
-                disabled={page >= totalPages}
-              >
-                Next
-              </button>
-            </div>
-          )}
-        </>
-      )}
+      {/* The results are one request-backed surface: a plain shell, because what it
+          resolves to is itself a stack of cards. Its own states carry the card surface. */}
+      <AsyncCard
+        variant="plain"
+        loading={loading}
+        error={error}
+        empty={comments.length === 0}
+        emptyMessage="No comments found"
+        bodyClassName="comments-results"
+      >
+        {scopedToOneVideo ? (
+          <div className="card comments-list">
+            {comments.map(comment => (
+              <CommentRow key={comment.id} comment={comment} />
+            ))}
+          </div>
+        ) : (
+          groups.map(group => (
+            <section className="card comments-group" key={group.videoId}>
+              <header className="comments-group-header">
+                <Link
+                  to={`/analytics/videos/${group.videoId}?tab=comments`}
+                  className="comments-group-video"
+                >
+                  {group.videoThumbnailUrl
+                    ? <img src={group.videoThumbnailUrl} alt="" className="comments-group-thumb" />
+                    : <div className="comments-group-thumb comments-thumb-placeholder" />}
+                  <span className="comments-group-title">{group.videoTitle}</span>
+                </Link>
+                <span className="comments-group-count">
+                  {group.comments.length === 1 ? '1 comment' : `${group.comments.length} comments`}
+                </span>
+              </header>
+              <div className="comments-list">
+                {group.comments.map(comment => (
+                  <CommentRow key={comment.id} comment={comment} />
+                ))}
+              </div>
+            </section>
+          ))
+        )}
+        {totalPages > 1 && (
+          <div className="pagination">
+            <button
+              type="button"
+              className="btn-ghost"
+              onClick={() => goToPage(page - 1)}
+              disabled={page <= 1}
+            >
+              Previous
+            </button>
+            <span className="pagination-info">Page {page} of {totalPages}</span>
+            <button
+              type="button"
+              className="btn-ghost"
+              onClick={() => goToPage(page + 1)}
+              disabled={page >= totalPages}
+            >
+              Next
+            </button>
+          </div>
+        )}
+      </AsyncCard>
     </div>
   )
 }

@@ -14,6 +14,7 @@ import type {
   SyncStatusResponse,
 } from '@/types'
 import { useReplaceSearchParams } from '@/hooks/useReplaceSearchParams'
+import AsyncCard from '@/components/AsyncCard'
 import './Sync.css'
 
 const STATUS_POLL_MS = 5000
@@ -187,6 +188,16 @@ function formatTimestamp(value: string | null): string {
   return Number.isNaN(parsed.getTime()) ? EMPTY_CELL : parsed.toLocaleString()
 }
 
+interface HistoryState {
+  /** The history page this data belongs to, or null while a request for one is in flight. */
+  key: string | null
+  items: SyncRunBatch[]
+  total: number
+  error: string | null
+}
+
+const PENDING_HISTORY: HistoryState = { key: null, items: [], total: 0, error: null }
+
 /** Parse a URL page value, ignoring zero, negative, fractional, and non-numeric input. */
 function parsePage(raw: string | null): number {
   const parsed = Number(raw)
@@ -199,11 +210,24 @@ export default function Sync() {
   const tab: Tab = searchParams.get('tab') === 'history' ? 'history' : 'sync'
   const historyPage = parsePage(searchParams.get('history_page'))
 
-  const [historyItems, setHistoryItems] = useState<SyncRunBatch[]>([])
-  const [historyTotal, setHistoryTotal] = useState(0)
-  const [historyLoading, setHistoryLoading] = useState(false)
-  const [historyError, setHistoryError] = useState<string | null>(null)
+  const [history, setHistory] = useState<HistoryState>(PENDING_HISTORY)
   const [expandedBatches, setExpandedBatches] = useState<ReadonlySet<string>>(new Set())
+
+  // Which request the held data belongs to. A mismatch is what makes the card loading, so
+  // a first render, a page change, and a return to the tab all show the indicator in the
+  // same render that triggers the request — never a frame of empty or stale content first.
+  const historyKey = String(historyPage)
+  const historyLoading = history.key !== historyKey
+
+  // A bare route has no explicit tab; write the derived default back so the URL matches what renders.
+  useEffect(() => {
+    if (searchParams.has('tab')) return
+    setSearchParams(prev => {
+      const next = new URLSearchParams(prev)
+      next.set('tab', 'sync')
+      return next
+    })
+  }, [searchParams, setSearchParams])
 
   const [included, setIncluded] = useState<IncludedMap>(ALL_INCLUDED)
   const [periods, setPeriods] = useState<PeriodMap>(DEFAULT_PERIODS)
@@ -238,27 +262,29 @@ export default function Sync() {
   useEffect(() => {
     if (tab !== 'history') return
     let active = true
-    setHistoryLoading(true)
-    setHistoryError(null)
     getSyncRuns(historyPage, HISTORY_PAGE_SIZE)
       .then(data => {
         if (!active) return
-        setHistoryItems(data.items ?? [])
-        setHistoryTotal(data.total ?? 0)
+        setHistory({ key: historyKey, items: data.items ?? [], total: data.total ?? 0, error: null })
         // Batches from the page being replaced must not reopen under new rows.
         setExpandedBatches(new Set())
       })
       .catch((err: unknown) => {
         if (!active) return
-        setHistoryItems([])
-        setHistoryTotal(0)
-        setHistoryError(err instanceof Error ? err.message : 'Could not load sync history')
+        setHistory({
+          key: historyKey,
+          items: [],
+          total: 0,
+          error: err instanceof Error ? err.message : 'Could not load sync history',
+        })
       })
-      .finally(() => {
-        if (active) setHistoryLoading(false)
-      })
-    return () => { active = false }
-  }, [tab, historyPage])
+    return () => {
+      active = false
+      // Dropping the key returns the card to its indicator before the next request starts,
+      // so a superseded response can neither land nor sit on screen while it is replaced.
+      setHistory(PENDING_HISTORY)
+    }
+  }, [tab, historyPage, historyKey])
 
   const currentYear = new Date().getFullYear()
   const years = earliestYear && earliestYear <= currentYear
@@ -327,8 +353,7 @@ export default function Sync() {
   const handleTabChange = (next: Tab) => {
     setSearchParams(prev => {
       const params = new URLSearchParams(prev)
-      if (next === 'history') params.set('tab', next)
-      else params.delete('tab')
+      params.set('tab', next)
       return params
     })
   }
@@ -360,7 +385,7 @@ export default function Sync() {
     toggleBatch(batchId)
   }
 
-  const historyTotalPages = Math.ceil(historyTotal / HISTORY_PAGE_SIZE)
+  const historyTotalPages = Math.ceil(history.total / HISTORY_PAGE_SIZE)
 
   return (
     <div className="page">
@@ -457,16 +482,15 @@ export default function Sync() {
             Sync selected
           </button>
         </>
-      ) : historyLoading ? (
-        <p className="loading">Loading...</p>
-      ) : historyError ? (
-        <p className="sync-error" role="alert">{historyError}</p>
-      ) : historyItems.length === 0 ? (
-        <p className="sync-history-empty">
-          {historyTotal === 0 ? 'No sync runs recorded.' : 'No sync batches found on this page.'}
-        </p>
       ) : (
-        <>
+        <AsyncCard
+          variant="table"
+          loading={historyLoading}
+          error={history.error}
+          empty={history.items.length === 0}
+          emptyMessage={history.total === 0 ? 'No sync runs recorded.' : 'No sync batches found on this page.'}
+          className="sync-history-card"
+        >
           <div className="table-overflow-wrap">
             <table className="data-table sync-history-table">
               <colgroup>
@@ -488,7 +512,7 @@ export default function Sync() {
                 </tr>
               </thead>
               <tbody>
-                {historyItems.map(batch => {
+                {history.items.map(batch => {
                   const expanded = expandedBatches.has(batch.batch_id)
                   const startedLabel = formatTimestamp(batch.started_at)
                   const detailId = `sync-batch-detail-${batch.batch_id}`
@@ -596,7 +620,7 @@ export default function Sync() {
               Next
             </button>
           </div>
-        </>
+        </AsyncCard>
       )}
     </div>
   )

@@ -1,12 +1,23 @@
+/* The shell keeps the bar's flatter treatment: .card supplies the glass surface and
+   border, and these two rules hold its original radius and absence of a shadow. */
 .video-stats-bar {
+  padding: 1.25rem 1.5rem;
+  border-radius: var(--radius-sm);
+  box-shadow: none;
+  margin-bottom: 1rem;
+}
+
+.video-stats-bar-grid {
   display: grid;
   grid-template-columns: repeat(6, 1fr);
   gap: 1.25rem;
-  padding: 1.25rem 1.5rem;
-  background: var(--surface-glass);
-  border: 1px solid var(--border-light);
-  border-radius: var(--radius-sm);
-  margin-bottom: 1rem;
+}
+
+/* Loading, error and empty states are single children of the grid, so they span it. */
+.video-stats-bar-grid > .async-card-loading,
+.video-stats-bar-grid > .async-card-empty,
+.video-stats-bar-grid > .async-card-error {
+  grid-column: 1 / -1;
 }
 
 .video-stats-sep {
@@ -61,7 +72,7 @@
 }
 
 @media (max-width: 1024px) {
-  .video-stats-bar {
+  .video-stats-bar-grid {
     grid-template-columns: repeat(3, 1fr);
   }
 
@@ -73,7 +84,7 @@
 }
 
 @media (max-width: 640px) {
-  .video-stats-bar {
+  .video-stats-bar-grid {
     grid-template-columns: repeat(2, 1fr);
   }
 

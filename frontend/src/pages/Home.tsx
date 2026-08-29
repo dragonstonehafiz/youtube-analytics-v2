@@ -2,6 +2,8 @@ import { useEffect, useState } from 'react'
 import { Link } from 'react-router-dom'
 import { getTopVideosByViews, getVideos, getChannelTrafficSources } from '@/api'
 import type { TopVideo, Video, TrafficSourceRow } from '@/types'
+import type { RequestState } from '@/lib/requestState'
+import { pending, track } from '@/lib/requestState'
 import VideoCarouselCard from '@/components/VideoCarouselCard'
 import TrafficSourceDonutCard from '@/components/TrafficSourceDonutCard'
 import './Home.css'
@@ -53,21 +55,24 @@ const NAV_ITEMS = [
 ]
 
 export default function Home() {
-  const [topVideos, setTopVideos] = useState<TopVideo[]>([])
-  const [topShorts, setTopShorts] = useState<TopVideo[]>([])
-  const [recentVideos, setRecentVideos] = useState<TopVideo[]>([])
-  const [trafficSourceRows, setTrafficSourceRows] = useState<TrafficSourceRow[]>([])
+  const [topVideos, setTopVideos] = useState<RequestState<TopVideo[]>>(pending([]))
+  const [topShorts, setTopShorts] = useState<RequestState<TopVideo[]>>(pending([]))
+  const [recentVideos, setRecentVideos] = useState<RequestState<TopVideo[]>>(pending([]))
+  const [trafficSourceRows, setTrafficSourceRows] = useState<RequestState<TrafficSourceRow[]>>(pending([]))
 
   useEffect(() => {
+    let active = true
     const [startDate, endDate] = last28Dates()
-    getTopVideosByViews('views', startDate, endDate, 'video', 'public')
-      .then((data: { items: TopVideo[] }) => setTopVideos(data.items ?? []))
-    getTopVideosByViews('views', startDate, endDate, 'short', 'public')
-      .then((data: { items: TopVideo[] }) => setTopShorts(data.items ?? []))
-    getVideos(1, RECENT_COUNT, 'published_at', 'desc', undefined, undefined, undefined, undefined, 'public')
-      .then((data: { items: Video[] }) => setRecentVideos((data.items ?? []).map(toTopVideoShape)))
-    getChannelTrafficSources({ start_date: startDate, end_date: endDate, privacy_status: 'public' })
-      .then((data: { items: TrafficSourceRow[] }) => setTrafficSourceRows(data.items ?? []))
+    // Each card owns one request, so a slow or failing one never holds up the others.
+    track(getTopVideosByViews('views', startDate, endDate, 'video', 'public')
+      .then((data: { items: TopVideo[] }) => data.items ?? []), setTopVideos, () => active)
+    track(getTopVideosByViews('views', startDate, endDate, 'short', 'public')
+      .then((data: { items: TopVideo[] }) => data.items ?? []), setTopShorts, () => active)
+    track(getVideos(1, RECENT_COUNT, 'published_at', 'desc', undefined, undefined, undefined, undefined, 'public')
+      .then((data: { items: Video[] }) => (data.items ?? []).map(toTopVideoShape)), setRecentVideos, () => active)
+    track(getChannelTrafficSources({ start_date: startDate, end_date: endDate, privacy_status: 'public' })
+      .then((data: { items: TrafficSourceRow[] }) => data.items ?? []), setTrafficSourceRows, () => active)
+    return () => { active = false }
   }, [])
 
   return (
@@ -84,10 +89,30 @@ export default function Home() {
         ))}
       </div>
       <div className="home-carousels">
-        <VideoCarouselCard title="Top Videos (Last 28 Days)" videos={topVideos} />
-        <VideoCarouselCard title="Top Shorts (Last 28 Days)" videos={topShorts} />
-        <VideoCarouselCard title="Latest Uploads" videos={recentVideos} />
-        <TrafficSourceDonutCard title="Traffic Sources (Last 28 Days)" rows={trafficSourceRows} />
+        <VideoCarouselCard
+          title="Top Videos (Last 28 Days)"
+          videos={topVideos.data}
+          loading={topVideos.loading}
+          error={topVideos.error}
+        />
+        <VideoCarouselCard
+          title="Top Shorts (Last 28 Days)"
+          videos={topShorts.data}
+          loading={topShorts.loading}
+          error={topShorts.error}
+        />
+        <VideoCarouselCard
+          title="Latest Uploads"
+          videos={recentVideos.data}
+          loading={recentVideos.loading}
+          error={recentVideos.error}
+        />
+        <TrafficSourceDonutCard
+          title="Traffic Sources (Last 28 Days)"
+          rows={trafficSourceRows.data}
+          loading={trafficSourceRows.loading}
+          error={trafficSourceRows.error}
+        />
       </div>
     </div>
   )

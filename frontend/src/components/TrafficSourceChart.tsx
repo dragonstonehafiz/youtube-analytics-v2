@@ -3,12 +3,16 @@ import { LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContai
 import type { TrafficSourceRow, PublishedVideo } from '@/types'
 import { formatTrafficSource, aggregateTrafficSourceTotals, getTrafficSourceColor, TRAFFIC_SOURCE_OTHER_COLOR } from '@/lib/trafficSources'
 import { YAXIS_WIDTH, CHART_RIGHT, formatCompact, getMarks, computeUploadBuckets, UploadStrip } from '@/components/UploadStrip'
+import AsyncCard from '@/components/AsyncCard'
 import '@/components/AnalyticsChart.css'
 import './TrafficSourceChart.css'
 
 interface Props {
   rows: TrafficSourceRow[]
   uploadedVideos?: PublishedVideo[]
+  /** True until both the traffic-source rows and the upload markers the chart draws have landed. */
+  loading: boolean
+  error?: string | null
 }
 
 type Metric = 'views' | 'watch_time_hours'
@@ -66,7 +70,7 @@ function toCumulative(rows: ChartDatum[], seriesKeys: string[]): ChartDatum[] {
   })
 }
 
-export default function TrafficSourceChart({ rows, uploadedVideos }: Props) {
+export default function TrafficSourceChart({ rows, uploadedVideos, loading, error = null }: Props) {
   const [metric, setMetric] = useState<Metric>('views')
   const [bucketSize, setBucketSize] = useState<BucketSize>('daily')
   const [chartMode, setChartMode] = useState<ChartMode>('daily')
@@ -80,7 +84,8 @@ export default function TrafficSourceChart({ rows, uploadedVideos }: Props) {
     })
     obs.observe(cardRef.current)
     return () => obs.disconnect()
-  }, [rows.length > 0])
+    // The shell is mounted from the first render, so the observed node never changes.
+  }, [])
 
   const topTypes = useMemo(
     () => aggregateTrafficSourceTotals(rows).slice(0, TOP_N).map(t => t.traffic_source_type),
@@ -131,13 +136,18 @@ export default function TrafficSourceChart({ rows, uploadedVideos }: Props) {
     [chartRows]
   )
 
-  if (rows.length === 0) return null
-
   const marks = getMarks(displayRows)
   const activeMeta = METRICS.find(m => m.key === metric)!
 
   return (
-    <div className="analytics-chart card" ref={cardRef}>
+    <AsyncCard
+      loading={loading}
+      error={error}
+      empty={rows.length === 0}
+      emptyMessage="No data for this period"
+      className="analytics-chart"
+      shellRef={cardRef}
+    >
       <div className="section-header">Chart Type</div>
       <div className="chart-bucket-buttons">
         {CHART_MODES.map(m => (
@@ -221,6 +231,6 @@ export default function TrafficSourceChart({ rows, uploadedVideos }: Props) {
       </ResponsiveContainer>
 
       {uploadedVideos && uploadedVideos.length > 0 && <UploadStrip buckets={buckets} />}
-    </div>
+    </AsyncCard>
   )
 }

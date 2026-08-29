@@ -35,7 +35,7 @@ cd backend && .venv/Scripts/python.exe -m mypy database/connection.py   # Window
 cd backend && .venv/bin/python -m mypy database/connection.py            # macOS/Linux
 cd backend && uvicorn server:app --reload
 cd frontend && npx oxlint src/pages/Videos.tsx --fix
-cd frontend && npx tsc --noEmit
+cd frontend && npm run typecheck   # tsc -b — the exact command CI runs; plain `tsc --noEmit` does not check this project (see verification.md)
 cd frontend && npm test
 ```
 

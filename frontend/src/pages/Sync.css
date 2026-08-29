@@ -210,13 +210,6 @@
   color: var(--red);
 }
 
-.sync-history-empty {
-  padding: 2rem 1rem;
-  text-align: center;
-  color: var(--text-secondary);
-  font-size: 13px;
-}
-
 @media (max-width: 720px) {
   .sync-col-include {
     width: 56px;

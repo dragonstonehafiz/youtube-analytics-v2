@@ -1,6 +1,8 @@
 import { Link } from 'react-router-dom'
 import type { Video } from '@/types'
 import PeriodSelect from '@/components/PeriodSelect'
+import AsyncCard from '@/components/AsyncCard'
+import { useDebouncedInput } from '@/hooks/useDebouncedInput'
 import '@/components/VideoTable.css'
 
 export type SortKey = 'published_at' | 'view_count' | 'comment_count' | 'total_revenue_sgd'
@@ -11,7 +13,9 @@ export const PAGE_SIZE = 25
 interface VideoTableProps {
   videos: Video[]
   total: number
-  initialLoading: boolean
+  /** True while the listing request is in flight, on the first load and on every refetch. */
+  loading: boolean
+  error?: string | null
   page: number
   sortKey: SortKey
   sortDir: SortDir
@@ -28,7 +32,8 @@ interface VideoTableProps {
 export default function VideoTable({
   videos,
   total,
-  initialLoading,
+  loading,
+  error = null,
   page,
   sortKey,
   sortDir,
@@ -43,6 +48,10 @@ export default function VideoTable({
 }: VideoTableProps) {
   const totalPages = Math.ceil(total / PAGE_SIZE)
   const arrow = (key: SortKey) => sortKey === key ? (sortDir === 'asc' ? ' ↑' : ' ↓') : ''
+  const [titleDraft, setTitleDraft] = useDebouncedInput(
+    title,
+    t => onFilterChange(t, startDate, endDate, contentType, privacyStatus),
+  )
 
   return (
     <>
@@ -66,8 +75,8 @@ export default function VideoTable({
           <input
             type="text"
             placeholder="Search…"
-            value={title}
-            onChange={e => onFilterChange(e.target.value, startDate, endDate, contentType, privacyStatus)}
+            value={titleDraft}
+            onChange={e => setTitleDraft(e.target.value)}
           />
         </label>
         <div className="filter-bar-sep" />
@@ -91,75 +100,71 @@ export default function VideoTable({
         </label>
       </div>
 
-      {initialLoading ? (
-        <p className="loading">Loading...</p>
-      ) : (
-        <>
-          <div className="table-overflow-wrap">
-            <table className="data-table video-table">
-              <colgroup>
-                <col className="video-table-col-thumb" />
-                <col className="video-table-col-title" />
-                <col className="video-table-col-date" />
-                <col className="video-table-col-type" />
-                <col className="video-table-col-views" />
-                <col className="video-table-col-comments" />
-                <col className="video-table-col-earnings" />
-              </colgroup>
-              <thead>
+      <AsyncCard variant="table" loading={loading} error={error} className="video-table-card">
+        <div className="table-overflow-wrap">
+          <table className="data-table video-table">
+            <colgroup>
+              <col className="video-table-col-thumb" />
+              <col className="video-table-col-title" />
+              <col className="video-table-col-date" />
+              <col className="video-table-col-type" />
+              <col className="video-table-col-views" />
+              <col className="video-table-col-comments" />
+              <col className="video-table-col-earnings" />
+            </colgroup>
+            <thead>
+              <tr>
+                <th>Thumbnail</th>
+                <th>Title</th>
+                <th className="sortable" onClick={() => onSort('published_at')}>Upload Date{arrow('published_at')}</th>
+                <th>Type</th>
+                <th className="sortable" onClick={() => onSort('view_count')}>Views{arrow('view_count')}</th>
+                <th className="sortable" onClick={() => onSort('comment_count')}>Comments{arrow('comment_count')}</th>
+                <th className="sortable" onClick={() => onSort('total_revenue_sgd')}>Earnings (SGD){arrow('total_revenue_sgd')}</th>
+              </tr>
+            </thead>
+            <tbody>
+              {videos.length === 0 && (
                 <tr>
-                  <th>Thumbnail</th>
-                  <th>Title</th>
-                  <th className="sortable" onClick={() => onSort('published_at')}>Upload Date{arrow('published_at')}</th>
-                  <th>Type</th>
-                  <th className="sortable" onClick={() => onSort('view_count')}>Views{arrow('view_count')}</th>
-                  <th className="sortable" onClick={() => onSort('comment_count')}>Comments{arrow('comment_count')}</th>
-                  <th className="sortable" onClick={() => onSort('total_revenue_sgd')}>Earnings (SGD){arrow('total_revenue_sgd')}</th>
+                  <td colSpan={7} className="table-empty">No videos found</td>
                 </tr>
-              </thead>
-              <tbody>
-                {videos.length === 0 && (
-                  <tr>
-                    <td colSpan={7} className="table-empty">No videos found</td>
-                  </tr>
-                )}
-                {videos.map(v => (
-                  <tr key={v.id}>
-                    <td>
-                      {v.thumbnail_url
-                        ? <img src={v.thumbnail_url} alt="" className="table-thumb" />
-                        : <div className="table-thumb-placeholder" />}
-                    </td>
-                    <td className="cell-title">
-                      <Link to={`/analytics/videos/${v.id}`}>{v.title}</Link>
-                    </td>
-                    <td>{v.published_at?.slice(0, 10)}</td>
-                    <td>
-                      <span className={`badge${v.content_type === 'short' ? ' short' : ''}`}>
-                        {v.content_type === 'short' ? 'Short' : 'Video'}
-                      </span>
-                    </td>
-                    <td>{v.view_count?.toLocaleString()}</td>
-                    <td>{v.comment_count?.toLocaleString()}</td>
-                    <td>S${v.total_revenue_sgd?.toLocaleString('en-SG', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
+              )}
+              {videos.map(v => (
+                <tr key={v.id}>
+                  <td>
+                    {v.thumbnail_url
+                      ? <img src={v.thumbnail_url} alt="" className="table-thumb" />
+                      : <div className="table-thumb-placeholder" />}
+                  </td>
+                  <td className="cell-title">
+                    <Link to={`/analytics/videos/${v.id}`}>{v.title}</Link>
+                  </td>
+                  <td>{v.published_at?.slice(0, 10)}</td>
+                  <td>
+                    <span className={`badge${v.content_type === 'short' ? ' short' : ''}`}>
+                      {v.content_type === 'short' ? 'Short' : 'Video'}
+                    </span>
+                  </td>
+                  <td>{v.view_count?.toLocaleString()}</td>
+                  <td>{v.comment_count?.toLocaleString()}</td>
+                  <td>S${v.total_revenue_sgd?.toLocaleString('en-SG', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+        {totalPages > 1 && (
+          <div className="pagination">
+            <button type="button" className="btn-ghost" onClick={() => onPageChange(page - 1)} disabled={page <= 1}>
+              Previous
+            </button>
+            <span className="pagination-info">Page {page} of {totalPages}</span>
+            <button type="button" className="btn-ghost" onClick={() => onPageChange(page + 1)} disabled={page >= totalPages}>
+              Next
+            </button>
           </div>
-          {totalPages > 1 && (
-            <div className="pagination">
-              <button type="button" className="btn-ghost" onClick={() => onPageChange(page - 1)} disabled={page <= 1}>
-                Previous
-              </button>
-              <span className="pagination-info">Page {page} of {totalPages}</span>
-              <button type="button" className="btn-ghost" onClick={() => onPageChange(page + 1)} disabled={page >= totalPages}>
-                Next
-              </button>
-            </div>
-          )}
-        </>
-      )}
+        )}
+      </AsyncCard>
     </>
   )
 }

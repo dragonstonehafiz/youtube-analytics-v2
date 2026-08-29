@@ -2,17 +2,20 @@ import { useMemo } from 'react'
 import { PieChart, Pie, Cell, ResponsiveContainer, Tooltip } from 'recharts'
 import type { TrafficSourceRow } from '@/types'
 import { formatTrafficSource, aggregateTrafficSourceTotals, getTrafficSourceColor, TRAFFIC_SOURCE_OTHER_COLOR } from '@/lib/trafficSources'
+import AsyncCard from '@/components/AsyncCard'
 import './TrafficSourceDonutCard.css'
 
 interface Props {
   title: string
   rows: TrafficSourceRow[]
+  loading: boolean
+  error?: string | null
 }
 
 const TOP_N = 6
 const OTHER_KEY = 'Other'
 
-export default function TrafficSourceDonutCard({ title, rows }: Props) {
+export default function TrafficSourceDonutCard({ title, rows, loading, error = null }: Props) {
   const totals = useMemo(() => aggregateTrafficSourceTotals(rows), [rows])
 
   const totalViews = useMemo(() => totals.reduce((s, t) => s + t.views, 0), [totals])
@@ -20,8 +23,6 @@ export default function TrafficSourceDonutCard({ title, rows }: Props) {
   const topTotals = totals.slice(0, TOP_N)
   const otherTotals = totals.slice(TOP_N)
   const otherViews = otherTotals.reduce((s, t) => s + t.views, 0)
-
-  if (rows.length === 0 || totalViews === 0) return null
 
   const slices = [
     ...topTotals.map(t => ({
@@ -34,9 +35,14 @@ export default function TrafficSourceDonutCard({ title, rows }: Props) {
   ]
 
   return (
-    <div className="traffic-donut card">
-      <div className="section-header">{title}</div>
-
+    <AsyncCard
+      loading={loading}
+      error={error}
+      empty={rows.length === 0 || totalViews === 0}
+      emptyMessage="No traffic for this period"
+      className="traffic-donut"
+      heading={<div className="section-header">{title}</div>}
+    >
       <div className="traffic-donut-chart-wrap">
         <ResponsiveContainer width="100%" height={180}>
           <PieChart>
@@ -89,6 +95,6 @@ export default function TrafficSourceDonutCard({ title, rows }: Props) {
           </>
         )}
       </div>
-    </div>
+    </AsyncCard>
   )
 }

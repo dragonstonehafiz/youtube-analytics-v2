@@ -1,0 +1,87 @@
+/* The shell is always mounted; only .async-card-body swaps between states. */
+.async-card-loading {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 0.75rem;
+  padding: 3rem;
+  color: var(--text-secondary);
+  font-size: 14px;
+}
+
+.async-card-spinner {
+  width: 28px;
+  height: 28px;
+  border: 3px solid var(--blue-light);
+  border-top-color: var(--blue);
+  border-radius: 50%;
+  animation: async-card-spin 0.8s linear infinite;
+}
+
+@keyframes async-card-spin {
+  to { transform: rotate(360deg); }
+}
+
+/* The visible label carries the state on its own, so the ring can stop entirely. */
+@media (prefers-reduced-motion: reduce) {
+  .async-card-spinner {
+    animation: none;
+  }
+}
+
+.async-card-empty {
+  margin: 0;
+  padding: 3rem;
+  text-align: center;
+  color: var(--text-secondary);
+  font-size: 13px;
+}
+
+.async-card-error {
+  margin: 0;
+  padding: 0.75rem 1rem;
+  border: 1px solid var(--red-mid);
+  border-radius: var(--radius-sm);
+  background: var(--red-light);
+  color: var(--red);
+  font-size: 13px;
+}
+
+/* Table shell: the card visuals move here from .data-table, which keeps its fixed layout,
+   minimum width and local horizontal scrolling. Only the table this shell owns directly is
+   stripped — a table nested inside a row keeps its own surface. */
+.async-card--table {
+  overflow: hidden;
+  background: var(--surface);
+  backdrop-filter: none;
+  -webkit-backdrop-filter: none;
+  border-color: var(--border);
+}
+
+.async-card--table > .async-card-body > .table-overflow-wrap > .data-table {
+  background: transparent;
+  border: none;
+  border-radius: 0;
+  box-shadow: none;
+}
+
+/* Pagination sits inside the table shell so it resolves with the rows it pages through. */
+.async-card--table .pagination {
+  margin-top: 0;
+  padding: 1.25rem 1rem;
+}
+
+/* A plain shell adds no box of its own: its content is already a stack of cards, so each
+   of its own states carries the .card surface instead. The error keeps its red treatment
+   over that surface — .card's glass background and blur would otherwise win on load
+   order, so both are restated here at a specificity .card cannot reach. */
+.async-card--plain > .async-card-body > .async-card-error {
+  margin-bottom: 1rem;
+  padding: 1rem 1.25rem;
+  border-radius: var(--radius);
+  border-color: var(--red-mid);
+  background: var(--red-light);
+  backdrop-filter: none;
+  -webkit-backdrop-filter: none;
+}

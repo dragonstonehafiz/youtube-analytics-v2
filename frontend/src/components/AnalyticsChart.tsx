@@ -2,11 +2,15 @@ import { useState, useMemo, useRef, useEffect } from 'react'
 import { AreaChart, Area, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, ReferenceLine } from 'recharts'
 import type { AnalyticsRow, ContentType, PublishedVideo } from '@/types'
 import { YAXIS_WIDTH, CHART_RIGHT, formatCompact, getMarks, computeUploadBuckets, UploadStrip } from '@/components/UploadStrip'
+import AsyncCard from '@/components/AsyncCard'
 import '@/components/AnalyticsChart.css'
 
 interface Props {
   rows: AnalyticsRow[]
   uploadedVideos?: PublishedVideo[]
+  /** True until both the analytics rows and the upload markers the chart draws have landed. */
+  loading: boolean
+  error?: string | null
 }
 
 type Metric = 'views' | 'watch_time_hours' | 'estimated_revenue_sgd'
@@ -118,7 +122,7 @@ function aggregateRows(rows: AnalyticsRow[], size: BucketSize): ChartPoint[] {
   return Array.from(buckets.values()).sort((a, b) => a.date.localeCompare(b.date))
 }
 
-export default function AnalyticsChart({ rows, uploadedVideos }: Props) {
+export default function AnalyticsChart({ rows, uploadedVideos, loading, error = null }: Props) {
   const [metric, setMetric] = useState<Metric>('views')
   const [bucketSize, setBucketSize] = useState<BucketSize>('daily')
   const [chartMode, setChartMode] = useState<ChartMode>('daily')
@@ -132,7 +136,8 @@ export default function AnalyticsChart({ rows, uploadedVideos }: Props) {
     })
     obs.observe(cardRef.current)
     return () => obs.disconnect()
-  }, [rows.length > 0])
+    // The shell is mounted from the first render, so the observed node never changes.
+  }, [])
 
   const presentTypes = useMemo(() => new Set(rows.map(r => r.content_type)), [rows])
   const activeSeries = useMemo(() => SERIES.filter(s => presentTypes.has(s.type)), [presentTypes])
@@ -158,13 +163,18 @@ export default function AnalyticsChart({ rows, uploadedVideos }: Props) {
     [uploadedVideos, rows, cardWidth]
   )
 
-  if (rows.length === 0) return null
-
   const marks = getMarks(displayRows)
   const activeMeta = METRICS.find(m => m.key === metric)!
 
   return (
-    <div className="analytics-chart card" ref={cardRef}>
+    <AsyncCard
+      loading={loading}
+      error={error}
+      empty={rows.length === 0}
+      emptyMessage="No data for this period"
+      className="analytics-chart"
+      shellRef={cardRef}
+    >
       <div className="section-header">Chart Type</div>
       <div className="chart-bucket-buttons">
         {CHART_MODES.map(m => (
@@ -251,6 +261,6 @@ export default function AnalyticsChart({ rows, uploadedVideos }: Props) {
       </ResponsiveContainer>
 
       {uploadedVideos && uploadedVideos.length > 0 && <UploadStrip buckets={buckets} />}
-    </div>
+    </AsyncCard>
   )
 }

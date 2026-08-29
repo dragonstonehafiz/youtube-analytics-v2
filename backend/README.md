@@ -81,7 +81,9 @@ backend/
     stages.py
     scheduler.py
 
-  tests/               # stdlib unittest suite for the sync subsystem
+  tests/               # stdlib unittest suite (database, API contracts, sync, logging) run via pytest
+    conftest.py          # autouse fixture that fails closed on real network/OAuth access
+    support.py           # shared isolated-database base case, row factories, dataset seeder
 
   youtube/              # YouTube Data + Analytics API clients and fetchers
     auth.py
@@ -188,17 +190,41 @@ not system-wide.
 
 ```bash
 cd backend
-.venv/Scripts/python.exe -m pytest tests/          # Windows
-.venv/bin/python -m pytest tests/                  # macOS/Linux
+.venv/Scripts/python.exe -m pytest          # Windows
+.venv/bin/python -m pytest                  # macOS/Linux
 ```
 
-`python -m unittest discover -s tests` (via the same venv interpreter) also works —
-the test suite is stdlib `unittest`, `pytest` is just the runner.
+`pytest.ini` sets `testpaths = tests`, so the bare command above is the canonical,
+complete run — no `tests/` argument is needed. This is also the exact command CI runs,
+so a local pass is a reliable predictor of the CI result.
 
-Stage execution and external APIs are mocked; the checkpoint tests run against a
-throwaway SQLite file, and the logging tests redirect both log files to a
-`TemporaryDirectory`, so no test touches `data/youtube.db`, `data/*.log`, or the
-network.
+`pytest` (not raw `python -m unittest discover`) is the only supported runner: every
+test in `tests/` gets an autouse `conftest.py` fixture that fails any test attempting a
+real (non-loopback) network connection or an OAuth credential fetch — including the
+`get_credentials` reference each of `youtube.auth`, `youtube.data_api`, and
+`youtube.analytics_api` holds independently — with a clear `AssertionError`, so an
+unmocked external call fails loudly instead of reaching the network. Running the same
+stdlib `unittest.TestCase` classes through `unittest discover` skips that fixture and is
+not safety-equivalent.
+
+Every database-backed test extends `tests.support.IsolatedDatabaseTestCase` (or the
+pre-seeded `SeededDatabaseTestCase`), which creates a fresh temporary SQLite file per
+test, calls the real `database.init_db()` against it, and refuses to run if the resolved
+path ever matches the real application database — so no test can touch
+`data/youtube.db`. `tests/support.py` also provides deterministic row factories
+(`make_video`, `make_playlist`, `make_video_analytics`, etc.), a `freeze_now()` context
+manager that pins every generated `updated_at`/`started_at`/`completed_at` timestamp so
+seeded fixtures stay reproducible, and a `seed_dataset()` convenience (built on
+`freeze_now()`) that populates every table with a small, fixed dataset.
+`create_test_app()`/`create_test_client()` build a lifespan-free FastAPI app from one or
+more routers for API contract tests, so — unlike a real request through `server.app` —
+`mark_incomplete_sync_runs()` and `sync.start_background_scheduler()` never run; only the
+test's own `IsolatedDatabaseTestCase.setUp()` initializes the database. Extend the suite
+by adding new focused tests on top of these factories rather than duplicating
+temp-database or app-construction boilerplate.
+
+Beyond database isolation, external APIs and sync stage execution are mocked directly,
+and the logging tests redirect both log files to a `TemporaryDirectory`.
 
 ## Dependencies
 
