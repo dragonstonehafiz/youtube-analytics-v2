@@ -7,6 +7,10 @@
   width: 100%;
 }
 
+.search-terms-donut-chart-wrap .recharts-tooltip-wrapper {
+  z-index: 1;
+}
+
 .search-terms-donut-center {
   position: absolute;
   top: 50%;

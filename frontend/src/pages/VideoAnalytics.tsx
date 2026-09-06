@@ -265,12 +265,14 @@ export default function VideoAnalytics() {
                   error={trafficSources.error}
                 />
               ) : (
-                <SearchTermsDonutCard
-                  title="Top Search Terms"
-                  rows={searchTerms.data}
-                  loading={searchTerms.loading}
-                  error={searchTerms.error}
-                />
+                <div className="search-insights-columns">
+                  <SearchTermsDonutCard
+                    title="Top Search Terms"
+                    rows={searchTerms.data}
+                    loading={searchTerms.loading}
+                    error={searchTerms.error}
+                  />
+                </div>
               )}
             </>
           )}

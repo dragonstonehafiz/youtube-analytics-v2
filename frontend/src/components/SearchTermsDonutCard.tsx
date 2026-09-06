@@ -43,7 +43,7 @@ export default function SearchTermsDonutCard({ title, rows, loading, error = nul
             <Tooltip
               contentStyle={{ background: 'var(--surface)', border: '1px solid var(--border)', borderRadius: 'var(--radius-sm)', fontSize: 13 }}
               labelStyle={{ color: 'var(--text-heading)', fontWeight: 600 }}
-              formatter={(value) => [typeof value === 'number' ? value.toLocaleString() : String(value ?? 0), 'Views']}
+              formatter={(value, name) => [typeof value === 'number' ? value.toLocaleString() : String(value ?? 0), name]}
             />
           </PieChart>
         </ResponsiveContainer>
