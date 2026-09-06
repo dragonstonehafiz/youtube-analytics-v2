@@ -562,7 +562,7 @@ export default function PlaylistAnalytics() {
                 </div>
                 <div className="analytics-sidebar">
                   <SearchTermVideosDonutCard
-                    title="Top Videos — Videos"
+                    title="Top Videos by Search Term"
                     terms={searchTermsByVideo.data}
                     termsLoading={searchTermsByVideo.loading}
                     selectedTerm={videoTerm || searchTermsByVideo.data[0]?.search_term || null}
@@ -572,7 +572,7 @@ export default function PlaylistAnalytics() {
                     error={videosForVideoTerm.error}
                   />
                   <SearchTermVideosDonutCard
-                    title="Top Videos — Shorts"
+                    title="Top Shorts by Search Term"
                     terms={searchTermsByShort.data}
                     termsLoading={searchTermsByShort.loading}
                     selectedTerm={shortTerm || searchTermsByShort.data[0]?.search_term || null}

@@ -1,3 +1,10 @@
+/* The Traffic Sources tab's sub-tab strip sits directly under the chart card here (no
+   .analytics-layout wrapper, unlike the channel/playlist pages, which get this same gap
+   for free from that wrapper's own margin-top). */
+.ts-subtabs {
+  margin-top: 1.5rem;
+}
+
 /* Description */
 .video-meta-desc-wrap {
   display: flex;

@@ -242,7 +242,7 @@ export default function VideoAnalytics() {
                 loading={trafficSources.loading}
                 error={trafficSources.error}
               />
-              <div className="tabs">
+              <div className="tabs ts-subtabs">
                 <button
                   type="button"
                   className={`tab${tsTab === 'sources' ? ' active' : ''}`}

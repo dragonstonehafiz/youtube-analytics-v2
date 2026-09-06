@@ -78,7 +78,7 @@ describe('Traffic Sources sub-tabs (Search Insights)', () => {
     await waitFor(() => expect(mockGetVideoTrafficSources).toHaveBeenCalled())
 
     expect(screen.queryByRole('button', { name: 'Top Videos by Traffic Source' })).toBeNull()
-    expect(screen.queryByText(/^Top Videos —/)).toBeNull()
+    expect(screen.queryByText(/Top (Videos|Shorts) by Search Term/)).toBeNull()
   })
 
   it('scopes the Search Insights fetch to this video id and the shared date filters', async () => {

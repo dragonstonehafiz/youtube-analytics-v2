@@ -197,8 +197,8 @@ describe('Traffic Sources sub-tabs (Search Insights)', () => {
     mockGetPlaylistTopSearchTerms.mockResolvedValue({ items: [{ search_term: 'cats', views: 10 }] })
     renderPlaylistAnalytics('/playlists/pl1?tab=traffic-sources')
 
-    expect(await screen.findByText('Top Videos — Videos')).toBeDefined()
-    expect(await screen.findByText('Top Videos — Shorts')).toBeDefined()
+    expect(await screen.findByText('Top Videos by Search Term')).toBeDefined()
+    expect(await screen.findByText('Top Shorts by Search Term')).toBeDefined()
     await waitFor(() => expect(mockGetPlaylistVideosBySearchTerm).toHaveBeenCalled())
     for (const call of mockGetPlaylistVideosBySearchTerm.mock.calls) {
       expect(call[0]).toBe('pl1')
@@ -214,7 +214,7 @@ describe('Traffic Sources sub-tabs (Search Insights)', () => {
     })
     renderPlaylistAnalytics('/playlists/pl1?tab=traffic-sources')
 
-    const videoCard = (await screen.findByText('Top Videos — Videos')).closest('.search-videos-donut')
+    const videoCard = (await screen.findByText('Top Videos by Search Term')).closest('.search-videos-donut')
     const videoSelect = within(videoCard as HTMLElement).getByRole('combobox')
     mockGetPlaylistVideosBySearchTerm.mockClear()
     fireEvent.change(videoSelect, { target: { value: 'dogs' } })

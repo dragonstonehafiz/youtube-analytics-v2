@@ -199,8 +199,8 @@ describe('Traffic Sources sub-tabs', () => {
     mockGetTopSearchTerms.mockResolvedValue({ items: [{ search_term: 'cats', views: 10 }] })
     renderAnalytics('/analytics?tab=traffic-sources')
 
-    expect(await screen.findByText('Top Videos — Videos')).toBeDefined()
-    expect(await screen.findByText('Top Videos — Shorts')).toBeDefined()
+    expect(await screen.findByText('Top Videos by Search Term')).toBeDefined()
+    expect(await screen.findByText('Top Shorts by Search Term')).toBeDefined()
     await waitFor(() => expect(mockGetVideosBySearchTerm).toHaveBeenCalled())
     const contentTypes = mockGetVideosBySearchTerm.mock.calls.map(call => call[1]?.contentType)
     expect(contentTypes).toContain('video')
