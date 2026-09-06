@@ -19,6 +19,10 @@ import './VideoAnalytics.css'
 type Tab = 'analytics' | 'traffic-sources' | 'comments'
 type TrafficSourcesSubTab = 'sources' | 'search'
 
+function toTrafficSourcesSubTab(value: string | null): TrafficSourcesSubTab {
+  return value === 'search' ? value : 'sources'
+}
+
 function formatDuration(seconds: number): string {
   const h = Math.floor(seconds / 3600)
   const m = Math.floor((seconds % 3600) / 60)
@@ -61,7 +65,7 @@ export default function VideoAnalytics() {
   const endDate = searchParams.has('end_date') ? searchParams.get('end_date')! : last28Dates()[1]
   const [rows, setRows] = useState<RequestState<AnalyticsRow[]>>(pending([]))
   const [trafficSources, setTrafficSources] = useState<RequestState<TrafficSourceRow[]>>(pending([]))
-  const tsTab = (searchParams.get('ts_tab') as TrafficSourcesSubTab) ?? 'sources'
+  const tsTab = toTrafficSourcesSubTab(searchParams.get('ts_tab'))
   const [searchTerms, setSearchTerms] = useState<RequestState<SearchTermRow[]>>(pending([]))
 
   useEffect(() => {

@@ -25,6 +25,10 @@ const RECENT_COUNT = 10
 type Tab = 'analytics' | 'traffic-sources' | 'comments'
 type TrafficSourcesSubTab = 'sources' | 'top-videos' | 'search'
 
+function toTrafficSourcesSubTab(value: string | null): TrafficSourcesSubTab {
+  return value === 'top-videos' || value === 'search' ? value : 'sources'
+}
+
 export default function Analytics() {
   const [searchParams, setSearchParams] = useReplaceSearchParams()
   const tab = (searchParams.get('tab') as Tab) ?? 'analytics'
@@ -45,9 +49,9 @@ export default function Analytics() {
   const [topPerformingShorts, setTopPerformingShorts] = useState<RequestState<TopVideo[]>>(pending([]))
   const [trafficSources, setTrafficSources] = useState<RequestState<TrafficSourceRow[]>>(pending([]))
   const [topVideosBySource, setTopVideosBySource] = useState<RequestState<Record<string, TrafficSourceTopVideo[]>>>(pending({}))
-  const tsTab = (searchParams.get('ts_tab') as TrafficSourcesSubTab) ?? 'sources'
-  const videoTerm = searchParams.get('video_term')
-  const shortTerm = searchParams.get('short_term')
+  const tsTab = toTrafficSourcesSubTab(searchParams.get('ts_tab'))
+  const [videoTerm, setVideoTerm] = useState<string | null>(null)
+  const [shortTerm, setShortTerm] = useState<string | null>(null)
   const [searchTerms, setSearchTerms] = useState<RequestState<SearchTermRow[]>>(pending([]))
   const [searchTermsByVideo, setSearchTermsByVideo] = useState<RequestState<SearchTermRow[]>>(pending([]))
   const [searchTermsByShort, setSearchTermsByShort] = useState<RequestState<SearchTermRow[]>>(pending([]))
@@ -138,21 +142,21 @@ export default function Analytics() {
   // Each sidebar card owns its own term selection independently.
   useEffect(() => {
     let active = true
-    const term = videoTerm || searchTerms.data[0]?.search_term
+    const term = videoTerm || searchTermsByVideo.data[0]?.search_term
     if (!term) { setVideosForVideoTerm({ data: [], loading: false, error: null }); return }
     track(getVideosBySearchTerm(term, { startDate: startDate || undefined, endDate: endDate || undefined, title: title || undefined, privacyStatus: privacyStatus || undefined, contentType: 'video' })
       .then((data: { items: SearchTermVideo[] }) => data.items ?? []), setVideosForVideoTerm, () => active, 'Could not load videos')
     return () => { active = false }
-  }, [videoTerm, searchTerms.data, startDate, endDate, title, privacyStatus])
+  }, [videoTerm, searchTermsByVideo.data, startDate, endDate, title, privacyStatus])
 
   useEffect(() => {
     let active = true
-    const term = shortTerm || searchTerms.data[0]?.search_term
+    const term = shortTerm || searchTermsByShort.data[0]?.search_term
     if (!term) { setVideosForShortTerm({ data: [], loading: false, error: null }); return }
     track(getVideosBySearchTerm(term, { startDate: startDate || undefined, endDate: endDate || undefined, title: title || undefined, privacyStatus: privacyStatus || undefined, contentType: 'short' })
       .then((data: { items: SearchTermVideo[] }) => data.items ?? []), setVideosForShortTerm, () => active, 'Could not load videos')
     return () => { active = false }
-  }, [shortTerm, searchTerms.data, startDate, endDate, title, privacyStatus])
+  }, [shortTerm, searchTermsByShort.data, startDate, endDate, title, privacyStatus])
 
   // The sortable top-video table reloads on its own sort change, and on nothing else's.
   useEffect(() => {
@@ -418,7 +422,7 @@ export default function Analytics() {
                 terms={searchTermsByVideo.data}
                 termsLoading={searchTermsByVideo.loading}
                 selectedTerm={videoTerm || searchTermsByVideo.data[0]?.search_term || null}
-                onSelectTerm={t => updateParams({ video_term: t })}
+                onSelectTerm={setVideoTerm}
                 videos={videosForVideoTerm.data}
                 loading={videosForVideoTerm.loading}
                 error={videosForVideoTerm.error}
@@ -428,7 +432,7 @@ export default function Analytics() {
                 terms={searchTermsByShort.data}
                 termsLoading={searchTermsByShort.loading}
                 selectedTerm={shortTerm || searchTermsByShort.data[0]?.search_term || null}
-                onSelectTerm={t => updateParams({ short_term: t })}
+                onSelectTerm={setShortTerm}
                 videos={videosForShortTerm.data}
                 loading={videosForShortTerm.loading}
                 error={videosForShortTerm.error}

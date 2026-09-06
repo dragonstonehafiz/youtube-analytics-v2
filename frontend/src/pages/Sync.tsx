@@ -46,7 +46,9 @@ const STAGE_ROWS: readonly StageRow[] = [
   { stage: 'fx_rates', label: 'FX Rates', description: 'USD to SGD conversion rates' },
 ]
 
-const PERIOD_AWARE_STAGES: readonly PeriodAwareSyncStage[] = ['video_analytics', 'video_traffic_sources']
+const PERIOD_AWARE_STAGES: readonly PeriodAwareSyncStage[] = [
+  'video_analytics', 'video_traffic_sources', 'search_related_insights',
+]
 
 const SCOPE_AWARE_STAGES: readonly ScopeAwareSyncStage[] = ['comments']
 
@@ -76,6 +78,7 @@ const ALL_INCLUDED: IncludedMap = {
 const DEFAULT_PERIODS: PeriodMap = {
   video_analytics: INCREMENTAL,
   video_traffic_sources: INCREMENTAL,
+  search_related_insights: INCREMENTAL,
 }
 
 const DEFAULT_SCOPES: ScopeMap = {
@@ -167,7 +170,6 @@ function stageLabel(syncType: string): string {
 
 /** A selected year takes precedence; otherwise describe the stored scope. */
 function scopeLabel(run: SyncRun): string {
-  if (run.sync_type === 'search_related_insights') return 'Current + previous month'
   if (run.year !== null) return String(run.year)
   if (run.scope === INCREMENTAL) return 'Incremental'
   if (run.scope === ALL) return 'All'
@@ -465,8 +467,6 @@ export default function Sync() {
                         disabled={locked || !included[stage]}
                         onChange={setScope}
                       />
-                    ) : stage === 'search_related_insights' ? (
-                      <span className="sync-period-na">Current + previous month</span>
                     ) : (
                       <span className="sync-period-na">Not applicable</span>
                     )}

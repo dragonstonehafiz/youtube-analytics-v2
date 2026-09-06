@@ -359,14 +359,27 @@ def sync_video_traffic_sources(scope: str, year: int | None, counts: SyncCounts)
         )
 
 
-def sync_search_related_insights(counts: SyncCounts) -> None:
-    """Fetch and upsert monthly Search-source terms for every video, across the current
-    and previous calendar-month windows.
+def sync_search_related_insights(scope: str, year: int | None, counts: SyncCounts) -> None:
+    """Fetch and upsert monthly Search-source terms for every video.
 
-    Every video is queried for every window regardless of stored traffic, publication
-    date, or prior Search history. Each (video, window) upsert commits independently.
+    scope="incremental" ("New data only") matches video_analytics/video_traffic_sources:
+    a video with no stored search terms yet is backfilled from its publish date through
+    yesterday on this first run; a video that already has stored terms instead gets
+    exactly the current and previous calendar months refreshed, since a monthly snapshot
+    has no daily "last synced date" to resume from — the previous month stands in for
+    the lookback window those two stages use to catch data that was not yet settled when
+    it was first fetched. A video with no publish date and no stored terms falls back to
+    the same current+previous refresh, since there is no date to backfill from.
+    scope="year" refreshes every calendar month of the given year that falls within the
+    video's published-to-yesterday range; a video with no publish date is skipped.
+    scope="all" refreshes every calendar month from the video's publish date through
+    yesterday; a video with no publish date is skipped. Each (video, month) upsert
+    commits independently.
     """
-    windows = monthly_insights.monthly_search_windows(date.today())
+    today = date.today()
+    yesterday = today - timedelta(days=1)
+    # Captured once so a midnight rollover mid-run cannot change the incremental worklist.
+    incremental_windows = monthly_insights.monthly_search_windows(today)
     video_ids = database.get_all_video_ids()
     total = len(video_ids)
 
@@ -374,6 +387,29 @@ def sync_search_related_insights(counts: SyncCounts) -> None:
         video = database.get_video(video_id)
         title = video.get("title") if video else None
         status.update_sync_progress(f"Syncing search insights ({i}/{total})...")
+
+        if scope in ("year", "all"):
+            if not video or not video.get("published_at"):
+                _logger.debug(
+                    "search_related_insights %d/%d video=%s skipped reason=no_publish_date title=%r",
+                    i, total, video_id, title,
+                )
+                continue
+            publish_date = date.fromisoformat(video["published_at"][:10])
+            if scope == "year":
+                assert year is not None, "scope=year requires a year"
+                start = max(publish_date, date(year, 1, 1))
+                end = min(yesterday, date(year, 12, 31))
+            else:
+                start = publish_date
+                end = yesterday
+            windows = monthly_insights.monthly_windows_for_range(start, end)
+        elif video and video.get("published_at") and database.get_last_search_terms_month(video_id) is None:
+            publish_date = date.fromisoformat(video["published_at"][:10])
+            windows = monthly_insights.monthly_windows_for_range(publish_date, yesterday)
+        else:
+            windows = incremental_windows
+
         for window in windows:
             result = youtube.fetch_video_search_terms(
                 video_id, window.start_date, window.end_date, title=title
@@ -382,8 +418,8 @@ def sync_search_related_insights(counts: SyncCounts) -> None:
             counts.rows_written += database.upsert_search_terms(video_id, window.month, result.terms)
 
     _logger.debug(
-        "search_related_insights videos=%d windows=%d fetched=%d written=%d",
-        len(video_ids), len(windows), counts.rows_fetched, counts.rows_written,
+        "search_related_insights scope=%s year=%s videos=%d fetched=%d written=%d",
+        scope, year, total, counts.rows_fetched, counts.rows_written,
     )
 
 

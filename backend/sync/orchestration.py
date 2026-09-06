@@ -196,8 +196,8 @@ def execute_plan(stages: Sequence[PlanStage]) -> None:
                 def run(counts: SyncCounts, stage: PlanStage = stage) -> None:
                     sync_video_traffic_sources(recorded_scope(stage), stage.year, counts)
             elif name == "search_related_insights":
-                def run(counts: SyncCounts) -> None:
-                    sync_search_related_insights(counts)
+                def run(counts: SyncCounts, stage: PlanStage = stage) -> None:
+                    sync_search_related_insights(recorded_scope(stage), stage.year, counts)
             else:
                 def run(counts: SyncCounts) -> None:
                     sync_fx_rates(counts)

@@ -30,6 +30,10 @@ const RECENT_COUNT = 10
 type Tab = 'analytics' | 'traffic-sources' | 'comments' | 'videos'
 type TrafficSourcesSubTab = 'sources' | 'top-videos' | 'search'
 
+function toTrafficSourcesSubTab(value: string | null): TrafficSourcesSubTab {
+  return value === 'top-videos' || value === 'search' ? value : 'sources'
+}
+
 interface VideoPage {
   items: Video[]
   total: number
@@ -63,9 +67,9 @@ export default function PlaylistAnalytics() {
   const [publishedVideos, setPublishedVideos] = useState<RequestState<PublishedVideo[]>>(pending([]))
   const [trafficSources, setTrafficSources] = useState<RequestState<TrafficSourceRow[]>>(pending([]))
   const [topVideosBySource, setTopVideosBySource] = useState<RequestState<Record<string, TrafficSourceTopVideo[]>>>(pending({}))
-  const tsTab = (searchParams.get('ts_tab') as TrafficSourcesSubTab) ?? 'sources'
-  const videoTerm = searchParams.get('video_term')
-  const shortTerm = searchParams.get('short_term')
+  const tsTab = toTrafficSourcesSubTab(searchParams.get('ts_tab'))
+  const [videoTerm, setVideoTerm] = useState<string | null>(null)
+  const [shortTerm, setShortTerm] = useState<string | null>(null)
   const [searchTerms, setSearchTerms] = useState<RequestState<SearchTermRow[]>>(pending([]))
   const [searchTermsByVideo, setSearchTermsByVideo] = useState<RequestState<SearchTermRow[]>>(pending([]))
   const [searchTermsByShort, setSearchTermsByShort] = useState<RequestState<SearchTermRow[]>>(pending([]))
@@ -175,22 +179,22 @@ export default function PlaylistAnalytics() {
   useEffect(() => {
     if (!id) return
     let active = true
-    const term = videoTerm || searchTerms.data[0]?.search_term
+    const term = videoTerm || searchTermsByVideo.data[0]?.search_term
     if (!term) { setVideosForVideoTerm({ data: [], loading: false, error: null }); return }
     track(getPlaylistVideosBySearchTerm(id, term, { startDate: analyticsStartDate || undefined, endDate: analyticsEndDate || undefined, title: analyticsTitle || undefined, privacyStatus: analyticsPrivacyStatus || undefined, contentType: 'video' })
       .then((data: { items: SearchTermVideo[] }) => data.items ?? []), setVideosForVideoTerm, () => active, 'Could not load videos')
     return () => { active = false }
-  }, [id, videoTerm, searchTerms.data, analyticsStartDate, analyticsEndDate, analyticsTitle, analyticsPrivacyStatus])
+  }, [id, videoTerm, searchTermsByVideo.data, analyticsStartDate, analyticsEndDate, analyticsTitle, analyticsPrivacyStatus])
 
   useEffect(() => {
     if (!id) return
     let active = true
-    const term = shortTerm || searchTerms.data[0]?.search_term
+    const term = shortTerm || searchTermsByShort.data[0]?.search_term
     if (!term) { setVideosForShortTerm({ data: [], loading: false, error: null }); return }
     track(getPlaylistVideosBySearchTerm(id, term, { startDate: analyticsStartDate || undefined, endDate: analyticsEndDate || undefined, title: analyticsTitle || undefined, privacyStatus: analyticsPrivacyStatus || undefined, contentType: 'short' })
       .then((data: { items: SearchTermVideo[] }) => data.items ?? []), setVideosForShortTerm, () => active, 'Could not load videos')
     return () => { active = false }
-  }, [id, shortTerm, searchTerms.data, analyticsStartDate, analyticsEndDate, analyticsTitle, analyticsPrivacyStatus])
+  }, [id, shortTerm, searchTermsByShort.data, analyticsStartDate, analyticsEndDate, analyticsTitle, analyticsPrivacyStatus])
 
   // The sortable top-video table reloads on its own sort change, and on nothing else's.
   useEffect(() => {
@@ -562,7 +566,7 @@ export default function PlaylistAnalytics() {
                     terms={searchTermsByVideo.data}
                     termsLoading={searchTermsByVideo.loading}
                     selectedTerm={videoTerm || searchTermsByVideo.data[0]?.search_term || null}
-                    onSelectTerm={t => updateAnalyticsParams({ video_term: t })}
+                    onSelectTerm={setVideoTerm}
                     videos={videosForVideoTerm.data}
                     loading={videosForVideoTerm.loading}
                     error={videosForVideoTerm.error}
@@ -572,7 +576,7 @@ export default function PlaylistAnalytics() {
                     terms={searchTermsByShort.data}
                     termsLoading={searchTermsByShort.loading}
                     selectedTerm={shortTerm || searchTermsByShort.data[0]?.search_term || null}
-                    onSelectTerm={t => updateAnalyticsParams({ short_term: t })}
+                    onSelectTerm={setShortTerm}
                     videos={videosForShortTerm.data}
                     loading={videosForShortTerm.loading}
                     error={videosForShortTerm.error}

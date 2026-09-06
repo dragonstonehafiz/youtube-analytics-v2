@@ -49,6 +49,16 @@ def upsert_search_terms(video_id: str, month: str, terms: list[dict]) -> int:
     return rows_written
 
 
+def get_last_search_terms_month(video_id: str) -> str | None:
+    """Return the most recent YYYY-MM month we have search terms for a video, or None."""
+    with get_connection() as conn:
+        row = conn.execute(
+            "SELECT MAX(month) AS last_month FROM search_terms WHERE video_id = ?",
+            (video_id,),
+        ).fetchone()
+    return row["last_month"] if row else None
+
+
 def _inclusive_months(start_date: str | None, end_date: str | None) -> list[str]:
     """Return every YYYY-MM month from start_date's month through end_date's month.
 

@@ -67,7 +67,7 @@ export default function SearchTermVideosDonutCard({
             <Tooltip
               contentStyle={{ background: 'var(--surface)', border: '1px solid var(--border)', borderRadius: 'var(--radius-sm)', fontSize: 13 }}
               labelStyle={{ color: 'var(--text-heading)', fontWeight: 600 }}
-              formatter={(value) => [typeof value === 'number' ? value.toLocaleString() : String(value ?? 0), 'Views']}
+              formatter={(value, name) => [typeof value === 'number' ? value.toLocaleString() : String(value ?? 0), name]}
             />
           </PieChart>
         </ResponsiveContainer>
@@ -88,12 +88,6 @@ export default function SearchTermVideosDonutCard({
             <span className="search-videos-donut-legend-views">{v.views.toLocaleString()}</span>
           </div>
         ))}
-
-        {otherVideos.length > 0 && (
-          <div className="search-videos-donut-legend-divider">
-            Other includes {otherVideos.length} more video{otherVideos.length === 1 ? '' : 's'} ({otherViews.toLocaleString()} views)
-          </div>
-        )}
       </div>
     </AsyncCard>
   )

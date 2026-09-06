@@ -344,7 +344,7 @@ describe('the manual form is preserved', () => {
 })
 
 describe('Search & Related Insights stage', () => {
-  it('is selected by default, positioned between Traffic Sources and FX Rates, with a fixed period and no selector', async () => {
+  it('is selected by default, positioned between Traffic Sources and FX Rates, with the same period selector as Video Analytics', async () => {
     renderSync('/sync')
     await settled()
 
@@ -357,7 +357,8 @@ describe('Search & Related Insights stage', () => {
     expect(fxIndex).toBe(insightsIndex + 1)
 
     expect(screen.getByRole('checkbox', { name: 'Search & Related Insights' })).toHaveProperty('checked', true)
-    expect(screen.getByText('Current + previous month')).toBeDefined()
+    const select = screen.getByRole('combobox', { name: 'Search & Related Insights period' })
+    expect(select).toHaveProperty('value', 'incremental')
   })
 
   it('toggles independently of Traffic Sources in either direction', async () => {
@@ -376,7 +377,7 @@ describe('Search & Related Insights stage', () => {
     expect(insights).toHaveProperty('checked', false)
   })
 
-  it('sends only {stage} for the new row', async () => {
+  it('sends the selected period for the new row', async () => {
     renderSync('/sync')
     await settled()
 
@@ -390,18 +391,18 @@ describe('Search & Related Insights stage', () => {
     fireEvent.click(screen.getByRole('button', { name: 'Sync selected' }))
 
     await waitFor(() => expect(mockTriggerSync).toHaveBeenCalledWith({
-      stages: [{ stage: 'search_related_insights' }],
+      stages: [{ stage: 'search_related_insights', scope: 'incremental' }],
     }))
   })
 
-  it('shows the fixed period label in history detail', async () => {
+  it('shows the stored scope label in history detail', async () => {
     mockGetSyncRuns.mockResolvedValue(page([batch([run({ sync_type: 'search_related_insights', scope: 'incremental' })])]))
     renderSync('/sync?tab=history')
     await screen.findByRole('table')
 
     fireEvent.click(screen.getByRole('button', { name: /^Sync batch started/ }))
 
-    expect(await screen.findByText('Current + previous month')).toBeDefined()
+    expect(await screen.findByText('Incremental')).toBeDefined()
   })
 })
 

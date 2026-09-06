@@ -29,6 +29,7 @@ from .playlists import (
     upsert_playlist_item,
 )
 from .search_terms import (
+    get_last_search_terms_month,
     get_search_terms,
     get_video_search_terms,
     get_videos_by_search_term,
@@ -81,6 +82,7 @@ __all__ = [
     "get_fx_rates",
     "get_last_analytics_date",
     "get_last_fx_rate",
+    "get_last_search_terms_month",
     "get_last_successful_run_completed_at",
     "get_last_traffic_source_date",
     "get_playlist",

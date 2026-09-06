@@ -102,10 +102,22 @@ class ValidPlanTest(SyncRoutesTestCase):
         self.assertEqual(self.queued_stages, ["playlists", "videos", "pruning"])
 
     def test_search_related_insights_is_accepted_alone(self) -> None:
-        response = self._post({"stages": [{"stage": "search_related_insights"}]})
+        response = self._post({"stages": [{"stage": "search_related_insights", "scope": "incremental"}]})
 
         self.assertEqual(response.status_code, 200)
         self.assertEqual(self.queued_stages, ["search_related_insights"])
+
+    def test_search_related_insights_accepts_full_history_and_year_scopes(self) -> None:
+        response = self._post({"stages": [{"stage": "search_related_insights", "scope": "all"}]})
+        self.assertEqual(response.status_code, 200)
+
+        response = self._post({
+            "stages": [{"stage": "search_related_insights", "scope": "year", "year": 2024}]
+        })
+        self.assertEqual(response.status_code, 200)
+        by_stage = {stage.stage: stage for stage in self.execute.call_args[0][0]}
+        self.assertEqual((by_stage["search_related_insights"].scope, by_stage["search_related_insights"].year),
+                         ("year", 2024))
 
     def test_search_related_insights_and_video_traffic_sources_are_independently_selectable(self) -> None:
         response = self._post({"stages": [{"stage": "video_traffic_sources", "scope": "incremental"}]})
@@ -174,10 +186,10 @@ class SemanticRejectionTest(SyncRoutesTestCase):
             {"stages": [{"stage": "video_analytics", "scope": "year", "year": 2099}]}, 400
         )
 
-    def test_scope_on_search_related_insights_is_rejected(self) -> None:
-        self._assert_rejected({"stages": [{"stage": "search_related_insights", "scope": "all"}]}, 400)
+    def test_search_related_insights_without_scope_is_rejected(self) -> None:
+        self._assert_rejected({"stages": [{"stage": "search_related_insights"}]}, 400)
 
-    def test_year_on_search_related_insights_is_rejected(self) -> None:
+    def test_search_related_insights_year_without_year_scope_is_rejected(self) -> None:
         self._assert_rejected(
             {"stages": [{"stage": "search_related_insights", "year": 2024}]}, 400
         )
