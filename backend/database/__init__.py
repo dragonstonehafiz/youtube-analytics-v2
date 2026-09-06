@@ -28,6 +28,12 @@ from .playlists import (
     upsert_playlist,
     upsert_playlist_item,
 )
+from .search_terms import (
+    get_search_terms,
+    get_video_search_terms,
+    get_videos_by_search_term,
+    upsert_search_terms,
+)
 from .sync_runs import (
     complete_sync_run,
     create_sync_run,
@@ -82,6 +88,7 @@ __all__ = [
     "get_playlist_video_ids",
     "get_playlist_video_stats",
     "get_playlist_videos",
+    "get_search_terms",
     "get_sync_runs",
     "mark_incomplete_sync_runs",
     "get_top_videos_by_traffic_source",
@@ -89,8 +96,10 @@ __all__ = [
     "get_video",
     "get_video_analytics",
     "get_video_comments",
+    "get_video_search_terms",
     "get_video_stats",
     "get_video_traffic_sources",
+    "get_videos_by_search_term",
     "get_videos_published",
     "init_db",
     "upsert_comment",
@@ -98,6 +107,7 @@ __all__ = [
     "upsert_fx_rate",
     "upsert_playlist",
     "upsert_playlist_item",
+    "upsert_search_terms",
     "upsert_video",
     "upsert_video_analytics",
     "upsert_video_traffic_source",

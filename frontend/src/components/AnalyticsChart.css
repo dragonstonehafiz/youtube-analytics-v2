@@ -1,5 +1,9 @@
+/* .card's backdrop-filter creates a stacking context that traps the upload-strip
+   popover's z-index inside it, so later siblings paint over the popover regardless. */
 .analytics-chart {
   padding: 1.25rem 1.5rem;
+  backdrop-filter: none;
+  -webkit-backdrop-filter: none;
 }
 
 .chart-bucket-buttons {

@@ -6,10 +6,10 @@ How data gets from the YouTube APIs into SQLite: plan validation, stage order, s
 
 ## Authoritative source files
 
-- `backend/sync/plans.py`, `backend/sync/status.py`, `backend/sync/orchestration.py`, `backend/sync/stages.py`, `backend/sync/scheduler.py`
+- `backend/sync/plans.py`, `backend/sync/status.py`, `backend/sync/orchestration.py`, `backend/sync/stages.py`, `backend/sync/scheduler.py`, `backend/sync/monthly_insights.py`
 - `backend/youtube/auth.py`, `backend/youtube/data_api.py`, `backend/youtube/analytics_api.py`
 - `backend/logging_config.py` (shared logging configuration used by `orchestration.py`, `stages.py`, `data_api.py`, `analytics_api.py`)
-- `backend/database/` (sync-run helpers only: `create_sync_run`/`complete_sync_run`/`fail_sync_run`/`get_sync_runs`/`mark_incomplete_sync_runs`/`get_last_successful_run_completed_at` in `sync_runs.py`, `get_last_analytics_date` in `analytics.py`, `get_last_traffic_source_date` in `traffic_sources.py`, `get_last_fx_rate` in `fx_rates.py`, `get_all_video_ids` in `videos.py`)
+- `backend/database/` (sync-run helpers only: `create_sync_run`/`complete_sync_run`/`fail_sync_run`/`get_sync_runs`/`mark_incomplete_sync_runs`/`get_last_successful_run_completed_at` in `sync_runs.py`, `get_last_analytics_date` in `analytics.py`, `get_last_traffic_source_date` in `traffic_sources.py`, `get_last_fx_rate` in `fx_rates.py`, `get_all_video_ids` in `videos.py`, `upsert_search_terms` in `search_terms.py`)
 
 ## Contents
 
@@ -24,6 +24,7 @@ How data gets from the YouTube APIs into SQLite: plan validation, stage order, s
 - [Analytics synchronization](#analytics-synchronization)
 - [Traffic-source synchronization](#traffic-source-synchronization)
 - [FX-rate synchronization](#fx-rate-synchronization)
+- [Search insights synchronization](#search-insights-synchronization)
 - [YouTube API requests and pagination](#youtube-api-requests-and-pagination)
 - [Pagination termination](#pagination-termination)
 - [Authentication](#authentication)
@@ -34,16 +35,18 @@ How data gets from the YouTube APIs into SQLite: plan validation, stage order, s
 A sync runs an explicit **plan**: a set of selected stages, always executed in the canonical order defined by `STAGE_ORDER` (`sync/plans.py:14-21`), regardless of the order the stages were submitted in:
 
 ```
-playlists → videos → comments → pruning → video_analytics → video_traffic_sources → fx_rates
+playlists → videos → comments → pruning → video_analytics → video_traffic_sources → search_related_insights → fx_rates
 ```
 
 `comments` reads the video rows `videos` just wrote, which is why it sits directly after that stage and before `pruning` — a video pruned later in the same plan cascade-deletes the comments collected for it here.
+
+`search_related_insights` has no dependency on `video_traffic_sources` or any other stage — canonical order only controls its placement when both happen to be selected in the same plan; selecting or deselecting either one never affects the other. See [Search insights synchronization](#search-insights-synchronization).
 
 `pruning` is the only stage that deletes video rows. It is opt-in: `validate_plan()` rejects any plan that names it without also naming both `playlists` and `videos` (`STAGES_REQUIRING_PLAYLISTS_AND_VIDEOS`, `sync/plans.py:33`), and it is excluded from the startup plan (`DESTRUCTIVE_STAGES`, `sync/plans.py:25`; see [Startup freshness and state](#startup-freshness-and-state)).
 
 `execute_plan()` (`sync/orchestration.py:112-183`) iterates `STAGE_ORDER` and skips any stage the plan omits. Each selected stage is wrapped by `_run_stage()` (`sync/orchestration.py:54-109`) and recorded as its own `sync_runs` row; every row from one plan shares one `batch_id` (a UUID generated once per plan). Omitted stages get **no** row — there are no placeholder records. Execution is fail-fast: a failing stage is recorded with its partial counters, and the stages after it neither run nor create rows — this is also what guarantees `pruning` can never run after a `playlists` or `videos` failure.
 
-The stage implementations themselves (`sync_videos`, `sync_playlists`, `sync_comments`, `sync_pruning`, `sync_video_analytics`, `sync_video_traffic_sources`, `sync_fx_rates`) live in `sync/stages.py`. `orchestration.py` looks up each stage's progress message in `_STAGE_MESSAGES` (`sync/orchestration.py`) and publishes it via `status.update_sync_progress()` before dispatching to its call inline inside `execute_plan()`'s loop, since `playlists`/`videos`/`pruning` thread plan-local video-ID sets between each other (see [Video and playlist synchronization](#video-and-playlist-synchronization)) while the other stages don't need that state. `comments`, `video_analytics`, and `video_traffic_sources` have no entry in `_STAGE_MESSAGES` (`None`) since they report their own per-video progress from inside their loop via the same `update_sync_progress()` call.
+The stage implementations themselves (`sync_videos`, `sync_playlists`, `sync_comments`, `sync_pruning`, `sync_video_analytics`, `sync_video_traffic_sources`, `sync_search_related_insights`, `sync_fx_rates`) live in `sync/stages.py`. `orchestration.py` looks up each stage's progress message in `_STAGE_MESSAGES` (`sync/orchestration.py`) and publishes it via `status.update_sync_progress()` before dispatching to its call inline inside `execute_plan()`'s loop, since `playlists`/`videos`/`pruning` thread plan-local video-ID sets between each other (see [Video and playlist synchronization](#video-and-playlist-synchronization)) while the other stages don't need that state. `comments`, `video_analytics`, `video_traffic_sources`, and `search_related_insights` have no entry in `_STAGE_MESSAGES` (`None`) since they report their own per-unit progress from inside their loop via the same `update_sync_progress()` call.
 
 Two entry points wrap the executor:
 
@@ -68,13 +71,13 @@ A scope-aware stage picks how far back to scan but has no per-year view, so it a
 - a period-aware stage omits `scope`, or names a scope outside `SCOPES`;
 - `scope="year"` without a `year`, or a `year` supplied with `incremental`/`all`;
 - a scope-aware stage names a scope outside `SCOPE_AWARE_SCOPES`, or carries a `year` at all — including `scope="year"`, which is not one of its two scopes. An omitted scope is not an error there: it means the `incremental` default;
-- a `scope` or `year` is attached to `videos`, `playlists`, `pruning`, or `fx_rates`;
+- a `scope` or `year` is attached to `videos`, `playlists`, `pruning`, `search_related_insights`, or `fx_rates`;
 - the requested year is outside `available_years()`;
 - `pruning` is named without both `playlists` and `videos` also in the plan.
 
 `available_years()` (`sync/plans.py:64-74`) spans `database.get_earliest_published_year()` through the current year, newest first. It returns an **empty tuple** when no videos have been synced yet, in which case every year-scoped plan is rejected; `incremental` and `all` plans stay valid.
 
-`execute_plan()` revalidates its input rather than trusting the caller, so no code path can drive the stage loop with an unchecked plan. `full_incremental_plan()` builds the six-stage **non-destructive** startup plan — every canonical stage except `pruning` — used by the startup sync. Period-aware and scope-aware stages are entered at `incremental`, so an unattended run never triggers a full-history comment scan.
+`execute_plan()` revalidates its input rather than trusting the caller, so no code path can drive the stage loop with an unchecked plan. `full_incremental_plan()` builds the seven-stage **non-destructive** startup plan — every canonical stage except `pruning` — used by the startup sync. Period-aware and scope-aware stages are entered at `incremental`, so an unattended run never triggers a full-history comment scan. `search_related_insights` needs no such entry: it carries no scope/year at all (see [Search insights synchronization](#search-insights-synchronization)).
 
 ## Startup freshness and state
 
@@ -92,7 +95,7 @@ A scope-aware stage picks how far back to scan but has no per-year view, so it a
 
 Scopes are per-stage, not per-sync: `video_analytics`, `video_traffic_sources`, and `comments` each carry their own scope and can differ within one plan (e.g. analytics for `2024` alongside a full-history traffic-source refetch).
 
-- `scope`/`year` affect **only** `sync_video_analytics` and `sync_video_traffic_sources`; `scope` alone also affects `sync_comments` (`sync/stages.py`). Videos, playlists, pruning, and FX rates always sync incrementally (or, for pruning, run once against current state) and must not be given a scope at all — `validate_plan()` rejects a plan that tries.
+- `scope`/`year` affect **only** `sync_video_analytics` and `sync_video_traffic_sources`; `scope` alone also affects `sync_comments` (`sync/stages.py`). Videos, playlists, pruning, search & related insights, and FX rates always sync incrementally (or, for pruning, run once against current state) and must not be given a scope at all — `validate_plan()` rejects a plan that tries.
 - `"incremental"`: for the analytics stages, resume each video from `INCREMENTAL_LOOKBACK_DAYS` before its own last-synced date, clamped to its publish date (see [Shared incremental lookback](#shared-incremental-lookback)); for `comments`, stop at each video's own boundary (see [Comment synchronization](#comment-synchronization)).
 - `"year"`: refetch the given calendar year for every video, ignoring any resume checkpoint, clamped to `[publish_date, yesterday]`. Period-aware stages only.
 - `"all"`: refetch each video's entire history (`publish_date` → yesterday) for the analytics stages, ignoring any resume checkpoint; for `comments`, re-read every page of every stored video. Labelled **All** in the Sync page's Comments row.
@@ -101,7 +104,7 @@ Scopes are per-stage, not per-sync: `video_analytics`, `video_traffic_sources`, 
 
 - `SyncCounts` (`sync/stages.py:21-25`) is a mutable dataclass (`rows_fetched`, `rows_written`, `rows_deleted`) accumulated incrementally *as rows are processed inside each stage's loop* — not computed from a return value at the end. If a stage raises partway through (e.g. video 200 of 378), the `sync_runs` row for that stage still reflects accurate partial totals, not zeros. It's defined in `sync/stages.py` since that's what the stage functions mutate directly; `sync/orchestration.py` imports it only to construct a fresh instance per stage.
 - `_run_stage()` (`sync/orchestration.py:54-109`) always re-raises the underlying exception after recording failure via `fail_sync_run()`, so `execute_plan()`'s enclosing `except` still runs its `fail_sync()` transition and the exception propagates to the caller. It also logs that stage's start, completion, and failure — see [Sync logging](#sync-logging).
-- For `videos`/`playlists`/`pruning`/`fx_rates`, `sync_runs.scope` is always `"incremental"` and `year` is `NULL`. For `video_analytics`/`video_traffic_sources`, `scope`/`year` reflect that stage's own plan entry. For `comments`, `scope` reflects its plan entry (defaulting to `"incremental"` when omitted) and `year` is always `NULL`. `recorded_scope()`/`recorded_year()` (`sync/plans.py:77-86`) derive both values, so a non-period stage can never record a scope it was not run with.
+- For `videos`/`playlists`/`pruning`/`search_related_insights`/`fx_rates`, `sync_runs.scope` is always `"incremental"` and `year` is `NULL`. For `video_analytics`/`video_traffic_sources`, `scope`/`year` reflect that stage's own plan entry. For `comments`, `scope` reflects its plan entry (defaulting to `"incremental"` when omitted) and `year` is always `NULL`. `recorded_scope()`/`recorded_year()` (`sync/plans.py:77-86`) derive both values, so a non-period stage can never record a scope it was not run with.
 - `pruning` gets its own `sync_runs` row and its own `rows_deleted` count, independent of `videos`'/`playlists`' counts — it is the only stage that writes to `rows_deleted` for video rows.
 - The playlists stage's `rows_deleted` sums `delete_playlist_items()`'s return value across every playlist in the loop (items are deleted and fully re-inserted on every sync, `sync/stages.py:140`) plus `delete_playlists_not_in()`'s return value (`sync/stages.py:151`) — cascaded FK deletes (e.g. `video_analytics` rows removed because their parent video was deleted) are not counted, since those helpers only report `cursor.rowcount` for the row they directly targeted.
 
@@ -163,6 +166,16 @@ Video deletion and video/playlist discovery are separate stages. `playlists` and
 - Fetches `USDSGD=X` from Yahoo Finance via `yfinance` (imported **inside** the function, not at module scope).
 - Weekends/holidays (days with no `yfinance` close) are forward-filled with the last known `carry` value.
 - Logs one sync-only `DEBUG` record for the no-work early return, and one after the download loop reporting days written — see [Sync logging](#sync-logging).
+
+## Search insights synchronization
+
+`sync_search_related_insights(counts)` (`sync/stages.py`) fetches and upserts monthly Search-source terms for every stored video, across the current and previous calendar-month windows.
+
+- `monthly_insights.monthly_search_windows(today)` (`sync/monthly_insights.py`) is a pure calendar function, captured once via `date.today()` at the start of the stage so a midnight rollover mid-run cannot change the worklist. It returns the previous month's full window (1st through last day) first, then the current month's window (1st through yesterday) — omitted entirely when `today` is the 1st, since that window would otherwise be empty. Real calendar arithmetic, not a 30-day approximation, so it handles leap February and January-to-December rollover correctly.
+- The worklist is `database.get_all_video_ids()`, the same catalog every other per-video stage reads — no separate discovery call, and no publish-date or prior-traffic based skipping: every stored video is queried for every window regardless of whether it has ever had Search traffic.
+- Per video/window, `youtube.fetch_video_search_terms(video_id, start_date, end_date, title=title)` (`youtube/analytics_api.py`) issues exactly one `reports.query` call — `dimensions=insightTrafficSourceDetail`, `metrics=views`, `filters=video==<id>;insightTrafficSourceType==YT_SEARCH`, `sort=-views`, `maxResults=25`, `startIndex` omitted entirely — then `database.upsert_search_terms(video_id, window.month, result.terms)` persists it (see `database.md`). `counts.rows_fetched` accumulates the raw row count (including zero-view rows storage drops); `counts.rows_written` accumulates the upsert's own count.
+- `fetch_video_search_terms()` never paginates: a response with more than 25 rows, or headers/rows it can't parse, raises `RuntimeError` rather than being silently accepted — retry (via the shared `_analytics_query()` backoff) may repeat the identical request, but a second page is never requested even when exactly 25 rows come back.
+- Independent of `video_traffic_sources`: this stage neither reads nor requires it in the same plan, and reporting derives any read-time comparison against traffic data separately (see `database.md`/`api.md`) rather than during sync. A fetch or write failure raises immediately, preserving every already-committed `(video, window)` upsert and the counters accumulated so far — the same fail-fast/partial-counter behavior as every other stage (see [Stage tracking](#stage-tracking)).
 
 ## YouTube API requests and pagination
 
@@ -258,6 +271,7 @@ never a paired before/after record, never one line per returned row:
 | Video skipped | the two `continue` branches in each analytics stage | ordinal/total, `video_id`, reason (`no_publish_date` or `empty_range`), title |
 | Comments processed | the per-video loop in `sync_comments()` | ordinal/total, `video_id`, scope, comments fetched and rows written for that video, title |
 | FX rates downloaded | `sync/stages.py::sync_fx_rates()` | requested start/end dates, days written, or the no-work condition |
+| Search insights stage summary | `sync/stages.py::sync_search_related_insights()`, once at the end of the stage | video count, window count, total rows fetched/written |
 
 Two conditions are anomalies rather than routine detail and are logged at `WARNING`, so
 they reach `application.log` as well and are visible without lowering the log level:

@@ -1,7 +1,7 @@
 import { useEffect, useRef, useState } from 'react'
 import { useParams } from 'react-router-dom'
-import { getVideo, getVideoAnalytics, getVideoTrafficSources } from '@/api'
-import type { Video, AnalyticsRow, TrafficSourceRow } from '@/types'
+import { getVideo, getVideoAnalytics, getVideoTrafficSources, getVideoSearchTerms } from '@/api'
+import type { Video, AnalyticsRow, TrafficSourceRow, SearchTermRow } from '@/types'
 import PeriodSelect, { last28Dates } from '@/components/PeriodSelect'
 import type { RequestState } from '@/lib/requestState'
 import { pending, track } from '@/lib/requestState'
@@ -10,12 +10,14 @@ import AnalyticsChart from '@/components/AnalyticsChart'
 import CommentsPanel from '@/components/CommentsPanel'
 import TrafficSourceChart from '@/components/TrafficSourceChart'
 import TrafficSourcesTable from '@/components/TrafficSourcesTable'
+import SearchTermsDonutCard from '@/components/SearchTermsDonutCard'
 import { useReplaceSearchParams } from '@/hooks/useReplaceSearchParams'
 import '@/components/VideoMetaCard.css'
 import './Analytics.css'
 import './VideoAnalytics.css'
 
 type Tab = 'analytics' | 'traffic-sources' | 'comments'
+type TrafficSourcesSubTab = 'sources' | 'search'
 
 function formatDuration(seconds: number): string {
   const h = Math.floor(seconds / 3600)
@@ -59,6 +61,8 @@ export default function VideoAnalytics() {
   const endDate = searchParams.has('end_date') ? searchParams.get('end_date')! : last28Dates()[1]
   const [rows, setRows] = useState<RequestState<AnalyticsRow[]>>(pending([]))
   const [trafficSources, setTrafficSources] = useState<RequestState<TrafficSourceRow[]>>(pending([]))
+  const tsTab = (searchParams.get('ts_tab') as TrafficSourcesSubTab) ?? 'sources'
+  const [searchTerms, setSearchTerms] = useState<RequestState<SearchTermRow[]>>(pending([]))
 
   useEffect(() => {
     if (!id) return
@@ -76,8 +80,18 @@ export default function VideoAnalytics() {
       .then((data: { items: AnalyticsRow[] }) => data.items ?? []), setRows, () => active, 'Could not load analytics')
     track(getVideoTrafficSources(id, startDate || undefined, endDate || undefined)
       .then((data: { items: TrafficSourceRow[] }) => data.items ?? []), setTrafficSources, () => active, 'Could not load traffic sources')
+    track(getVideoSearchTerms(id, startDate || undefined, endDate || undefined)
+      .then((data: { items: SearchTermRow[] }) => data.items ?? []), setSearchTerms, () => active, 'Could not load search terms')
     return () => { active = false }
   }, [id, startDate, endDate])
+
+  const handleTsTabChange = (t: TrafficSourcesSubTab) => {
+    setSearchParams(prev => {
+      const next = new URLSearchParams(prev)
+      next.set('ts_tab', t)
+      return next
+    })
+  }
 
   const handleTabChange = (t: Tab) => {
     setSearchParams(prev => {
@@ -224,11 +238,36 @@ export default function VideoAnalytics() {
                 loading={trafficSources.loading}
                 error={trafficSources.error}
               />
-              <TrafficSourcesTable
-                rows={trafficSources.data}
-                loading={trafficSources.loading}
-                error={trafficSources.error}
-              />
+              <div className="tabs">
+                <button
+                  type="button"
+                  className={`tab${tsTab === 'sources' ? ' active' : ''}`}
+                  onClick={() => handleTsTabChange('sources')}
+                >
+                  Traffic Sources
+                </button>
+                <button
+                  type="button"
+                  className={`tab${tsTab === 'search' ? ' active' : ''}`}
+                  onClick={() => handleTsTabChange('search')}
+                >
+                  Search Insights
+                </button>
+              </div>
+              {tsTab === 'sources' ? (
+                <TrafficSourcesTable
+                  rows={trafficSources.data}
+                  loading={trafficSources.loading}
+                  error={trafficSources.error}
+                />
+              ) : (
+                <SearchTermsDonutCard
+                  title="Top Search Terms"
+                  rows={searchTerms.data}
+                  loading={searchTerms.loading}
+                  error={searchTerms.error}
+                />
+              )}
             </>
           )}
         </>

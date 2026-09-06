@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react'
-import { getVideoStats, getChannelAnalytics, getTopVideosByViews, getVideosPublished, getVideos, getChannelTrafficSources, getTopVideosByTrafficSource } from '@/api'
-import type { AnalyticsRow, VideoStats, TopVideo, TopVideoSortBy, PublishedVideo, Video, TrafficSourceRow, TrafficSourceTopVideo } from '@/types'
+import { getVideoStats, getChannelAnalytics, getTopVideosByViews, getVideosPublished, getVideos, getChannelTrafficSources, getTopVideosByTrafficSource, getTopSearchTerms, getVideosBySearchTerm } from '@/api'
+import type { AnalyticsRow, VideoStats, TopVideo, TopVideoSortBy, PublishedVideo, Video, TrafficSourceRow, TrafficSourceTopVideo, SearchTermRow, SearchTermVideo } from '@/types'
 import PeriodSelect, { last28Dates } from '@/components/PeriodSelect'
 import { toTopVideoShape, last7Dates } from '@/lib/topVideos'
 import type { RequestState } from '@/lib/requestState'
@@ -13,6 +13,8 @@ import TopPerformersCard from '@/components/TopPerformersCard'
 import TrafficSourceChart from '@/components/TrafficSourceChart'
 import TrafficSourcesTable from '@/components/TrafficSourcesTable'
 import TrafficSourceTopVideosPanel from '@/components/TrafficSourceTopVideosPanel'
+import SearchTermsDonutCard from '@/components/SearchTermsDonutCard'
+import SearchTermVideosDonutCard from '@/components/SearchTermVideosDonutCard'
 import CommentsPanel from '@/components/CommentsPanel'
 import { useReplaceSearchParams } from '@/hooks/useReplaceSearchParams'
 import { useDebouncedInput } from '@/hooks/useDebouncedInput'
@@ -21,6 +23,7 @@ import './Analytics.css'
 const RECENT_COUNT = 10
 
 type Tab = 'analytics' | 'traffic-sources' | 'comments'
+type TrafficSourcesSubTab = 'sources' | 'top-videos' | 'search'
 
 export default function Analytics() {
   const [searchParams, setSearchParams] = useReplaceSearchParams()
@@ -42,6 +45,14 @@ export default function Analytics() {
   const [topPerformingShorts, setTopPerformingShorts] = useState<RequestState<TopVideo[]>>(pending([]))
   const [trafficSources, setTrafficSources] = useState<RequestState<TrafficSourceRow[]>>(pending([]))
   const [topVideosBySource, setTopVideosBySource] = useState<RequestState<Record<string, TrafficSourceTopVideo[]>>>(pending({}))
+  const tsTab = (searchParams.get('ts_tab') as TrafficSourcesSubTab) ?? 'sources'
+  const videoTerm = searchParams.get('video_term')
+  const shortTerm = searchParams.get('short_term')
+  const [searchTerms, setSearchTerms] = useState<RequestState<SearchTermRow[]>>(pending([]))
+  const [searchTermsByVideo, setSearchTermsByVideo] = useState<RequestState<SearchTermRow[]>>(pending([]))
+  const [searchTermsByShort, setSearchTermsByShort] = useState<RequestState<SearchTermRow[]>>(pending([]))
+  const [videosForVideoTerm, setVideosForVideoTerm] = useState<RequestState<SearchTermVideo[]>>(pending([]))
+  const [videosForShortTerm, setVideosForShortTerm] = useState<RequestState<SearchTermVideo[]>>(pending([]))
 
   // A bare route has no explicit tab; write the derived default back so the URL matches what renders.
   useEffect(() => {
@@ -110,6 +121,39 @@ export default function Analytics() {
     return () => { active = false }
   }, [startDate, endDate, contentType, privacyStatus, title])
 
+  // Search Insights ignores the page's own content_type filter — these three columns
+  // always show the All/Video/Short split regardless of it, since that split is the point.
+  useEffect(() => {
+    let active = true
+    const query = { startDate: startDate || undefined, endDate: endDate || undefined, title: title || undefined, privacyStatus: privacyStatus || undefined }
+    track(getTopSearchTerms(query)
+      .then((data: { items: SearchTermRow[] }) => data.items ?? []), setSearchTerms, () => active, 'Could not load search terms')
+    track(getTopSearchTerms({ ...query, contentType: 'video' })
+      .then((data: { items: SearchTermRow[] }) => data.items ?? []), setSearchTermsByVideo, () => active, 'Could not load search terms')
+    track(getTopSearchTerms({ ...query, contentType: 'short' })
+      .then((data: { items: SearchTermRow[] }) => data.items ?? []), setSearchTermsByShort, () => active, 'Could not load search terms')
+    return () => { active = false }
+  }, [startDate, endDate, title, privacyStatus])
+
+  // Each sidebar card owns its own term selection independently.
+  useEffect(() => {
+    let active = true
+    const term = videoTerm || searchTerms.data[0]?.search_term
+    if (!term) { setVideosForVideoTerm({ data: [], loading: false, error: null }); return }
+    track(getVideosBySearchTerm(term, { startDate: startDate || undefined, endDate: endDate || undefined, title: title || undefined, privacyStatus: privacyStatus || undefined, contentType: 'video' })
+      .then((data: { items: SearchTermVideo[] }) => data.items ?? []), setVideosForVideoTerm, () => active, 'Could not load videos')
+    return () => { active = false }
+  }, [videoTerm, searchTerms.data, startDate, endDate, title, privacyStatus])
+
+  useEffect(() => {
+    let active = true
+    const term = shortTerm || searchTerms.data[0]?.search_term
+    if (!term) { setVideosForShortTerm({ data: [], loading: false, error: null }); return }
+    track(getVideosBySearchTerm(term, { startDate: startDate || undefined, endDate: endDate || undefined, title: title || undefined, privacyStatus: privacyStatus || undefined, contentType: 'short' })
+      .then((data: { items: SearchTermVideo[] }) => data.items ?? []), setVideosForShortTerm, () => active, 'Could not load videos')
+    return () => { active = false }
+  }, [shortTerm, searchTerms.data, startDate, endDate, title, privacyStatus])
+
   // The sortable top-video table reloads on its own sort change, and on nothing else's.
   useEffect(() => {
     let active = true
@@ -139,6 +183,14 @@ export default function Analytics() {
       for (const [key, value] of Object.entries(updates)) {
         next.set(key, value)
       }
+      return next
+    })
+  }
+
+  const handleTsTabChange = (t: TrafficSourcesSubTab) => {
+    setSearchParams(prev => {
+      const next = new URLSearchParams(prev)
+      next.set('ts_tab', t)
       return next
     })
   }
@@ -299,17 +351,90 @@ export default function Analytics() {
             loading={trafficSources.loading || publishedVideos.loading}
             error={trafficSources.error ?? publishedVideos.error}
           />
-          <TrafficSourcesTable
-            rows={trafficSources.data}
-            loading={trafficSources.loading}
-            error={trafficSources.error}
-          />
-          <TrafficSourceTopVideosPanel
-            rows={trafficSources.data}
-            bySource={topVideosBySource.data}
-            loading={trafficSources.loading || topVideosBySource.loading}
-            error={trafficSources.error ?? topVideosBySource.error}
-          />
+          <div className="analytics-layout">
+            <div className="analytics-main">
+              <div className="tabs">
+                <button
+                  type="button"
+                  className={`tab${tsTab === 'sources' ? ' active' : ''}`}
+                  onClick={() => handleTsTabChange('sources')}
+                >
+                  Traffic Sources
+                </button>
+                <button
+                  type="button"
+                  className={`tab${tsTab === 'top-videos' ? ' active' : ''}`}
+                  onClick={() => handleTsTabChange('top-videos')}
+                >
+                  Top Videos by Traffic Source
+                </button>
+                <button
+                  type="button"
+                  className={`tab${tsTab === 'search' ? ' active' : ''}`}
+                  onClick={() => handleTsTabChange('search')}
+                >
+                  Search Insights
+                </button>
+              </div>
+              {tsTab === 'sources' ? (
+                <TrafficSourcesTable
+                  rows={trafficSources.data}
+                  loading={trafficSources.loading}
+                  error={trafficSources.error}
+                />
+              ) : tsTab === 'top-videos' ? (
+                <TrafficSourceTopVideosPanel
+                  rows={trafficSources.data}
+                  bySource={topVideosBySource.data}
+                  loading={trafficSources.loading || topVideosBySource.loading}
+                  error={trafficSources.error ?? topVideosBySource.error}
+                />
+              ) : (
+                <div className="search-insights-columns">
+                  <SearchTermsDonutCard
+                    title="Top Search Terms"
+                    rows={searchTerms.data}
+                    loading={searchTerms.loading}
+                    error={searchTerms.error}
+                  />
+                  <SearchTermsDonutCard
+                    title="Top Search Terms — Videos"
+                    rows={searchTermsByVideo.data}
+                    loading={searchTermsByVideo.loading}
+                    error={searchTermsByVideo.error}
+                  />
+                  <SearchTermsDonutCard
+                    title="Top Search Terms — Shorts"
+                    rows={searchTermsByShort.data}
+                    loading={searchTermsByShort.loading}
+                    error={searchTermsByShort.error}
+                  />
+                </div>
+              )}
+            </div>
+            <div className="analytics-sidebar">
+              <SearchTermVideosDonutCard
+                title="Top Videos — Videos"
+                terms={searchTermsByVideo.data}
+                termsLoading={searchTermsByVideo.loading}
+                selectedTerm={videoTerm || searchTermsByVideo.data[0]?.search_term || null}
+                onSelectTerm={t => updateParams({ video_term: t })}
+                videos={videosForVideoTerm.data}
+                loading={videosForVideoTerm.loading}
+                error={videosForVideoTerm.error}
+              />
+              <SearchTermVideosDonutCard
+                title="Top Videos — Shorts"
+                terms={searchTermsByShort.data}
+                termsLoading={searchTermsByShort.loading}
+                selectedTerm={shortTerm || searchTermsByShort.data[0]?.search_term || null}
+                onSelectTerm={t => updateParams({ short_term: t })}
+                videos={videosForShortTerm.data}
+                loading={videosForShortTerm.loading}
+                error={videosForShortTerm.error}
+              />
+            </div>
+          </div>
         </>
       )}
     </div>

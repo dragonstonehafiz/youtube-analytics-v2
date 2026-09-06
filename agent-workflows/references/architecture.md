@@ -93,15 +93,16 @@ indefinitely and are safe to delete between runs.
 | `sync/status.py` | Global sync-status lifecycle (`idle \| running \| success \| failed`, plus message) and the `try_begin_sync()` reservation primitive, behind one lock |
 | `sync/plans.py` | Plan types, canonical `STAGE_ORDER`, derived `FULL_SYNC_TYPES`, available years, `validate_plan()` |
 | `sync/orchestration.py` | `execute_plan()`/`run_plan()`, stage registry, selected-stage sequencing, `sync_runs` tracking |
-| `sync/stages.py` | The seven sync stage implementations plus the shared incremental-lookback calculation and the comment bootstrap cutoff |
+| `sync/stages.py` | The eight sync stage implementations plus the shared incremental-lookback calculation and the comment bootstrap cutoff |
+| `sync/monthly_insights.py` | Pure calendar-window helper for the Search insights stage — no I/O, no clock reads beyond the `date` it's given |
 | `sync/scheduler.py` | Startup freshness check (`synced_today()`) and the one-shot startup sync |
 | `youtube/auth.py` | OAuth credentials and token/secret paths |
 | `youtube/data_api.py` | YouTube Data API v3 client, pagination, Shorts detection, video/playlist/comment-thread fetchers |
 | `youtube/analytics_api.py` | YouTube Analytics API v2 client, retry/backoff, date chunking, daily analytics/traffic-source generators |
 | `logging_config.py` | Shared logging configuration: `TimezoneAwareFormatter`, `configure_logging()`, `get_logger(area)`, `exception_context()` |
 | `database/connection.py` | Connection setup, `init_db()`, `_now()` |
-| `database/videos.py`, `database/playlists.py`, `database/analytics.py`, `database/traffic_sources.py`, `database/comments.py`, `database/fx_rates.py`, `database/sync_runs.py` | DB helpers grouped by domain (upserts, queries, aggregation, zero-filling) |
-| `schema.sql` | SQLite schema definition (9 tables) — see `database.md` |
+| `database/videos.py`, `database/playlists.py`, `database/analytics.py`, `database/traffic_sources.py`, `database/comments.py`, `database/fx_rates.py`, `database/sync_runs.py`, `database/search_terms.py` | DB helpers grouped by domain (upserts, queries, aggregation, zero-filling) |
+| `schema.sql` | SQLite schema definition (10 tables) — see `database.md` |
 
 Each of `routes/`, `sync/`, `youtube/`, and `database/` re-exports its public callables from its package `__init__.py`, so other modules keep importing them as `import database`, `import sync`, `import youtube`, `from routes import router` — the split is internal.
 
@@ -149,7 +150,8 @@ backend/
     test_sync_plans.py, test_sync_orchestration.py, test_sync_status.py,
     test_sync_scheduler.py, test_sync_routes.py, test_sync_checkpoint.py, test_sync_runs.py,
     test_application_logging.py, test_sync_detail_logging.py,
-    test_pagination_safety.py, test_comment_sync.py, test_comments_api.py
+    test_pagination_safety.py, test_comment_sync.py, test_comments_api.py,
+    test_database_search_terms.py, test_search_insights_sync.py, test_search_insights_api.py
   schema.sql
 
   routes/
@@ -169,6 +171,7 @@ backend/
     orchestration.py
     stages.py
     scheduler.py
+    monthly_insights.py
 
   youtube/
     __init__.py             # re-exports get_credentials + the fetch/iter functions
@@ -186,6 +189,7 @@ backend/
     comments.py
     fx_rates.py
     sync_runs.py
+    search_terms.py
 
   secrets/
     token.json           # OAuth token; auto-deleted on any credential-refresh failure, re-created on next auth
@@ -205,6 +209,7 @@ frontend/
     lib/
       trafficSources.ts
       topVideos.ts
+      categoricalColors.ts
     pages/
       Home.tsx, Videos.tsx, Playlists.tsx, Analytics.tsx, VideoAnalytics.tsx,
       PlaylistAnalytics.tsx, Sync.tsx
@@ -213,6 +218,7 @@ frontend/
       TopNav.tsx, SyncStatus.tsx, VideoTable.tsx, VideoStatsBar.tsx, AnalyticsChart.tsx,
       UploadStrip.tsx, TrafficSourceChart.tsx, TrafficSourcesTable.tsx,
       TrafficSourceTopVideosPanel.tsx, TopVideosList.tsx, VideoCarouselCard.tsx,
-      TrafficSourceDonutCard.tsx, TopPerformersCard.tsx, PeriodSelect.tsx
+      TrafficSourceDonutCard.tsx, TopPerformersCard.tsx, PeriodSelect.tsx,
+      SearchTermsDonutCard.tsx, SearchTermVideosDonutCard.tsx
       (+ colocated .css files)
 ```

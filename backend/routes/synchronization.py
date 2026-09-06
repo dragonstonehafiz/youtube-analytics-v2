@@ -17,6 +17,7 @@ SyncStage = Literal[
     "pruning",
     "video_analytics",
     "video_traffic_sources",
+    "search_related_insights",
     "fx_rates",
 ]
 SyncScope = Literal["incremental", "year", "all"]

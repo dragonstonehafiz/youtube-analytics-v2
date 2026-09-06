@@ -19,6 +19,7 @@ STAGE_ORDER: tuple[str, ...] = (
     "pruning",
     "video_analytics",
     "video_traffic_sources",
+    "search_related_insights",
     "fx_rates",
 )
 

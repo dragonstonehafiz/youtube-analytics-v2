@@ -46,6 +46,19 @@
   }
 }
 
+.search-insights-columns {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 1.5rem;
+  margin-top: 0.75rem;
+}
+
+@media (max-width: 900px) {
+  .search-insights-columns {
+    grid-template-columns: 1fr;
+  }
+}
+
 /* Analytics page scope: page frame, tabs, filters shared across
    Channel/Playlist/Video Analytics without affecting other pages */
 .analytics-page {

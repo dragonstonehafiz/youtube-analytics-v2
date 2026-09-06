@@ -16,6 +16,7 @@ Public FastAPI contracts: every route, its parameters, defaults, and response sh
 - [Playlists](#playlists)
 - [Channel analytics](#channel-analytics)
 - [Playlist analytics](#playlist-analytics)
+- [Search insights](#search-insights)
 - [Comments](#comments)
 - [Metadata](#metadata)
 - [Synchronization](#synchronization)
@@ -170,6 +171,46 @@ parameterized `v.title LIKE ?` (bound to `%{title}%`) case-insensitive partial-m
 on playlist routes, with the video-ID scope. Omitting `title` produces
 identical results to before this filter existed.
 
+## Search insights
+
+Months are derived server-side: every endpoint below converts its `start_date`/`end_date` to the inclusive set of `YYYY-MM` months they span (`database.md`'s `_inclusive_months()`) — either bound missing, unparsable, or `start_date` after `end_date` yields no months and therefore no rows. There is no separate month/date param; the frontend passes whatever `start_date`/`end_date` the host page already has.
+
+```
+GET  /analytics/search-insights
+  ?start_date, end_date, content_type, privacy_status, title
+  → { items: SearchTermRow[] }   # every term, channel-wide, no cap — SearchTermRow = { search_term, views }
+
+GET  /analytics/search-insights/top
+  Same query params
+  → { items: SearchTermRow[] }   # same as above, capped to the top 10 by views
+
+GET  /analytics/search-insights/videos
+  ?search_term (required), start_date, end_date, content_type, privacy_status, title
+  → { items: SearchTermVideo[] }   # top 10 videos for that ONE term, channel-wide
+  SearchTermVideo = { id, title, thumbnail_url, content_type, views }
+  422 if search_term is omitted.
+
+GET  /analytics/playlists/{playlist_id}/search-insights
+  Same query params as /analytics/search-insights
+  → { items: SearchTermRow[] } | 404 if playlist not found
+
+GET  /analytics/playlists/{playlist_id}/search-insights/top
+  Same query params
+  → { items: SearchTermRow[] } | 404 if playlist not found   # capped to top 10
+
+GET  /analytics/playlists/{playlist_id}/search-insights/videos
+  ?search_term (required), start_date, end_date, content_type, privacy_status, title
+  → { items: SearchTermVideo[] } | 404 if playlist not found
+
+GET  /analytics/videos/{video_id}/search-insights
+  ?start_date, end_date   # no title/content_type/privacy_status — a fixed video already has one of each
+  → { items: SearchTermRow[] } | 404 if video not found   # that video's own terms, no cap
+```
+
+`get_search_terms()`/`get_video_search_terms()` (`database.md`) are the only backing queries — `/search-insights` and `/search-insights/top` are the *same* database call with `limit=None` vs `limit=10`; there is no separate "top" function. `/search-insights/videos` calls `get_videos_by_search_term()`, a single-term lookup, not a per-term-grouped query — the frontend requests it once per selected term, not once for every term that exists.
+
+No endpoint here returns a chart-shaped envelope (no `donuts`, no `unattributed_views`, no coverage/residual fields) — an earlier design draft proposed one and the maintainer rejected it; these are plain aggregate rows, the same shape as every other aggregation endpoint above. A frontend chart that wants a read-time residual against traffic totals computes it itself from `/analytics/traffic-sources` (requesting the full calendar-month range) — the backend does not compute or store one.
+
 ## Comments
 
 Read-only: `routes/comments.py` declares `GET` handlers and nothing else, so every other
@@ -222,7 +263,7 @@ GET  /sync/status
 POST /sync/trigger
   Body (JSON): { stages: [ { stage, scope?, year? }, ... ] }
     stage ∈ videos | playlists | comments | pruning | video_analytics |
-            video_traffic_sources | fx_rates
+            video_traffic_sources | search_related_insights | fx_rates
     scope ∈ incremental | year | all   # video_analytics / video_traffic_sources only,
                                        # required for those two, forbidden on the rest
                                        # except comments, which takes incremental | all
@@ -237,7 +278,10 @@ POST /sync/trigger
   Each period-aware stage carries its own scope/year — the two can differ in one plan.
   Submission order is irrelevant: the backend always executes in canonical stage order
   (playlists → videos → comments → pruning → video_analytics → video_traffic_sources →
-  fx_rates).
+  search_related_insights → fx_rates).
+  `search_related_insights` carries no scope/year at all (like videos/playlists/pruning)
+  and has no dependency on video_traffic_sources — selecting/deselecting either one
+  never affects the other (see sync.md).
   `comments` only inserts and updates; scope=all re-reads full comment history but still
   deletes no comments (see sync.md).
   `pruning` is the only stage that deletes video rows (cascades to video_analytics/
@@ -262,7 +306,7 @@ GET  /sync/runs
   Stages that never started have no row, so run_count omits them.
   error_message and batch_id are part of the contract but are never rendered.
   sync_type ∈ videos | playlists | comments | pruning | video_analytics |
-              video_traffic_sources | fx_rates
+              video_traffic_sources | search_related_insights | fx_rates
   status ∈ running | incomplete | success | failed
   incomplete is written by the startup sweep for a stage a killed process left
   running; it keeps completed_at = null. A batch's status is the worst status

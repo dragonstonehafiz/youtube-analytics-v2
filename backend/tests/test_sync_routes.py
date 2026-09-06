@@ -101,6 +101,18 @@ class ValidPlanTest(SyncRoutesTestCase):
         self.assertEqual(response.status_code, 200)
         self.assertEqual(self.queued_stages, ["playlists", "videos", "pruning"])
 
+    def test_search_related_insights_is_accepted_alone(self) -> None:
+        response = self._post({"stages": [{"stage": "search_related_insights"}]})
+
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(self.queued_stages, ["search_related_insights"])
+
+    def test_search_related_insights_and_video_traffic_sources_are_independently_selectable(self) -> None:
+        response = self._post({"stages": [{"stage": "video_traffic_sources", "scope": "incremental"}]})
+
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(self.queued_stages, ["video_traffic_sources"])
+
     def test_reservation_is_released_after_the_queued_plan_runs(self) -> None:
         response = self._post({"stages": [{"stage": "videos"}]})
 
@@ -160,6 +172,14 @@ class SemanticRejectionTest(SyncRoutesTestCase):
     def test_future_year_is_rejected(self) -> None:
         self._assert_rejected(
             {"stages": [{"stage": "video_analytics", "scope": "year", "year": 2099}]}, 400
+        )
+
+    def test_scope_on_search_related_insights_is_rejected(self) -> None:
+        self._assert_rejected({"stages": [{"stage": "search_related_insights", "scope": "all"}]}, 400)
+
+    def test_year_on_search_related_insights_is_rejected(self) -> None:
+        self._assert_rejected(
+            {"stages": [{"stage": "search_related_insights", "year": 2024}]}, 400
         )
 
 

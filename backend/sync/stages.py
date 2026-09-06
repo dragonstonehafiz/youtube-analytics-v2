@@ -7,7 +7,7 @@ import database
 import youtube
 from logging_config import exception_context, get_logger
 
-from . import status
+from . import monthly_insights, status
 
 # Incremental syncs re-fetch this many days before the last stored date, since
 # both analytics and traffic-source metrics for recent days are not fully
@@ -357,6 +357,34 @@ def sync_video_traffic_sources(scope: str, year: int | None, counts: SyncCounts)
             "video_traffic_sources %d/%d video=%s rows=%d title=%r",
             i, total, video_id, counts.rows_fetched - rows_before, title,
         )
+
+
+def sync_search_related_insights(counts: SyncCounts) -> None:
+    """Fetch and upsert monthly Search-source terms for every video, across the current
+    and previous calendar-month windows.
+
+    Every video is queried for every window regardless of stored traffic, publication
+    date, or prior Search history. Each (video, window) upsert commits independently.
+    """
+    windows = monthly_insights.monthly_search_windows(date.today())
+    video_ids = database.get_all_video_ids()
+    total = len(video_ids)
+
+    for i, video_id in enumerate(video_ids, start=1):
+        video = database.get_video(video_id)
+        title = video.get("title") if video else None
+        status.update_sync_progress(f"Syncing search insights ({i}/{total})...")
+        for window in windows:
+            result = youtube.fetch_video_search_terms(
+                video_id, window.start_date, window.end_date, title=title
+            )
+            counts.rows_fetched += result.raw_row_count
+            counts.rows_written += database.upsert_search_terms(video_id, window.month, result.terms)
+
+    _logger.debug(
+        "search_related_insights videos=%d windows=%d fetched=%d written=%d",
+        len(video_ids), len(windows), counts.rows_fetched, counts.rows_written,
+    )
 
 
 def sync_fx_rates(counts: SyncCounts) -> None:

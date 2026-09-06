@@ -133,6 +133,38 @@ class ValidatePlanTest(unittest.TestCase):
         with self.assertRaises(PlanValidationError):
             validate_plan([PlanStage("pruning", "all"), PlanStage("playlists"), PlanStage("videos")])
 
+    def test_accepts_search_related_insights_alone(self) -> None:
+        stages = validate_plan([PlanStage("search_related_insights")])
+        self.assertEqual([s.stage for s in stages], ["search_related_insights"])
+        self.assertEqual(recorded_scope(stages[0]), "incremental")
+        self.assertIsNone(recorded_year(stages[0]))
+
+    def test_rejects_scope_on_search_related_insights(self) -> None:
+        with self.assertRaises(PlanValidationError):
+            validate_plan([PlanStage("search_related_insights", "all")])
+
+    def test_rejects_year_on_search_related_insights(self) -> None:
+        with self.assertRaises(PlanValidationError):
+            validate_plan([PlanStage("search_related_insights", None, 2024)])
+
+    def test_search_related_insights_and_video_traffic_sources_select_independently(self) -> None:
+        stages = validate_plan([PlanStage("search_related_insights")])
+        self.assertEqual([s.stage for s in stages], ["search_related_insights"])
+
+        stages = validate_plan([PlanStage("video_traffic_sources", "incremental")])
+        self.assertEqual([s.stage for s in stages], ["video_traffic_sources"])
+
+    def test_search_related_insights_sits_after_video_traffic_sources_and_before_fx_rates(self) -> None:
+        stages = validate_plan([
+            PlanStage("fx_rates"),
+            PlanStage("search_related_insights"),
+            PlanStage("video_traffic_sources", "incremental"),
+        ])
+        self.assertEqual(
+            [s.stage for s in stages],
+            ["video_traffic_sources", "search_related_insights", "fx_rates"],
+        )
+
     def test_rejects_pruning_without_playlists_or_videos(self) -> None:
         with self.assertRaises(PlanValidationError):
             validate_plan([PlanStage("pruning")])
@@ -186,12 +218,12 @@ class RecordedValuesTest(unittest.TestCase):
 
 
 class FullIncrementalPlanTest(unittest.TestCase):
-    def test_contains_all_six_non_destructive_stages_in_canonical_order(self) -> None:
+    def test_contains_all_seven_non_destructive_stages_in_canonical_order(self) -> None:
         self.assertEqual(
             [s.stage for s in full_incremental_plan()],
             [
                 "playlists", "videos", "comments", "video_analytics",
-                "video_traffic_sources", "fx_rates",
+                "video_traffic_sources", "search_related_insights", "fx_rates",
             ],
         )
 

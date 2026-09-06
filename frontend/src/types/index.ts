@@ -92,7 +92,7 @@ export type PeriodAwareSyncStage = 'video_analytics' | 'video_traffic_sources'
 export type ScopeAwareSyncStage = 'comments'
 
 /** Sync stages that are always incremental and accept no scope or year. */
-export type IncrementalOnlySyncStage = 'videos' | 'playlists' | 'pruning' | 'fx_rates'
+export type IncrementalOnlySyncStage = 'videos' | 'playlists' | 'pruning' | 'search_related_insights' | 'fx_rates'
 
 export type SyncStage = PeriodAwareSyncStage | ScopeAwareSyncStage | IncrementalOnlySyncStage
 
@@ -204,6 +204,19 @@ export interface TrafficSourceTopVideo {
   content_type: string
   views: number
   watch_time_minutes: number
+}
+
+export interface SearchTermRow {
+  search_term: string
+  views: number
+}
+
+export interface SearchTermVideo {
+  id: string
+  title: string
+  thumbnail_url: string | null
+  content_type: string | null
+  views: number
 }
 
 export interface PublishedVideo {

@@ -343,6 +343,68 @@ describe('the manual form is preserved', () => {
   })
 })
 
+describe('Search & Related Insights stage', () => {
+  it('is selected by default, positioned between Traffic Sources and FX Rates, with a fixed period and no selector', async () => {
+    renderSync('/sync')
+    await settled()
+
+    const stageOrder = screen.getAllByRole('row').slice(1).map(r => r.textContent ?? '') // drop the header row
+    const trafficIndex = stageOrder.findIndex(t => t.includes('Traffic Sources'))
+    const insightsIndex = stageOrder.findIndex(t => t.includes('Search & Related Insights'))
+    const fxIndex = stageOrder.findIndex(t => t.includes('FX Rates'))
+    expect(trafficIndex).toBeGreaterThanOrEqual(0)
+    expect(insightsIndex).toBe(trafficIndex + 1)
+    expect(fxIndex).toBe(insightsIndex + 1)
+
+    expect(screen.getByRole('checkbox', { name: 'Search & Related Insights' })).toHaveProperty('checked', true)
+    expect(screen.getByText('Current + previous month')).toBeDefined()
+  })
+
+  it('toggles independently of Traffic Sources in either direction', async () => {
+    renderSync('/sync')
+    await settled()
+
+    const insights = screen.getByRole('checkbox', { name: 'Search & Related Insights' })
+    const traffic = screen.getByRole('checkbox', { name: 'Traffic Sources' })
+
+    fireEvent.click(insights)
+    expect(insights).toHaveProperty('checked', false)
+    expect(traffic).toHaveProperty('checked', true)
+
+    fireEvent.click(traffic)
+    expect(traffic).toHaveProperty('checked', false)
+    expect(insights).toHaveProperty('checked', false)
+  })
+
+  it('sends only {stage} for the new row', async () => {
+    renderSync('/sync')
+    await settled()
+
+    screen.getAllByRole('checkbox').forEach(box => {
+      if ((box as HTMLInputElement).checked) fireEvent.click(box)
+    })
+    fireEvent.click(screen.getByRole('checkbox', { name: 'Search & Related Insights' }))
+    await waitFor(() =>
+      expect(screen.getByRole('button', { name: 'Sync selected' })).toHaveProperty('disabled', false))
+
+    fireEvent.click(screen.getByRole('button', { name: 'Sync selected' }))
+
+    await waitFor(() => expect(mockTriggerSync).toHaveBeenCalledWith({
+      stages: [{ stage: 'search_related_insights' }],
+    }))
+  })
+
+  it('shows the fixed period label in history detail', async () => {
+    mockGetSyncRuns.mockResolvedValue(page([batch([run({ sync_type: 'search_related_insights', scope: 'incremental' })])]))
+    renderSync('/sync?tab=history')
+    await screen.findByRole('table')
+
+    fireEvent.click(screen.getByRole('button', { name: /^Sync batch started/ }))
+
+    expect(await screen.findByText('Current + previous month')).toBeDefined()
+  })
+})
+
 describe('history states', () => {
   it('renders the card shell and its indicator while the page is in flight', () => {
     mockGetSyncRuns.mockReturnValue(new Promise(() => {}))

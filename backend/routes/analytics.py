@@ -73,6 +73,46 @@ def get_top_videos_by_traffic_source(
     return {"items": database.get_top_videos_by_traffic_source(start_date, end_date, content_type, privacy_status, limit=10, title=title)}
 
 
+@router.get("/analytics/search-insights")
+def get_search_terms(
+    start_date: str | None = Query(default=None),
+    end_date: str | None = Query(default=None),
+    content_type: str | None = Query(default=None),
+    privacy_status: str | None = Query(default=None),
+    title: str | None = Query(default=None),
+) -> dict:
+    """Return every search term by views across all videos, for the months containing
+    start_date/end_date."""
+    return {"items": database.get_search_terms(start_date, end_date, content_type, privacy_status, title)}
+
+
+@router.get("/analytics/search-insights/top")
+def get_top_search_terms(
+    start_date: str | None = Query(default=None),
+    end_date: str | None = Query(default=None),
+    content_type: str | None = Query(default=None),
+    privacy_status: str | None = Query(default=None),
+    title: str | None = Query(default=None),
+) -> dict:
+    """Return the top 10 search terms by views across all videos (channel-wide)."""
+    return {"items": database.get_search_terms(start_date, end_date, content_type, privacy_status, title, limit=10)}
+
+
+@router.get("/analytics/search-insights/videos")
+def get_videos_by_search_term(
+    search_term: str = Query(),
+    start_date: str | None = Query(default=None),
+    end_date: str | None = Query(default=None),
+    content_type: str | None = Query(default=None),
+    privacy_status: str | None = Query(default=None),
+    title: str | None = Query(default=None),
+) -> dict:
+    """Return the top 10 videos by views for one specific search term (channel-wide)."""
+    return {"items": database.get_videos_by_search_term(
+        search_term, start_date, end_date, content_type, privacy_status, title, limit=10
+    )}
+
+
 @router.get("/analytics/playlists/{playlist_id}/top")
 def get_playlist_top_videos_by_views(
     playlist_id: str,
@@ -133,3 +173,66 @@ def get_playlist_top_videos_by_traffic_source(
     """Return the top 10 videos in a playlist by views for each traffic source type."""
     video_ids = _resolve_playlist_video_ids(playlist_id)
     return {"items": database.get_top_videos_by_traffic_source(start_date, end_date, content_type, privacy_status, limit=10, title=title, video_ids=video_ids)}
+
+
+@router.get("/analytics/playlists/{playlist_id}/search-insights")
+def get_playlist_search_terms(
+    playlist_id: str,
+    start_date: str | None = Query(default=None),
+    end_date: str | None = Query(default=None),
+    content_type: str | None = Query(default=None),
+    privacy_status: str | None = Query(default=None),
+    title: str | None = Query(default=None),
+) -> dict:
+    """Return every search term by views across all videos in a playlist, for the months
+    containing start_date/end_date."""
+    video_ids = _resolve_playlist_video_ids(playlist_id)
+    return {"items": database.get_search_terms(
+        start_date, end_date, content_type, privacy_status, title, video_ids=video_ids
+    )}
+
+
+@router.get("/analytics/playlists/{playlist_id}/search-insights/top")
+def get_playlist_top_search_terms(
+    playlist_id: str,
+    start_date: str | None = Query(default=None),
+    end_date: str | None = Query(default=None),
+    content_type: str | None = Query(default=None),
+    privacy_status: str | None = Query(default=None),
+    title: str | None = Query(default=None),
+) -> dict:
+    """Return the top 10 search terms by views across all videos in a playlist."""
+    video_ids = _resolve_playlist_video_ids(playlist_id)
+    return {"items": database.get_search_terms(
+        start_date, end_date, content_type, privacy_status, title, video_ids=video_ids, limit=10
+    )}
+
+
+@router.get("/analytics/playlists/{playlist_id}/search-insights/videos")
+def get_playlist_videos_by_search_term(
+    playlist_id: str,
+    search_term: str = Query(),
+    start_date: str | None = Query(default=None),
+    end_date: str | None = Query(default=None),
+    content_type: str | None = Query(default=None),
+    privacy_status: str | None = Query(default=None),
+    title: str | None = Query(default=None),
+) -> dict:
+    """Return the top 10 videos in a playlist by views for one specific search term."""
+    video_ids = _resolve_playlist_video_ids(playlist_id)
+    return {"items": database.get_videos_by_search_term(
+        search_term, start_date, end_date, content_type, privacy_status, title, video_ids=video_ids, limit=10
+    )}
+
+
+@router.get("/analytics/videos/{video_id}/search-insights")
+def get_video_search_terms(
+    video_id: str,
+    start_date: str | None = Query(default=None),
+    end_date: str | None = Query(default=None),
+) -> dict:
+    """Return every search term by views for a single video, for the months containing
+    start_date/end_date."""
+    if not database.get_video(video_id):
+        raise HTTPException(status_code=404, detail="Video not found")
+    return {"items": database.get_video_search_terms(video_id, start_date, end_date)}

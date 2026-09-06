@@ -42,6 +42,7 @@ const STAGE_ROWS: readonly StageRow[] = [
   { stage: 'pruning', label: 'Pruning', description: 'Removes videos no longer found during complete discovery' },
   { stage: 'video_analytics', label: 'Video Analytics', description: 'Daily per-video metrics' },
   { stage: 'video_traffic_sources', label: 'Traffic Sources', description: 'Daily video traffic metrics' },
+  { stage: 'search_related_insights', label: 'Search & Related Insights', description: 'Per-video search term views' },
   { stage: 'fx_rates', label: 'FX Rates', description: 'USD to SGD conversion rates' },
 ]
 
@@ -68,6 +69,7 @@ const ALL_INCLUDED: IncludedMap = {
   pruning: false,
   video_analytics: true,
   video_traffic_sources: true,
+  search_related_insights: true,
   fx_rates: true,
 }
 
@@ -165,6 +167,7 @@ function stageLabel(syncType: string): string {
 
 /** A selected year takes precedence; otherwise describe the stored scope. */
 function scopeLabel(run: SyncRun): string {
+  if (run.sync_type === 'search_related_insights') return 'Current + previous month'
   if (run.year !== null) return String(run.year)
   if (run.scope === INCREMENTAL) return 'Incremental'
   if (run.scope === ALL) return 'All'
@@ -462,6 +465,8 @@ export default function Sync() {
                         disabled={locked || !included[stage]}
                         onChange={setScope}
                       />
+                    ) : stage === 'search_related_insights' ? (
+                      <span className="sync-period-na">Current + previous month</span>
                     ) : (
                       <span className="sync-period-na">Not applicable</span>
                     )}

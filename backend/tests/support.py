@@ -174,6 +174,11 @@ def make_fx_rate(day: str, usd_to_sgd: float) -> dict:
     return {"date": day, "usd_to_sgd": usd_to_sgd}
 
 
+def make_search_term(search_term: str = "term", *, views: int = 1) -> dict:
+    """Return a search-term response row dict, shaped for database.upsert_search_terms."""
+    return {"search_term": search_term, "views": views}
+
+
 def make_comment_author(
     author_id: str,
     display_name: str,
@@ -265,6 +270,8 @@ def seed_dataset() -> None:
             database.upsert_video_traffic_source(row)
 
         database.upsert_fx_rate(make_fx_rate("2024-01-06", 1.35))
+
+        database.upsert_search_terms("v-1", "2024-01", [make_search_term("alpha tutorial", views=6)])
 
         database.upsert_comment_author(make_comment_author("channel:UC1", "Ann Author", youtube_channel_id="UC1"))
         database.upsert_comment(make_comment("c-1", "v-1", "channel:UC1", text="great video", published_at="2024-01-10T00:00:00Z"))

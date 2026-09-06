@@ -52,6 +52,7 @@ class OrchestrationTestCase(unittest.TestCase):
                 "sync_pruning",
                 "sync_video_analytics",
                 "sync_video_traffic_sources",
+                "sync_search_related_insights",
                 "sync_fx_rates",
             )
         }
@@ -119,7 +120,7 @@ class SelectedStageExecutionTest(OrchestrationTestCase):
         execute_plan(full_incremental_plan())
 
         batch_ids = {args[0] for args in self.created}
-        self.assertEqual(len(self.created), 6)
+        self.assertEqual(len(self.created), 7)
         self.assertEqual(len(batch_ids), 1)
 
     def test_comments_runs_immediately_after_videos(self) -> None:
@@ -321,7 +322,7 @@ class StageLoggingTest(OrchestrationTestCase):
         messages = [record.getMessage() for record in captured.records]
         for sync_type in (
             "videos", "playlists", "comments", "video_analytics",
-            "video_traffic_sources", "fx_rates",
+            "video_traffic_sources", "search_related_insights", "fx_rates",
         ):
             self.assertIn(
                 f"Sync stage started sync_type={sync_type} rows_fetched=0 rows_written=0 rows_deleted=0",

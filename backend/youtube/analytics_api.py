@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import calendar
 import time
+from dataclasses import dataclass
 from datetime import date, timedelta
 from typing import Any
 
@@ -29,6 +30,22 @@ _TRAFFIC_SOURCE_METRICS = [
     "views",
     "estimatedMinutesWatched",
 ]
+
+# The channel report spec caps detail reports at 25 rows; Search & Related Insights
+# never requests or accepts a second page beyond this single result set.
+SEARCH_TERMS_MAX_RESULTS = 25
+
+
+@dataclass(frozen=True)
+class SearchTermsResult:
+    """One video/window Search Analytics detail response.
+
+    `raw_row_count` counts every row the API returned, including zero-view rows that
+    storage will drop. `terms` holds only the validated positive-view rows, each shaped
+    {"search_term": str, "views": int}, in API-returned (descending-views) order.
+    """
+    raw_row_count: int
+    terms: list[dict[str, Any]]
 
 
 def _analytics_client() -> Any:
@@ -129,6 +146,79 @@ def _fetch_analytics_rows(
         time.sleep(0.2)
 
     return results
+
+
+def _parse_search_terms_response(response: dict, video_id: str, start_date: str, end_date: str) -> SearchTermsResult:
+    """Parse one Search Analytics detail response by columnHeaders name (not position).
+
+    An empty/missing `rows` list is a valid, fully-parsed empty response. A nonempty
+    response with more than SEARCH_TERMS_MAX_RESULTS rows, or headers/rows that don't
+    match the requested shape, raises RuntimeError rather than being silently accepted
+    as a successful refresh.
+    """
+    rows = response.get("rows") or []
+    if not rows:
+        return SearchTermsResult(raw_row_count=0, terms=[])
+
+    if len(rows) > SEARCH_TERMS_MAX_RESULTS:
+        raise RuntimeError(
+            f"search terms response exceeded {SEARCH_TERMS_MAX_RESULTS} rows: "
+            f"video={video_id} start={start_date} end={end_date} rows={len(rows)}"
+        )
+
+    header_names = [h["name"] for h in response.get("columnHeaders", [])]
+    if "insightTrafficSourceDetail" not in header_names or "views" not in header_names:
+        raise RuntimeError(
+            f"unexpected search terms response headers: video={video_id} headers={header_names!r}"
+        )
+    term_index = header_names.index("insightTrafficSourceDetail")
+    views_index = header_names.index("views")
+
+    terms: list[dict[str, Any]] = []
+    for row in rows:
+        if len(row) != len(header_names):
+            raise RuntimeError(f"malformed search terms row: video={video_id} row={row!r}")
+        term = row[term_index]
+        views = row[views_index]
+        if not isinstance(term, str) or not term:
+            raise RuntimeError(f"malformed search term value: video={video_id} row={row!r}")
+        if not isinstance(views, int) or isinstance(views, bool):
+            raise RuntimeError(f"malformed search term views: video={video_id} row={row!r}")
+        if views > 0:
+            terms.append({"search_term": term, "views": views})
+
+    return SearchTermsResult(raw_row_count=len(rows), terms=terms)
+
+
+def fetch_video_search_terms(
+    video_id: str, start_date: str, end_date: str, title: str | None = None
+) -> SearchTermsResult:
+    """Fetch one video's top Search-source terms for one exact calendar-month window.
+
+    Issues exactly one non-paginated reports.query request: maxResults=25, startIndex
+    omitted entirely. Retry may repeat this identical request, but the API is never
+    asked for a second page, even when exactly 25 rows come back. Does not clamp the
+    window to publication date or skip based on prior traffic — the caller supplies the
+    exact calendar-aligned window to query.
+    """
+    service = _analytics_client()
+    params = {
+        "ids": "channel==MINE",
+        "startDate": start_date,
+        "endDate": end_date,
+        "dimensions": "insightTrafficSourceDetail",
+        "metrics": "views",
+        "filters": f"video=={video_id};insightTrafficSourceType==YT_SEARCH",
+        "sort": "-views",
+        "maxResults": SEARCH_TERMS_MAX_RESULTS,
+    }
+    response = _analytics_query(service, params)
+    result = _parse_search_terms_response(response, video_id, start_date, end_date)
+    _logger.debug(
+        "search_terms video=%s start=%s end=%s raw_rows=%d positive_terms=%d title=%r",
+        video_id, start_date, end_date, result.raw_row_count, len(result.terms), title,
+    )
+    return result
 
 
 def iter_video_analytics(

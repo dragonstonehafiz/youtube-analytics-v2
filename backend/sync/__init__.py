@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+from .monthly_insights import MonthlyWindow, monthly_search_windows
 from .orchestration import FULL_SYNC_TYPES, execute_plan, run_plan
 from .plans import (
     PERIOD_AWARE_STAGES,
@@ -27,6 +28,7 @@ from .status import (
 
 __all__ = [
     "FULL_SYNC_TYPES",
+    "MonthlyWindow",
     "PERIOD_AWARE_STAGES",
     "PlanStage",
     "PlanValidationError",
@@ -42,6 +44,7 @@ __all__ = [
     "fail_sync",
     "full_incremental_plan",
     "get_sync_status",
+    "monthly_search_windows",
     "reset_sync_status",
     "run_plan",
     "start_background_scheduler",

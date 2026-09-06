@@ -7,7 +7,7 @@ Persistence layer, schema, and query conventions. Owns everything about how data
 ## Authoritative source files
 
 - `backend/schema.sql`
-- `backend/database/connection.py`, `backend/database/videos.py`, `backend/database/playlists.py`, `backend/database/analytics.py`, `backend/database/traffic_sources.py`, `backend/database/comments.py`, `backend/database/fx_rates.py`, `backend/database/sync_runs.py`
+- `backend/database/connection.py`, `backend/database/videos.py`, `backend/database/playlists.py`, `backend/database/analytics.py`, `backend/database/traffic_sources.py`, `backend/database/comments.py`, `backend/database/fx_rates.py`, `backend/database/sync_runs.py`, `backend/database/search_terms.py`
 
 ## Contents
 
@@ -32,7 +32,7 @@ Persistence layer, schema, and query conventions. Owns everything about how data
 
 ## Schema
 
-Nine tables:
+Ten tables:
 
 ```sql
 videos                  -- id, channel_id, title, description, published_at, duration_seconds, thumbnail_url,
@@ -58,11 +58,14 @@ comments                -- id, thread_id, video_id, author_id, text, like_count,
                         --   are stored, with total_reply_count as the thread's reply metadata
                         --   like_count and total_reply_count are NOT NULL DEFAULT 0 CHECK (... >= 0)
 fx_rates                -- date, usd_to_sgd, updated_at  (daily USD→SGD close; weekends/holidays forward-filled)
+search_terms            -- video_id, month, search_term, views, updated_at
+                        --   PRIMARY KEY (video_id, month, search_term); month is validated "YYYY-MM"
+                        --   views is CHECK (views > 0) — a term is never stored at zero or negative views
 sync_runs                -- id, batch_id, sync_type, scope, year, status, started_at, completed_at,
                         --   rows_fetched, rows_written, rows_deleted, error_message
 ```
 
-Indexes: `idx_video_analytics_date`, `idx_video_analytics_video`, `idx_video_traffic_sources_date`, `idx_video_traffic_sources_video`, `idx_playlist_items_playlist`, `idx_comments_video`, `idx_comments_author`, `idx_comments_published_at`, `idx_comments_like_count`, `idx_comments_video_published_at`, `idx_sync_runs_started_at`, `idx_sync_runs_type_started`.
+Indexes: `idx_video_analytics_date`, `idx_video_analytics_video`, `idx_video_traffic_sources_date`, `idx_video_traffic_sources_video`, `idx_playlist_items_playlist`, `idx_comments_video`, `idx_comments_author`, `idx_comments_published_at`, `idx_comments_like_count`, `idx_comments_video_published_at`, `idx_search_terms_month`, `idx_sync_runs_started_at`, `idx_sync_runs_type_started`.
 
 The comment-ID, thread-ID, and author-channel lookups are already covered by the primary-key and `UNIQUE` constraints and have no separate index.
 
@@ -75,6 +78,7 @@ There is no `sync_state` table — the scheduler derives its checkpoint from `sy
 - `playlist_items.playlist_id → playlists.id` **ON DELETE CASCADE**
 - `playlist_items.video_id` has **no FK** — it's a raw YouTube video ID that may not exist in `videos` (e.g. a playlist item referencing a video not in the channel's own uploads)
 - `comments.video_id → videos.id` **ON DELETE CASCADE**
+- `search_terms.video_id → videos.id` **ON DELETE CASCADE**
 - `comments.author_id → comment_authors.id` **ON DELETE RESTRICT** — a commenter row cannot be deleted while any comment still references it
 - Cascades only take effect because `PRAGMA foreign_keys = ON` is set on every connection
 
@@ -137,6 +141,15 @@ Every upsert helper sets `updated_at = _now()` on the Python side before the que
 - **Video stats — Legacy/New classification**: `get_video_stats()` (`database/videos.py:180-275`, plus the shared `_empty_video_stats()` default template at `database/videos.py:168-177`) and `get_playlist_video_stats()` (`database/videos.py:278-378`) classify each video as Legacy (`published_at` strictly before the effective start date) or New (`published_at` between the effective start and end dates, inclusive), or neither if published after the effective end date. Each function runs three queries against one `get_connection()` connection: (1) the available `video_analytics` date range plus the catalog's `published_at` range, used to derive the effective start/end when `start_date`/`end_date` are omitted; (2) a catalog query that counts Legacy/New videos per content type and computes lifetime comment/privacy-status totals directly from `videos` (no analytics join, so no multiplication risk); (3) a period-performance query that pre-aggregates `video_analytics` per `video_id` in a subquery (summing views and `estimated_revenue * fx_rates.usd_to_sgd`) before joining to `videos`, then groups by Legacy/New bucket and content type — the subquery pre-aggregation is what keeps the `fx_rates` join (1 row per `date`, per the `fx_rates` schema) from inflating sums. Effective start/end fall back, in order, to the `video_analytics` date range, then the catalog's `published_at` range (truncated to a date) if no analytics rows exist at all — in that fallback case period views/earnings are zero but Legacy/New classification and counts still work. A video with a `NULL` `published_at` is never classified Legacy or New but still contributes to comment/status totals. Lifetime comments and current privacy status are never restricted by date. Both functions live in `database/videos.py`, not `database/analytics.py`, since they're keyed off the video catalog with analytics as a secondary join.
 
 - **Comment reads**: `get_comments()`, `get_video_comments()`, and `get_playlist_comments()` (`database/comments.py`) all delegate to one private `_query_comments()`, which joins `comments c` to `comment_authors ca` and `videos v` and returns the author snapshot (`author_youtube_channel_id`, `author_display_name`, `author_profile_image_url`, `author_channel_url`) plus `video_title`, `video_content_type`, and `video_thumbnail_url` alongside every comment column. Filters are `c.text`, `v.title`, and `ca.display_name` via `LIKE ?` bound to `f"%{value}%"`, `v.content_type`, and a `c.published_at` range using the full-timestamp convention above (`>= start_date`, `<= end_date + "T23:59:59"`). The video scope adds `c.video_id = ?`; the playlist scope adds `EXISTS (SELECT 1 FROM playlist_items pi WHERE pi.playlist_id = ? AND pi.video_id = c.video_id)`, so a video listed twice in a playlist still yields each of its comments once — the `EXISTS` is the comment-side equivalent of the `SELECT DISTINCT` dedup the playlist stats helpers use. Both scopes count and page over the same filtered set. The video-scoped helper accepts no `video_title` or `content_type` filter, since a fixed video determines both.
+
+- **Search terms**: `upsert_search_terms(video_id, month, terms)` (`database/search_terms.py`) is the only writer. `terms` is a list of `{"search_term": str, "views": int}` response rows; duplicate exact term keys within one call are summed, non-positive-view terms are dropped, and malformed rows (empty/non-string term, non-int views) raise `ValueError` before any write happens. A term omitted or zeroed by a later call is left untouched, never deleted — the only deletion path is the `videos` cascade. `month` is validated against `^\d{4}-(0[1-9]|1[0-2])$` before the transaction opens. Returns the count of rows upserted, including unchanged refreshed rows.
+
+  Three read helpers share a private `_inclusive_months(start_date, end_date)` that expands an ISO date range to every `YYYY-MM` month it touches — both bounds missing/unparsable or `start_date > end_date` all yield `[]` (and therefore no rows), rather than erroring:
+  - `get_video_search_terms(video_id, start_date=None, end_date=None, limit=None)` — one video's own terms, summed across the selected months, ordered by views descending. Mirrors `get_video_traffic_sources()`'s single-target shape; takes no `content_type`/`privacy_status`/`title` filters since the video is already fixed.
+  - `get_search_terms(start_date=None, end_date=None, content_type=None, privacy_status=None, title=None, video_ids=None, limit=None)` — aggregated across videos, same `video_ids` three-state scoping convention as the other aggregate helpers above. `limit=None` (the default) returns every term; a caller wanting a capped "top N" list passes `limit` explicitly — there is no separate `get_top_search_terms` function, since the only difference from the unlimited call is a `LIMIT` clause.
+  - `get_videos_by_search_term(search_term, start_date=None, end_date=None, content_type=None, privacy_status=None, title=None, video_ids=None, limit=10)` — the top videos for **one specific term**, not a grouped-by-every-term query. Adds `st.search_term = ?` to the same condition-building helper `get_search_terms()` uses.
+
+  All three order by views descending (ties by ascending term text or video id), and none compute a read-time "unattributed" residual against `video_traffic_sources` — that concept was considered during planning and explicitly rejected; the backend returns only real, stored `search_terms` rows.
 
 ## Compatibility constraints
 

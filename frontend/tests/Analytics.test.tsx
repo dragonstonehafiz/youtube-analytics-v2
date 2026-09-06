@@ -11,6 +11,8 @@ vi.mock('@/api', () => ({
   getVideos: vi.fn(),
   getChannelTrafficSources: vi.fn(),
   getTopVideosByTrafficSource: vi.fn(),
+  getTopSearchTerms: vi.fn(),
+  getVideosBySearchTerm: vi.fn(),
   getComments: vi.fn(),
   getVideoComments: vi.fn(),
   getPlaylistComments: vi.fn(),
@@ -22,10 +24,12 @@ import {
   getChannelTrafficSources,
   getComments,
   getDateRange,
+  getTopSearchTerms,
   getTopVideosByTrafficSource,
   getTopVideosByViews,
   getVideoStats,
   getVideos,
+  getVideosBySearchTerm,
   getVideosPublished,
 } from '@/api'
 import Analytics from '@/pages/Analytics'
@@ -38,6 +42,8 @@ const mockGetVideosPublished = vi.mocked(getVideosPublished)
 const mockGetVideos = vi.mocked(getVideos)
 const mockGetChannelTrafficSources = vi.mocked(getChannelTrafficSources)
 const mockGetTopVideosByTrafficSource = vi.mocked(getTopVideosByTrafficSource)
+const mockGetTopSearchTerms = vi.mocked(getTopSearchTerms)
+const mockGetVideosBySearchTerm = vi.mocked(getVideosBySearchTerm)
 const mockGetComments = vi.mocked(getComments)
 const mockGetDateRange = vi.mocked(getDateRange)
 
@@ -106,6 +112,8 @@ beforeEach(() => {
   mockGetVideos.mockResolvedValue({ items: [] })
   mockGetChannelTrafficSources.mockResolvedValue({ items: [] })
   mockGetTopVideosByTrafficSource.mockResolvedValue({ items: {} })
+  mockGetTopSearchTerms.mockResolvedValue({ items: [] })
+  mockGetVideosBySearchTerm.mockResolvedValue({ items: [] })
   mockGetComments.mockResolvedValue({ items: [], total: 0, page: 1, page_size: 25 })
   mockGetDateRange.mockResolvedValue({ earliest_year: 2022 })
 })
@@ -172,6 +180,31 @@ describe('tab selection and URL state', () => {
     expect(activeTabButton()?.textContent).toBe('Analytics')
     expect(await screen.findByText('Top 10 Videos by Watch Time')).toBeDefined()
     expect(screen.queryByText('No comments found')).toBeNull()
+  })
+})
+
+describe('Traffic Sources sub-tabs', () => {
+  it('defaults to the Traffic Sources sub-tab, switching to Search Insights renders its three columns', async () => {
+    renderAnalytics('/analytics?tab=traffic-sources')
+    await waitFor(() => expect(mockGetChannelTrafficSources).toHaveBeenCalled())
+    expect(screen.queryByText('Top Search Terms')).toBeNull()
+
+    fireEvent.click(screen.getByRole('button', { name: 'Search Insights' }))
+    expect(await screen.findByText('Top Search Terms')).toBeDefined()
+    expect(await screen.findByText('Top Search Terms — Videos')).toBeDefined()
+    expect(await screen.findByText('Top Search Terms — Shorts')).toBeDefined()
+  })
+
+  it('renders one independent sidebar card per content type, each with its own dropdown', async () => {
+    mockGetTopSearchTerms.mockResolvedValue({ items: [{ search_term: 'cats', views: 10 }] })
+    renderAnalytics('/analytics?tab=traffic-sources')
+
+    expect(await screen.findByText('Top Videos — Videos')).toBeDefined()
+    expect(await screen.findByText('Top Videos — Shorts')).toBeDefined()
+    await waitFor(() => expect(mockGetVideosBySearchTerm).toHaveBeenCalled())
+    const contentTypes = mockGetVideosBySearchTerm.mock.calls.map(call => call[1]?.contentType)
+    expect(contentTypes).toContain('video')
+    expect(contentTypes).toContain('short')
   })
 })
 

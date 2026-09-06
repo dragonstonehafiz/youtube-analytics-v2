@@ -12,6 +12,8 @@ vi.mock('@/api', () => ({
   getVideosPublished: vi.fn(),
   getPlaylistTrafficSources: vi.fn(),
   getPlaylistTopVideosByTrafficSource: vi.fn(),
+  getPlaylistTopSearchTerms: vi.fn(),
+  getPlaylistVideosBySearchTerm: vi.fn(),
   getDateRange: vi.fn(),
 }))
 
@@ -19,11 +21,13 @@ import {
   getDateRange,
   getPlaylist,
   getPlaylistAnalytics,
+  getPlaylistTopSearchTerms,
   getPlaylistTopVideosByTrafficSource,
   getPlaylistTopVideosByViews,
   getPlaylistTrafficSources,
   getPlaylistVideoStats,
   getPlaylistVideos,
+  getPlaylistVideosBySearchTerm,
   getVideosPublished,
 } from '@/api'
 import PlaylistAnalytics from '@/pages/PlaylistAnalytics'
@@ -37,6 +41,8 @@ const mockGetPlaylistTopVideosByViews = vi.mocked(getPlaylistTopVideosByViews)
 const mockGetVideosPublished = vi.mocked(getVideosPublished)
 const mockGetPlaylistTrafficSources = vi.mocked(getPlaylistTrafficSources)
 const mockGetPlaylistTopVideosByTrafficSource = vi.mocked(getPlaylistTopVideosByTrafficSource)
+const mockGetPlaylistTopSearchTerms = vi.mocked(getPlaylistTopSearchTerms)
+const mockGetPlaylistVideosBySearchTerm = vi.mocked(getPlaylistVideosBySearchTerm)
 const mockGetDateRange = vi.mocked(getDateRange)
 
 /** AnalyticsChart and TrafficSourceChart measure their container; jsdom has no real implementation. */
@@ -97,6 +103,8 @@ beforeEach(() => {
   mockGetVideosPublished.mockResolvedValue({ items: [] })
   mockGetPlaylistTrafficSources.mockResolvedValue({ items: [] })
   mockGetPlaylistTopVideosByTrafficSource.mockResolvedValue({ items: {} })
+  mockGetPlaylistTopSearchTerms.mockResolvedValue({ items: [] })
+  mockGetPlaylistVideosBySearchTerm.mockResolvedValue({ items: [] })
   mockGetDateRange.mockResolvedValue({ earliest_year: 2022 })
 })
 
