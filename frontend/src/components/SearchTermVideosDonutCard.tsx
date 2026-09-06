@@ -1,7 +1,7 @@
 import { Link } from 'react-router-dom'
 import { PieChart, Pie, Cell, ResponsiveContainer, Tooltip } from 'recharts'
 import type { SearchTermRow, SearchTermVideo } from '@/types'
-import { CATEGORICAL_COLORS, CATEGORICAL_OTHER_COLOR } from '@/lib/categoricalColors'
+import { categoricalColorClass, CATEGORICAL_OTHER_CLASS } from '@/lib/categoricalColors'
 import AsyncCard from '@/components/AsyncCard'
 import './SearchTermVideosDonutCard.css'
 
@@ -30,8 +30,8 @@ export default function SearchTermVideosDonutCard({
   const otherViews = otherVideos.reduce((s, v) => s + v.views, 0)
 
   const slices = [
-    ...topVideos.map((v, i) => ({ key: v.id, label: v.title, views: v.views, color: CATEGORICAL_COLORS[i] })),
-    ...(otherViews > 0 ? [{ key: OTHER_KEY, label: 'Other', views: otherViews, color: CATEGORICAL_OTHER_COLOR }] : []),
+    ...topVideos.map((v, i) => ({ key: v.id, label: v.title, views: v.views, colorClass: categoricalColorClass(i) })),
+    ...(otherViews > 0 ? [{ key: OTHER_KEY, label: 'Other', views: otherViews, colorClass: CATEGORICAL_OTHER_CLASS }] : []),
   ]
 
   return (
@@ -62,7 +62,7 @@ export default function SearchTermVideosDonutCard({
         <ResponsiveContainer width="100%" height={160}>
           <PieChart>
             <Pie data={slices} dataKey="views" nameKey="label" innerRadius="65%" outerRadius="100%" paddingAngle={1} stroke="none">
-              {slices.map(s => <Cell key={s.key} fill={s.color} />)}
+              {slices.map(s => <Cell key={s.key} className={s.colorClass} />)}
             </Pie>
             <Tooltip
               contentStyle={{ background: 'var(--surface)', border: '1px solid var(--border)', borderRadius: 'var(--radius-sm)', fontSize: 13 }}
@@ -83,7 +83,7 @@ export default function SearchTermVideosDonutCard({
             {v.thumbnail_url
               ? <img src={v.thumbnail_url} alt="" className="search-videos-donut-thumb" />
               : <div className="search-videos-donut-thumb search-videos-donut-thumb--placeholder" />}
-            <span className="search-videos-donut-legend-swatch" style={{ background: CATEGORICAL_COLORS[i] }} />
+            <span className={`search-videos-donut-legend-swatch ${categoricalColorClass(i)}`} />
             <span className="search-videos-donut-legend-label"><Link to={`/analytics/videos/${v.id}`}>{v.title}</Link></span>
             <span className="search-videos-donut-legend-views">{v.views.toLocaleString()}</span>
           </div>

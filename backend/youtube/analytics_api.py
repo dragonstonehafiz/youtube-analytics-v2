@@ -190,9 +190,7 @@ def _parse_search_terms_response(response: dict, video_id: str, start_date: str,
     return SearchTermsResult(raw_row_count=len(rows), terms=terms)
 
 
-def fetch_video_search_terms(
-    video_id: str, start_date: str, end_date: str, title: str | None = None
-) -> SearchTermsResult:
+def fetch_video_search_terms(video_id: str, start_date: str, end_date: str) -> SearchTermsResult:
     """Fetch one video's top Search-source terms for one exact calendar-month window.
 
     Issues exactly one non-paginated reports.query request: maxResults=25, startIndex
@@ -213,12 +211,7 @@ def fetch_video_search_terms(
         "maxResults": SEARCH_TERMS_MAX_RESULTS,
     }
     response = _analytics_query(service, params)
-    result = _parse_search_terms_response(response, video_id, start_date, end_date)
-    _logger.debug(
-        "search_terms video=%s start=%s end=%s raw_rows=%d positive_terms=%d title=%r",
-        video_id, start_date, end_date, result.raw_row_count, len(result.terms), title,
-    )
-    return result
+    return _parse_search_terms_response(response, video_id, start_date, end_date)
 
 
 def iter_video_analytics(

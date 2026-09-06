@@ -1,6 +1,6 @@
 // @vitest-environment jsdom
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
-import { act, cleanup, fireEvent, render, screen, waitFor } from '@testing-library/react'
+import { act, cleanup, fireEvent, render, screen, waitFor, within } from '@testing-library/react'
 import { MemoryRouter, Route, Routes, useLocation } from 'react-router-dom'
 
 vi.mock('@/api', () => ({
@@ -165,6 +165,76 @@ describe('playlist sidebar cards', () => {
 
     expect(sidebarRecentCalls().some(c => c[8] === 'short')).toBe(false)
     expect(sidebarTopCalls().some(c => c[4] === 'short')).toBe(false)
+  })
+})
+
+describe('Traffic Sources sub-tabs (Search Insights)', () => {
+  it('defaults to the Traffic Sources sub-tab, switching to Search Insights renders its three columns', async () => {
+    renderPlaylistAnalytics('/playlists/pl1?tab=traffic-sources')
+    await waitFor(() => expect(mockGetPlaylistTrafficSources).toHaveBeenCalled())
+    expect(screen.queryByText('Top Search Terms')).toBeNull()
+
+    fireEvent.click(screen.getByRole('button', { name: 'Search Insights' }))
+    expect(await screen.findByText('Top Search Terms')).toBeDefined()
+    expect(await screen.findByText('Top Search Terms — Videos')).toBeDefined()
+    expect(await screen.findByText('Top Search Terms — Shorts')).toBeDefined()
+  })
+
+  it('scopes every search-insights request to this playlist id and the analytics_* filters', async () => {
+    renderPlaylistAnalytics(
+      '/playlists/pl1?tab=traffic-sources&analytics_title=foo&analytics_privacy_status=private',
+    )
+
+    await waitFor(() => expect(mockGetPlaylistTopSearchTerms).toHaveBeenCalled())
+    for (const call of mockGetPlaylistTopSearchTerms.mock.calls) {
+      expect(call[0]).toBe('pl1')
+      expect(call[1]?.title).toBe('foo')
+      expect(call[1]?.privacyStatus).toBe('private')
+    }
+  })
+
+  it('each sidebar card fetches videos scoped to this playlist id and its own content type', async () => {
+    mockGetPlaylistTopSearchTerms.mockResolvedValue({ items: [{ search_term: 'cats', views: 10 }] })
+    renderPlaylistAnalytics('/playlists/pl1?tab=traffic-sources')
+
+    expect(await screen.findByText('Top Videos — Videos')).toBeDefined()
+    expect(await screen.findByText('Top Videos — Shorts')).toBeDefined()
+    await waitFor(() => expect(mockGetPlaylistVideosBySearchTerm).toHaveBeenCalled())
+    for (const call of mockGetPlaylistVideosBySearchTerm.mock.calls) {
+      expect(call[0]).toBe('pl1')
+    }
+    const contentTypes = mockGetPlaylistVideosBySearchTerm.mock.calls.map(call => call[2]?.contentType)
+    expect(contentTypes).toContain('video')
+    expect(contentTypes).toContain('short')
+  })
+
+  it('selecting a term in one sidebar card does not affect the other', async () => {
+    mockGetPlaylistTopSearchTerms.mockResolvedValue({
+      items: [{ search_term: 'cats', views: 10 }, { search_term: 'dogs', views: 5 }],
+    })
+    renderPlaylistAnalytics('/playlists/pl1?tab=traffic-sources')
+
+    const videoCard = (await screen.findByText('Top Videos — Videos')).closest('.search-videos-donut')
+    const videoSelect = within(videoCard as HTMLElement).getByRole('combobox')
+    mockGetPlaylistVideosBySearchTerm.mockClear()
+    fireEvent.change(videoSelect, { target: { value: 'dogs' } })
+
+    await waitFor(() => expect(mockGetPlaylistVideosBySearchTerm).toHaveBeenCalledWith(
+      'pl1', 'dogs', expect.objectContaining({ contentType: 'video' }),
+    ))
+    expect(mockGetPlaylistVideosBySearchTerm.mock.calls.some(
+      call => call[1] === 'dogs' && call[2]?.contentType === 'short',
+    )).toBe(false)
+  })
+
+  it('an unrecognized ts_tab value falls back to the Traffic Sources sub-tab', async () => {
+    const { container } = renderPlaylistAnalytics('/playlists/pl1?tab=traffic-sources&ts_tab=bogus')
+    await waitFor(() => expect(mockGetPlaylistTrafficSources).toHaveBeenCalled())
+
+    const subTabStrip = container.querySelector('.analytics-main .tabs') as HTMLElement
+    const sourcesTab = within(subTabStrip).getByRole('button', { name: 'Traffic Sources' })
+    expect(sourcesTab.className).toContain('active')
+    expect(screen.queryByText('Top Search Terms')).toBeNull()
   })
 })
 

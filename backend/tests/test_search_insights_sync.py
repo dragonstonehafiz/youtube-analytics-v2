@@ -402,13 +402,15 @@ class SyncSearchRelatedInsightsScopeTest(unittest.TestCase):
         self.assertEqual(fetch.call_count, 3)  # Jan (partial), Feb, Mar (partial, through "yesterday")
         self.assertTrue(all(m == "v1" for m in months))
 
-    def test_incremental_scope_uses_fixed_two_windows_once_a_video_has_stored_terms(self) -> None:
+    def test_incremental_scope_collapses_to_fixed_two_windows_when_already_caught_up(self) -> None:
+        # today is mocked to 2024-03-15, so "already caught up" means last stored month
+        # is last month (2024-02) — that's exactly the same current+previous refresh.
         mock.patch("sync.stages.database.get_all_video_ids", return_value=["v1"]).start()
         mock.patch(
             "sync.stages.database.get_video",
             return_value={"title": "T", "published_at": "2020-01-01T00:00:00Z"},
         ).start()
-        mock.patch("sync.stages.database.get_last_search_terms_month", return_value="2024-01").start()
+        mock.patch("sync.stages.database.get_last_search_terms_month", return_value="2024-02").start()
         fetch = mock.patch(
             "sync.stages.youtube.fetch_video_search_terms",
             return_value=analytics_api.SearchTermsResult(raw_row_count=0, terms=[]),
@@ -417,7 +419,33 @@ class SyncSearchRelatedInsightsScopeTest(unittest.TestCase):
 
         stages.sync_search_related_insights("incremental", None, SyncCounts())
 
-        self.assertEqual(fetch.call_count, 2)
+        months = [c.args[0:3] for c in fetch.call_args_list]
+        self.assertEqual(
+            months,
+            [("v1", "2024-02-01", "2024-02-29"), ("v1", "2024-03-01", "2024-03-14")],
+        )
+
+    def test_incremental_scope_closes_the_gap_left_by_an_interrupted_backfill(self) -> None:
+        # A video whose backfill was interrupted after 2023-11 must not be treated as
+        # "fully caught up" just because it has *some* stored data — it should resume
+        # from that month forward, not silently skip the months in between.
+        mock.patch("sync.stages.database.get_all_video_ids", return_value=["v1"]).start()
+        mock.patch(
+            "sync.stages.database.get_video",
+            return_value={"title": "T", "published_at": "2020-01-01T00:00:00Z"},
+        ).start()
+        mock.patch("sync.stages.database.get_last_search_terms_month", return_value="2023-11").start()
+        fetch = mock.patch(
+            "sync.stages.youtube.fetch_video_search_terms",
+            return_value=analytics_api.SearchTermsResult(raw_row_count=0, terms=[]),
+        ).start()
+        mock.patch("sync.stages.database.upsert_search_terms", return_value=0).start()
+
+        stages.sync_search_related_insights("incremental", None, SyncCounts())
+
+        months = [c.args[0] for c in fetch.call_args_list]
+        self.assertEqual(len(months), 5)  # Nov, Dec, Jan, Feb, Mar (partial)
+        self.assertTrue(all(m == "v1" for m in months))
 
 
 if __name__ == "__main__":

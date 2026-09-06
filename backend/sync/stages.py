@@ -363,13 +363,14 @@ def sync_search_related_insights(scope: str, year: int | None, counts: SyncCount
     """Fetch and upsert monthly Search-source terms for every video.
 
     scope="incremental" ("New data only") matches video_analytics/video_traffic_sources:
-    a video with no stored search terms yet is backfilled from its publish date through
-    yesterday on this first run; a video that already has stored terms instead gets
-    exactly the current and previous calendar months refreshed, since a monthly snapshot
-    has no daily "last synced date" to resume from — the previous month stands in for
-    the lookback window those two stages use to catch data that was not yet settled when
-    it was first fetched. A video with no publish date and no stored terms falls back to
-    the same current+previous refresh, since there is no date to backfill from.
+    it resumes from the video's own last stored month (re-checking that month, the same
+    way the daily lookback re-checks recent days) through yesterday, backfilling from its
+    publish date if it has no stored terms yet at all. A video whose last stored month is
+    already last month collapses to exactly the current+previous refresh, same as before;
+    a video whose backfill was interrupted partway resumes filling the remaining gap
+    instead of being treated as fully caught up just because it has *some* stored data. A
+    video with no publish date falls back to the fixed current+previous refresh, since
+    there is no date to compute a range from.
     scope="year" refreshes every calendar month of the given year that falls within the
     video's published-to-yesterday range; a video with no publish date is skipped.
     scope="all" refreshes every calendar month from the video's publish date through
@@ -378,7 +379,8 @@ def sync_search_related_insights(scope: str, year: int | None, counts: SyncCount
     """
     today = date.today()
     yesterday = today - timedelta(days=1)
-    # Captured once so a midnight rollover mid-run cannot change the incremental worklist.
+    # Captured once so a midnight rollover mid-run cannot change the worklist. Used only
+    # as the incremental fallback for a video with no publish date to compute a range from.
     incremental_windows = monthly_insights.monthly_search_windows(today)
     video_ids = database.get_all_video_ids()
     total = len(video_ids)
@@ -404,23 +406,25 @@ def sync_search_related_insights(scope: str, year: int | None, counts: SyncCount
                 start = publish_date
                 end = yesterday
             windows = monthly_insights.monthly_windows_for_range(start, end)
-        elif video and video.get("published_at") and database.get_last_search_terms_month(video_id) is None:
+        elif video and video.get("published_at"):
             publish_date = date.fromisoformat(video["published_at"][:10])
-            windows = monthly_insights.monthly_windows_for_range(publish_date, yesterday)
+            last_month = database.get_last_search_terms_month(video_id)
+            start = publish_date if last_month is None else max(
+                date.fromisoformat(f"{last_month}-01"), publish_date
+            )
+            windows = monthly_insights.monthly_windows_for_range(start, yesterday)
         else:
             windows = incremental_windows
 
+        rows_before = counts.rows_fetched
         for window in windows:
-            result = youtube.fetch_video_search_terms(
-                video_id, window.start_date, window.end_date, title=title
-            )
+            result = youtube.fetch_video_search_terms(video_id, window.start_date, window.end_date)
             counts.rows_fetched += result.raw_row_count
             counts.rows_written += database.upsert_search_terms(video_id, window.month, result.terms)
-
-    _logger.debug(
-        "search_related_insights scope=%s year=%s videos=%d fetched=%d written=%d",
-        scope, year, total, counts.rows_fetched, counts.rows_written,
-    )
+        _logger.debug(
+            "search_related_insights %d/%d video=%s months=%d rows=%d title=%r",
+            i, total, video_id, len(windows), counts.rows_fetched - rows_before, title,
+        )
 
 
 def sync_fx_rates(counts: SyncCounts) -> None:

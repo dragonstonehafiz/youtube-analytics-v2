@@ -1,6 +1,6 @@
 import { PieChart, Pie, Cell, ResponsiveContainer, Tooltip } from 'recharts'
 import type { SearchTermRow } from '@/types'
-import { CATEGORICAL_COLORS, CATEGORICAL_OTHER_COLOR } from '@/lib/categoricalColors'
+import { categoricalColorClass, CATEGORICAL_OTHER_CLASS } from '@/lib/categoricalColors'
 import AsyncCard from '@/components/AsyncCard'
 import './SearchTermsDonutCard.css'
 
@@ -21,8 +21,8 @@ export default function SearchTermsDonutCard({ title, rows, loading, error = nul
   const otherViews = otherRows.reduce((s, r) => s + r.views, 0)
 
   const slices = [
-    ...topRows.map((r, i) => ({ key: r.search_term, label: r.search_term, views: r.views, color: CATEGORICAL_COLORS[i] })),
-    ...(otherViews > 0 ? [{ key: OTHER_KEY, label: 'Other', views: otherViews, color: CATEGORICAL_OTHER_COLOR }] : []),
+    ...topRows.map((r, i) => ({ key: r.search_term, label: r.search_term, views: r.views, colorClass: categoricalColorClass(i) })),
+    ...(otherViews > 0 ? [{ key: OTHER_KEY, label: 'Other', views: otherViews, colorClass: CATEGORICAL_OTHER_CLASS }] : []),
   ]
 
   return (
@@ -38,7 +38,7 @@ export default function SearchTermsDonutCard({ title, rows, loading, error = nul
         <ResponsiveContainer width="100%" height={180}>
           <PieChart>
             <Pie data={slices} dataKey="views" nameKey="label" innerRadius="65%" outerRadius="100%" paddingAngle={1} stroke="none">
-              {slices.map(s => <Cell key={s.key} fill={s.color} />)}
+              {slices.map(s => <Cell key={s.key} className={s.colorClass} />)}
             </Pie>
             <Tooltip
               contentStyle={{ background: 'var(--surface)', border: '1px solid var(--border)', borderRadius: 'var(--radius-sm)', fontSize: 13 }}
@@ -56,7 +56,7 @@ export default function SearchTermsDonutCard({ title, rows, loading, error = nul
       <div className="search-terms-donut-legend">
         {topRows.map((r, i) => (
           <div key={r.search_term} className="search-terms-donut-legend-item">
-            <span className="search-terms-donut-legend-swatch" style={{ background: CATEGORICAL_COLORS[i] }} />
+            <span className={`search-terms-donut-legend-swatch ${categoricalColorClass(i)}`} />
             <span className="search-terms-donut-legend-label">{r.search_term}</span>
             <span className="search-terms-donut-legend-views">{r.views.toLocaleString()}</span>
           </div>
@@ -67,7 +67,7 @@ export default function SearchTermsDonutCard({ title, rows, loading, error = nul
             <div className="search-terms-donut-legend-divider">Other includes:</div>
             {otherRows.map(r => (
               <div key={r.search_term} className="search-terms-donut-legend-item search-terms-donut-legend-item--sub">
-                <span className="search-terms-donut-legend-swatch" style={{ background: CATEGORICAL_OTHER_COLOR }} />
+                <span className={`search-terms-donut-legend-swatch ${CATEGORICAL_OTHER_CLASS}`} />
                 <span className="search-terms-donut-legend-label">{r.search_term}</span>
                 <span className="search-terms-donut-legend-views">{r.views.toLocaleString()}</span>
               </div>
