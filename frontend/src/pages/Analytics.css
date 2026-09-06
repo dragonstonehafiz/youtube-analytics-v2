@@ -46,6 +46,13 @@
   }
 }
 
+/* The Traffic Sources tab's sub-tab strip sits directly under the chart card on all
+   three analytics pages (Channel/Playlist/Video) — none of them wrap it in
+   .analytics-layout, so it needs its own top margin instead of inheriting one. */
+.ts-subtabs {
+  margin-top: 1.5rem;
+}
+
 .search-insights-columns {
   display: grid;
   grid-template-columns: repeat(3, 1fr);
@@ -55,6 +62,19 @@
 
 @media (max-width: 900px) {
   .search-insights-columns {
+    grid-template-columns: 1fr;
+  }
+}
+
+.search-insights-videos {
+  display: grid;
+  grid-template-columns: repeat(2, 1fr);
+  gap: 1.5rem;
+  margin-top: 1.5rem;
+}
+
+@media (max-width: 900px) {
+  .search-insights-videos {
     grid-template-columns: 1fr;
   }
 }

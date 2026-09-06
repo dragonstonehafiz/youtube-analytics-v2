@@ -195,7 +195,7 @@ describe('Traffic Sources sub-tabs (Search Insights)', () => {
 
   it('each sidebar card fetches videos scoped to this playlist id and its own content type', async () => {
     mockGetPlaylistTopSearchTerms.mockResolvedValue({ items: [{ search_term: 'cats', views: 10 }] })
-    renderPlaylistAnalytics('/playlists/pl1?tab=traffic-sources')
+    renderPlaylistAnalytics('/playlists/pl1?tab=traffic-sources&ts_tab=search')
 
     expect(await screen.findByText('Top Videos by Search Term')).toBeDefined()
     expect(await screen.findByText('Top Shorts by Search Term')).toBeDefined()
@@ -212,7 +212,7 @@ describe('Traffic Sources sub-tabs (Search Insights)', () => {
     mockGetPlaylistTopSearchTerms.mockResolvedValue({
       items: [{ search_term: 'cats', views: 10 }, { search_term: 'dogs', views: 5 }],
     })
-    renderPlaylistAnalytics('/playlists/pl1?tab=traffic-sources')
+    renderPlaylistAnalytics('/playlists/pl1?tab=traffic-sources&ts_tab=search')
 
     const videoCard = (await screen.findByText('Top Videos by Search Term')).closest('.search-videos-donut')
     const videoSelect = within(videoCard as HTMLElement).getByRole('combobox')
@@ -231,7 +231,7 @@ describe('Traffic Sources sub-tabs (Search Insights)', () => {
     const { container } = renderPlaylistAnalytics('/playlists/pl1?tab=traffic-sources&ts_tab=bogus')
     await waitFor(() => expect(mockGetPlaylistTrafficSources).toHaveBeenCalled())
 
-    const subTabStrip = container.querySelector('.analytics-main .tabs') as HTMLElement
+    const subTabStrip = container.querySelectorAll('.tabs')[1] as HTMLElement
     const sourcesTab = within(subTabStrip).getByRole('button', { name: 'Traffic Sources' })
     expect(sourcesTab.className).toContain('active')
     expect(screen.queryByText('Top Search Terms')).toBeNull()

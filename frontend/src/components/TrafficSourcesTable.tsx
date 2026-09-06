@@ -16,7 +16,6 @@ export default function TrafficSourcesTable({ rows, loading, error = null }: Pro
 
   return (
     <div className="traffic-sources-section">
-      <div className="section-header">Traffic Sources</div>
       <AsyncCard
         variant="table"
         loading={loading}

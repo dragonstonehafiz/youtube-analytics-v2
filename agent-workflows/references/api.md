@@ -173,7 +173,7 @@ identical results to before this filter existed.
 
 ## Search insights
 
-Months are derived server-side: every endpoint below converts its `start_date`/`end_date` to the inclusive set of `YYYY-MM` months they span (`database.md`'s `_inclusive_months()`) — either bound missing, unparsable, or `start_date` after `end_date` yields no months and therefore no rows. There is no separate month/date param; the frontend passes whatever `start_date`/`end_date` the host page already has.
+Months are filtered server-side by each date's `YYYY-MM` prefix (`database.md`'s `_month_bound_conditions()`) — a missing bound is unbounded on that side (all-time), matching every other date filter on the Analytics page; `start_date` after `end_date` yields no rows. There is no separate month/date param; the frontend passes whatever `start_date`/`end_date` the host page already has.
 
 ```
 GET  /analytics/search-insights

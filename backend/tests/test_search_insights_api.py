@@ -66,9 +66,11 @@ class ChannelSearchInsightsTest(SearchInsightsApiTestCase):
         body = self._get("/analytics/search-insights", **self.DATE_RANGE, content_type="short")
         self.assertEqual([(i["search_term"], i["views"]) for i in body["items"]], [("cats", 3)])
 
-    def test_missing_dates_returns_empty_items(self) -> None:
+    def test_missing_dates_returns_all_time_items(self) -> None:
         body = self._get("/analytics/search-insights")
-        self.assertEqual(body["items"], [])
+        by_term = {item["search_term"]: item["views"] for item in body["items"]}
+        self.assertEqual(by_term["cats"], 13)
+        self.assertEqual(by_term["dogs"], 5)
 
 
 class PlaylistSearchInsightsTest(SearchInsightsApiTestCase):

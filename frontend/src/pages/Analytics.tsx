@@ -139,7 +139,7 @@ export default function Analytics() {
     return () => { active = false }
   }, [startDate, endDate, title, privacyStatus])
 
-  // Each sidebar card owns its own term selection independently.
+  // Each Search Insights video card owns its own term selection independently.
   useEffect(() => {
     let active = true
     const term = videoTerm || searchTermsByVideo.data[0]?.search_term
@@ -355,90 +355,88 @@ export default function Analytics() {
             loading={trafficSources.loading || publishedVideos.loading}
             error={trafficSources.error ?? publishedVideos.error}
           />
-          <div className="analytics-layout">
-            <div className="analytics-main">
-              <div className="tabs">
-                <button
-                  type="button"
-                  className={`tab${tsTab === 'sources' ? ' active' : ''}`}
-                  onClick={() => handleTsTabChange('sources')}
-                >
-                  Traffic Sources
-                </button>
-                <button
-                  type="button"
-                  className={`tab${tsTab === 'top-videos' ? ' active' : ''}`}
-                  onClick={() => handleTsTabChange('top-videos')}
-                >
-                  Top Videos by Traffic Source
-                </button>
-                <button
-                  type="button"
-                  className={`tab${tsTab === 'search' ? ' active' : ''}`}
-                  onClick={() => handleTsTabChange('search')}
-                >
-                  Search Insights
-                </button>
-              </div>
-              {tsTab === 'sources' ? (
-                <TrafficSourcesTable
-                  rows={trafficSources.data}
-                  loading={trafficSources.loading}
-                  error={trafficSources.error}
-                />
-              ) : tsTab === 'top-videos' ? (
-                <TrafficSourceTopVideosPanel
-                  rows={trafficSources.data}
-                  bySource={topVideosBySource.data}
-                  loading={trafficSources.loading || topVideosBySource.loading}
-                  error={trafficSources.error ?? topVideosBySource.error}
-                />
-              ) : (
-                <div className="search-insights-columns">
-                  <SearchTermsDonutCard
-                    title="Top Search Terms"
-                    rows={searchTerms.data}
-                    loading={searchTerms.loading}
-                    error={searchTerms.error}
-                  />
-                  <SearchTermsDonutCard
-                    title="Top Search Terms — Videos"
-                    rows={searchTermsByVideo.data}
-                    loading={searchTermsByVideo.loading}
-                    error={searchTermsByVideo.error}
-                  />
-                  <SearchTermsDonutCard
-                    title="Top Search Terms — Shorts"
-                    rows={searchTermsByShort.data}
-                    loading={searchTermsByShort.loading}
-                    error={searchTermsByShort.error}
-                  />
-                </div>
-              )}
-            </div>
-            <div className="analytics-sidebar">
-              <SearchTermVideosDonutCard
-                title="Top Videos by Search Term"
-                terms={searchTermsByVideo.data}
-                termsLoading={searchTermsByVideo.loading}
-                selectedTerm={videoTerm || searchTermsByVideo.data[0]?.search_term || null}
-                onSelectTerm={setVideoTerm}
-                videos={videosForVideoTerm.data}
-                loading={videosForVideoTerm.loading}
-                error={videosForVideoTerm.error}
-              />
-              <SearchTermVideosDonutCard
-                title="Top Shorts by Search Term"
-                terms={searchTermsByShort.data}
-                termsLoading={searchTermsByShort.loading}
-                selectedTerm={shortTerm || searchTermsByShort.data[0]?.search_term || null}
-                onSelectTerm={setShortTerm}
-                videos={videosForShortTerm.data}
-                loading={videosForShortTerm.loading}
-                error={videosForShortTerm.error}
-              />
-            </div>
+          <div className="tabs ts-subtabs">
+            <button
+              type="button"
+              className={`tab${tsTab === 'sources' ? ' active' : ''}`}
+              onClick={() => handleTsTabChange('sources')}
+            >
+              Traffic Sources
+            </button>
+            <button
+              type="button"
+              className={`tab${tsTab === 'top-videos' ? ' active' : ''}`}
+              onClick={() => handleTsTabChange('top-videos')}
+            >
+              Top Videos by Traffic Source
+            </button>
+            <button
+              type="button"
+              className={`tab${tsTab === 'search' ? ' active' : ''}`}
+              onClick={() => handleTsTabChange('search')}
+            >
+              Search Insights
+            </button>
           </div>
+          {tsTab === 'sources' ? (
+            <TrafficSourcesTable
+              rows={trafficSources.data}
+              loading={trafficSources.loading}
+              error={trafficSources.error}
+            />
+          ) : tsTab === 'top-videos' ? (
+            <TrafficSourceTopVideosPanel
+              rows={trafficSources.data}
+              bySource={topVideosBySource.data}
+              loading={trafficSources.loading || topVideosBySource.loading}
+              error={trafficSources.error ?? topVideosBySource.error}
+            />
+          ) : (
+            <>
+              <div className="search-insights-columns">
+                <SearchTermsDonutCard
+                  title="Top Search Terms"
+                  rows={searchTerms.data}
+                  loading={searchTerms.loading}
+                  error={searchTerms.error}
+                />
+                <SearchTermsDonutCard
+                  title="Top Search Terms — Videos"
+                  rows={searchTermsByVideo.data}
+                  loading={searchTermsByVideo.loading}
+                  error={searchTermsByVideo.error}
+                />
+                <SearchTermsDonutCard
+                  title="Top Search Terms — Shorts"
+                  rows={searchTermsByShort.data}
+                  loading={searchTermsByShort.loading}
+                  error={searchTermsByShort.error}
+                />
+              </div>
+              <div className="search-insights-videos">
+                <SearchTermVideosDonutCard
+                  title="Top Videos by Search Term"
+                  terms={searchTermsByVideo.data}
+                  termsLoading={searchTermsByVideo.loading}
+                  selectedTerm={videoTerm || searchTermsByVideo.data[0]?.search_term || null}
+                  onSelectTerm={setVideoTerm}
+                  videos={videosForVideoTerm.data}
+                  loading={videosForVideoTerm.loading}
+                  error={videosForVideoTerm.error}
+                />
+                <SearchTermVideosDonutCard
+                  title="Top Shorts by Search Term"
+                  terms={searchTermsByShort.data}
+                  termsLoading={searchTermsByShort.loading}
+                  selectedTerm={shortTerm || searchTermsByShort.data[0]?.search_term || null}
+                  onSelectTerm={setShortTerm}
+                  videos={videosForShortTerm.data}
+                  loading={videosForShortTerm.loading}
+                  error={videosForShortTerm.error}
+                />
+              </div>
+            </>
+          )}
         </>
       )}
     </div>

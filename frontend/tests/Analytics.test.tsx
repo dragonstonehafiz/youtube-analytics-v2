@@ -197,7 +197,7 @@ describe('Traffic Sources sub-tabs', () => {
 
   it('renders one independent sidebar card per content type, each with its own dropdown', async () => {
     mockGetTopSearchTerms.mockResolvedValue({ items: [{ search_term: 'cats', views: 10 }] })
-    renderAnalytics('/analytics?tab=traffic-sources')
+    renderAnalytics('/analytics?tab=traffic-sources&ts_tab=search')
 
     expect(await screen.findByText('Top Videos by Search Term')).toBeDefined()
     expect(await screen.findByText('Top Shorts by Search Term')).toBeDefined()

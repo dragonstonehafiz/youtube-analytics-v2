@@ -184,9 +184,15 @@ class GetSearchTermsTest(SearchInsightsReportingTestCase):
         rows = database.get_search_terms(start_date="2024-01-01", end_date="2024-01-31", video_ids=[])
         self.assertEqual(rows, [])
 
-    def test_missing_end_date_returns_no_rows(self) -> None:
+    def test_missing_end_date_is_unbounded_on_that_side(self) -> None:
         rows = database.get_search_terms(start_date="2024-01-01")
-        self.assertEqual(rows, [])
+        by_term = {r["search_term"]: r["views"] for r in rows}
+        self.assertEqual(by_term, {"cats": 17, "dogs": 5, "birds": 7})
+
+    def test_missing_start_date_is_unbounded_on_that_side(self) -> None:
+        rows = database.get_search_terms(end_date="2024-01-31")
+        by_term = {r["search_term"]: r["views"] for r in rows}
+        self.assertEqual(by_term, {"cats": 13, "dogs": 5, "birds": 7})
 
     def test_start_date_after_end_date_returns_no_rows(self) -> None:
         rows = database.get_search_terms(start_date="2024-02-01", end_date="2024-01-01")
@@ -218,8 +224,10 @@ class GetVideoSearchTermsTest(SearchInsightsReportingTestCase):
         self.assertEqual(len(rows), 1)
         self.assertEqual(rows[0]["search_term"], "cats")
 
-    def test_missing_dates_return_no_rows(self) -> None:
-        self.assertEqual(database.get_video_search_terms("v-1"), [])
+    def test_missing_dates_return_every_month(self) -> None:
+        rows = database.get_video_search_terms("v-1")
+        by_term = {r["search_term"]: r["views"] for r in rows}
+        self.assertEqual(by_term, {"cats": 14, "dogs": 5})
 
     def test_other_videos_terms_are_excluded(self) -> None:
         rows = database.get_video_search_terms("v-2", start_date="2024-01-01", end_date="2024-01-31")
@@ -248,8 +256,9 @@ class GetVideosBySearchTermTest(SearchInsightsReportingTestCase):
         videos = database.get_videos_by_search_term("cats", start_date="2024-01-01", end_date="2024-01-31", video_ids=[])
         self.assertEqual(videos, [])
 
-    def test_missing_dates_return_no_videos(self) -> None:
-        self.assertEqual(database.get_videos_by_search_term("cats"), [])
+    def test_missing_dates_return_every_month(self) -> None:
+        videos = database.get_videos_by_search_term("cats")
+        self.assertEqual([v["id"] for v in videos], ["v-1", "v-2"])
 
 
 if __name__ == "__main__":
