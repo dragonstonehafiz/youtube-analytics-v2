@@ -106,10 +106,12 @@ def get_videos_by_search_term(
     content_type: str | None = Query(default=None),
     privacy_status: str | None = Query(default=None),
     title: str | None = Query(default=None),
+    limit: int = Query(default=10),
 ) -> dict:
-    """Return the top 10 videos by views for one specific search term (channel-wide)."""
+    """Return the top `limit` (default 10) videos by views for one specific search term
+    (channel-wide)."""
     return {"items": database.get_videos_by_search_term(
-        search_term, start_date, end_date, content_type, privacy_status, title, limit=10
+        search_term, start_date, end_date, content_type, privacy_status, title, limit=limit
     )}
 
 
@@ -217,11 +219,13 @@ def get_playlist_videos_by_search_term(
     content_type: str | None = Query(default=None),
     privacy_status: str | None = Query(default=None),
     title: str | None = Query(default=None),
+    limit: int = Query(default=10),
 ) -> dict:
-    """Return the top 10 videos in a playlist by views for one specific search term."""
+    """Return the top `limit` (default 10) videos in a playlist by views for one specific
+    search term."""
     video_ids = _resolve_playlist_video_ids(playlist_id)
     return {"items": database.get_videos_by_search_term(
-        search_term, start_date, end_date, content_type, privacy_status, title, video_ids=video_ids, limit=10
+        search_term, start_date, end_date, content_type, privacy_status, title, video_ids=video_ids, limit=limit
     )}
 
 

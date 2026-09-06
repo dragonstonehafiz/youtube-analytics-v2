@@ -220,7 +220,7 @@ describe('Traffic Sources sub-tabs (Search Insights)', () => {
     fireEvent.change(videoSelect, { target: { value: 'dogs' } })
 
     await waitFor(() => expect(mockGetPlaylistVideosBySearchTerm).toHaveBeenCalledWith(
-      'pl1', 'dogs', expect.objectContaining({ contentType: 'video' }),
+      'pl1', 'dogs', expect.objectContaining({ contentType: 'video' }), expect.any(Number),
     ))
     expect(mockGetPlaylistVideosBySearchTerm.mock.calls.some(
       call => call[1] === 'dogs' && call[2]?.contentType === 'short',

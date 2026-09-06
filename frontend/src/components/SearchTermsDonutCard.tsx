@@ -1,6 +1,6 @@
 import { PieChart, Pie, Cell, ResponsiveContainer, Tooltip } from 'recharts'
 import type { SearchTermRow } from '@/types'
-import { categoricalColorClass, CATEGORICAL_OTHER_CLASS } from '@/lib/categoricalColors'
+import { categoricalColorClass, CATEGORICAL_SLOT_COUNT } from '@/lib/categoricalColors'
 import AsyncCard from '@/components/AsyncCard'
 import './SearchTermsDonutCard.css'
 
@@ -11,19 +11,13 @@ interface Props {
   error?: string | null
 }
 
-const TOP_N = 6
-const OTHER_KEY = '__other__'
-
 export default function SearchTermsDonutCard({ title, rows, loading, error = null }: Props) {
   const totalViews = rows.reduce((s, r) => s + r.views, 0)
-  const topRows = rows.slice(0, TOP_N)
-  const otherRows = rows.slice(TOP_N)
-  const otherViews = otherRows.reduce((s, r) => s + r.views, 0)
 
-  const slices = [
-    ...topRows.map((r, i) => ({ key: r.search_term, label: r.search_term, views: r.views, colorClass: categoricalColorClass(i) })),
-    ...(otherViews > 0 ? [{ key: OTHER_KEY, label: 'Other', views: otherViews, colorClass: CATEGORICAL_OTHER_CLASS }] : []),
-  ]
+  // Every fetched term is a real, named term — there is no unattributed/residual figure
+  // computed anywhere in this app, so nothing here is genuinely "Other". The palette only
+  // has CATEGORICAL_SLOT_COUNT distinct hues, so slices beyond that reuse them in rotation.
+  const slices = rows.map((r, i) => ({ key: r.search_term, label: r.search_term, views: r.views, colorClass: categoricalColorClass(i % CATEGORICAL_SLOT_COUNT) }))
 
   return (
     <AsyncCard
@@ -54,26 +48,13 @@ export default function SearchTermsDonutCard({ title, rows, loading, error = nul
       </div>
 
       <div className="search-terms-donut-legend">
-        {topRows.map((r, i) => (
+        {rows.map((r, i) => (
           <div key={r.search_term} className="search-terms-donut-legend-item">
-            <span className={`search-terms-donut-legend-swatch ${categoricalColorClass(i)}`} />
+            <span className={`search-terms-donut-legend-swatch ${categoricalColorClass(i % CATEGORICAL_SLOT_COUNT)}`} />
             <span className="search-terms-donut-legend-label">{r.search_term}</span>
             <span className="search-terms-donut-legend-views">{r.views.toLocaleString()}</span>
           </div>
         ))}
-
-        {otherRows.length > 0 && (
-          <>
-            <div className="search-terms-donut-legend-divider">Other includes:</div>
-            {otherRows.map(r => (
-              <div key={r.search_term} className="search-terms-donut-legend-item search-terms-donut-legend-item--sub">
-                <span className={`search-terms-donut-legend-swatch ${CATEGORICAL_OTHER_CLASS}`} />
-                <span className="search-terms-donut-legend-label">{r.search_term}</span>
-                <span className="search-terms-donut-legend-views">{r.views.toLocaleString()}</span>
-              </div>
-            ))}
-          </>
-        )}
       </div>
     </AsyncCard>
   )

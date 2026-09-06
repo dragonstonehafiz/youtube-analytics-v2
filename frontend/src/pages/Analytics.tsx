@@ -21,6 +21,8 @@ import { useDebouncedInput } from '@/hooks/useDebouncedInput'
 import './Analytics.css'
 
 const RECENT_COUNT = 10
+// Show every video with views for the selected term, not just a "top" handful.
+const ALL_VIDEOS_FOR_TERM_LIMIT = 1000
 
 type Tab = 'analytics' | 'traffic-sources' | 'comments'
 type TrafficSourcesSubTab = 'sources' | 'top-videos' | 'search'
@@ -144,7 +146,7 @@ export default function Analytics() {
     let active = true
     const term = videoTerm || searchTermsByVideo.data[0]?.search_term
     if (!term) { setVideosForVideoTerm({ data: [], loading: false, error: null }); return }
-    track(getVideosBySearchTerm(term, { startDate: startDate || undefined, endDate: endDate || undefined, title: title || undefined, privacyStatus: privacyStatus || undefined, contentType: 'video' })
+    track(getVideosBySearchTerm(term, { startDate: startDate || undefined, endDate: endDate || undefined, title: title || undefined, privacyStatus: privacyStatus || undefined, contentType: 'video' }, ALL_VIDEOS_FOR_TERM_LIMIT)
       .then((data: { items: SearchTermVideo[] }) => data.items ?? []), setVideosForVideoTerm, () => active, 'Could not load videos')
     return () => { active = false }
   }, [videoTerm, searchTermsByVideo.data, startDate, endDate, title, privacyStatus])
@@ -153,7 +155,7 @@ export default function Analytics() {
     let active = true
     const term = shortTerm || searchTermsByShort.data[0]?.search_term
     if (!term) { setVideosForShortTerm({ data: [], loading: false, error: null }); return }
-    track(getVideosBySearchTerm(term, { startDate: startDate || undefined, endDate: endDate || undefined, title: title || undefined, privacyStatus: privacyStatus || undefined, contentType: 'short' })
+    track(getVideosBySearchTerm(term, { startDate: startDate || undefined, endDate: endDate || undefined, title: title || undefined, privacyStatus: privacyStatus || undefined, contentType: 'short' }, ALL_VIDEOS_FOR_TERM_LIMIT)
       .then((data: { items: SearchTermVideo[] }) => data.items ?? []), setVideosForShortTerm, () => active, 'Could not load videos')
     return () => { active = false }
   }, [shortTerm, searchTermsByShort.data, startDate, endDate, title, privacyStatus])

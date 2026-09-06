@@ -68,8 +68,6 @@
   display: flex;
   flex-direction: column;
   gap: 0.4rem;
-  max-height: 220px;
-  overflow-y: auto;
 }
 
 .search-videos-donut-legend-item {

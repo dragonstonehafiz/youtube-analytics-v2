@@ -108,8 +108,8 @@ export const getSearchTerms = (query: SearchInsightsQuery = {}): Promise<{ items
 export const getTopSearchTerms = (query: SearchInsightsQuery = {}): Promise<{ items: SearchTermRow[] }> =>
   fetchJson("/analytics/search-insights/top", searchInsightsParams(query))
 
-export const getVideosBySearchTerm = (searchTerm: string, query: SearchInsightsQuery = {}): Promise<{ items: SearchTermVideo[] }> =>
-  fetchJson("/analytics/search-insights/videos", { ...searchInsightsParams(query), search_term: searchTerm })
+export const getVideosBySearchTerm = (searchTerm: string, query: SearchInsightsQuery = {}, limit?: number): Promise<{ items: SearchTermVideo[] }> =>
+  fetchJson("/analytics/search-insights/videos", { ...searchInsightsParams(query), search_term: searchTerm, ...(limit !== undefined && { limit: String(limit) }) })
 
 export const getPlaylistSearchTerms = (id: string, query: SearchInsightsQuery = {}): Promise<{ items: SearchTermRow[] }> =>
   fetchJson(`/analytics/playlists/${id}/search-insights`, searchInsightsParams(query))
@@ -117,8 +117,8 @@ export const getPlaylistSearchTerms = (id: string, query: SearchInsightsQuery = 
 export const getPlaylistTopSearchTerms = (id: string, query: SearchInsightsQuery = {}): Promise<{ items: SearchTermRow[] }> =>
   fetchJson(`/analytics/playlists/${id}/search-insights/top`, searchInsightsParams(query))
 
-export const getPlaylistVideosBySearchTerm = (id: string, searchTerm: string, query: SearchInsightsQuery = {}): Promise<{ items: SearchTermVideo[] }> =>
-  fetchJson(`/analytics/playlists/${id}/search-insights/videos`, { ...searchInsightsParams(query), search_term: searchTerm })
+export const getPlaylistVideosBySearchTerm = (id: string, searchTerm: string, query: SearchInsightsQuery = {}, limit?: number): Promise<{ items: SearchTermVideo[] }> =>
+  fetchJson(`/analytics/playlists/${id}/search-insights/videos`, { ...searchInsightsParams(query), search_term: searchTerm, ...(limit !== undefined && { limit: String(limit) }) })
 
 export const getVideoSearchTerms = (id: string, startDate?: string, endDate?: string): Promise<{ items: SearchTermRow[] }> =>
   fetchJson(`/analytics/videos/${id}/search-insights`, {

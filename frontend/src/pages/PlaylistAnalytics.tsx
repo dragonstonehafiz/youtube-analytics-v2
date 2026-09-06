@@ -26,6 +26,8 @@ import '@/components/VideoMetaCard.css'
 import './Analytics.css'
 
 const RECENT_COUNT = 10
+// Show every video with views for the selected term, not just a "top" handful.
+const ALL_VIDEOS_FOR_TERM_LIMIT = 1000
 
 type Tab = 'analytics' | 'traffic-sources' | 'comments' | 'videos'
 type TrafficSourcesSubTab = 'sources' | 'top-videos' | 'search'
@@ -181,7 +183,7 @@ export default function PlaylistAnalytics() {
     let active = true
     const term = videoTerm || searchTermsByVideo.data[0]?.search_term
     if (!term) { setVideosForVideoTerm({ data: [], loading: false, error: null }); return }
-    track(getPlaylistVideosBySearchTerm(id, term, { startDate: analyticsStartDate || undefined, endDate: analyticsEndDate || undefined, title: analyticsTitle || undefined, privacyStatus: analyticsPrivacyStatus || undefined, contentType: 'video' })
+    track(getPlaylistVideosBySearchTerm(id, term, { startDate: analyticsStartDate || undefined, endDate: analyticsEndDate || undefined, title: analyticsTitle || undefined, privacyStatus: analyticsPrivacyStatus || undefined, contentType: 'video' }, ALL_VIDEOS_FOR_TERM_LIMIT)
       .then((data: { items: SearchTermVideo[] }) => data.items ?? []), setVideosForVideoTerm, () => active, 'Could not load videos')
     return () => { active = false }
   }, [id, videoTerm, searchTermsByVideo.data, analyticsStartDate, analyticsEndDate, analyticsTitle, analyticsPrivacyStatus])
@@ -191,7 +193,7 @@ export default function PlaylistAnalytics() {
     let active = true
     const term = shortTerm || searchTermsByShort.data[0]?.search_term
     if (!term) { setVideosForShortTerm({ data: [], loading: false, error: null }); return }
-    track(getPlaylistVideosBySearchTerm(id, term, { startDate: analyticsStartDate || undefined, endDate: analyticsEndDate || undefined, title: analyticsTitle || undefined, privacyStatus: analyticsPrivacyStatus || undefined, contentType: 'short' })
+    track(getPlaylistVideosBySearchTerm(id, term, { startDate: analyticsStartDate || undefined, endDate: analyticsEndDate || undefined, title: analyticsTitle || undefined, privacyStatus: analyticsPrivacyStatus || undefined, contentType: 'short' }, ALL_VIDEOS_FOR_TERM_LIMIT)
       .then((data: { items: SearchTermVideo[] }) => data.items ?? []), setVideosForShortTerm, () => active, 'Could not load videos')
     return () => { active = false }
   }, [id, shortTerm, searchTermsByShort.data, analyticsStartDate, analyticsEndDate, analyticsTitle, analyticsPrivacyStatus])

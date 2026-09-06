@@ -7,7 +7,6 @@
   --categorical-color-3: #eda100;
   --categorical-color-4: #e87ba4;
   --categorical-color-5: #008300;
-  --categorical-other-color: #898781;
 }
 
 .categorical-color-0 { background: var(--categorical-color-0); fill: var(--categorical-color-0); }
@@ -16,4 +15,3 @@
 .categorical-color-3 { background: var(--categorical-color-3); fill: var(--categorical-color-3); }
 .categorical-color-4 { background: var(--categorical-color-4); fill: var(--categorical-color-4); }
 .categorical-color-5 { background: var(--categorical-color-5); fill: var(--categorical-color-5); }
-.categorical-color-other { background: var(--categorical-other-color); fill: var(--categorical-other-color); }
