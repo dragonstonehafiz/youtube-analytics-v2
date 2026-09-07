@@ -60,6 +60,14 @@
   margin-top: 0.75rem;
 }
 
+/* Grid items default to min-width: auto, so an unbroken long title/term (no spaces to
+   wrap on) can force its track past its fr share — this gives ellipsis truncation
+   inside a card an actual constrained width to work with. */
+.search-insights-columns > *,
+.search-insights-videos > * {
+  min-width: 0;
+}
+
 @media (max-width: 900px) {
   .search-insights-columns {
     grid-template-columns: 1fr;

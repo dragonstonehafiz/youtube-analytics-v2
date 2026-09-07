@@ -1,7 +1,7 @@
 import { Link } from 'react-router-dom'
 import { PieChart, Pie, Cell, ResponsiveContainer, Tooltip } from 'recharts'
 import type { SearchTermRow, SearchTermVideo } from '@/types'
-import { categoricalColorClass, CATEGORICAL_SLOT_COUNT } from '@/lib/categoricalColors'
+import { categoricalColorClass, CATEGORICAL_OTHER_CLASS } from '@/lib/categoricalColors'
 import AsyncCard from '@/components/AsyncCard'
 import './SearchTermVideosDonutCard.css'
 
@@ -18,14 +18,21 @@ interface Props {
   error?: string | null
 }
 
+const TOP_N = 6
+const OTHER_KEY = '__other__'
+
 export default function SearchTermVideosDonutCard({
   title, terms, termsLoading, selectedTerm, onSelectTerm, videos, loading, error = null,
 }: Props) {
   const totalViews = videos.reduce((s, v) => s + v.views, 0)
+  const topVideos = videos.slice(0, TOP_N)
+  const otherVideos = videos.slice(TOP_N)
+  const otherViews = otherVideos.reduce((s, v) => s + v.views, 0)
 
-  // Every video with views for this term is shown, not just a "top N" — the palette only
-  // has CATEGORICAL_SLOT_COUNT distinct hues, so slices beyond that reuse them in rotation.
-  const slices = videos.map((v, i) => ({ key: v.id, label: v.title, views: v.views, colorClass: categoricalColorClass(i % CATEGORICAL_SLOT_COUNT) }))
+  const slices = [
+    ...topVideos.map((v, i) => ({ key: v.id, label: v.title, views: v.views, colorClass: categoricalColorClass(i) })),
+    ...(otherViews > 0 ? [{ key: OTHER_KEY, label: 'Other', views: otherViews, colorClass: CATEGORICAL_OTHER_CLASS }] : []),
+  ]
 
   return (
     <AsyncCard
@@ -71,16 +78,32 @@ export default function SearchTermVideosDonutCard({
       </div>
 
       <div className="search-videos-donut-legend">
-        {videos.map((v, i) => (
+        {topVideos.map((v, i) => (
           <div key={v.id} className="search-videos-donut-legend-item">
             {v.thumbnail_url
               ? <img src={v.thumbnail_url} alt="" className="search-videos-donut-thumb" />
               : <div className="search-videos-donut-thumb search-videos-donut-thumb--placeholder" />}
-            <span className={`search-videos-donut-legend-swatch ${categoricalColorClass(i % CATEGORICAL_SLOT_COUNT)}`} />
+            <span className={`search-videos-donut-legend-swatch ${categoricalColorClass(i)}`} />
             <span className="search-videos-donut-legend-label"><Link to={`/analytics/videos/${v.id}`}>{v.title}</Link></span>
             <span className="search-videos-donut-legend-views">{v.views.toLocaleString()}</span>
           </div>
         ))}
+
+        {otherVideos.length > 0 && (
+          <>
+            <div className="search-videos-donut-legend-divider">Other includes:</div>
+            {otherVideos.map(v => (
+              <div key={v.id} className="search-videos-donut-legend-item search-videos-donut-legend-item--sub">
+                {v.thumbnail_url
+                  ? <img src={v.thumbnail_url} alt="" className="search-videos-donut-thumb" />
+                  : <div className="search-videos-donut-thumb search-videos-donut-thumb--placeholder" />}
+                <span className={`search-videos-donut-legend-swatch ${CATEGORICAL_OTHER_CLASS}`} />
+                <span className="search-videos-donut-legend-label"><Link to={`/analytics/videos/${v.id}`}>{v.title}</Link></span>
+                <span className="search-videos-donut-legend-views">{v.views.toLocaleString()}</span>
+              </div>
+            ))}
+          </>
+        )}
       </div>
     </AsyncCard>
   )

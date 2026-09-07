@@ -77,6 +77,10 @@
   font-size: 12px;
 }
 
+.search-videos-donut-legend-item--sub {
+  padding-left: 0.75rem;
+}
+
 .search-videos-donut-thumb {
   width: 40px;
   height: 24px;
@@ -99,6 +103,7 @@
 
 .search-videos-donut-legend-label {
   flex: 1;
+  min-width: 0;
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
@@ -108,4 +113,15 @@
   color: var(--text-secondary);
   font-weight: 600;
   flex-shrink: 0;
+}
+
+.search-videos-donut-legend-divider {
+  margin-top: 0.15rem;
+  font-size: 11px;
+  font-weight: 600;
+  color: var(--text-secondary);
+  text-transform: uppercase;
+  letter-spacing: 0.03em;
+  border-top: 1px solid var(--border-light);
+  padding-top: 0.4rem;
 }

@@ -18,6 +18,13 @@
   margin-top: 1.5rem;
 }
 
+/* Grid items default to min-width: auto, so an unbroken long title (e.g. a video title
+   with no spaces to wrap on) can force its track past its 1fr share — this overrides
+   that so ellipsis truncation inside a card actually has a constrained width to work with. */
+.home-carousels > * {
+  min-width: 0;
+}
+
 .home-nav-card {
   display: flex;
   flex-direction: column;
