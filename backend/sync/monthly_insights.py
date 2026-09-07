@@ -50,6 +50,32 @@ def monthly_search_windows(today: date) -> list[MonthlyWindow]:
     return windows
 
 
+def weekly_sub_windows(month_window: MonthlyWindow) -> list[tuple[str, str]]:
+    """Split one MonthlyWindow's start/end into consecutive 7-day (start_date, end_date)
+    chunks, oldest first, clamped to the window's own bounds — the last chunk may be
+    shorter than 7 days. Pure date arithmetic; makes no API calls itself.
+
+    Each Search Analytics detail request is hard-capped at 25 result rows total, with
+    no pagination past that (verified live: a second page returns HTTP 500, not more
+    data — see search-insights-api-findings.md). Narrowing each request to a week
+    instead of a whole month raises how many distinct terms a video can have named
+    before hitting that cap, since the cap applies per request, not per month. The
+    caller fetches one API request per returned chunk and combines their results
+    in memory before a single upsert for the month, so this does not change what
+    gets stored (still one row per video/month/term) — only how much of a month's
+    real search traffic gets captured before the per-request cap discards the rest.
+    """
+    start = date.fromisoformat(month_window.start_date)
+    end = date.fromisoformat(month_window.end_date)
+    chunks = []
+    current = start
+    while current <= end:
+        chunk_end = min(current + timedelta(days=6), end)
+        chunks.append((current.isoformat(), chunk_end.isoformat()))
+        current = chunk_end + timedelta(days=1)
+    return chunks
+
+
 def monthly_windows_for_range(start: date, end: date) -> list[MonthlyWindow]:
     """Return one MonthlyWindow per calendar month from `start` through `end`, inclusive,
     oldest first. Each window's dates are clamped to `start`/`end` within its month, so

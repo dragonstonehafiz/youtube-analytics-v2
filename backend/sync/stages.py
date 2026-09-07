@@ -376,6 +376,15 @@ def sync_search_related_insights(scope: str, year: int | None, counts: SyncCount
     scope="all" refreshes every calendar month from the video's publish date through
     yesterday; a video with no publish date is skipped. Each (video, month) upsert
     commits independently.
+
+    Each month is fetched as multiple weekly (7-day) sub-requests rather than one
+    monthly request, combining their term views in memory before that month's single
+    upsert. The Search Analytics detail report hard-caps each request at 25 rows with
+    no pagination past that (verified live, not a bug in this codebase — see
+    search-insights-api-findings.md), so a video whose real search traffic spans more
+    than 25 distinct terms in a month permanently loses everything past the cap.
+    Narrowing each request to a week raises how many of a month's real terms fit under
+    that same 25-row ceiling before the rest gets dropped.
     """
     today = date.today()
     yesterday = today - timedelta(days=1)
@@ -417,13 +426,20 @@ def sync_search_related_insights(scope: str, year: int | None, counts: SyncCount
             windows = incremental_windows
 
         rows_before = counts.rows_fetched
+        calls = 0
         for window in windows:
-            result = youtube.fetch_video_search_terms(video_id, window.start_date, window.end_date)
-            counts.rows_fetched += result.raw_row_count
-            counts.rows_written += database.upsert_search_terms(video_id, window.month, result.terms)
+            combined_views: dict[str, int] = {}
+            for week_start, week_end in monthly_insights.weekly_sub_windows(window):
+                result = youtube.fetch_video_search_terms(video_id, week_start, week_end)
+                calls += 1
+                counts.rows_fetched += result.raw_row_count
+                for term in result.terms:
+                    combined_views[term["search_term"]] = combined_views.get(term["search_term"], 0) + term["views"]
+            terms = [{"search_term": search_term, "views": views} for search_term, views in combined_views.items()]
+            counts.rows_written += database.upsert_search_terms(video_id, window.month, terms)
         _logger.debug(
-            "search_related_insights %d/%d video=%s months=%d rows=%d title=%r",
-            i, total, video_id, len(windows), counts.rows_fetched - rows_before, title,
+            "search_related_insights %d/%d video=%s months=%d calls=%d rows=%d title=%r",
+            i, total, video_id, len(windows), calls, counts.rows_fetched - rows_before, title,
         )
 
 

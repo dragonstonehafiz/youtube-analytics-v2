@@ -32,7 +32,10 @@ _TRAFFIC_SOURCE_METRICS = [
 ]
 
 # The channel report spec caps detail reports at 25 rows; Search & Related Insights
-# never requests or accepts a second page beyond this single result set.
+# never requests or accepts a second page beyond this single result set. Verified
+# live against the API (search-insights-api-findings.md): maxResults>25 and any
+# startIndex reaching row 26 both return HTTP 500, not a normal empty next page —
+# this is a hard per-request ceiling, not something pagination can get around.
 SEARCH_TERMS_MAX_RESULTS = 25
 
 
