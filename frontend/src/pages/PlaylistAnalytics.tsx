@@ -1,7 +1,7 @@
 import { useEffect, useState } from 'react'
 import { useParams } from 'react-router-dom'
-import { getPlaylist, getPlaylistVideos, getPlaylistVideoStats, getPlaylistAnalytics, getPlaylistTopVideosByViews, getVideosPublished, getPlaylistTrafficSources, getPlaylistTopVideosByTrafficSource, getPlaylistTopSearchTerms, getPlaylistVideosBySearchTerm } from '@/api'
-import type { Video, VideoStats, AnalyticsRow, Playlist, TopVideo, TopVideoSortBy, PublishedVideo, TrafficSourceRow, TrafficSourceTopVideo, SearchTermRow, SearchTermVideo } from '@/types'
+import { getPlaylist, getPlaylistVideos, getPlaylistVideoStats, getPlaylistAnalytics, getPlaylistTopVideosByViews, getVideosPublished, getPlaylistTrafficSources, getPlaylistTopVideosByTrafficSource, getPlaylistTopSearchTerms, getPlaylistVideosBySearchTerm, getPlaylistRelatedVideoReferrers, getPlaylistRelatedVideoDestinations } from '@/api'
+import type { Video, VideoStats, AnalyticsRow, Playlist, TopVideo, TopVideoSortBy, PublishedVideo, TrafficSourceRow, TrafficSourceTopVideo, SearchTermRow, SearchTermVideo, RelatedReferrersResponse, RelatedDestinationRow } from '@/types'
 import { useReplaceSearchParams } from '@/hooks/useReplaceSearchParams'
 import VideoStatsBar from '@/components/VideoStatsBar'
 import VideoTable, { PAGE_SIZE } from '@/components/VideoTable'
@@ -10,6 +10,7 @@ import PeriodSelect, { last28Dates } from '@/components/PeriodSelect'
 import { toTopVideoShape, last7Dates } from '@/lib/topVideos'
 import type { RequestState } from '@/lib/requestState'
 import { pending, track } from '@/lib/requestState'
+import { useReconciledSelection } from '@/hooks/useReconciledSelection'
 import AsyncCard from '@/components/AsyncCard'
 import AnalyticsChart from '@/components/AnalyticsChart'
 import TopVideosList from '@/components/TopVideosList'
@@ -20,6 +21,8 @@ import TrafficSourcesTable from '@/components/TrafficSourcesTable'
 import TrafficSourceTopVideosPanel from '@/components/TrafficSourceTopVideosPanel'
 import SearchTermsDonutCard from '@/components/SearchTermsDonutCard'
 import SearchTermVideosDonutCard from '@/components/SearchTermVideosDonutCard'
+import RelatedReferrerBreakdownCard from '@/components/RelatedReferrerBreakdownCard'
+import RelatedDestinationsByReferrerCard from '@/components/RelatedDestinationsByReferrerCard'
 import CommentsPanel from '@/components/CommentsPanel'
 import { useDebouncedInput } from '@/hooks/useDebouncedInput'
 import '@/components/VideoMetaCard.css'
@@ -28,12 +31,14 @@ import './Analytics.css'
 const RECENT_COUNT = 10
 // Show every video with views for the selected term, not just a "top" handful.
 const ALL_VIDEOS_FOR_TERM_LIMIT = 1000
+const RELATED_DESTINATIONS_LIMIT = 10
+const EMPTY_RELATED_REFERRERS: RelatedReferrersResponse = { items: [], total_named_views: 0 }
 
 type Tab = 'analytics' | 'traffic-sources' | 'comments' | 'videos'
-type TrafficSourcesSubTab = 'sources' | 'top-videos' | 'search'
+type TrafficSourcesSubTab = 'sources' | 'top-videos' | 'search' | 'related'
 
 function toTrafficSourcesSubTab(value: string | null): TrafficSourcesSubTab {
-  return value === 'top-videos' || value === 'search' ? value : 'sources'
+  return value === 'top-videos' || value === 'search' || value === 'related' ? value : 'sources'
 }
 
 interface VideoPage {
@@ -81,6 +86,18 @@ export default function PlaylistAnalytics() {
   const [recentShorts, setRecentShorts] = useState<RequestState<TopVideo[]>>(pending([]))
   const [topPerformingVideos, setTopPerformingVideos] = useState<RequestState<TopVideo[]>>(pending([]))
   const [topPerformingShorts, setTopPerformingShorts] = useState<RequestState<TopVideo[]>>(pending([]))
+  const [relatedReferrersMine, setRelatedReferrersMine] = useState<RequestState<RelatedReferrersResponse>>(pending(EMPTY_RELATED_REFERRERS))
+  const [relatedReferrersOther, setRelatedReferrersOther] = useState<RequestState<RelatedReferrersResponse>>(pending(EMPTY_RELATED_REFERRERS))
+  const [relatedDestinationsMine, setRelatedDestinationsMine] = useState<RequestState<RelatedDestinationRow[]>>(pending([]))
+  const [relatedDestinationsOther, setRelatedDestinationsOther] = useState<RequestState<RelatedDestinationRow[]>>(pending([]))
+  const [mineReferrerSelected, setMineReferrerSelected] = useReconciledSelection(
+    relatedReferrersMine.data.items.map(r => r.referrer_video_id),
+  )
+  const [otherReferrerSelected, setOtherReferrerSelected] = useReconciledSelection(
+    relatedReferrersOther.data.items.map(r => r.referrer_video_id),
+  )
+  const mineReferrerId = mineReferrerSelected ?? relatedReferrersMine.data.items[0]?.referrer_video_id ?? null
+  const otherReferrerId = otherReferrerSelected ?? relatedReferrersOther.data.items[0]?.referrer_video_id ?? null
 
   useEffect(() => {
     if (!id) return
@@ -197,6 +214,37 @@ export default function PlaylistAnalytics() {
       .then((data: { items: SearchTermVideo[] }) => data.items ?? []), setVideosForShortTerm, () => active, 'Could not load videos')
     return () => { active = false }
   }, [id, shortTerm, searchTermsByShort.data, analyticsStartDate, analyticsEndDate, analyticsTitle, analyticsPrivacyStatus])
+
+  // The two referrer-breakdown cards each own one own-filtered referrers call.
+  useEffect(() => {
+    if (!id) return
+    let active = true
+    const query = { startDate: analyticsStartDate || undefined, endDate: analyticsEndDate || undefined, title: analyticsTitle || undefined, contentType: analyticsContentType || undefined, privacyStatus: analyticsPrivacyStatus || undefined }
+    track(getPlaylistRelatedVideoReferrers(id, true, query, RELATED_DESTINATIONS_LIMIT)
+      .then((data: RelatedReferrersResponse) => data), setRelatedReferrersMine, () => active, 'Could not load Related Video referrers')
+    track(getPlaylistRelatedVideoReferrers(id, false, query, RELATED_DESTINATIONS_LIMIT)
+      .then((data: RelatedReferrersResponse) => data), setRelatedReferrersOther, () => active, 'Could not load Related Video referrers')
+    return () => { active = false }
+  }, [id, analyticsStartDate, analyticsEndDate, analyticsContentType, analyticsPrivacyStatus, analyticsTitle])
+
+  // Each destination-drill-down card owns its own referrer selection independently.
+  useEffect(() => {
+    if (!id) return
+    let active = true
+    if (!mineReferrerId) { setRelatedDestinationsMine({ data: [], loading: false, error: null }); return }
+    track(getPlaylistRelatedVideoDestinations(id, mineReferrerId, analyticsStartDate || undefined, analyticsEndDate || undefined, RELATED_DESTINATIONS_LIMIT)
+      .then((data: { items: RelatedDestinationRow[] }) => data.items ?? []), setRelatedDestinationsMine, () => active, 'Could not load destinations')
+    return () => { active = false }
+  }, [id, mineReferrerId, analyticsStartDate, analyticsEndDate])
+
+  useEffect(() => {
+    if (!id) return
+    let active = true
+    if (!otherReferrerId) { setRelatedDestinationsOther({ data: [], loading: false, error: null }); return }
+    track(getPlaylistRelatedVideoDestinations(id, otherReferrerId, analyticsStartDate || undefined, analyticsEndDate || undefined, RELATED_DESTINATIONS_LIMIT)
+      .then((data: { items: RelatedDestinationRow[] }) => data.items ?? []), setRelatedDestinationsOther, () => active, 'Could not load destinations')
+    return () => { active = false }
+  }, [id, otherReferrerId, analyticsStartDate, analyticsEndDate])
 
   // The sortable top-video table reloads on its own sort change, and on nothing else's.
   useEffect(() => {
@@ -523,6 +571,13 @@ export default function PlaylistAnalytics() {
                 >
                   Search Insights
                 </button>
+                <button
+                  type="button"
+                  className={`tab${tsTab === 'related' ? ' active' : ''}`}
+                  onClick={() => handleTsTabChange('related')}
+                >
+                  Related Videos
+                </button>
               </div>
               {tsTab === 'sources' ? (
                 <TrafficSourcesTable
@@ -537,7 +592,7 @@ export default function PlaylistAnalytics() {
                   loading={trafficSources.loading || topVideosBySource.loading}
                   error={trafficSources.error ?? topVideosBySource.error}
                 />
-              ) : (
+              ) : tsTab === 'search' ? (
                 <>
                   <div className="search-insights-columns">
                     <SearchTermsDonutCard
@@ -579,6 +634,45 @@ export default function PlaylistAnalytics() {
                       videos={videosForShortTerm.data}
                       loading={videosForShortTerm.loading}
                       error={videosForShortTerm.error}
+                    />
+                  </div>
+                </>
+              ) : (
+                <>
+                  <div className="related-videos-columns">
+                    <RelatedReferrerBreakdownCard
+                      title="Related Traffic from My Channel"
+                      referrers={relatedReferrersMine.data.items}
+                      loading={relatedReferrersMine.loading}
+                      error={relatedReferrersMine.error}
+                    />
+                    <RelatedReferrerBreakdownCard
+                      title="Related Traffic from Other Channels"
+                      referrers={relatedReferrersOther.data.items}
+                      loading={relatedReferrersOther.loading}
+                      error={relatedReferrersOther.error}
+                    />
+                  </div>
+                  <div className="related-videos-columns">
+                    <RelatedDestinationsByReferrerCard
+                      title="Top Destinations — My Channel"
+                      referrerOptions={relatedReferrersMine.data.items}
+                      referrerOptionsLoading={relatedReferrersMine.loading}
+                      selectedReferrerId={mineReferrerId}
+                      onSelectReferrer={setMineReferrerSelected}
+                      destinations={relatedDestinationsMine.data}
+                      loading={relatedDestinationsMine.loading}
+                      error={relatedDestinationsMine.error}
+                    />
+                    <RelatedDestinationsByReferrerCard
+                      title="Top Destinations — Other Channels"
+                      referrerOptions={relatedReferrersOther.data.items}
+                      referrerOptionsLoading={relatedReferrersOther.loading}
+                      selectedReferrerId={otherReferrerId}
+                      onSelectReferrer={setOtherReferrerSelected}
+                      destinations={relatedDestinationsOther.data}
+                      loading={relatedDestinationsOther.loading}
+                      error={relatedDestinationsOther.error}
                     />
                   </div>
                 </>

@@ -56,7 +56,7 @@ def sync_videos(counts: SyncCounts, playlist_video_ids: set[str]) -> set[str]:
     Classification is skipped when the Shorts playlist enumeration is truncated: an
     incomplete `shorts_ids` set can't tell a real Short that was missed from a genuine
     long-form video, so guessing "video" would silently reclassify already-known
-    Shorts. `upsert_video` leaves `content_type` untouched on conflict when it's None.
+    Shorts. `upsert_own_video` leaves `content_type` untouched on conflict when it's None.
 
     `fetch_videos()` silently omits any id the videos().list detail call doesn't return
     an item for (e.g. region-restricted or transiently unavailable). That gap is logged
@@ -97,7 +97,7 @@ def sync_videos(counts: SyncCounts, playlist_video_ids: set[str]) -> set[str]:
 
     for video_id, video in fetched_by_id.items():
         if video_id in uploads_id_set or video_id in owned_playlist_only_ids:
-            database.upsert_video(video)
+            database.upsert_own_video(video)
             counts.rows_written += 1
 
     return uploads_id_set | owned_playlist_only_ids
@@ -170,7 +170,7 @@ def _comment_bootstrap_cutoff(today: date) -> str:
 def sync_comments(scope: str, counts: SyncCounts) -> None:
     """Fetch and upsert top-level comments for every video already stored locally.
 
-    The worklist is `database.get_all_video_ids()` and nothing else: this stage never
+    The worklist is `database.get_owned_video_ids()` and nothing else: this stage never
     discovers, refreshes, or looks up videos through YouTube, so a video absent from
     SQLite simply has no comments imported until the videos stage adds it.
 
@@ -187,12 +187,12 @@ def sync_comments(scope: str, counts: SyncCounts) -> None:
     video's comments have cascaded away.
     """
     cutoff = _comment_bootstrap_cutoff(date.today())
-    video_ids = database.get_all_video_ids()
+    video_ids = database.get_owned_video_ids()
     total = len(video_ids)
 
     for i, video_id in enumerate(video_ids, start=1):
         status.update_sync_progress(f"Syncing comments ({i}/{total})...")
-        video = database.get_video(video_id)
+        video = database.get_owned_video(video_id)
         title = video.get("title") if video else None
         known_ids = database.get_comment_ids_for_video(video_id)
         fetched_before = counts.rows_fetched
@@ -256,11 +256,11 @@ def sync_video_analytics(scope: str, year: int | None, counts: SyncCounts) -> No
     today = date.today()
     end_date = (today - timedelta(days=1)).isoformat()
 
-    video_ids = database.get_all_video_ids()
+    video_ids = database.get_owned_video_ids()
     total = len(video_ids)
     for i, video_id in enumerate(video_ids, start=1):
         status.update_sync_progress(f"Syncing video analytics ({i}/{total})...")
-        video = database.get_video(video_id)
+        video = database.get_owned_video(video_id)
         if not video or not video.get("published_at"):
             _logger.debug(
                 "video_analytics %d/%d video=%s skipped reason=no_publish_date title=%r",
@@ -314,11 +314,11 @@ def sync_video_traffic_sources(scope: str, year: int | None, counts: SyncCounts)
     today = date.today()
     end_date = (today - timedelta(days=1)).isoformat()
 
-    video_ids = database.get_all_video_ids()
+    video_ids = database.get_owned_video_ids()
     total = len(video_ids)
     for i, video_id in enumerate(video_ids, start=1):
         status.update_sync_progress(f"Syncing traffic sources ({i}/{total})...")
-        video = database.get_video(video_id)
+        video = database.get_owned_video(video_id)
         if not video or not video.get("published_at"):
             _logger.debug(
                 "video_traffic_sources %d/%d video=%s skipped reason=no_publish_date title=%r",
@@ -359,7 +359,7 @@ def sync_video_traffic_sources(scope: str, year: int | None, counts: SyncCounts)
         )
 
 
-def sync_search_related_insights(scope: str, year: int | None, counts: SyncCounts) -> None:
+def sync_search_insights(scope: str, year: int | None, counts: SyncCounts) -> None:
     """Fetch and upsert monthly Search-source terms for every video.
 
     scope="incremental" ("New data only") matches video_analytics/video_traffic_sources:
@@ -391,18 +391,18 @@ def sync_search_related_insights(scope: str, year: int | None, counts: SyncCount
     # Captured once so a midnight rollover mid-run cannot change the worklist. Used only
     # as the incremental fallback for a video with no publish date to compute a range from.
     incremental_windows = monthly_insights.monthly_search_windows(today)
-    video_ids = database.get_all_video_ids()
+    video_ids = database.get_owned_video_ids()
     total = len(video_ids)
 
     for i, video_id in enumerate(video_ids, start=1):
-        video = database.get_video(video_id)
+        video = database.get_owned_video(video_id)
         title = video.get("title") if video else None
         status.update_sync_progress(f"Syncing search insights ({i}/{total})...")
 
         if scope in ("year", "all"):
             if not video or not video.get("published_at"):
                 _logger.debug(
-                    "search_related_insights %d/%d video=%s skipped reason=no_publish_date title=%r",
+                    "search_insights %d/%d video=%s skipped reason=no_publish_date title=%r",
                     i, total, video_id, title,
                 )
                 continue
@@ -438,9 +438,149 @@ def sync_search_related_insights(scope: str, year: int | None, counts: SyncCount
             terms = [{"search_term": search_term, "views": views} for search_term, views in combined_views.items()]
             counts.rows_written += database.upsert_search_terms(video_id, window.month, terms)
         _logger.debug(
-            "search_related_insights %d/%d video=%s months=%d calls=%d rows=%d title=%r",
+            "search_insights %d/%d video=%s months=%d calls=%d rows=%d title=%r",
             i, total, video_id, len(windows), calls, counts.rows_fetched - rows_before, title,
         )
+
+
+def sync_related_video_insights(scope: str, year: int | None, counts: SyncCounts) -> None:
+    """Fetch and upsert monthly Related Video referrers for every owned video, then
+    resolve metadata for newly encountered referrer IDs.
+
+    scope="incremental" ("New data only") matches search_insights/video_analytics/
+    video_traffic_sources: it resumes from the video's own last stored month
+    (re-checking that month) through yesterday, backfilling from its publish date if it
+    has no stored Related rows yet at all. A video whose backfill was interrupted
+    partway resumes filling the remaining gap instead of being treated as fully caught
+    up just because it has *some* stored data. A video with no publish date falls back
+    to the fixed current+previous refresh, since there is no date to compute a range
+    from. scope="year" refreshes every calendar month of the given year that falls
+    within the video's published-to-yesterday range; a video with no publish date is
+    skipped. scope="all" refreshes every calendar month from the video's publish date
+    through yesterday; a video with no publish date is skipped. Each (video, month)
+    upsert commits independently.
+
+    Each month is fetched as multiple weekly (7-day) sub-requests rather than one
+    monthly request, combining referrer views in memory before that month's single
+    upsert — the same 25-row-per-request cap and reasoning as search_insights (see
+    search-insights-api-findings.md).
+
+    The owned-video worklist is captured once at stage start, so a referrer resolved
+    into `videos` during this run can never become a target within the same run. This
+    stage never reads or writes Video Traffic Sources, and this metadata-resolution
+    logic lives only here, not in sync_search_insights.
+
+    Once every video/month has been fetched, newly encountered referrer IDs not
+    already present in `videos` (owned or external) are resolved in deterministic
+    batches of at most 50 via `youtube.fetch_videos()` and classified against the
+    authenticated channel ID. A batch's metadata lookup failure is logged and skipped;
+    it never fails the stage or discards the Related rows already stored. An ID
+    omitted from its batch's response is left without a video row.
+    """
+    today = date.today()
+    yesterday = today - timedelta(days=1)
+    # Captured once so a midnight rollover mid-run cannot change the worklist. Used only
+    # as the incremental fallback for a video with no publish date to compute a range from.
+    incremental_windows = monthly_insights.monthly_search_windows(today)
+    video_ids = database.get_owned_video_ids()
+    total = len(video_ids)
+    newly_encountered_ids: set[str] = set()
+
+    for i, video_id in enumerate(video_ids, start=1):
+        video = database.get_owned_video(video_id)
+        title = video.get("title") if video else None
+        status.update_sync_progress(f"Syncing related video insights ({i}/{total})...")
+
+        if scope in ("year", "all"):
+            if not video or not video.get("published_at"):
+                _logger.debug(
+                    "related_video_insights %d/%d video=%s skipped reason=no_publish_date title=%r",
+                    i, total, video_id, title,
+                )
+                continue
+            publish_date = date.fromisoformat(video["published_at"][:10])
+            if scope == "year":
+                assert year is not None, "scope=year requires a year"
+                start = max(publish_date, date(year, 1, 1))
+                end = min(yesterday, date(year, 12, 31))
+            else:
+                start = publish_date
+                end = yesterday
+            windows = monthly_insights.monthly_windows_for_range(start, end)
+        elif video and video.get("published_at"):
+            publish_date = date.fromisoformat(video["published_at"][:10])
+            last_month = database.get_last_related_videos_month(video_id)
+            start = publish_date if last_month is None else max(
+                date.fromisoformat(f"{last_month}-01"), publish_date
+            )
+            windows = monthly_insights.monthly_windows_for_range(start, yesterday)
+        else:
+            windows = incremental_windows
+
+        rows_before = counts.rows_fetched
+        calls = 0
+        for window in windows:
+            combined_views: dict[str, int] = {}
+            for week_start, week_end in monthly_insights.weekly_sub_windows(window):
+                result = youtube.fetch_video_related_videos(video_id, week_start, week_end)
+                calls += 1
+                counts.rows_fetched += result.raw_row_count
+                for referrer in result.referrers:
+                    referrer_id = referrer["referrer_video_id"]
+                    combined_views[referrer_id] = combined_views.get(referrer_id, 0) + referrer["views"]
+            referrers = [
+                {"referrer_video_id": referrer_id, "views": views}
+                for referrer_id, views in combined_views.items()
+            ]
+            counts.rows_written += database.upsert_related_videos(video_id, window.month, referrers)
+            newly_encountered_ids.update(combined_views.keys())
+        _logger.debug(
+            "related_video_insights %d/%d video=%s months=%d calls=%d rows=%d title=%r",
+            i, total, video_id, len(windows), calls, counts.rows_fetched - rows_before, title,
+        )
+
+    _resolve_related_video_metadata(newly_encountered_ids, counts)
+
+
+def _resolve_related_video_metadata(newly_encountered_ids: set[str], counts: SyncCounts) -> None:
+    """Resolve metadata for referrer IDs not already known in `videos` (owned or
+    external), batching requests deterministically and classifying ownership against
+    the authenticated channel. A batch's lookup failure — including the channel-identity
+    lookup itself — is logged and skipped, without failing the stage or discarding
+    Related rows already stored.
+    """
+    unknown_ids = sorted(newly_encountered_ids - set(database.get_all_video_ids()))
+    if not unknown_ids:
+        return
+
+    try:
+        channel_id, _ = youtube.fetch_channel_identity()
+    except Exception as exc:
+        _logger.warning(
+            "related_video_insights metadata resolution skipped: channel identity lookup failed %s",
+            exception_context(exc),
+        )
+        return
+
+    resolved = 0
+    for i in range(0, len(unknown_ids), 50):
+        batch = unknown_ids[i : i + 50]
+        try:
+            fetched = youtube.fetch_videos(batch)
+        except Exception as exc:
+            _logger.warning(
+                "related_video_insights metadata batch failed count=%d %s",
+                len(batch), exception_context(exc),
+            )
+            continue
+        for video in fetched:
+            counts.rows_fetched += 1
+            database.upsert_related_video(video, own=video.get("channel_id") == channel_id)
+            counts.rows_written += 1
+            resolved += 1
+    _logger.debug(
+        "related_video_insights metadata unknown=%d resolved=%d", len(unknown_ids), resolved,
+    )
 
 
 def sync_fx_rates(counts: SyncCounts) -> None:

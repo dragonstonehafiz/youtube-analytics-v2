@@ -237,6 +237,97 @@ def get_video_search_terms(
 ) -> dict:
     """Return every search term by views for a single video, for the months containing
     start_date/end_date."""
-    if not database.get_video(video_id):
+    if not database.get_owned_video(video_id):
         raise HTTPException(status_code=404, detail="Video not found")
     return {"items": database.get_video_search_terms(video_id, start_date, end_date)}
+
+
+@router.get("/analytics/related-videos/referrers")
+def get_related_video_referrers(
+    start_date: str | None = Query(default=None),
+    end_date: str | None = Query(default=None),
+    content_type: str | None = Query(default=None),
+    privacy_status: str | None = Query(default=None),
+    title: str | None = Query(default=None),
+    own: bool = Query(),
+    limit: int = Query(default=10),
+) -> dict:
+    """Return Related Video referrers aggregated across all owned videos, for the
+    months containing start_date/end_date. `own` selects the referrer-ownership
+    bucket (True: confirmed this channel's own video; False: everything else,
+    including unresolved metadata). Returns `total_named_views`, the scope's true
+    unfiltered total across every named referrer, alongside the ranked/capped `items`.
+    """
+    return database.get_related_video_referrers(
+        start_date, end_date, content_type, privacy_status, title, own=own, limit=limit
+    )
+
+
+@router.get("/analytics/related-videos/destinations")
+def get_related_video_destinations(
+    referrer_video_id: str = Query(),
+    start_date: str | None = Query(default=None),
+    end_date: str | None = Query(default=None),
+    limit: int = Query(default=10),
+) -> dict:
+    """Return the top destination videos for one Related Video referrer, across all
+    owned videos, for the months containing start_date/end_date. The referrer's own
+    ownership is irrelevant here — any video, owned or external, can be a referrer."""
+    return {"items": database.get_related_video_destinations(referrer_video_id, start_date, end_date, limit=limit)}
+
+
+@router.get("/analytics/playlists/{playlist_id}/related-videos/referrers")
+def get_playlist_related_video_referrers(
+    playlist_id: str,
+    start_date: str | None = Query(default=None),
+    end_date: str | None = Query(default=None),
+    content_type: str | None = Query(default=None),
+    privacy_status: str | None = Query(default=None),
+    title: str | None = Query(default=None),
+    own: bool = Query(),
+    limit: int = Query(default=10),
+) -> dict:
+    """Return Related Video referrers aggregated across a playlist's member videos,
+    for the months containing start_date/end_date. Same shape as the channel-wide
+    route, scoped to the playlist's members."""
+    video_ids = _resolve_playlist_video_ids(playlist_id)
+    return database.get_related_video_referrers(
+        start_date, end_date, content_type, privacy_status, title, video_ids=video_ids, own=own, limit=limit
+    )
+
+
+@router.get("/analytics/playlists/{playlist_id}/related-videos/destinations")
+def get_playlist_related_video_destinations(
+    playlist_id: str,
+    referrer_video_id: str = Query(),
+    start_date: str | None = Query(default=None),
+    end_date: str | None = Query(default=None),
+    limit: int = Query(default=10),
+) -> dict:
+    """Return the top destination videos for one Related Video referrer, scoped to a
+    playlist's member videos, for the months containing start_date/end_date."""
+    video_ids = _resolve_playlist_video_ids(playlist_id)
+    return {"items": database.get_related_video_destinations(
+        referrer_video_id, start_date, end_date, video_ids=video_ids, limit=limit
+    )}
+
+
+@router.get("/analytics/videos/{video_id}/related-videos/referrers")
+def get_video_related_video_referrers(
+    video_id: str,
+    start_date: str | None = Query(default=None),
+    end_date: str | None = Query(default=None),
+    own: bool = Query(),
+    limit: int | None = Query(default=None),
+) -> dict:
+    """Return Related Video referrers to a single owned video, for the months
+    containing start_date/end_date. There is no destinations counterpart for a single
+    video: its target-scoped rows only ever have that video as the destination, so the
+    video page's outbound card instead calls the channel-scoped destinations route
+    with referrer_video_id set to this video's own ID.
+    """
+    if not database.get_owned_video(video_id):
+        raise HTTPException(status_code=404, detail="Video not found")
+    return database.get_related_video_referrers(
+        start_date, end_date, video_ids=[video_id], own=own, limit=limit
+    )

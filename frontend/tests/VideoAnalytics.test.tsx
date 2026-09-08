@@ -8,13 +8,17 @@ vi.mock('@/api', () => ({
   getVideoAnalytics: vi.fn(),
   getVideoTrafficSources: vi.fn(),
   getVideoSearchTerms: vi.fn(),
+  getVideoRelatedVideoReferrers: vi.fn(),
+  getRelatedVideoDestinations: vi.fn(),
   getDateRange: vi.fn(),
 }))
 
 import {
   getDateRange,
+  getRelatedVideoDestinations,
   getVideo,
   getVideoAnalytics,
+  getVideoRelatedVideoReferrers,
   getVideoSearchTerms,
   getVideoTrafficSources,
 } from '@/api'
@@ -24,6 +28,8 @@ const mockGetVideo = vi.mocked(getVideo)
 const mockGetVideoAnalytics = vi.mocked(getVideoAnalytics)
 const mockGetVideoTrafficSources = vi.mocked(getVideoTrafficSources)
 const mockGetVideoSearchTerms = vi.mocked(getVideoSearchTerms)
+const mockGetVideoRelatedVideoReferrers = vi.mocked(getVideoRelatedVideoReferrers)
+const mockGetRelatedVideoDestinations = vi.mocked(getRelatedVideoDestinations)
 const mockGetDateRange = vi.mocked(getDateRange)
 
 /** AnalyticsChart and TrafficSourceChart measure their container; jsdom has no real implementation. */
@@ -55,6 +61,8 @@ beforeEach(() => {
   mockGetVideoAnalytics.mockResolvedValue({ items: [] })
   mockGetVideoTrafficSources.mockResolvedValue({ items: [] })
   mockGetVideoSearchTerms.mockResolvedValue({ items: [] })
+  mockGetVideoRelatedVideoReferrers.mockResolvedValue({ items: [], total_named_views: 0 })
+  mockGetRelatedVideoDestinations.mockResolvedValue({ items: [] })
   mockGetDateRange.mockResolvedValue({ earliest_year: 2022 })
 })
 
@@ -116,5 +124,44 @@ describe('Traffic Sources sub-tabs (Search Insights)', () => {
     const sourcesTab = within(subTabStrip).getByRole('button', { name: 'Traffic Sources' })
     expect(sourcesTab.className).toContain('active')
     expect(screen.queryByText('Top Search Terms')).toBeNull()
+  })
+})
+
+describe('Related Videos sub-tab', () => {
+  const mineRow = { referrer_video_id: 'ref-mine', title: 'My Video', thumbnail_url: null, referrer_own: true, views: 50 }
+  const externalRow = { referrer_video_id: 'ref-ext', title: 'External Video', thumbnail_url: null, referrer_own: false, views: 30 }
+
+  beforeEach(() => {
+    mockGetVideoRelatedVideoReferrers.mockImplementation(async (_id: string, own: boolean) =>
+      own
+        ? { items: [mineRow], total_named_views: 80 }
+        : { items: [externalRow], total_named_views: 80 })
+  })
+
+  it('renders row 1 and a single outbound destinations card with no dropdown', async () => {
+    renderVideoAnalytics('/analytics/videos/v1?tab=traffic-sources&ts_tab=related')
+
+    expect(await screen.findByText('Related Traffic from My Channel')).toBeDefined()
+    expect(await screen.findByText('Related Traffic from Other Channels')).toBeDefined()
+    expect(await screen.findByText('Top Destinations From This Video')).toBeDefined()
+    expect(screen.queryByRole('combobox', { name: /Top Destinations From This Video referrer/ })).toBeNull()
+  })
+
+  it('scopes the referrers fetch to this video id for both ownership buckets', async () => {
+    renderVideoAnalytics('/analytics/videos/v1?tab=traffic-sources&ts_tab=related&start_date=2024-01-01&end_date=2024-01-31')
+
+    await waitFor(() => expect(mockGetVideoRelatedVideoReferrers).toHaveBeenCalledTimes(2))
+    for (const call of mockGetVideoRelatedVideoReferrers.mock.calls) {
+      expect(call[0]).toBe('v1')
+      expect(call[2]).toBe('2024-01-01')
+      expect(call[3]).toBe('2024-01-31')
+    }
+    expect(mockGetVideoRelatedVideoReferrers.mock.calls.map(c => c[1]).sort()).toEqual([false, true])
+  })
+
+  it("calls the channel-scoped destinations endpoint with this video's own ID as the referrer, not a video-scoped route", async () => {
+    renderVideoAnalytics('/analytics/videos/v1?tab=traffic-sources&ts_tab=related&start_date=2024-01-01&end_date=2024-01-31')
+
+    await waitFor(() => expect(mockGetRelatedVideoDestinations).toHaveBeenCalledWith('v1', '2024-01-01', '2024-01-31', 10))
   })
 })

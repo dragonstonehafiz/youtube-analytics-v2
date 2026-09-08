@@ -16,7 +16,7 @@ class SearchTermsSchemaTest(IsolatedDatabaseTestCase):
         self.assertIsNotNone(row)
 
     def test_video_deletion_cascades_to_search_terms(self) -> None:
-        database.upsert_video(make_video("v-1", "Alpha"))
+        database.upsert_own_video(make_video("v-1", "Alpha"))
         database.upsert_search_terms("v-1", "2024-01", [{"search_term": "cats", "views": 5}])
         with database.get_connection() as conn:
             conn.execute("DELETE FROM videos WHERE id = 'v-1'")
@@ -27,7 +27,7 @@ class SearchTermsSchemaTest(IsolatedDatabaseTestCase):
 class UpsertSearchTermsTest(IsolatedDatabaseTestCase):
     def setUp(self) -> None:
         super().setUp()
-        database.upsert_video(make_video("v-1", "Alpha"))
+        database.upsert_own_video(make_video("v-1", "Alpha"))
 
     def _stored_terms(self, video_id: str = "v-1", month: str = "2024-01") -> dict[str, int]:
         with database.get_connection() as conn:
@@ -126,9 +126,9 @@ class SearchInsightsReportingTestCase(IsolatedDatabaseTestCase):
 
     def setUp(self) -> None:
         super().setUp()
-        database.upsert_video(make_video("v-1", "Alpha Episode", content_type="video", privacy_status="public"))
-        database.upsert_video(make_video("v-2", "Beta Vlog", content_type="short", privacy_status="private"))
-        database.upsert_video(make_video("v-3", "Unclassified Clip", content_type=None, privacy_status="public"))
+        database.upsert_own_video(make_video("v-1", "Alpha Episode", content_type="video", privacy_status="public"))
+        database.upsert_own_video(make_video("v-2", "Beta Vlog", content_type="short", privacy_status="private"))
+        database.upsert_own_video(make_video("v-3", "Unclassified Clip", content_type=None, privacy_status="public"))
 
         database.upsert_search_terms("v-1", "2024-01", [
             {"search_term": "cats", "views": 10},
@@ -207,6 +207,14 @@ class GetSearchTermsTest(SearchInsightsReportingTestCase):
         rows = database.get_search_terms(start_date="2024-01-15", end_date="2024-01-20")
         by_term = {r["search_term"]: r["views"] for r in rows}
         self.assertEqual(by_term["cats"], 13)
+
+    def test_malformed_start_date_returns_no_rows_instead_of_a_broad_lexical_match(self) -> None:
+        rows = database.get_search_terms(start_date="2024", end_date="2024-12-31")
+        self.assertEqual(rows, [])
+
+    def test_malformed_end_date_returns_no_rows(self) -> None:
+        rows = database.get_search_terms(start_date="2024-01-01", end_date="not-a-date")
+        self.assertEqual(rows, [])
 
 
 class GetVideoSearchTermsTest(SearchInsightsReportingTestCase):

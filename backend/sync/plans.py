@@ -19,7 +19,8 @@ STAGE_ORDER: tuple[str, ...] = (
     "pruning",
     "video_analytics",
     "video_traffic_sources",
-    "search_related_insights",
+    "search_insights",
+    "related_video_insights",
     "fx_rates",
 )
 
@@ -30,7 +31,7 @@ DESTRUCTIVE_STAGES: frozenset[str] = frozenset({"pruning"})
 # The stages whose date range is configurable. Every other stage is always incremental
 # and must not carry a scope or year.
 PERIOD_AWARE_STAGES: frozenset[str] = frozenset(
-    {"video_analytics", "video_traffic_sources", "search_related_insights"}
+    {"video_analytics", "video_traffic_sources", "search_insights", "related_video_insights"}
 )
 
 # Stages that choose how far back to scan but have no per-year view, so they accept a

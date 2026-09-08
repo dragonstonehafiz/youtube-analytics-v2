@@ -16,7 +16,7 @@ from tests.support import (
 
 EXPECTED_TABLES = {
     "videos", "video_analytics", "video_traffic_sources", "playlists", "playlist_items",
-    "comment_authors", "comments", "search_terms", "fx_rates", "sync_runs",
+    "comment_authors", "comments", "search_terms", "related_videos", "fx_rates", "sync_runs",
 }
 
 

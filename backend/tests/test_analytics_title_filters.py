@@ -19,19 +19,19 @@ class TitleFilterTestCase(IsolatedDatabaseTestCase):
     def _seed(self) -> None:
         """Seed two matching-title videos (in and out of the playlist) plus a third,
         differently-titled video, each with analytics and traffic-source rows."""
-        database.upsert_video({
+        database.upsert_own_video({
             "id": "v-in", "channel_id": "c1", "title": "My SERIES Episode 1",
             "description": "", "published_at": "2024-01-01T00:00:00Z", "duration_seconds": 100,
             "thumbnail_url": "", "content_type": "video", "privacy_status": "public",
             "view_count": 10, "like_count": 1, "comment_count": 0,
         })
-        database.upsert_video({
+        database.upsert_own_video({
             "id": "v-out", "channel_id": "c1", "title": "My series Episode 2",
             "description": "", "published_at": "2024-01-02T00:00:00Z", "duration_seconds": 100,
             "thumbnail_url": "", "content_type": "video", "privacy_status": "public",
             "view_count": 20, "like_count": 1, "comment_count": 0,
         })
-        database.upsert_video({
+        database.upsert_own_video({
             "id": "v-other", "channel_id": "c1", "title": "Unrelated Vlog",
             "description": "", "published_at": "2024-01-03T00:00:00Z", "duration_seconds": 100,
             "thumbnail_url": "", "content_type": "short", "privacy_status": "private",

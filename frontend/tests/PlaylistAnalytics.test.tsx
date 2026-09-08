@@ -14,6 +14,8 @@ vi.mock('@/api', () => ({
   getPlaylistTopVideosByTrafficSource: vi.fn(),
   getPlaylistTopSearchTerms: vi.fn(),
   getPlaylistVideosBySearchTerm: vi.fn(),
+  getPlaylistRelatedVideoReferrers: vi.fn(),
+  getPlaylistRelatedVideoDestinations: vi.fn(),
   getDateRange: vi.fn(),
 }))
 
@@ -21,6 +23,8 @@ import {
   getDateRange,
   getPlaylist,
   getPlaylistAnalytics,
+  getPlaylistRelatedVideoDestinations,
+  getPlaylistRelatedVideoReferrers,
   getPlaylistTopSearchTerms,
   getPlaylistTopVideosByTrafficSource,
   getPlaylistTopVideosByViews,
@@ -43,6 +47,8 @@ const mockGetPlaylistTrafficSources = vi.mocked(getPlaylistTrafficSources)
 const mockGetPlaylistTopVideosByTrafficSource = vi.mocked(getPlaylistTopVideosByTrafficSource)
 const mockGetPlaylistTopSearchTerms = vi.mocked(getPlaylistTopSearchTerms)
 const mockGetPlaylistVideosBySearchTerm = vi.mocked(getPlaylistVideosBySearchTerm)
+const mockGetPlaylistRelatedVideoReferrers = vi.mocked(getPlaylistRelatedVideoReferrers)
+const mockGetPlaylistRelatedVideoDestinations = vi.mocked(getPlaylistRelatedVideoDestinations)
 const mockGetDateRange = vi.mocked(getDateRange)
 
 /** AnalyticsChart and TrafficSourceChart measure their container; jsdom has no real implementation. */
@@ -105,6 +111,8 @@ beforeEach(() => {
   mockGetPlaylistTopVideosByTrafficSource.mockResolvedValue({ items: {} })
   mockGetPlaylistTopSearchTerms.mockResolvedValue({ items: [] })
   mockGetPlaylistVideosBySearchTerm.mockResolvedValue({ items: [] })
+  mockGetPlaylistRelatedVideoReferrers.mockResolvedValue({ items: [], total_named_views: 0 })
+  mockGetPlaylistRelatedVideoDestinations.mockResolvedValue({ items: [] })
   mockGetDateRange.mockResolvedValue({ earliest_year: 2022 })
 })
 
@@ -235,6 +243,48 @@ describe('Traffic Sources sub-tabs (Search Insights)', () => {
     const sourcesTab = within(subTabStrip).getByRole('button', { name: 'Traffic Sources' })
     expect(sourcesTab.className).toContain('active')
     expect(screen.queryByText('Top Search Terms')).toBeNull()
+  })
+})
+
+describe('Related Videos sub-tab', () => {
+  const mineRow = { referrer_video_id: 'ref-mine', title: 'My Video', thumbnail_url: null, referrer_own: true, views: 50 }
+  const externalRow = { referrer_video_id: 'ref-ext', title: 'External Video', thumbnail_url: null, referrer_own: false, views: 30 }
+
+  beforeEach(() => {
+    mockGetPlaylistRelatedVideoReferrers.mockImplementation(async (_id: string, own: boolean) =>
+      own
+        ? { items: [mineRow], total_named_views: 80 }
+        : { items: [externalRow], total_named_views: 80 })
+  })
+
+  it('renders both rows of cards scoped to this playlist', async () => {
+    renderPlaylistAnalytics('/playlists/pl1?tab=traffic-sources&ts_tab=related')
+
+    expect(await screen.findByText('Related Traffic from My Channel')).toBeDefined()
+    expect(await screen.findByText('Related Traffic from Other Channels')).toBeDefined()
+    await waitFor(() => expect(mockGetPlaylistRelatedVideoReferrers).toHaveBeenCalledTimes(2))
+    for (const call of mockGetPlaylistRelatedVideoReferrers.mock.calls) {
+      expect(call[0]).toBe('pl1')
+    }
+  })
+
+  it('scopes destination requests to this playlist id, one call per bucket', async () => {
+    renderPlaylistAnalytics('/playlists/pl1?tab=traffic-sources&ts_tab=related')
+    await waitFor(() => expect(mockGetPlaylistRelatedVideoDestinations).toHaveBeenCalledTimes(2))
+    for (const call of mockGetPlaylistRelatedVideoDestinations.mock.calls) {
+      expect(call[0]).toBe('pl1')
+    }
+    expect(mockGetPlaylistRelatedVideoDestinations.mock.calls.map(c => c[1]).sort()).toEqual(['ref-ext', 'ref-mine'])
+  })
+
+  it('forwards the analytics_* filters, not the Videos tab namespace', async () => {
+    renderPlaylistAnalytics(
+      '/playlists/pl1?tab=traffic-sources&ts_tab=related&title=videostab&analytics_title=foo&analytics_privacy_status=private',
+    )
+    await waitFor(() => expect(mockGetPlaylistRelatedVideoReferrers).toHaveBeenCalledTimes(2))
+    for (const call of mockGetPlaylistRelatedVideoReferrers.mock.calls) {
+      expect(call[2]).toEqual(expect.objectContaining({ title: 'foo', privacyStatus: 'private' }))
+    }
   })
 })
 

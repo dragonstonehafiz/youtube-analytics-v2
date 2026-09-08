@@ -7,12 +7,14 @@ Persistence layer, schema, and query conventions. Owns everything about how data
 ## Authoritative source files
 
 - `backend/schema.sql`
-- `backend/database/connection.py`, `backend/database/videos.py`, `backend/database/playlists.py`, `backend/database/analytics.py`, `backend/database/traffic_sources.py`, `backend/database/comments.py`, `backend/database/fx_rates.py`, `backend/database/sync_runs.py`, `backend/database/search_terms.py`
+- `backend/database/connection.py`, `backend/database/videos.py`, `backend/database/playlists.py`, `backend/database/analytics.py`, `backend/database/traffic_sources.py`, `backend/database/comments.py`, `backend/database/fx_rates.py`, `backend/database/sync_runs.py`, `backend/database/search_terms.py`, `backend/database/related_videos.py`
+- `backend/scripts/issue-48-migration.py` — standalone, one-time migration for pre-existing databases (see [Compatibility constraints](#compatibility-constraints)); not run by `init_db()`
 
 ## Contents
 
 - [Connection behavior](#connection-behavior)
 - [Schema](#schema)
+- [Ownership boundary](#ownership-boundary)
 - [Relationships and deletion behavior](#relationships-and-deletion-behavior)
 - [Timestamp behavior](#timestamp-behavior)
 - [Query conventions](#query-conventions)
@@ -32,13 +34,16 @@ Persistence layer, schema, and query conventions. Owns everything about how data
 
 ## Schema
 
-Ten tables:
+Eleven tables:
 
 ```sql
 videos                  -- id, channel_id, title, description, published_at, duration_seconds, thumbnail_url,
-                        --   content_type, privacy_status, view_count, like_count, comment_count, updated_at
+                        --   content_type, privacy_status, view_count, like_count, comment_count, own, updated_at
                         --   channel_id is the owning YouTube channel ID, used by sync/stages.py::sync_videos()
                         --   to filter playlist-only candidates to this channel's own videos (see sync.md)
+                        --   own is INTEGER NOT NULL DEFAULT 1 CHECK (own IN (0, 1)) — the ownership boundary
+                        --   (see below); every JSON payload that selects v.* exposes it as a real Python bool
+                        --   via the shared _coerce_own() helper
 video_analytics         -- video_id, date, views, watch_time_minutes, estimated_revenue,
                         --   average_view_duration_seconds, average_view_percentage,
                         --   likes, subscribers_gained, subscribers_lost, updated_at
@@ -61,15 +66,49 @@ fx_rates                -- date, usd_to_sgd, updated_at  (daily USD→SGD close;
 search_terms            -- video_id, month, search_term, views, updated_at
                         --   PRIMARY KEY (video_id, month, search_term); month is validated "YYYY-MM"
                         --   views is CHECK (views > 0) — a term is never stored at zero or negative views
+related_videos          -- target_video_id, month, referrer_video_id, views, updated_at
+                        --   PRIMARY KEY (target_video_id, month, referrer_video_id); month is validated "YYYY-MM"
+                        --   views is CHECK (views > 0) — a referrer is never stored at zero or negative views
+                        --   FK only on target_video_id -> videos(id) ON DELETE CASCADE; referrer_video_id is a
+                        --   raw YouTube ID with no FK, so an unresolved/unavailable referrer needs no placeholder
+                        --   video row (mirrors playlist_items.video_id's own no-FK precedent)
 sync_runs                -- id, batch_id, sync_type, scope, year, status, started_at, completed_at,
                         --   rows_fetched, rows_written, rows_deleted, error_message
 ```
 
-Indexes: `idx_video_analytics_date`, `idx_video_analytics_video`, `idx_video_traffic_sources_date`, `idx_video_traffic_sources_video`, `idx_playlist_items_playlist`, `idx_comments_video`, `idx_comments_author`, `idx_comments_published_at`, `idx_comments_like_count`, `idx_comments_video_published_at`, `idx_search_terms_month`, `idx_sync_runs_started_at`, `idx_sync_runs_type_started`.
+Indexes: `idx_video_analytics_date`, `idx_video_analytics_video`, `idx_video_traffic_sources_date`, `idx_video_traffic_sources_video`, `idx_playlist_items_playlist`, `idx_comments_video`, `idx_comments_author`, `idx_comments_published_at`, `idx_comments_like_count`, `idx_comments_video_published_at`, `idx_search_terms_month`, `idx_related_videos_month`, `idx_sync_runs_started_at`, `idx_sync_runs_type_started`.
 
 The comment-ID, thread-ID, and author-channel lookups are already covered by the primary-key and `UNIQUE` constraints and have no separate index.
 
 There is no `sync_state` table — the scheduler derives its checkpoint from `sync_runs` directly (see [Query conventions](#query-conventions) below and `sync.md`), rather than from a separately persisted `last_synced_at` value.
+
+## Ownership boundary
+
+`videos.own` distinguishes a video the authenticated channel actually uploaded (confirmed via uploads-playlist membership or an exact `channel_id` match) from an external video whose metadata was only pulled in because it appeared as a Related Video referrer. Existing databases pick up the column via the standalone `backend/scripts/issue-48-migration.py` script (not part of `init_db()`); a fresh database gets it from `schema.sql` directly.
+
+Two writers share a private `_upsert_video_row(video, *, own)` (`database/videos.py`) whose `ON CONFLICT` clause is `own = MAX(own, excluded.own)` — an existing `own=1` can never be downgraded by either writer, and a row either writer created as `own=0` can later be promoted:
+
+- `upsert_own_video(video)` — always writes `own=1`. The only writer for confirmed-owned videos.
+- `upsert_related_video(video, *, own)` — writes a Related referrer's metadata row, with `own` decided per call by the caller (see `sync.md`).
+
+Accessors:
+
+- `get_owned_video(video_id)` / `get_owned_video_ids()` — the privileged, owned-only accessors. `get_owned_video()` returns `None` for an external (`own=0`) video exactly like a nonexistent one, so a route built on it 404s an external ID the same way it 404s a made-up one. `get_owned_video_ids()` is the worklist for Comments, Video Analytics, Video Traffic Sources, Search Insights, and Related Video Insights.
+- `get_all_video_ids()` — deliberately unfiltered by ownership. It exists only so Related referrer resolution can check "is this ID already known at all" (owned or external) before fetching fresh metadata for it — never for a privileged sync worklist.
+
+Every other video-scoped read (`get_all_videos`, `get_videos_published`, `get_earliest_published_year`, `get_video_stats`, `get_playlist_video_stats`, playlist aggregation in `database/playlists.py`, `database/analytics.py`, `database/traffic_sources.py`, `database/search_terms.py`, and the shared `_query_comments()` in `database/comments.py`) carries a `v.own = 1` (or joined-alias equivalent) condition, so an external referrer's metadata row never leaks into channel-wide reporting. `delete_videos_not_in(ids)` (pruning) only ever deletes `own = 1` rows — an external row is never touched regardless of whether its ID appears in the retention set.
+
+## Related Videos
+
+`database/related_videos.py` stores and reports monthly Related Video referrer data, upsert-only (no delete-and-replace), matching `search_terms`'s own retention precedent — a referrer omitted or zeroed in a later sync is left untouched, not deleted.
+
+- `upsert_related_videos(target_video_id, month, referrers)` — validates the whole payload (month format, referrer ID/views shape) before writing, aggregates duplicate referrer IDs in the same call, drops non-positive-view rows, and raises `ValueError` if `target_video_id` is not currently an owned video (Related rows only ever describe traffic *into* an owned target; a video can appear here as a referrer regardless of its own ownership, but never as an unowned target). Returns the number of referrers upserted.
+- `get_last_related_videos_month(target_video_id)` — the Related collector's own checkpoint (`MAX(month)` for that target), never inferred from Search rows, aggregate Traffic Sources, a sync run, or the mere existence of a video.
+- `get_related_video_referrers(start_date=None, end_date=None, content_type=None, privacy_status=None, title=None, video_ids=None, own=None, limit=None) -> {"items": [...], "total_named_views": int}` — referrers aggregated across owned target videos, summed across the months overlapping `start_date`/`end_date` (a missing bound is unbounded on that side, via the shared `_month_bound_conditions()` below), ordered by views descending then referrer ID ascending. `video_ids`/`content_type`/`privacy_status`/`title` all filter the *target* side, with the same three-state `video_ids` scoping convention as the other aggregate helpers (`None` = every owned video, populated = that set, empty = no rows). `own` filters the *referrer* side: `True` matches only a referrer confirmed as this channel's own video; `False` matches everything else, including a referrer with no resolved metadata at all (`COALESCE(ref.own, 0) = 0` — an unresolved referrer is "not confirmed ours," so it belongs in the non-owned bucket, never in neither bucket); `None` (the default) returns every referrer regardless of ownership. `limit=None` returns every referrer. `total_named_views` is a second, independent query in the same call: the scope's unfiltered `SUM(views)` across every real referrer regardless of the `own`/`limit` filters, so a caller never has to fetch an unranked/uncapped row set just to total it.
+- `get_related_video_destinations(referrer_video_id, start_date=None, end_date=None, video_ids=None, limit=None)` — the top destination (target) videos for one given referrer, summed across the overlapping months, ordered by views descending then target ID ascending. The referrer's own ownership is irrelevant to this query — any video, owned or external, can be a referrer. `video_ids` scopes the destination set the same three-state way.
+- There is no coverage table, no persisted residual, no `period_start`/`period_end` columns, and no read-time "unattributed" figure computed against aggregate Traffic Sources — the backend returns only real, stored `related_videos` rows, the same discipline `search_terms` follows (see [Search terms](#aggregation-and-filtering-semantics) below).
+
+A shared `_month_bound_conditions(alias, start_date, end_date)` (`database/connection.py`) builds independent `<alias>.month >= ?` / `<alias>.month <= ?` conditions from each date's `YYYY-MM` prefix; both `search_terms.py` and `related_videos.py` use it with their own table alias.
 
 ## Relationships and deletion behavior
 
@@ -79,6 +118,7 @@ There is no `sync_state` table — the scheduler derives its checkpoint from `sy
 - `playlist_items.video_id` has **no FK** — it's a raw YouTube video ID that may not exist in `videos` (e.g. a playlist item referencing a video not in the channel's own uploads)
 - `comments.video_id → videos.id` **ON DELETE CASCADE**
 - `search_terms.video_id → videos.id` **ON DELETE CASCADE**
+- `related_videos.target_video_id → videos.id` **ON DELETE CASCADE**; `related_videos.referrer_video_id` has **no FK** — it's a raw YouTube video ID that may describe an external channel's video with no row in `videos` at all until metadata resolution runs (see [Related Videos](#related-videos))
 - `comments.author_id → comment_authors.id` **ON DELETE RESTRICT** — a commenter row cannot be deleted while any comment still references it
 - Cascades only take effect because `PRAGMA foreign_keys = ON` is set on every connection
 
@@ -158,3 +198,5 @@ Every upsert helper sets `updated_at = _now()` on the Python side before the que
 - Because every upsert always rewrites `updated_at`, this column cannot be used to detect "did the underlying value actually change since last sync" — only "was this row touched by the most recent sync."
 - `database/playlists.py` imports `VIDEO_SORT_COLUMNS` from `database/videos.py` for `get_playlist_videos()`'s sort validation — the only cross-module dependency between `database/` submodules. All other submodules only depend on `database/connection.py`. In particular, `database/analytics.py` and `database/traffic_sources.py` do not import `database/playlists.py`: playlist membership is resolved by the route layer and passed in as `video_ids`, which is what keeps the scoped helpers usable with any caller-supplied set of videos.
 - The `video_ids` parameter is appended **after** every existing parameter on all four scoped helpers, so current positional callers keep binding to the same arguments. Callers should still pass it by keyword. It binds one `?` per ID, so a scope is bounded by SQLite's parameter limit — practical for playlist-sized collections, not for arbitrarily large ID sets.
+- `backend/scripts/issue-48-migration.py` is a standalone, one-time script for adding `videos.own` to a pre-existing database (idempotent — checks `PRAGMA table_info(videos)` before altering). It is intentionally not wired into `init_db()`: a one-time fixup doesn't belong in code that runs on every app start.
+- The `own = MAX(own, excluded.own)` no-downgrade rule in `_upsert_video_row()` means `own` can only ever move from `0` to `1` over a row's lifetime, never back — there is no code path that demotes a confirmed-owned video to external.

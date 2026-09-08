@@ -16,8 +16,8 @@ class AnalyticsFixtureTestCase(IsolatedDatabaseTestCase):
     def _seed(self) -> None:
         """Two videos with analytics on 2024-01-01 (has FX) and 2024-01-03 (no FX),
         leaving 2024-01-02 with no analytics row at all for zero-fill coverage."""
-        database.upsert_video(make_video("v-1", "Alpha", content_type="video"))
-        database.upsert_video(make_video("v-2", "Beta", content_type="short"))
+        database.upsert_own_video(make_video("v-1", "Alpha", content_type="video"))
+        database.upsert_own_video(make_video("v-2", "Beta", content_type="short"))
         database.upsert_video_analytics(make_video_analytics("v-1", "2024-01-01", views=100, watch_time_minutes=60, estimated_revenue=10.0))
         database.upsert_video_analytics(make_video_analytics("v-2", "2024-01-01", views=50, watch_time_minutes=20, estimated_revenue=5.0))
         database.upsert_video_analytics(make_video_analytics("v-1", "2024-01-03", views=200, watch_time_minutes=90, estimated_revenue=20.0))
@@ -64,8 +64,8 @@ class AggregatedAnalyticsTest(AnalyticsFixtureTestCase):
 class AggregatedTrafficSourcesTest(IsolatedDatabaseTestCase):
     def setUp(self) -> None:
         super().setUp()
-        database.upsert_video(make_video("v-1", "Alpha"))
-        database.upsert_video(make_video("v-2", "Beta"))
+        database.upsert_own_video(make_video("v-1", "Alpha"))
+        database.upsert_own_video(make_video("v-2", "Beta"))
         # Both videos have SEARCH data on the same date, so aggregation must sum across
         # videos rather than just echoing one video's number.
         database.upsert_video_traffic_source(make_traffic_source("v-1", "2024-01-01", "SEARCH", views=30, watch_time_minutes=10))
@@ -117,9 +117,9 @@ class FxRatesTest(IsolatedDatabaseTestCase):
 class TopVideosOrderingTest(IsolatedDatabaseTestCase):
     def setUp(self) -> None:
         super().setUp()
-        database.upsert_video(make_video("v-1", "Alpha"))
-        database.upsert_video(make_video("v-2", "Beta"))
-        database.upsert_video(make_video("v-3", "Gamma"))
+        database.upsert_own_video(make_video("v-1", "Alpha"))
+        database.upsert_own_video(make_video("v-2", "Beta"))
+        database.upsert_own_video(make_video("v-3", "Gamma"))
         # v-1 and v-2 tie on views to prove the deterministic id tie-breaker.
         database.upsert_video_analytics(make_video_analytics("v-1", "2024-01-01", views=100, watch_time_minutes=5))
         database.upsert_video_analytics(make_video_analytics("v-2", "2024-01-01", views=100, watch_time_minutes=50))

@@ -343,21 +343,21 @@ describe('the manual form is preserved', () => {
   })
 })
 
-describe('Search & Related Insights stage', () => {
-  it('is selected by default, positioned between Traffic Sources and FX Rates, with the same period selector as Video Analytics', async () => {
+describe('Search Insights stage', () => {
+  it('is selected by default, positioned between Traffic Sources and Related Video Insights, with the same period selector as Video Analytics', async () => {
     renderSync('/sync')
     await settled()
 
     const stageOrder = screen.getAllByRole('row').slice(1).map(r => r.textContent ?? '') // drop the header row
     const trafficIndex = stageOrder.findIndex(t => t.includes('Traffic Sources'))
-    const insightsIndex = stageOrder.findIndex(t => t.includes('Search & Related Insights'))
-    const fxIndex = stageOrder.findIndex(t => t.includes('FX Rates'))
+    const insightsIndex = stageOrder.findIndex(t => t.includes('Search Insights'))
+    const relatedIndex = stageOrder.findIndex(t => t.includes('Related Video Insights'))
     expect(trafficIndex).toBeGreaterThanOrEqual(0)
     expect(insightsIndex).toBe(trafficIndex + 1)
-    expect(fxIndex).toBe(insightsIndex + 1)
+    expect(relatedIndex).toBe(insightsIndex + 1)
 
-    expect(screen.getByRole('checkbox', { name: 'Search & Related Insights' })).toHaveProperty('checked', true)
-    const select = screen.getByRole('combobox', { name: 'Search & Related Insights period' })
+    expect(screen.getByRole('checkbox', { name: 'Search Insights' })).toHaveProperty('checked', true)
+    const select = screen.getByRole('combobox', { name: 'Search Insights period' })
     expect(select).toHaveProperty('value', 'incremental')
   })
 
@@ -365,7 +365,7 @@ describe('Search & Related Insights stage', () => {
     renderSync('/sync')
     await settled()
 
-    const insights = screen.getByRole('checkbox', { name: 'Search & Related Insights' })
+    const insights = screen.getByRole('checkbox', { name: 'Search Insights' })
     const traffic = screen.getByRole('checkbox', { name: 'Traffic Sources' })
 
     fireEvent.click(insights)
@@ -384,19 +384,116 @@ describe('Search & Related Insights stage', () => {
     screen.getAllByRole('checkbox').forEach(box => {
       if ((box as HTMLInputElement).checked) fireEvent.click(box)
     })
-    fireEvent.click(screen.getByRole('checkbox', { name: 'Search & Related Insights' }))
+    fireEvent.click(screen.getByRole('checkbox', { name: 'Search Insights' }))
     await waitFor(() =>
       expect(screen.getByRole('button', { name: 'Sync selected' })).toHaveProperty('disabled', false))
 
     fireEvent.click(screen.getByRole('button', { name: 'Sync selected' }))
 
     await waitFor(() => expect(mockTriggerSync).toHaveBeenCalledWith({
-      stages: [{ stage: 'search_related_insights', scope: 'incremental' }],
+      stages: [{ stage: 'search_insights', scope: 'incremental' }],
     }))
   })
 
   it('shows the stored scope label in history detail', async () => {
-    mockGetSyncRuns.mockResolvedValue(page([batch([run({ sync_type: 'search_related_insights', scope: 'incremental' })])]))
+    mockGetSyncRuns.mockResolvedValue(page([batch([run({ sync_type: 'search_insights', scope: 'incremental' })])]))
+    renderSync('/sync?tab=history')
+    await screen.findByRole('table')
+
+    fireEvent.click(screen.getByRole('button', { name: /^Sync batch started/ }))
+
+    expect(await screen.findByText('Incremental')).toBeDefined()
+  })
+
+  it('renders a real label for a historical run recorded under the pre-rename stage id', async () => {
+    mockGetSyncRuns.mockResolvedValue(
+      page([batch([run({ sync_type: 'search_related_insights', scope: 'incremental' })])]),
+    )
+    renderSync('/sync?tab=history')
+    await screen.findByRole('table')
+
+    fireEvent.click(screen.getByRole('button', { name: /^Sync batch started/ }))
+
+    expect(await screen.findByText('Search Insights')).toBeDefined()
+  })
+})
+
+describe('Related Video Insights stage', () => {
+  it('is selected by default, positioned directly below Search Insights and before FX Rates, with the same period selector as Search Insights', async () => {
+    renderSync('/sync')
+    await settled()
+
+    const stageOrder = screen.getAllByRole('row').slice(1).map(r => r.textContent ?? '')
+    const insightsIndex = stageOrder.findIndex(t => t.includes('Search Insights'))
+    const relatedIndex = stageOrder.findIndex(t => t.includes('Related Video Insights'))
+    const fxIndex = stageOrder.findIndex(t => t.includes('FX Rates'))
+    expect(insightsIndex).toBeGreaterThanOrEqual(0)
+    expect(relatedIndex).toBe(insightsIndex + 1)
+    expect(fxIndex).toBe(relatedIndex + 1)
+
+    expect(screen.getByRole('checkbox', { name: 'Related Video Insights' })).toHaveProperty('checked', true)
+    const select = screen.getByRole('combobox', { name: 'Related Video Insights period' })
+    expect(select).toHaveProperty('value', 'incremental')
+  })
+
+  it('toggles independently of Search Insights in either direction', async () => {
+    renderSync('/sync')
+    await settled()
+
+    const related = screen.getByRole('checkbox', { name: 'Related Video Insights' })
+    const insights = screen.getByRole('checkbox', { name: 'Search Insights' })
+
+    fireEvent.click(related)
+    expect(related).toHaveProperty('checked', false)
+    expect(insights).toHaveProperty('checked', true)
+
+    fireEvent.click(insights)
+    expect(insights).toHaveProperty('checked', false)
+    expect(related).toHaveProperty('checked', false)
+  })
+
+  it('sends its own independent request body, separate from Search Insights', async () => {
+    renderSync('/sync')
+    await settled()
+
+    screen.getAllByRole('checkbox').forEach(box => {
+      if ((box as HTMLInputElement).checked) fireEvent.click(box)
+    })
+    fireEvent.click(screen.getByRole('checkbox', { name: 'Related Video Insights' }))
+    await waitFor(() =>
+      expect(screen.getByRole('button', { name: 'Sync selected' })).toHaveProperty('disabled', false))
+
+    fireEvent.click(screen.getByRole('button', { name: 'Sync selected' }))
+
+    await waitFor(() => expect(mockTriggerSync).toHaveBeenCalledWith({
+      stages: [{ stage: 'related_video_insights', scope: 'incremental' }],
+    }))
+  })
+
+  it('selecting both Search Insights and Related Video Insights sends two independent stage entries', async () => {
+    renderSync('/sync')
+    await settled()
+
+    screen.getAllByRole('checkbox').forEach(box => {
+      if ((box as HTMLInputElement).checked) fireEvent.click(box)
+    })
+    fireEvent.click(screen.getByRole('checkbox', { name: 'Search Insights' }))
+    fireEvent.click(screen.getByRole('checkbox', { name: 'Related Video Insights' }))
+    await waitFor(() =>
+      expect(screen.getByRole('button', { name: 'Sync selected' })).toHaveProperty('disabled', false))
+
+    fireEvent.click(screen.getByRole('button', { name: 'Sync selected' }))
+
+    await waitFor(() => expect(mockTriggerSync).toHaveBeenCalledWith({
+      stages: [
+        { stage: 'search_insights', scope: 'incremental' },
+        { stage: 'related_video_insights', scope: 'incremental' },
+      ],
+    }))
+  })
+
+  it('shows the stored scope label in history detail', async () => {
+    mockGetSyncRuns.mockResolvedValue(page([batch([run({ sync_type: 'related_video_insights', scope: 'incremental' })])]))
     renderSync('/sync?tab=history')
     await screen.findByRole('table')
 

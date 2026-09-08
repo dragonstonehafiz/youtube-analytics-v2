@@ -3,7 +3,7 @@ from __future__ import annotations
 import re
 from collections.abc import Collection
 
-from .connection import _now, get_connection
+from .connection import _month_bound_conditions, _now, get_connection
 
 _MONTH_RE = re.compile(r"^\d{4}-(0[1-9]|1[0-2])$")
 
@@ -58,22 +58,6 @@ def get_last_search_terms_month(video_id: str) -> str | None:
     return row["last_month"] if row else None
 
 
-def _month_bound_conditions(start_date: str | None, end_date: str | None) -> tuple[list[str], list]:
-    """Build st.month >=/<= conditions from date-string bounds. A missing bound is
-    unbounded on that side, matching how every other date-filtered query in this
-    codebase (e.g. traffic_sources, analytics) treats a missing start/end date.
-    """
-    conditions = []
-    params: list = []
-    if start_date:
-        conditions.append("st.month >= ?")
-        params.append(start_date[:7])
-    if end_date:
-        conditions.append("st.month <= ?")
-        params.append(end_date[:7])
-    return conditions, params
-
-
 def _search_terms_conditions(
     start_date: str | None,
     end_date: str | None,
@@ -83,8 +67,8 @@ def _search_terms_conditions(
     scoped_ids: list[str] | None,
 ) -> tuple[list[str], list]:
     """Build the shared WHERE conditions/params for the search-terms query helpers."""
-    conditions: list[str] = ["1=1"]
-    month_conditions, params = _month_bound_conditions(start_date, end_date)
+    conditions: list[str] = ["v.own = 1"]
+    month_conditions, params = _month_bound_conditions("st", start_date, end_date)
     conditions.extend(month_conditions)
     if scoped_ids:
         conditions.append(f"v.id IN ({','.join('?' * len(scoped_ids))})")
@@ -107,11 +91,11 @@ def get_video_search_terms(
     end_date: str | None = None,
     limit: int | None = None,
 ) -> list[dict]:
-    """Return search terms for one video, summed across the months overlapping
+    """Return search terms for one owned video, summed across the months overlapping
     start_date/end_date (a missing bound is unbounded on that side), ordered by views
-    descending. limit=None returns every term."""
-    month_conditions, month_params = _month_bound_conditions(start_date, end_date)
-    conditions = ["st.video_id = ?", *month_conditions]
+    descending. limit=None returns every term. Returns no rows for an external video."""
+    month_conditions, month_params = _month_bound_conditions("st", start_date, end_date)
+    conditions = ["st.video_id = ?", "v.own = 1", *month_conditions]
     where = " AND ".join(conditions)
     limit_clause = "LIMIT ?" if limit is not None else ""
     with get_connection() as conn:
@@ -119,6 +103,7 @@ def get_video_search_terms(
             f"""
             SELECT st.search_term, SUM(st.views) AS views
             FROM search_terms st
+            JOIN videos v ON v.id = st.video_id
             WHERE {where}
             GROUP BY st.search_term
             ORDER BY views DESC, st.search_term ASC

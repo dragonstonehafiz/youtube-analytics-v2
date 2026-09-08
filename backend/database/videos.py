@@ -3,23 +3,36 @@ from __future__ import annotations
 from .connection import _now, get_connection
 
 
-def upsert_video(video: dict) -> None:
-    """Insert or replace a video row.
+def _coerce_own(row: dict) -> dict:
+    """Convert SQLite's integer `own` column to a real Python bool before a row is
+    handed to a JSON response. A no-op for a query that didn't select `own`."""
+    if "own" in row:
+        row["own"] = bool(row["own"])
+    return row
 
-    `content_type` may be None when the sync stage could not safely classify the
-    video (e.g. Shorts pagination was truncated); on conflict this preserves the
-    row's existing classification instead of overwriting it with NULL.
+
+def _upsert_video_row(video: dict, *, own: bool) -> None:
+    """Shared insert/conflict logic for both upsert_own_video and upsert_related_video.
+
+    `content_type` may be None when the caller could not safely classify the video
+    (e.g. Shorts pagination was truncated, or this is unclassified Related referrer
+    metadata); on conflict this preserves the row's existing classification instead of
+    overwriting it with NULL.
+
+    On conflict, an existing own=1 is never downgraded — `own = MAX(own, excluded.own)`
+    means only a True from either writer can ever raise it, and no write from either
+    can lower it back to False.
     """
-    row = {**video, "updated_at": _now()}
+    row = {**video, "own": int(own), "updated_at": _now()}
     with get_connection() as conn:
         conn.execute(
             """
             INSERT INTO videos (id, channel_id, title, description, published_at, duration_seconds,
                 thumbnail_url, content_type, privacy_status, view_count, like_count, comment_count,
-                updated_at)
+                own, updated_at)
             VALUES (:id, :channel_id, :title, :description, :published_at, :duration_seconds,
                 :thumbnail_url, :content_type, :privacy_status, :view_count, :like_count, :comment_count,
-                :updated_at)
+                :own, :updated_at)
             ON CONFLICT(id) DO UPDATE SET
                 channel_id = excluded.channel_id,
                 title = excluded.title,
@@ -32,10 +45,32 @@ def upsert_video(video: dict) -> None:
                 view_count = excluded.view_count,
                 like_count = excluded.like_count,
                 comment_count = excluded.comment_count,
+                own = MAX(own, excluded.own),
                 updated_at = excluded.updated_at
             """,
             row,
         )
+
+
+def upsert_own_video(video: dict) -> None:
+    """Insert or replace a channel-owned video row. Always writes own=1 — this is the
+    only writer for confirmed-owned videos (uploads-playlist membership or an exact
+    authenticated-channel match, decided by the caller before this is invoked). An
+    external video encountered as a Related referrer is written by upsert_related_video
+    instead, which decides True/False per referrer.
+    """
+    _upsert_video_row(video, own=True)
+
+
+def upsert_related_video(video: dict, *, own: bool) -> None:
+    """Insert or replace a Related Video referrer's metadata row. `own` classifies
+    whether the referrer's channel_id matched the authenticated channel at resolution
+    time — True only for an exact match, False otherwise. Shares upsert_own_video's
+    no-downgrade ON CONFLICT rule, so a referrer already confirmed owned elsewhere
+    (e.g. by sync_videos) is never downgraded by this call, and a later confirmed-owned
+    upsert can still promote a row this call wrote as own=False.
+    """
+    _upsert_video_row(video, own=own)
 
 
 VIDEO_SORT_COLUMNS = {"published_at", "view_count", "comment_count", "total_revenue_sgd"}
@@ -56,7 +91,7 @@ def get_all_videos(
     direction = "ASC" if sort_dir == "asc" else "DESC"
     offset = (page - 1) * page_size
 
-    conditions: list[str] = []
+    conditions: list[str] = ["v.own = 1"]
     params: list[object] = []
     if title:
         conditions.append("v.title LIKE ?")
@@ -74,7 +109,7 @@ def get_all_videos(
         conditions.append("v.privacy_status = ?")
         params.append(privacy_status)
 
-    where = f"WHERE {' AND '.join(conditions)}" if conditions else ""
+    where = f"WHERE {' AND '.join(conditions)}"
     with get_connection() as conn:
         total = conn.execute(f"SELECT COUNT(*) FROM videos v {where}", params).fetchone()[0]
         rows = conn.execute(
@@ -91,11 +126,17 @@ def get_all_videos(
             """,
             [*params, page_size, offset],
         ).fetchall()
-    return [dict(r) for r in rows], total
+    return [_coerce_own(dict(r)) for r in rows], total
 
 
-def get_video(video_id: str) -> dict | None:
-    """Return a single video by ID, including total lifetime revenue in SGD."""
+def get_owned_video(video_id: str) -> dict | None:
+    """Return a single owned video by ID, including total lifetime revenue in SGD.
+
+    Returns None for an external (own=0) video, exactly like a nonexistent ID — this
+    is the owner-only boundary between local channel content and Related referrer
+    metadata, so a route built on this can 404 an external ID the same way it 404s a
+    made-up one.
+    """
     with get_connection() as conn:
         row = conn.execute(
             """
@@ -105,12 +146,12 @@ def get_video(video_id: str) -> dict | None:
             FROM videos v
             LEFT JOIN video_analytics va ON va.video_id = v.id
             LEFT JOIN fx_rates fx ON fx.date = va.date
-            WHERE v.id = ?
+            WHERE v.id = ? AND v.own = 1
             GROUP BY v.id
             """,
             (video_id,),
         ).fetchone()
-    return dict(row) if row else None
+    return _coerce_own(dict(row)) if row else None
 
 
 def get_videos_published(
@@ -121,8 +162,8 @@ def get_videos_published(
     playlist_id: str | None = None,
     title: str | None = None,
 ) -> list[dict]:
-    """Return id, title, published_at, thumbnail_url for videos matching filters, ordered by published_at."""
-    conditions = ["1=1"]
+    """Return id, title, published_at, thumbnail_url for owned videos matching filters, ordered by published_at."""
+    conditions = ["v.own = 1"]
     params: list = []
     if playlist_id:
         conditions.append("v.id IN (SELECT video_id FROM playlist_items WHERE playlist_id = ?)")
@@ -152,14 +193,25 @@ def get_videos_published(
 
 
 def get_earliest_published_year() -> int | None:
-    """Return the year of the earliest video published_at, or None if empty."""
+    """Return the year of the earliest owned video's published_at, or None if empty."""
     with get_connection() as conn:
-        video_min = conn.execute("SELECT MIN(published_at) FROM videos").fetchone()[0]
+        video_min = conn.execute("SELECT MIN(published_at) FROM videos WHERE own = 1").fetchone()[0]
     return int(video_min[:4]) if video_min else None
 
 
+def get_owned_video_ids() -> list[str]:
+    """Return every owned (own=1) video ID — the privileged target worklist for
+    Comments, Video Analytics, Video Traffic Sources, and Search/Related Insights."""
+    with get_connection() as conn:
+        rows = conn.execute("SELECT id FROM videos WHERE own = 1").fetchall()
+    return [r["id"] for r in rows]
+
+
 def get_all_video_ids() -> list[str]:
-    """Return all video IDs."""
+    """Return every video ID regardless of ownership. Unfiltered on purpose: this is
+    for checking which referrer IDs are already known at all (owned or external), not
+    for selecting a privileged sync target worklist — use get_owned_video_ids() for
+    that instead."""
     with get_connection() as conn:
         rows = conn.execute("SELECT id FROM videos").fetchall()
     return [r["id"] for r in rows]
@@ -194,7 +246,7 @@ def get_video_stats(
     analytics rows exist at all. Comments and privacy status counts are always current lifetime totals and are
     not restricted by date.
     """
-    conditions: list[str] = []
+    conditions: list[str] = ["v.own = 1"]
     params: list[object] = []
     if title:
         conditions.append("v.title LIKE ?")
@@ -205,10 +257,15 @@ def get_video_stats(
     if privacy_status:
         conditions.append("v.privacy_status = ?")
         params.append(privacy_status)
-    where = f"WHERE {' AND '.join(conditions)}" if conditions else ""
+    where = f"WHERE {' AND '.join(conditions)}"
 
     with get_connection() as conn:
-        analytics_min, analytics_max = conn.execute("SELECT MIN(date), MAX(date) FROM video_analytics").fetchone()
+        analytics_min, analytics_max = conn.execute(
+            """
+            SELECT MIN(va.date), MAX(va.date) FROM video_analytics va
+            JOIN videos v ON v.id = va.video_id AND v.own = 1
+            """
+        ).fetchone()
         publication_min, publication_max = conn.execute(
             f"SELECT MIN(v.published_at), MAX(v.published_at) FROM videos v {where}", params
         ).fetchone()
@@ -290,7 +347,10 @@ def get_playlist_video_stats(
     deduplicated by video ID before any counting or aggregation, so duplicate playlist_items rows for the same
     video cannot inflate results.
     """
-    conditions: list[str] = ["v.id IN (SELECT DISTINCT pi.video_id FROM playlist_items pi WHERE pi.playlist_id = ?)"]
+    conditions: list[str] = [
+        "v.own = 1",
+        "v.id IN (SELECT DISTINCT pi.video_id FROM playlist_items pi WHERE pi.playlist_id = ?)",
+    ]
     params: list[object] = [playlist_id]
     if title:
         conditions.append("v.title LIKE ?")
@@ -308,6 +368,7 @@ def get_playlist_video_stats(
             """
             SELECT MIN(va.date), MAX(va.date)
             FROM video_analytics va
+            JOIN videos v ON v.id = va.video_id AND v.own = 1
             WHERE va.video_id IN (SELECT DISTINCT pi.video_id FROM playlist_items pi WHERE pi.playlist_id = ?)
             """,
             [playlist_id],
@@ -379,17 +440,18 @@ def get_playlist_video_stats(
 
 
 def delete_videos_not_in(ids: list[str]) -> int:
-    """Delete videos (and their analytics via cascade) whose IDs are not in the given list.
-    Returns the number of videos deleted.
+    """Delete owned videos (and their analytics via cascade) whose IDs are not in the
+    given list. Returns the number of videos deleted. External (own=0) rows are never
+    touched by this, regardless of whether their ID appears in `ids`.
 
-    An empty list deletes every video — the only caller, the pruning sync stage, gates
-    this call on proven-complete discovery first, so an empty list here means the
+    An empty list deletes every owned video — the only caller, the pruning sync stage,
+    gates this call on proven-complete discovery first, so an empty list here means the
     channel genuinely has zero owned videos, not that discovery came back short.
     """
     with get_connection() as conn:
         if not ids:
-            cursor = conn.execute("DELETE FROM videos")
+            cursor = conn.execute("DELETE FROM videos WHERE own = 1")
         else:
             placeholders = ",".join("?" * len(ids))
-            cursor = conn.execute(f"DELETE FROM videos WHERE id NOT IN ({placeholders})", ids)
+            cursor = conn.execute(f"DELETE FROM videos WHERE own = 1 AND id NOT IN ({placeholders})", ids)
         return cursor.rowcount

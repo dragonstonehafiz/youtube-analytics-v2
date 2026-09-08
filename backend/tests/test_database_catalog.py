@@ -9,19 +9,19 @@ from tests.support import IsolatedDatabaseTestCase, make_playlist, make_playlist
 class VideoCatalogTestCase(IsolatedDatabaseTestCase):
     def _seed_sortable_videos(self) -> None:
         """Four videos with distinct, non-tied values on every sortable column."""
-        database.upsert_video(make_video(
+        database.upsert_own_video(make_video(
             "v-1", "Alpha", published_at="2024-01-01T00:00:00Z",
             content_type="video", privacy_status="public", view_count=10, comment_count=1,
         ))
-        database.upsert_video(make_video(
+        database.upsert_own_video(make_video(
             "v-2", "Beta", published_at="2024-01-02T00:00:00Z",
             content_type="video", privacy_status="private", view_count=40, comment_count=4,
         ))
-        database.upsert_video(make_video(
+        database.upsert_own_video(make_video(
             "v-3", "Gamma", published_at="2024-01-03T00:00:00Z",
             content_type="short", privacy_status="public", view_count=20, comment_count=2,
         ))
-        database.upsert_video(make_video(
+        database.upsert_own_video(make_video(
             "v-4", "Delta", published_at="2024-01-04T00:00:00Z",
             content_type="short", privacy_status="unlisted", view_count=30, comment_count=3,
         ))
@@ -134,11 +134,11 @@ class GetAllVideosFilterTest(VideoCatalogTestCase):
 
 class GetVideoTest(VideoCatalogTestCase):
     def test_unknown_video_returns_none(self) -> None:
-        self.assertIsNone(database.get_video("nope"))
+        self.assertIsNone(database.get_owned_video("nope"))
 
     def test_known_video_returns_a_dict(self) -> None:
         self._seed_sortable_videos()
-        video = database.get_video("v-1")
+        video = database.get_owned_video("v-1")
         assert video is not None
         self.assertEqual(video["id"], "v-1")
 
@@ -193,9 +193,9 @@ class PlaylistAggregateSortTest(IsolatedDatabaseTestCase):
         database.upsert_playlist(make_playlist("p-2", "Second"))
         database.upsert_playlist(make_playlist("p-3", "Third"))
 
-        database.upsert_video(make_video("v-1", "Video One", published_at="2024-01-01T00:00:00Z", view_count=30))
-        database.upsert_video(make_video("v-2", "Video Two", published_at="2024-03-01T00:00:00Z", view_count=10))
-        database.upsert_video(make_video("v-3", "Video Three", published_at="2024-02-01T00:00:00Z", view_count=20))
+        database.upsert_own_video(make_video("v-1", "Video One", published_at="2024-01-01T00:00:00Z", view_count=30))
+        database.upsert_own_video(make_video("v-2", "Video Two", published_at="2024-03-01T00:00:00Z", view_count=10))
+        database.upsert_own_video(make_video("v-3", "Video Three", published_at="2024-02-01T00:00:00Z", view_count=20))
         database.upsert_playlist_item(make_playlist_item("pi-1", "p-1", "v-1", 0))
         database.upsert_playlist_item(make_playlist_item("pi-2", "p-2", "v-2", 0))
         database.upsert_playlist_item(make_playlist_item("pi-3", "p-3", "v-3", 0))
@@ -242,9 +242,9 @@ class GetPlaylistVideosTest(PlaylistCatalogTestCase):
     def setUp(self) -> None:
         super().setUp()
         database.upsert_playlist(make_playlist("p-1", "Playlist", item_count=2))
-        database.upsert_video(make_video("v-1", "Alpha", published_at="2024-01-01T00:00:00Z", view_count=10))
-        database.upsert_video(make_video("v-2", "Beta", published_at="2024-01-02T00:00:00Z", view_count=20))
-        database.upsert_video(make_video("v-3", "Gamma", published_at="2024-01-03T00:00:00Z", view_count=30))
+        database.upsert_own_video(make_video("v-1", "Alpha", published_at="2024-01-01T00:00:00Z", view_count=10))
+        database.upsert_own_video(make_video("v-2", "Beta", published_at="2024-01-02T00:00:00Z", view_count=20))
+        database.upsert_own_video(make_video("v-3", "Gamma", published_at="2024-01-03T00:00:00Z", view_count=30))
         database.upsert_playlist_item(make_playlist_item("pi-1", "p-1", "v-1", 0))
         database.upsert_playlist_item(make_playlist_item("pi-2", "p-1", "v-2", 1))
 

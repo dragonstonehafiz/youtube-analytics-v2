@@ -1,7 +1,7 @@
 import { useEffect, useRef, useState } from 'react'
 import { useParams } from 'react-router-dom'
-import { getVideo, getVideoAnalytics, getVideoTrafficSources, getVideoSearchTerms } from '@/api'
-import type { Video, AnalyticsRow, TrafficSourceRow, SearchTermRow } from '@/types'
+import { getVideo, getVideoAnalytics, getVideoTrafficSources, getVideoSearchTerms, getVideoRelatedVideoReferrers, getRelatedVideoDestinations } from '@/api'
+import type { Video, AnalyticsRow, TrafficSourceRow, SearchTermRow, RelatedReferrersResponse, RelatedDestinationRow } from '@/types'
 import PeriodSelect, { last28Dates } from '@/components/PeriodSelect'
 import type { RequestState } from '@/lib/requestState'
 import { pending, track } from '@/lib/requestState'
@@ -11,16 +11,21 @@ import CommentsPanel from '@/components/CommentsPanel'
 import TrafficSourceChart from '@/components/TrafficSourceChart'
 import TrafficSourcesTable from '@/components/TrafficSourcesTable'
 import SearchTermsDonutCard from '@/components/SearchTermsDonutCard'
+import RelatedReferrerBreakdownCard from '@/components/RelatedReferrerBreakdownCard'
+import RelatedDestinationsByReferrerCard from '@/components/RelatedDestinationsByReferrerCard'
 import { useReplaceSearchParams } from '@/hooks/useReplaceSearchParams'
 import '@/components/VideoMetaCard.css'
 import './Analytics.css'
 import './VideoAnalytics.css'
 
+const RELATED_DESTINATIONS_LIMIT = 10
+const EMPTY_RELATED_REFERRERS: RelatedReferrersResponse = { items: [], total_named_views: 0 }
+
 type Tab = 'analytics' | 'traffic-sources' | 'comments'
-type TrafficSourcesSubTab = 'sources' | 'search'
+type TrafficSourcesSubTab = 'sources' | 'search' | 'related'
 
 function toTrafficSourcesSubTab(value: string | null): TrafficSourcesSubTab {
-  return value === 'search' ? value : 'sources'
+  return value === 'search' || value === 'related' ? value : 'sources'
 }
 
 function formatDuration(seconds: number): string {
@@ -67,6 +72,9 @@ export default function VideoAnalytics() {
   const [trafficSources, setTrafficSources] = useState<RequestState<TrafficSourceRow[]>>(pending([]))
   const tsTab = toTrafficSourcesSubTab(searchParams.get('ts_tab'))
   const [searchTerms, setSearchTerms] = useState<RequestState<SearchTermRow[]>>(pending([]))
+  const [relatedReferrersMine, setRelatedReferrersMine] = useState<RequestState<RelatedReferrersResponse>>(pending(EMPTY_RELATED_REFERRERS))
+  const [relatedReferrersOther, setRelatedReferrersOther] = useState<RequestState<RelatedReferrersResponse>>(pending(EMPTY_RELATED_REFERRERS))
+  const [relatedDestinations, setRelatedDestinations] = useState<RequestState<RelatedDestinationRow[]>>(pending([]))
 
   useEffect(() => {
     if (!id) return
@@ -86,6 +94,27 @@ export default function VideoAnalytics() {
       .then((data: { items: TrafficSourceRow[] }) => data.items ?? []), setTrafficSources, () => active, 'Could not load traffic sources')
     track(getVideoSearchTerms(id, startDate || undefined, endDate || undefined)
       .then((data: { items: SearchTermRow[] }) => data.items ?? []), setSearchTerms, () => active, 'Could not load search terms')
+    return () => { active = false }
+  }, [id, startDate, endDate])
+
+  // The two referrer-breakdown cards each own one own-filtered, video-scoped referrers call.
+  useEffect(() => {
+    if (!id) return
+    let active = true
+    track(getVideoRelatedVideoReferrers(id, true, startDate || undefined, endDate || undefined, RELATED_DESTINATIONS_LIMIT)
+      .then((data: RelatedReferrersResponse) => data), setRelatedReferrersMine, () => active, 'Could not load Related Video referrers')
+    track(getVideoRelatedVideoReferrers(id, false, startDate || undefined, endDate || undefined, RELATED_DESTINATIONS_LIMIT)
+      .then((data: RelatedReferrersResponse) => data), setRelatedReferrersOther, () => active, 'Could not load Related Video referrers')
+    return () => { active = false }
+  }, [id, startDate, endDate])
+
+  // The outbound card has no dropdown: this video's own ID is always the referrer, via
+  // the channel-scoped destinations route (no video-scoped destinations route exists).
+  useEffect(() => {
+    if (!id) return
+    let active = true
+    track(getRelatedVideoDestinations(id, startDate || undefined, endDate || undefined, RELATED_DESTINATIONS_LIMIT)
+      .then((data: { items: RelatedDestinationRow[] }) => data.items ?? []), setRelatedDestinations, () => active, 'Could not load destinations')
     return () => { active = false }
   }, [id, startDate, endDate])
 
@@ -257,6 +286,13 @@ export default function VideoAnalytics() {
                 >
                   Search Insights
                 </button>
+                <button
+                  type="button"
+                  className={`tab${tsTab === 'related' ? ' active' : ''}`}
+                  onClick={() => handleTsTabChange('related')}
+                >
+                  Related Videos
+                </button>
               </div>
               {tsTab === 'sources' ? (
                 <TrafficSourcesTable
@@ -264,7 +300,7 @@ export default function VideoAnalytics() {
                   loading={trafficSources.loading}
                   error={trafficSources.error}
                 />
-              ) : (
+              ) : tsTab === 'search' ? (
                 <div className="search-insights-columns">
                   <SearchTermsDonutCard
                     title="Top Search Terms"
@@ -273,6 +309,31 @@ export default function VideoAnalytics() {
                     error={searchTerms.error}
                   />
                 </div>
+              ) : (
+                <>
+                  <div className="related-videos-columns">
+                    <RelatedReferrerBreakdownCard
+                      title="Related Traffic from My Channel"
+                      referrers={relatedReferrersMine.data.items}
+                      loading={relatedReferrersMine.loading}
+                      error={relatedReferrersMine.error}
+                    />
+                    <RelatedReferrerBreakdownCard
+                      title="Related Traffic from Other Channels"
+                      referrers={relatedReferrersOther.data.items}
+                      loading={relatedReferrersOther.loading}
+                      error={relatedReferrersOther.error}
+                    />
+                  </div>
+                  <div className="related-videos-columns">
+                    <RelatedDestinationsByReferrerCard
+                      title="Top Destinations From This Video"
+                      destinations={relatedDestinations.data}
+                      loading={relatedDestinations.loading}
+                      error={relatedDestinations.error}
+                    />
+                  </div>
+                </>
               )}
             </>
           )}

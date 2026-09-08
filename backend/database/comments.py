@@ -122,7 +122,7 @@ def _query_comments(
     order_by = COMMENT_SORT_CLAUSES.get(sort_by, COMMENT_SORT_CLAUSES[DEFAULT_COMMENT_SORT])
     offset = (page - 1) * page_size
 
-    conditions: list[str] = []
+    conditions: list[str] = ["v.own = 1"]
     params: list[object] = []
     if video_id:
         conditions.append("c.video_id = ?")

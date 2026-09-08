@@ -37,6 +37,7 @@ _TRAFFIC_SOURCE_METRICS = [
 # startIndex reaching row 26 both return HTTP 500, not a normal empty next page —
 # this is a hard per-request ceiling, not something pagination can get around.
 SEARCH_TERMS_MAX_RESULTS = 25
+RELATED_VIDEOS_MAX_RESULTS = 25
 
 
 @dataclass(frozen=True)
@@ -49,6 +50,19 @@ class SearchTermsResult:
     """
     raw_row_count: int
     terms: list[dict[str, Any]]
+
+
+@dataclass(frozen=True)
+class RelatedVideosResult:
+    """One video/window Related Video Analytics detail response.
+
+    `raw_row_count` counts every row the API returned, including zero-view rows that
+    storage will drop. `referrers` holds only the validated positive-view rows, each
+    shaped {"referrer_video_id": str, "views": int}, in API-returned (descending-views)
+    order.
+    """
+    raw_row_count: int
+    referrers: list[dict[str, Any]]
 
 
 def _analytics_client() -> Any:
@@ -151,46 +165,70 @@ def _fetch_analytics_rows(
     return results
 
 
-def _parse_search_terms_response(response: dict, video_id: str, start_date: str, end_date: str) -> SearchTermsResult:
-    """Parse one Search Analytics detail response by columnHeaders name (not position).
+def _parse_traffic_source_detail_response(
+    response: dict, video_id: str, start_date: str, end_date: str, *, value_key: str, max_results: int, label: str,
+) -> tuple[int, list[dict[str, Any]]]:
+    """Parse one Analytics traffic-source detail response by columnHeaders name (not
+    position). Shared by Search and Related detail parsing — both request the same
+    insightTrafficSourceDetail/views shape and differ only in insightTrafficSourceType
+    and what the detail value represents (a search term vs. a referrer video ID).
 
+    Returns (raw_row_count, positive-view rows shaped {value_key: str, "views": int}).
     An empty/missing `rows` list is a valid, fully-parsed empty response. A nonempty
-    response with more than SEARCH_TERMS_MAX_RESULTS rows, or headers/rows that don't
-    match the requested shape, raises RuntimeError rather than being silently accepted
-    as a successful refresh.
+    response with more than max_results rows, or headers/rows that don't match the
+    requested shape, raises RuntimeError rather than being silently accepted as a
+    successful refresh.
     """
     rows = response.get("rows") or []
     if not rows:
-        return SearchTermsResult(raw_row_count=0, terms=[])
+        return 0, []
 
-    if len(rows) > SEARCH_TERMS_MAX_RESULTS:
+    if len(rows) > max_results:
         raise RuntimeError(
-            f"search terms response exceeded {SEARCH_TERMS_MAX_RESULTS} rows: "
+            f"{label} response exceeded {max_results} rows: "
             f"video={video_id} start={start_date} end={end_date} rows={len(rows)}"
         )
 
     header_names = [h["name"] for h in response.get("columnHeaders", [])]
     if "insightTrafficSourceDetail" not in header_names or "views" not in header_names:
         raise RuntimeError(
-            f"unexpected search terms response headers: video={video_id} headers={header_names!r}"
+            f"unexpected {label} response headers: video={video_id} headers={header_names!r}"
         )
-    term_index = header_names.index("insightTrafficSourceDetail")
+    detail_index = header_names.index("insightTrafficSourceDetail")
     views_index = header_names.index("views")
 
-    terms: list[dict[str, Any]] = []
+    parsed: list[dict[str, Any]] = []
     for row in rows:
         if len(row) != len(header_names):
-            raise RuntimeError(f"malformed search terms row: video={video_id} row={row!r}")
-        term = row[term_index]
+            raise RuntimeError(f"malformed {label} row: video={video_id} row={row!r}")
+        detail = row[detail_index]
         views = row[views_index]
-        if not isinstance(term, str) or not term:
-            raise RuntimeError(f"malformed search term value: video={video_id} row={row!r}")
+        if not isinstance(detail, str) or not detail:
+            raise RuntimeError(f"malformed {label} detail value: video={video_id} row={row!r}")
         if not isinstance(views, int) or isinstance(views, bool):
-            raise RuntimeError(f"malformed search term views: video={video_id} row={row!r}")
+            raise RuntimeError(f"malformed {label} views: video={video_id} row={row!r}")
         if views > 0:
-            terms.append({"search_term": term, "views": views})
+            parsed.append({value_key: detail, "views": views})
 
-    return SearchTermsResult(raw_row_count=len(rows), terms=terms)
+    return len(rows), parsed
+
+
+def _parse_search_terms_response(response: dict, video_id: str, start_date: str, end_date: str) -> SearchTermsResult:
+    """Parse one Search Analytics detail response. See _parse_traffic_source_detail_response."""
+    raw_row_count, terms = _parse_traffic_source_detail_response(
+        response, video_id, start_date, end_date,
+        value_key="search_term", max_results=SEARCH_TERMS_MAX_RESULTS, label="search terms",
+    )
+    return SearchTermsResult(raw_row_count=raw_row_count, terms=terms)
+
+
+def _parse_related_videos_response(response: dict, video_id: str, start_date: str, end_date: str) -> RelatedVideosResult:
+    """Parse one Related Video Analytics detail response. See _parse_traffic_source_detail_response."""
+    raw_row_count, referrers = _parse_traffic_source_detail_response(
+        response, video_id, start_date, end_date,
+        value_key="referrer_video_id", max_results=RELATED_VIDEOS_MAX_RESULTS, label="related videos",
+    )
+    return RelatedVideosResult(raw_row_count=raw_row_count, referrers=referrers)
 
 
 def fetch_video_search_terms(video_id: str, start_date: str, end_date: str) -> SearchTermsResult:
@@ -215,6 +253,31 @@ def fetch_video_search_terms(video_id: str, start_date: str, end_date: str) -> S
     }
     response = _analytics_query(service, params)
     return _parse_search_terms_response(response, video_id, start_date, end_date)
+
+
+def fetch_video_related_videos(video_id: str, start_date: str, end_date: str) -> RelatedVideosResult:
+    """Fetch one owned video's top Related Video referrers for one exact date range.
+
+    Issues exactly one non-paginated reports.query request: maxResults=25, startIndex
+    omitted entirely. Retry may repeat this identical request, but the API is never
+    asked for a second page, even when exactly 25 rows come back. This function has no
+    knowledge of weekly sub-windowing — the caller (the Related Video Insights sync
+    stage) invokes it once per weekly_sub_windows() chunk of a calendar month, not once
+    per month.
+    """
+    service = _analytics_client()
+    params = {
+        "ids": "channel==MINE",
+        "startDate": start_date,
+        "endDate": end_date,
+        "dimensions": "insightTrafficSourceDetail",
+        "metrics": "views",
+        "filters": f"video=={video_id};insightTrafficSourceType==RELATED_VIDEO",
+        "sort": "-views",
+        "maxResults": RELATED_VIDEOS_MAX_RESULTS,
+    }
+    response = _analytics_query(service, params)
+    return _parse_related_videos_response(response, video_id, start_date, end_date)
 
 
 def iter_video_analytics(

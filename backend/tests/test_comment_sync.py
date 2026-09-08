@@ -76,8 +76,8 @@ class CommentStageTestCase(unittest.TestCase):
 
     def setUp(self) -> None:
         self.addCleanup(mock.patch.stopall)
-        mock.patch("sync.stages.database.get_all_video_ids", return_value=["v1"]).start()
-        mock.patch("sync.stages.database.get_video", return_value={"title": "A video"}).start()
+        mock.patch("sync.stages.database.get_owned_video_ids", return_value=["v1"]).start()
+        mock.patch("sync.stages.database.get_owned_video", return_value={"title": "A video"}).start()
         self.known = mock.patch(
             "sync.stages.database.get_comment_ids_for_video", return_value=set()
         ).start()

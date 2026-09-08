@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 from .connection import _now, get_connection
-from .videos import VIDEO_SORT_COLUMNS
+from .videos import VIDEO_SORT_COLUMNS, _coerce_own
 
 
 def upsert_playlist(playlist: dict) -> None:
@@ -68,13 +68,14 @@ def get_all_playlists(
             COALESCE((
                 SELECT SUM(va.estimated_revenue * fx.usd_to_sgd)
                 FROM playlist_items pi2
+                JOIN videos v2 ON v2.id = pi2.video_id AND v2.own = 1
                 JOIN video_analytics va ON va.video_id = pi2.video_id
                 JOIN fx_rates fx ON fx.date = DATE(va.date)
                 WHERE pi2.playlist_id = p.id
             ), 0) AS total_earnings_sgd
         FROM playlists p
         LEFT JOIN playlist_items pi ON pi.playlist_id = p.id
-        LEFT JOIN videos v ON v.id = pi.video_id
+        LEFT JOIN videos v ON v.id = pi.video_id AND v.own = 1
         {where}
         GROUP BY p.id
     """
@@ -99,13 +100,14 @@ def get_playlist(playlist_id: str) -> dict | None:
                 COALESCE((
                     SELECT SUM(va.estimated_revenue * fx.usd_to_sgd)
                     FROM playlist_items pi2
+                    JOIN videos v2 ON v2.id = pi2.video_id AND v2.own = 1
                     JOIN video_analytics va ON va.video_id = pi2.video_id
                     JOIN fx_rates fx ON fx.date = DATE(va.date)
                     WHERE pi2.playlist_id = p.id
                 ), 0) AS total_earnings_sgd
             FROM playlists p
             LEFT JOIN playlist_items pi ON pi.playlist_id = p.id
-            LEFT JOIN videos v ON v.id = pi.video_id
+            LEFT JOIN videos v ON v.id = pi.video_id AND v.own = 1
             WHERE p.id = ?
             GROUP BY p.id
             """,
@@ -115,17 +117,20 @@ def get_playlist(playlist_id: str) -> dict | None:
 
 
 def get_playlist_video_ids(playlist_id: str) -> list[str]:
-    """Return the distinct video IDs in a playlist that have a matching videos row.
+    """Return the distinct owned video IDs in a playlist that have a matching videos row.
 
-    Duplicate playlist_items rows for the same video collapse to one ID, and null or dangling
-    memberships are dropped. Returns an empty list when the playlist has no valid members.
+    Duplicate playlist_items rows for the same video collapse to one ID, and null,
+    dangling, or external (own=0) memberships are dropped. Returns an empty list when
+    the playlist has no valid owned members. Used to scope playlist-wide analytics
+    endpoints, so an external video can never surface through a playlist's traffic
+    sources, search insights, or top-videos results.
     """
     with get_connection() as conn:
         rows = conn.execute(
             """
             SELECT DISTINCT v.id AS video_id
             FROM playlist_items pi
-            JOIN videos v ON v.id = pi.video_id
+            JOIN videos v ON v.id = pi.video_id AND v.own = 1
             WHERE pi.playlist_id = ?
             """,
             (playlist_id,),
@@ -168,7 +173,7 @@ def get_playlist_videos(
     direction = "ASC" if sort_dir == "asc" else "DESC"
     offset = (page - 1) * page_size
 
-    conditions: list[str] = ["pi.playlist_id = ?"]
+    conditions: list[str] = ["pi.playlist_id = ?", "v.own = 1"]
     params: list[object] = [playlist_id]
     if title:
         conditions.append("v.title LIKE ?")
@@ -212,7 +217,7 @@ def get_playlist_videos(
             """,
             [*params, page_size, offset],
         ).fetchall()
-    return [dict(r) for r in rows], total
+    return [_coerce_own(dict(r)) for r in rows], total
 
 
 def delete_playlists_not_in(ids: list[str]) -> int:

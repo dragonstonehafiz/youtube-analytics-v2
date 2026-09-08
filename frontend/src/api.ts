@@ -9,6 +9,8 @@ import type {
   SyncRunsResponse,
   SearchTermRow,
   SearchTermVideo,
+  RelatedReferrersResponse,
+  RelatedDestinationRow,
 } from '@/types'
 
 const BASE = "http://localhost:8000"
@@ -124,6 +126,57 @@ export const getVideoSearchTerms = (id: string, startDate?: string, endDate?: st
   fetchJson(`/analytics/videos/${id}/search-insights`, {
     ...(startDate && { start_date: startDate }),
     ...(endDate && { end_date: endDate }),
+  })
+
+/** Filters accepted by the channel/playlist Related Video referrers endpoints. Scope
+ * comes from the path, `own` and `limit` are passed separately since every caller sets
+ * them explicitly. */
+export interface RelatedVideosQuery {
+  startDate?: string
+  endDate?: string
+  contentType?: string
+  privacyStatus?: string
+  title?: string
+}
+
+function relatedVideosParams(query: RelatedVideosQuery): Record<string, string> {
+  return {
+    ...(query.startDate && { start_date: query.startDate }),
+    ...(query.endDate && { end_date: query.endDate }),
+    ...(query.contentType && { content_type: query.contentType }),
+    ...(query.privacyStatus && { privacy_status: query.privacyStatus }),
+    ...(query.title && { title: query.title }),
+  }
+}
+
+export const getRelatedVideoReferrers = (own: boolean, query: RelatedVideosQuery = {}, limit?: number): Promise<RelatedReferrersResponse> =>
+  fetchJson("/analytics/related-videos/referrers", { ...relatedVideosParams(query), own: String(own), ...(limit !== undefined && { limit: String(limit) }) })
+
+export const getRelatedVideoDestinations = (referrerVideoId: string, startDate?: string, endDate?: string, limit?: number): Promise<{ items: RelatedDestinationRow[] }> =>
+  fetchJson("/analytics/related-videos/destinations", {
+    ...(startDate && { start_date: startDate }),
+    ...(endDate && { end_date: endDate }),
+    referrer_video_id: referrerVideoId,
+    ...(limit !== undefined && { limit: String(limit) }),
+  })
+
+export const getPlaylistRelatedVideoReferrers = (id: string, own: boolean, query: RelatedVideosQuery = {}, limit?: number): Promise<RelatedReferrersResponse> =>
+  fetchJson(`/analytics/playlists/${id}/related-videos/referrers`, { ...relatedVideosParams(query), own: String(own), ...(limit !== undefined && { limit: String(limit) }) })
+
+export const getPlaylistRelatedVideoDestinations = (id: string, referrerVideoId: string, startDate?: string, endDate?: string, limit?: number): Promise<{ items: RelatedDestinationRow[] }> =>
+  fetchJson(`/analytics/playlists/${id}/related-videos/destinations`, {
+    ...(startDate && { start_date: startDate }),
+    ...(endDate && { end_date: endDate }),
+    referrer_video_id: referrerVideoId,
+    ...(limit !== undefined && { limit: String(limit) }),
+  })
+
+export const getVideoRelatedVideoReferrers = (id: string, own: boolean, startDate?: string, endDate?: string, limit?: number): Promise<RelatedReferrersResponse> =>
+  fetchJson(`/analytics/videos/${id}/related-videos/referrers`, {
+    ...(startDate && { start_date: startDate }),
+    ...(endDate && { end_date: endDate }),
+    own: String(own),
+    ...(limit !== undefined && { limit: String(limit) }),
   })
 
 export const getVideosPublished = (startDate?: string, endDate?: string, contentType?: string, privacyStatus?: string, playlistId?: string, title?: string) =>
