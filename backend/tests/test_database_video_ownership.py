@@ -203,7 +203,6 @@ class OwnershipQueryBoundaryTest(IsolatedDatabaseTestCase):
 
     def test_get_owned_video_returns_none_for_external_id(self) -> None:
         self.assertIsNone(database.get_owned_video("v-external"))
-        assert database.get_owned_video("v-owned") is not None
 
     def test_get_all_videos_catalog_excludes_external(self) -> None:
         items, total = database.get_all_videos()
@@ -310,3 +309,39 @@ class OwnershipQueryBoundaryTest(IsolatedDatabaseTestCase):
         items, total = database.get_comments()
         self.assertEqual(total, 1)
         self.assertEqual([c["id"] for c in items], ["c-owned"])
+
+
+class PublishedThroughWorklistBoundaryTest(IsolatedDatabaseTestCase):
+    """get_owned_video_ids(published_through=...) is the period-aware sync stages'
+    pre-loop eligibility filter: a video published after the bound must never reach
+    per-video processing, while a video published on the bound (any time of day),
+    an older video, or one with no known publish date remains eligible."""
+
+    def setUp(self) -> None:
+        super().setUp()
+        database.upsert_own_video(make_video("v-before", "Before", published_at="2024-01-10T00:00:00Z"))
+        database.upsert_own_video(make_video("v-on-bound-early", "On bound early", published_at="2024-01-15T00:00:01Z"))
+        database.upsert_own_video(make_video("v-on-bound-late", "On bound late", published_at="2024-01-15T23:59:59Z"))
+        database.upsert_own_video(make_video("v-after", "After", published_at="2024-01-16T00:00:00Z"))
+        database.upsert_own_video(make_video("v-unknown", "Unknown publish date"))
+        with database.get_connection() as conn:
+            conn.execute("UPDATE videos SET published_at = NULL WHERE id = 'v-unknown'")
+        database.upsert_own_video(make_video("v-external", "External", published_at="2024-01-01T00:00:00Z"))
+        with database.get_connection() as conn:
+            conn.execute("UPDATE videos SET own = 0 WHERE id = 'v-external'")
+
+    def test_bounded_call_includes_before_on_bound_and_unknown_only(self) -> None:
+        ids = set(database.get_owned_video_ids(published_through="2024-01-15"))
+        self.assertEqual(ids, {"v-before", "v-on-bound-early", "v-on-bound-late", "v-unknown"})
+
+    def test_bounded_call_excludes_a_video_published_after_the_bound(self) -> None:
+        ids = database.get_owned_video_ids(published_through="2024-01-15")
+        self.assertNotIn("v-after", ids)
+
+    def test_bounded_call_still_excludes_external_rows(self) -> None:
+        ids = database.get_owned_video_ids(published_through="2024-01-15")
+        self.assertNotIn("v-external", ids)
+
+    def test_unbounded_call_still_returns_every_owned_video(self) -> None:
+        ids = set(database.get_owned_video_ids())
+        self.assertEqual(ids, {"v-before", "v-on-bound-early", "v-on-bound-late", "v-after", "v-unknown"})

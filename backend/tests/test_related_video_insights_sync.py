@@ -369,6 +369,52 @@ class SyncRelatedVideoInsightsScopeTest(unittest.TestCase):
 
         fetch.assert_not_called()
 
+    def test_a_video_published_after_the_effective_end_is_prefiltered_out(self) -> None:
+        """A future-published video is excluded by the bounded worklist query itself,
+        before any per-video processing — sync_related_video_insights() never sees it."""
+        worklist = mock.patch("sync.stages.database.get_owned_video_ids", return_value=[]).start()
+        get_video = mock.patch("sync.stages.database.get_owned_video").start()
+        fetch = mock.patch("sync.stages.youtube.fetch_video_related_videos").start()
+
+        stages.sync_related_video_insights("all", None, SyncCounts())
+
+        worklist.assert_called_once_with(published_through="2024-03-14")
+        get_video.assert_not_called()
+        fetch.assert_not_called()
+
+    def test_incremental_and_all_request_yesterday_as_the_effective_end(self) -> None:
+        worklist = mock.patch("sync.stages.database.get_owned_video_ids", return_value=[]).start()
+
+        stages.sync_related_video_insights("incremental", None, SyncCounts())
+        worklist.assert_called_once_with(published_through="2024-03-14")
+        worklist.reset_mock()
+
+        stages.sync_related_video_insights("all", None, SyncCounts())
+        worklist.assert_called_once_with(published_through="2024-03-14")
+
+    def test_year_scope_clamps_the_effective_end_to_the_earlier_of_year_end_and_yesterday(self) -> None:
+        worklist = mock.patch("sync.stages.database.get_owned_video_ids", return_value=[]).start()
+
+        stages.sync_related_video_insights("year", 2020, SyncCounts())
+        worklist.assert_called_once_with(published_through="2020-12-31")
+        worklist.reset_mock()
+
+        # "today" is frozen to 2024-03-15 by setUp, so the current year clamps to yesterday.
+        stages.sync_related_video_insights("year", 2024, SyncCounts())
+        worklist.assert_called_once_with(published_through="2024-03-14")
+
+    def test_an_empty_worklist_makes_no_per_video_calls(self) -> None:
+        mock.patch("sync.stages.database.get_owned_video_ids", return_value=[]).start()
+        get_video = mock.patch("sync.stages.database.get_owned_video").start()
+        fetch = mock.patch("sync.stages.youtube.fetch_video_related_videos").start()
+        counts = SyncCounts()
+
+        stages.sync_related_video_insights("incremental", None, counts)
+
+        get_video.assert_not_called()
+        fetch.assert_not_called()
+        self.assertEqual((counts.rows_fetched, counts.rows_written), (0, 0))
+
     def test_incremental_scope_with_no_publish_date_uses_fixed_two_windows(self) -> None:
         mock.patch("sync.stages.database.get_owned_video_ids", return_value=["v1"]).start()
         mock.patch("sync.stages.database.get_owned_video", return_value={"title": "T"}).start()

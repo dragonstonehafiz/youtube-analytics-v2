@@ -340,19 +340,80 @@ class VideoAnalyticsStageDetailLoggingTest(unittest.TestCase):
         self.assertEqual(messages, ["video_analytics 1/1 video=v1 skipped reason=no_publish_date title='No Publish Date'"])
         self.assertEqual(counts.rows_fetched, 0)
 
-    def test_video_skipped_when_range_is_empty(self) -> None:
+    def test_a_video_published_after_the_effective_end_is_prefiltered_out(self) -> None:
+        """A future-published video is now excluded by the bounded worklist query
+        itself, before any per-video processing — sync_video_analytics() never sees
+        it, so it never reaches the defensive empty-range skip branch at all."""
+        worklist = mock.patch("sync.stages.database.get_owned_video_ids", return_value=[]).start()
+        get_video = mock.patch("sync.stages.database.get_owned_video").start()
+        fetch = mock.patch("sync.stages.youtube.iter_video_analytics").start()
+        counts = SyncCounts()
+
+        with self.assertNoLogs("youtube_analytics.sync", level="DEBUG"):
+            stages.sync_video_analytics("all", None, counts)
+
+        yesterday = (date.today() - timedelta(days=1)).isoformat()
+        worklist.assert_called_once_with(published_through=yesterday)
+        get_video.assert_not_called()
+        fetch.assert_not_called()
+        self.assertEqual(counts.rows_fetched, 0)
+
+    def test_incremental_and_all_request_yesterday_as_the_effective_end(self) -> None:
+        worklist = mock.patch("sync.stages.database.get_owned_video_ids", return_value=[]).start()
+        yesterday = (date.today() - timedelta(days=1)).isoformat()
+
+        stages.sync_video_analytics("incremental", None, SyncCounts())
+        worklist.assert_called_once_with(published_through=yesterday)
+        worklist.reset_mock()
+
+        stages.sync_video_analytics("all", None, SyncCounts())
+        worklist.assert_called_once_with(published_through=yesterday)
+
+    def test_year_scope_clamps_the_effective_end_to_the_earlier_of_year_end_and_yesterday(self) -> None:
+        worklist = mock.patch("sync.stages.database.get_owned_video_ids", return_value=[]).start()
+
+        stages.sync_video_analytics("year", 2020, SyncCounts())
+        worklist.assert_called_once_with(published_through="2020-12-31")
+        worklist.reset_mock()
+
+        current_year = date.today().year
+        stages.sync_video_analytics("year", current_year, SyncCounts())
+        yesterday = (date.today() - timedelta(days=1)).isoformat()
+        worklist.assert_called_once_with(published_through=yesterday)
+
+    def test_an_empty_worklist_makes_no_per_video_calls_and_completes_normally(self) -> None:
+        mock.patch("sync.stages.database.get_owned_video_ids", return_value=[]).start()
+        get_video = mock.patch("sync.stages.database.get_owned_video").start()
+        fetch = mock.patch("sync.stages.youtube.iter_video_analytics").start()
+        progress = mock.patch("sync.stages.status.update_sync_progress").start()
+        counts = SyncCounts()
+
+        stages.sync_video_analytics("incremental", None, counts)
+
+        get_video.assert_not_called()
+        fetch.assert_not_called()
+        progress.assert_not_called()
+        self.assertEqual((counts.rows_fetched, counts.rows_written), (0, 0))
+
+    def test_progress_ordinals_and_logging_cover_only_the_prefiltered_worklist(self) -> None:
+        """A mixed two-video worklist (the excluded future video already removed by the
+        real database query, simulated here by the mock only ever returning the
+        eligible ID) numbers progress 1/1, never 1/2 — the excluded video was never
+        part of `total` to begin with."""
         mock.patch("sync.stages.database.get_owned_video_ids", return_value=["v1"]).start()
         mock.patch(
-            "sync.stages.database.get_owned_video", return_value={"published_at": "2999-01-01T00:00:00Z", "title": "Future Video"}
+            "sync.stages.database.get_owned_video", return_value={"published_at": "2020-01-01T00:00:00Z", "title": "Eligible Video"}
         ).start()
+        mock.patch("sync.stages.database.get_last_analytics_date", return_value=None).start()
+        mock.patch("sync.stages.database.upsert_video_analytics").start()
+        mock.patch("sync.stages.youtube.iter_video_analytics", return_value=iter([])).start()
         counts = SyncCounts()
 
         with self.assertLogs("youtube_analytics.sync", level="DEBUG") as captured:
-            stages.sync_video_analytics("all", None, counts)
+            stages.sync_video_analytics("incremental", None, counts)
 
         messages = [record.getMessage() for record in captured.records]
-        self.assertEqual(messages, ["video_analytics 1/1 video=v1 skipped reason=empty_range title='Future Video'"])
-        self.assertEqual(counts.rows_fetched, 0)
+        self.assertEqual(messages, ["video_analytics 1/1 video=v1 rows=0 title='Eligible Video'"])
 
     def test_video_processed_logs_its_own_row_count_only(self) -> None:
         mock.patch("sync.stages.database.get_owned_video_ids", return_value=["v1"]).start()
@@ -409,18 +470,44 @@ class VideoTrafficSourcesStageDetailLoggingTest(unittest.TestCase):
         messages = [record.getMessage() for record in captured.records]
         self.assertEqual(messages, ["video_traffic_sources 1/1 video=v1 skipped reason=no_publish_date title='No Publish Date'"])
 
-    def test_video_skipped_when_range_is_empty(self) -> None:
-        mock.patch("sync.stages.database.get_owned_video_ids", return_value=["v1"]).start()
-        mock.patch(
-            "sync.stages.database.get_owned_video", return_value={"published_at": "2999-01-01T00:00:00Z", "title": "Future Video"}
-        ).start()
+    def test_a_video_published_after_the_effective_end_is_prefiltered_out(self) -> None:
+        worklist = mock.patch("sync.stages.database.get_owned_video_ids", return_value=[]).start()
+        get_video = mock.patch("sync.stages.database.get_owned_video").start()
+        fetch = mock.patch("sync.stages.youtube.iter_video_traffic_sources").start()
         counts = SyncCounts()
 
-        with self.assertLogs("youtube_analytics.sync", level="DEBUG") as captured:
+        with self.assertNoLogs("youtube_analytics.sync", level="DEBUG"):
             stages.sync_video_traffic_sources("all", None, counts)
 
-        messages = [record.getMessage() for record in captured.records]
-        self.assertEqual(messages, ["video_traffic_sources 1/1 video=v1 skipped reason=empty_range title='Future Video'"])
+        yesterday = (date.today() - timedelta(days=1)).isoformat()
+        worklist.assert_called_once_with(published_through=yesterday)
+        get_video.assert_not_called()
+        fetch.assert_not_called()
+        self.assertEqual(counts.rows_fetched, 0)
+
+    def test_year_scope_clamps_the_effective_end_to_the_earlier_of_year_end_and_yesterday(self) -> None:
+        worklist = mock.patch("sync.stages.database.get_owned_video_ids", return_value=[]).start()
+
+        stages.sync_video_traffic_sources("year", 2020, SyncCounts())
+        worklist.assert_called_once_with(published_through="2020-12-31")
+        worklist.reset_mock()
+
+        current_year = date.today().year
+        stages.sync_video_traffic_sources("year", current_year, SyncCounts())
+        yesterday = (date.today() - timedelta(days=1)).isoformat()
+        worklist.assert_called_once_with(published_through=yesterday)
+
+    def test_an_empty_worklist_makes_no_per_video_calls_and_completes_normally(self) -> None:
+        mock.patch("sync.stages.database.get_owned_video_ids", return_value=[]).start()
+        get_video = mock.patch("sync.stages.database.get_owned_video").start()
+        fetch = mock.patch("sync.stages.youtube.iter_video_traffic_sources").start()
+        counts = SyncCounts()
+
+        stages.sync_video_traffic_sources("incremental", None, counts)
+
+        get_video.assert_not_called()
+        fetch.assert_not_called()
+        self.assertEqual((counts.rows_fetched, counts.rows_written), (0, 0))
 
     def test_video_processed_logs_its_own_row_count_only(self) -> None:
         mock.patch("sync.stages.database.get_owned_video_ids", return_value=["v1"]).start()
@@ -468,6 +555,45 @@ class RelatedVideoInsightsStageDetailLoggingTest(unittest.TestCase):
             messages, ["related_video_insights 1/1 video=v1 skipped reason=no_publish_date title='No Publish Date'"]
         )
         self.assertEqual(counts.rows_fetched, 0)
+
+    def test_a_video_published_after_the_effective_end_is_prefiltered_out(self) -> None:
+        worklist = mock.patch("sync.stages.database.get_owned_video_ids", return_value=[]).start()
+        get_video = mock.patch("sync.stages.database.get_owned_video").start()
+        fetch = mock.patch("sync.stages.youtube.fetch_video_related_videos").start()
+        counts = SyncCounts()
+
+        with self.assertNoLogs("youtube_analytics.sync", level="DEBUG"):
+            stages.sync_related_video_insights("all", None, counts)
+
+        yesterday = (date.today() - timedelta(days=1)).isoformat()
+        worklist.assert_called_once_with(published_through=yesterday)
+        get_video.assert_not_called()
+        fetch.assert_not_called()
+        self.assertEqual(counts.rows_fetched, 0)
+
+    def test_year_scope_clamps_the_effective_end_to_the_earlier_of_year_end_and_yesterday(self) -> None:
+        worklist = mock.patch("sync.stages.database.get_owned_video_ids", return_value=[]).start()
+
+        stages.sync_related_video_insights("year", 2020, SyncCounts())
+        worklist.assert_called_once_with(published_through="2020-12-31")
+        worklist.reset_mock()
+
+        current_year = date.today().year
+        stages.sync_related_video_insights("year", current_year, SyncCounts())
+        yesterday = (date.today() - timedelta(days=1)).isoformat()
+        worklist.assert_called_once_with(published_through=yesterday)
+
+    def test_an_empty_worklist_makes_no_per_video_calls_and_completes_normally(self) -> None:
+        mock.patch("sync.stages.database.get_owned_video_ids", return_value=[]).start()
+        get_video = mock.patch("sync.stages.database.get_owned_video").start()
+        fetch = mock.patch("sync.stages.youtube.fetch_video_related_videos").start()
+        counts = SyncCounts()
+
+        stages.sync_related_video_insights("incremental", None, counts)
+
+        get_video.assert_not_called()
+        fetch.assert_not_called()
+        self.assertEqual((counts.rows_fetched, counts.rows_written), (0, 0))
 
     def test_video_processed_logs_its_own_row_count_only(self) -> None:
         # scope="year" with a single frozen window keeps the months/calls/rows values

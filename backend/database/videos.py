@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+from datetime import date, timedelta
+
 from .connection import _now, get_connection
 
 
@@ -199,11 +201,32 @@ def get_earliest_published_year() -> int | None:
     return int(video_min[:4]) if video_min else None
 
 
-def get_owned_video_ids() -> list[str]:
+def get_owned_video_ids(published_through: str | None = None) -> list[str]:
     """Return every owned (own=1) video ID — the privileged target worklist for
-    Comments, Video Analytics, Video Traffic Sources, and Search/Related Insights."""
+    Comments, Video Analytics, Video Traffic Sources, and Search/Related Insights.
+
+    `published_through`, when given, is an inclusive date-only (`YYYY-MM-DD`) upper
+    bound on `published_at`: a video published anywhere on that date or earlier is
+    included. The comparison uses a strictly-less-than bound against the *next*
+    calendar day's midnight rather than `<= published_through + "T23:59:59"` — the
+    latter would wrongly exclude a same-day timestamp carrying a trailing `Z` (e.g.
+    `"...T23:59:59Z"` sorts lexically after the literal string `"...T23:59:59"`), and
+    real `published_at` values from the YouTube API always carry that suffix. A video
+    with no known `published_at` is always included regardless of this bound — a
+    missing publish date is not evidence the video was uploaded after the range, so it
+    keeps its existing downstream (skip/fallback) handling instead of being silently
+    excluded here. Omitting the argument (the default) returns the complete owned
+    worklist, unchanged — this is what Comments continues to use.
+    """
+    conditions = ["own = 1"]
+    params: list[str] = []
+    if published_through is not None:
+        exclusive_upper = date.fromisoformat(published_through) + timedelta(days=1)
+        conditions.append("(published_at IS NULL OR published_at < ?)")
+        params.append(f"{exclusive_upper.isoformat()}T00:00:00")
+    where = " AND ".join(conditions)
     with get_connection() as conn:
-        rows = conn.execute("SELECT id FROM videos WHERE own = 1").fetchall()
+        rows = conn.execute(f"SELECT id FROM videos WHERE {where}", params).fetchall()
     return [r["id"] for r in rows]
 
 

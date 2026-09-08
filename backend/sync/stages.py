@@ -39,6 +39,22 @@ def _incremental_lookback_start(last_date: str | None, publish_date: str) -> str
     return max(start, publish_date)
 
 
+def _effective_range_end(scope: str, year: int | None, yesterday: date) -> date:
+    """Return a period-aware stage's inclusive request-range upper bound: the given
+    year's December 31 clamped to yesterday for scope="year" (a future year has no
+    data yet to request), otherwise yesterday itself for "incremental"/"all".
+
+    Used both to compute each video's actual fetch range and, before that, to
+    prefilter the owned-video worklist via `database.get_owned_video_ids()` — a video
+    published after this date makes no API calls, updates no progress, and emits no
+    per-video log record for this stage.
+    """
+    if scope == "year":
+        assert year is not None, "scope=year requires a year"
+        return min(yesterday, date(year, 12, 31))
+    return yesterday
+
+
 def sync_videos(counts: SyncCounts, playlist_video_ids: set[str]) -> set[str]:
     """Fetch and upsert details for every channel-owned video; never deletes.
 
@@ -252,11 +268,18 @@ def sync_video_analytics(scope: str, year: int | None, counts: SyncCounts) -> No
     days is a no-op once the data has settled, and corrects any recent day that was
     stored before its data had fully arrived. scope="year" refetches the given year;
     scope="all" refetches each video's entire history.
+
+    The owned-video worklist is prefiltered to videos published on or before this
+    stage's effective range end (see `_effective_range_end()`) before progress or
+    per-video processing begins — a video uploaded after that date can have no data in
+    range and so makes no API call, updates no progress, and emits no per-video log
+    record.
     """
     today = date.today()
-    end_date = (today - timedelta(days=1)).isoformat()
+    effective_end = _effective_range_end(scope, year, today - timedelta(days=1))
+    end_date = effective_end.isoformat()
 
-    video_ids = database.get_owned_video_ids()
+    video_ids = database.get_owned_video_ids(published_through=end_date)
     total = len(video_ids)
     for i, video_id in enumerate(video_ids, start=1):
         status.update_sync_progress(f"Syncing video analytics ({i}/{total})...")
@@ -310,11 +333,18 @@ def sync_video_traffic_sources(scope: str, year: int | None, counts: SyncCounts)
     re-pulled days is a no-op once the data has settled, and corrects any recent day
     that was stored before its data had fully arrived. scope="year" refetches the
     given year; scope="all" refetches each video's entire history.
+
+    The owned-video worklist is prefiltered to videos published on or before this
+    stage's effective range end (see `_effective_range_end()`) before progress or
+    per-video processing begins — a video uploaded after that date can have no data in
+    range and so makes no API call, updates no progress, and emits no per-video log
+    record.
     """
     today = date.today()
-    end_date = (today - timedelta(days=1)).isoformat()
+    effective_end = _effective_range_end(scope, year, today - timedelta(days=1))
+    end_date = effective_end.isoformat()
 
-    video_ids = database.get_owned_video_ids()
+    video_ids = database.get_owned_video_ids(published_through=end_date)
     total = len(video_ids)
     for i, video_id in enumerate(video_ids, start=1):
         status.update_sync_progress(f"Syncing traffic sources ({i}/{total})...")
@@ -385,13 +415,20 @@ def sync_search_insights(scope: str, year: int | None, counts: SyncCounts) -> No
     than 25 distinct terms in a month permanently loses everything past the cap.
     Narrowing each request to a week raises how many of a month's real terms fit under
     that same 25-row ceiling before the rest gets dropped.
+
+    The owned-video worklist is prefiltered to videos published on or before this
+    stage's effective range end (see `_effective_range_end()`) before progress or
+    per-video processing begins — a video uploaded after that date can have no data in
+    range and so makes no API call, updates no progress, and emits no per-video log
+    record.
     """
     today = date.today()
     yesterday = today - timedelta(days=1)
+    effective_end = _effective_range_end(scope, year, yesterday)
     # Captured once so a midnight rollover mid-run cannot change the worklist. Used only
     # as the incremental fallback for a video with no publish date to compute a range from.
     incremental_windows = monthly_insights.monthly_search_windows(today)
-    video_ids = database.get_owned_video_ids()
+    video_ids = database.get_owned_video_ids(published_through=effective_end.isoformat())
     total = len(video_ids)
 
     for i, video_id in enumerate(video_ids, start=1):
@@ -476,13 +513,20 @@ def sync_related_video_insights(scope: str, year: int | None, counts: SyncCounts
     authenticated channel ID. A batch's metadata lookup failure is logged and skipped;
     it never fails the stage or discards the Related rows already stored. An ID
     omitted from its batch's response is left without a video row.
+
+    The owned-video worklist is also prefiltered to videos published on or before this
+    stage's effective range end (see `_effective_range_end()`) before progress or
+    per-video processing begins — a video uploaded after that date can have no data in
+    range and so makes no API call, updates no progress, and emits no per-video log
+    record.
     """
     today = date.today()
     yesterday = today - timedelta(days=1)
+    effective_end = _effective_range_end(scope, year, yesterday)
     # Captured once so a midnight rollover mid-run cannot change the worklist. Used only
     # as the incremental fallback for a video with no publish date to compute a range from.
     incremental_windows = monthly_insights.monthly_search_windows(today)
-    video_ids = database.get_owned_video_ids()
+    video_ids = database.get_owned_video_ids(published_through=effective_end.isoformat())
     total = len(video_ids)
     newly_encountered_ids: set[str] = set()
 
