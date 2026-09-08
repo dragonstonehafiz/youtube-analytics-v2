@@ -7,7 +7,7 @@ import './RelatedDestinationsByReferrerCard.css'
 
 interface Props {
   title: string
-  /** Options for this card's own referrer dropdown, sourced from the same 10-item
+  /** Options for this card's own referrer dropdown, sourced from the same full
    * response that fed the paired breakdown card — no separate request for the options.
    * Omitted entirely (along with the other dropdown props) for the video page's
    * outbound card, which has no ownership split and no dropdown: its referrer is
@@ -22,6 +22,7 @@ interface Props {
 }
 
 const TOP_N = 6
+const OTHER_ITEMIZE_N = 3
 const OTHER_KEY = '__other__'
 
 function referrerOptionLabel(r: RelatedReferrerRow): string {
@@ -43,6 +44,9 @@ export default function RelatedDestinationsByReferrerCard({
   const topDestinations = destinations.slice(0, TOP_N)
   const otherDestinations = destinations.slice(TOP_N)
   const otherViews = otherDestinations.reduce((s, d) => s + d.views, 0)
+  const itemizedOtherDestinations = otherDestinations.slice(0, OTHER_ITEMIZE_N)
+  const remainderDestinations = otherDestinations.slice(OTHER_ITEMIZE_N)
+  const remainderViews = remainderDestinations.reduce((s, d) => s + d.views, 0)
 
   const slices = [
     ...topDestinations.map((d, i) => ({ key: d.target_video_id, label: d.title, views: d.views, colorClass: categoricalColorClass(i) })),
@@ -121,7 +125,7 @@ export default function RelatedDestinationsByReferrerCard({
         {otherDestinations.length > 0 && (
           <>
             <div className="related-destinations-legend-divider">Other includes:</div>
-            {otherDestinations.map(d => (
+            {itemizedOtherDestinations.map(d => (
               <div key={d.target_video_id} className="related-destinations-legend-item related-destinations-legend-item--sub">
                 {d.thumbnail_url
                   ? <img src={d.thumbnail_url} alt="" className="related-destinations-thumb" />
@@ -131,6 +135,14 @@ export default function RelatedDestinationsByReferrerCard({
                 <span className="related-destinations-legend-views">{d.views.toLocaleString()}</span>
               </div>
             ))}
+            {remainderDestinations.length > 0 && (
+              <div className="related-destinations-legend-item related-destinations-legend-item--sub">
+                <div className="related-destinations-thumb related-destinations-thumb--placeholder" />
+                <span className={`related-destinations-legend-swatch ${CATEGORICAL_OTHER_CLASS}`} />
+                <span className="related-destinations-legend-label">{remainderDestinations.length} more videos</span>
+                <span className="related-destinations-legend-views">{remainderViews.toLocaleString()}</span>
+              </div>
+            )}
           </>
         )}
       </div>

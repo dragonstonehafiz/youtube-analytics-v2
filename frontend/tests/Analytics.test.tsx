@@ -11,7 +11,7 @@ vi.mock('@/api', () => ({
   getVideos: vi.fn(),
   getChannelTrafficSources: vi.fn(),
   getTopVideosByTrafficSource: vi.fn(),
-  getTopSearchTerms: vi.fn(),
+  getSearchTerms: vi.fn(),
   getVideosBySearchTerm: vi.fn(),
   getRelatedVideoReferrers: vi.fn(),
   getRelatedVideoDestinations: vi.fn(),
@@ -28,7 +28,7 @@ import {
   getDateRange,
   getRelatedVideoDestinations,
   getRelatedVideoReferrers,
-  getTopSearchTerms,
+  getSearchTerms,
   getTopVideosByTrafficSource,
   getTopVideosByViews,
   getVideoStats,
@@ -46,7 +46,7 @@ const mockGetVideosPublished = vi.mocked(getVideosPublished)
 const mockGetVideos = vi.mocked(getVideos)
 const mockGetChannelTrafficSources = vi.mocked(getChannelTrafficSources)
 const mockGetTopVideosByTrafficSource = vi.mocked(getTopVideosByTrafficSource)
-const mockGetTopSearchTerms = vi.mocked(getTopSearchTerms)
+const mockGetSearchTerms = vi.mocked(getSearchTerms)
 const mockGetVideosBySearchTerm = vi.mocked(getVideosBySearchTerm)
 const mockGetRelatedVideoReferrers = vi.mocked(getRelatedVideoReferrers)
 const mockGetRelatedVideoDestinations = vi.mocked(getRelatedVideoDestinations)
@@ -118,7 +118,7 @@ beforeEach(() => {
   mockGetVideos.mockResolvedValue({ items: [] })
   mockGetChannelTrafficSources.mockResolvedValue({ items: [] })
   mockGetTopVideosByTrafficSource.mockResolvedValue({ items: {} })
-  mockGetTopSearchTerms.mockResolvedValue({ items: [] })
+  mockGetSearchTerms.mockResolvedValue({ items: [] })
   mockGetVideosBySearchTerm.mockResolvedValue({ items: [] })
   mockGetRelatedVideoReferrers.mockResolvedValue({ items: [], total_named_views: 0 })
   mockGetRelatedVideoDestinations.mockResolvedValue({ items: [] })
@@ -204,7 +204,7 @@ describe('Traffic Sources sub-tabs', () => {
   })
 
   it('renders one independent sidebar card per content type, each with its own dropdown', async () => {
-    mockGetTopSearchTerms.mockResolvedValue({ items: [{ search_term: 'cats', views: 10 }] })
+    mockGetSearchTerms.mockResolvedValue({ items: [{ search_term: 'cats', views: 10 }] })
     renderAnalytics('/analytics?tab=traffic-sources&ts_tab=search')
 
     expect(await screen.findByText('Top Videos by Search Term')).toBeDefined()
@@ -240,6 +240,17 @@ describe('Related Videos sub-tab', () => {
     expect(await screen.findByText('Top Destinations — Other Channels')).toBeDefined()
   })
 
+  it('fetches nothing until the Related Videos sub-tab is actually visible', async () => {
+    renderAnalytics('/analytics?tab=traffic-sources&ts_tab=sources')
+    await waitFor(() => expect(mockGetChannelTrafficSources).toHaveBeenCalled())
+    expect(mockGetRelatedVideoReferrers).not.toHaveBeenCalled()
+    expect(mockGetRelatedVideoDestinations).not.toHaveBeenCalled()
+
+    fireEvent.click(screen.getByRole('button', { name: 'Related Videos' }))
+    await waitFor(() => expect(mockGetRelatedVideoReferrers).toHaveBeenCalledTimes(2))
+    await waitFor(() => expect(mockGetRelatedVideoDestinations).toHaveBeenCalledTimes(2))
+  })
+
   it('requests referrers for both ownership buckets, forwarding the page filters', async () => {
     renderAnalytics(
       '/analytics?tab=traffic-sources&ts_tab=related&title=foo&content_type=video&privacy_status=public&start_date=2024-01-10&end_date=2024-01-20',
@@ -252,7 +263,7 @@ describe('Related Videos sub-tab', () => {
       expect(call[1]).toEqual({
         startDate: '2024-01-10', endDate: '2024-01-20', title: 'foo', contentType: 'video', privacyStatus: 'public',
       })
-      expect(call[2]).toBe(10)
+      expect(call[2]).toBe(1000)
     }
   })
 

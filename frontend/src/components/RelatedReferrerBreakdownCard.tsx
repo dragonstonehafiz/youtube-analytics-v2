@@ -7,13 +7,14 @@ import './RelatedReferrerBreakdownCard.css'
 
 interface Props {
   title: string
-  /** Already ranked and capped at 10 by the backend, for one ownership bucket. */
+  /** The full ranked result set for one ownership bucket — not capped by the backend. */
   referrers: RelatedReferrerRow[]
   loading: boolean
   error?: string | null
 }
 
 const TOP_N = 6
+const OTHER_ITEMIZE_N = 3
 const OTHER_NAMED_KEY = '__other_named__'
 
 function referrerLabel(r: RelatedReferrerRow): string {
@@ -44,6 +45,9 @@ export default function RelatedReferrerBreakdownCard({ title, referrers, loading
   const otherReferrers = referrers.slice(TOP_N)
   const otherViews = otherReferrers.reduce((s, r) => s + r.views, 0)
   const totalViews = referrers.reduce((s, r) => s + r.views, 0)
+  const itemizedOtherReferrers = otherReferrers.slice(0, OTHER_ITEMIZE_N)
+  const remainderReferrers = otherReferrers.slice(OTHER_ITEMIZE_N)
+  const remainderViews = remainderReferrers.reduce((s, r) => s + r.views, 0)
 
   const slices = [
     ...topReferrers.map((r, i) => ({ key: r.referrer_video_id, label: referrerLabel(r), views: r.views, colorClass: categoricalColorClass(i) })),
@@ -91,7 +95,7 @@ export default function RelatedReferrerBreakdownCard({ title, referrers, loading
         {otherReferrers.length > 0 && (
           <>
             <div className="related-referrer-breakdown-legend-divider">Other includes:</div>
-            {otherReferrers.map(r => (
+            {itemizedOtherReferrers.map(r => (
               <div key={r.referrer_video_id} className="related-referrer-breakdown-legend-item related-referrer-breakdown-legend-item--sub">
                 <ReferrerThumb r={r} />
                 <span className={`related-referrer-breakdown-legend-swatch ${CATEGORICAL_OTHER_CLASS}`} />
@@ -99,6 +103,14 @@ export default function RelatedReferrerBreakdownCard({ title, referrers, loading
                 <span className="related-referrer-breakdown-legend-views">{r.views.toLocaleString()}</span>
               </div>
             ))}
+            {remainderReferrers.length > 0 && (
+              <div className="related-referrer-breakdown-legend-item related-referrer-breakdown-legend-item--sub">
+                <div className="related-referrer-thumb related-referrer-thumb--placeholder" />
+                <span className={`related-referrer-breakdown-legend-swatch ${CATEGORICAL_OTHER_CLASS}`} />
+                <span className="related-referrer-breakdown-legend-label">{remainderReferrers.length} more referrers</span>
+                <span className="related-referrer-breakdown-legend-views">{remainderViews.toLocaleString()}</span>
+              </div>
+            )}
           </>
         )}
       </div>

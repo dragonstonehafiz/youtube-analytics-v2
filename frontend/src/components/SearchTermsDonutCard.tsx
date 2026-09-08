@@ -12,6 +12,7 @@ interface Props {
 }
 
 const TOP_N = 6
+const OTHER_ITEMIZE_N = 3
 const OTHER_KEY = '__other__'
 
 export default function SearchTermsDonutCard({ title, rows, loading, error = null }: Props) {
@@ -19,6 +20,9 @@ export default function SearchTermsDonutCard({ title, rows, loading, error = nul
   const topRows = rows.slice(0, TOP_N)
   const otherRows = rows.slice(TOP_N)
   const otherViews = otherRows.reduce((s, r) => s + r.views, 0)
+  const itemizedOtherRows = otherRows.slice(0, OTHER_ITEMIZE_N)
+  const remainderRows = otherRows.slice(OTHER_ITEMIZE_N)
+  const remainderViews = remainderRows.reduce((s, r) => s + r.views, 0)
 
   const slices = [
     ...topRows.map((r, i) => ({ key: r.search_term, label: r.search_term, views: r.views, colorClass: categoricalColorClass(i) })),
@@ -65,13 +69,20 @@ export default function SearchTermsDonutCard({ title, rows, loading, error = nul
         {otherRows.length > 0 && (
           <>
             <div className="search-terms-donut-legend-divider">Other includes:</div>
-            {otherRows.map(r => (
+            {itemizedOtherRows.map(r => (
               <div key={r.search_term} className="search-terms-donut-legend-item search-terms-donut-legend-item--sub">
                 <span className={`search-terms-donut-legend-swatch ${CATEGORICAL_OTHER_CLASS}`} />
                 <span className="search-terms-donut-legend-label">{r.search_term}</span>
                 <span className="search-terms-donut-legend-views">{r.views.toLocaleString()}</span>
               </div>
             ))}
+            {remainderRows.length > 0 && (
+              <div className="search-terms-donut-legend-item search-terms-donut-legend-item--sub">
+                <span className={`search-terms-donut-legend-swatch ${CATEGORICAL_OTHER_CLASS}`} />
+                <span className="search-terms-donut-legend-label">{remainderRows.length} more terms</span>
+                <span className="search-terms-donut-legend-views">{remainderViews.toLocaleString()}</span>
+              </div>
+            )}
           </>
         )}
       </div>

@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react'
 import { useParams } from 'react-router-dom'
-import { getPlaylist, getPlaylistVideos, getPlaylistVideoStats, getPlaylistAnalytics, getPlaylistTopVideosByViews, getVideosPublished, getPlaylistTrafficSources, getPlaylistTopVideosByTrafficSource, getPlaylistTopSearchTerms, getPlaylistVideosBySearchTerm, getPlaylistRelatedVideoReferrers, getPlaylistRelatedVideoDestinations } from '@/api'
+import { getPlaylist, getPlaylistVideos, getPlaylistVideoStats, getPlaylistAnalytics, getPlaylistTopVideosByViews, getVideosPublished, getPlaylistTrafficSources, getPlaylistTopVideosByTrafficSource, getPlaylistSearchTerms, getPlaylistVideosBySearchTerm, getPlaylistRelatedVideoReferrers, getPlaylistRelatedVideoDestinations } from '@/api'
 import type { Video, VideoStats, AnalyticsRow, Playlist, TopVideo, TopVideoSortBy, PublishedVideo, TrafficSourceRow, TrafficSourceTopVideo, SearchTermRow, SearchTermVideo, RelatedReferrersResponse, RelatedDestinationRow } from '@/types'
 import { useReplaceSearchParams } from '@/hooks/useReplaceSearchParams'
 import VideoStatsBar from '@/components/VideoStatsBar'
@@ -31,7 +31,7 @@ import './Analytics.css'
 const RECENT_COUNT = 10
 // Show every video with views for the selected term, not just a "top" handful.
 const ALL_VIDEOS_FOR_TERM_LIMIT = 1000
-const RELATED_DESTINATIONS_LIMIT = 10
+const RELATED_VIDEOS_FETCH_LIMIT = 1000
 const EMPTY_RELATED_REFERRERS: RelatedReferrersResponse = { items: [], total_named_views: 0 }
 
 type Tab = 'analytics' | 'traffic-sources' | 'comments' | 'videos'
@@ -75,6 +75,7 @@ export default function PlaylistAnalytics() {
   const [trafficSources, setTrafficSources] = useState<RequestState<TrafficSourceRow[]>>(pending([]))
   const [topVideosBySource, setTopVideosBySource] = useState<RequestState<Record<string, TrafficSourceTopVideo[]>>>(pending({}))
   const tsTab = toTrafficSourcesSubTab(searchParams.get('ts_tab'))
+  const relatedTabVisible = tab === 'traffic-sources' && tsTab === 'related'
   const [videoTerm, setVideoTerm] = useState<string | null>(null)
   const [shortTerm, setShortTerm] = useState<string | null>(null)
   const [searchTerms, setSearchTerms] = useState<RequestState<SearchTermRow[]>>(pending([]))
@@ -185,11 +186,11 @@ export default function PlaylistAnalytics() {
     if (!id) return
     let active = true
     const query = { startDate: analyticsStartDate || undefined, endDate: analyticsEndDate || undefined, title: analyticsTitle || undefined, privacyStatus: analyticsPrivacyStatus || undefined }
-    track(getPlaylistTopSearchTerms(id, query)
+    track(getPlaylistSearchTerms(id, query)
       .then((data: { items: SearchTermRow[] }) => data.items ?? []), setSearchTerms, () => active, 'Could not load search terms')
-    track(getPlaylistTopSearchTerms(id, { ...query, contentType: 'video' })
+    track(getPlaylistSearchTerms(id, { ...query, contentType: 'video' })
       .then((data: { items: SearchTermRow[] }) => data.items ?? []), setSearchTermsByVideo, () => active, 'Could not load search terms')
-    track(getPlaylistTopSearchTerms(id, { ...query, contentType: 'short' })
+    track(getPlaylistSearchTerms(id, { ...query, contentType: 'short' })
       .then((data: { items: SearchTermRow[] }) => data.items ?? []), setSearchTermsByShort, () => active, 'Could not load search terms')
     return () => { active = false }
   }, [id, analyticsStartDate, analyticsEndDate, analyticsTitle, analyticsPrivacyStatus])
@@ -215,36 +216,40 @@ export default function PlaylistAnalytics() {
     return () => { active = false }
   }, [id, shortTerm, searchTermsByShort.data, analyticsStartDate, analyticsEndDate, analyticsTitle, analyticsPrivacyStatus])
 
-  // The two referrer-breakdown cards each own one own-filtered referrers call.
+  // The two referrer-breakdown cards each own one own-filtered referrers call. Deferred
+  // until the Related Videos sub-tab is actually visible, and refetched whenever the
+  // filters change while it's visible — switching into the sub-tab fetches fresh data
+  // rather than relying on whatever was current the last time it was open.
   useEffect(() => {
-    if (!id) return
+    if (!id || !relatedTabVisible) return
     let active = true
     const query = { startDate: analyticsStartDate || undefined, endDate: analyticsEndDate || undefined, title: analyticsTitle || undefined, contentType: analyticsContentType || undefined, privacyStatus: analyticsPrivacyStatus || undefined }
-    track(getPlaylistRelatedVideoReferrers(id, true, query, RELATED_DESTINATIONS_LIMIT)
+    track(getPlaylistRelatedVideoReferrers(id, true, query, RELATED_VIDEOS_FETCH_LIMIT)
       .then((data: RelatedReferrersResponse) => data), setRelatedReferrersMine, () => active, 'Could not load Related Video referrers')
-    track(getPlaylistRelatedVideoReferrers(id, false, query, RELATED_DESTINATIONS_LIMIT)
+    track(getPlaylistRelatedVideoReferrers(id, false, query, RELATED_VIDEOS_FETCH_LIMIT)
       .then((data: RelatedReferrersResponse) => data), setRelatedReferrersOther, () => active, 'Could not load Related Video referrers')
     return () => { active = false }
-  }, [id, analyticsStartDate, analyticsEndDate, analyticsContentType, analyticsPrivacyStatus, analyticsTitle])
+  }, [id, relatedTabVisible, analyticsStartDate, analyticsEndDate, analyticsContentType, analyticsPrivacyStatus, analyticsTitle])
 
-  // Each destination-drill-down card owns its own referrer selection independently.
+  // Each destination-drill-down card owns its own referrer selection independently,
+  // deferred the same way as the referrer-breakdown cards above.
   useEffect(() => {
-    if (!id) return
+    if (!id || !relatedTabVisible) return
     let active = true
     if (!mineReferrerId) { setRelatedDestinationsMine({ data: [], loading: false, error: null }); return }
-    track(getPlaylistRelatedVideoDestinations(id, mineReferrerId, analyticsStartDate || undefined, analyticsEndDate || undefined, RELATED_DESTINATIONS_LIMIT)
+    track(getPlaylistRelatedVideoDestinations(id, mineReferrerId, analyticsStartDate || undefined, analyticsEndDate || undefined, RELATED_VIDEOS_FETCH_LIMIT)
       .then((data: { items: RelatedDestinationRow[] }) => data.items ?? []), setRelatedDestinationsMine, () => active, 'Could not load destinations')
     return () => { active = false }
-  }, [id, mineReferrerId, analyticsStartDate, analyticsEndDate])
+  }, [id, relatedTabVisible, mineReferrerId, analyticsStartDate, analyticsEndDate])
 
   useEffect(() => {
-    if (!id) return
+    if (!id || !relatedTabVisible) return
     let active = true
     if (!otherReferrerId) { setRelatedDestinationsOther({ data: [], loading: false, error: null }); return }
-    track(getPlaylistRelatedVideoDestinations(id, otherReferrerId, analyticsStartDate || undefined, analyticsEndDate || undefined, RELATED_DESTINATIONS_LIMIT)
+    track(getPlaylistRelatedVideoDestinations(id, otherReferrerId, analyticsStartDate || undefined, analyticsEndDate || undefined, RELATED_VIDEOS_FETCH_LIMIT)
       .then((data: { items: RelatedDestinationRow[] }) => data.items ?? []), setRelatedDestinationsOther, () => active, 'Could not load destinations')
     return () => { active = false }
-  }, [id, otherReferrerId, analyticsStartDate, analyticsEndDate])
+  }, [id, relatedTabVisible, otherReferrerId, analyticsStartDate, analyticsEndDate])
 
   // The sortable top-video table reloads on its own sort change, and on nothing else's.
   useEffect(() => {

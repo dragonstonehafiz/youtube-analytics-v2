@@ -138,6 +138,17 @@ describe('Related Videos sub-tab', () => {
         : { items: [externalRow], total_named_views: 80 })
   })
 
+  it('fetches nothing until the Related Videos sub-tab is actually visible', async () => {
+    renderVideoAnalytics('/analytics/videos/v1?tab=traffic-sources&ts_tab=sources')
+    await waitFor(() => expect(mockGetVideoTrafficSources).toHaveBeenCalled())
+    expect(mockGetVideoRelatedVideoReferrers).not.toHaveBeenCalled()
+    expect(mockGetRelatedVideoDestinations).not.toHaveBeenCalled()
+
+    fireEvent.click(screen.getByRole('button', { name: 'Related Videos' }))
+    await waitFor(() => expect(mockGetVideoRelatedVideoReferrers).toHaveBeenCalledTimes(2))
+    await waitFor(() => expect(mockGetRelatedVideoDestinations).toHaveBeenCalled())
+  })
+
   it('renders row 1 and a single outbound destinations card with no dropdown', async () => {
     renderVideoAnalytics('/analytics/videos/v1?tab=traffic-sources&ts_tab=related')
 
@@ -162,6 +173,6 @@ describe('Related Videos sub-tab', () => {
   it("calls the channel-scoped destinations endpoint with this video's own ID as the referrer, not a video-scoped route", async () => {
     renderVideoAnalytics('/analytics/videos/v1?tab=traffic-sources&ts_tab=related&start_date=2024-01-01&end_date=2024-01-31')
 
-    await waitFor(() => expect(mockGetRelatedVideoDestinations).toHaveBeenCalledWith('v1', '2024-01-01', '2024-01-31', 10))
+    await waitFor(() => expect(mockGetRelatedVideoDestinations).toHaveBeenCalledWith('v1', '2024-01-01', '2024-01-31', 1000))
   })
 })

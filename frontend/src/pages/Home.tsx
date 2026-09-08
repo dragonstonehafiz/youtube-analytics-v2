@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react'
 import { Link } from 'react-router-dom'
-import { getTopVideosByViews, getVideos, getChannelTrafficSources, getTopSearchTerms, getVideosBySearchTerm } from '@/api'
+import { getTopVideosByViews, getVideos, getChannelTrafficSources, getSearchTerms, getVideosBySearchTerm } from '@/api'
 import type { TopVideo, Video, TrafficSourceRow, SearchTermRow, SearchTermVideo } from '@/types'
 import type { RequestState } from '@/lib/requestState'
 import { pending, track } from '@/lib/requestState'
@@ -79,7 +79,7 @@ export default function Home() {
       .then((data: { items: Video[] }) => (data.items ?? []).map(toTopVideoShape)), setRecentVideos, () => active)
     track(getChannelTrafficSources({ start_date: startDate, end_date: endDate, privacy_status: 'public' })
       .then((data: { items: TrafficSourceRow[] }) => data.items ?? []), setTrafficSourceRows, () => active)
-    track(getTopSearchTerms({ startDate, endDate, privacyStatus: 'public' })
+    track(getSearchTerms({ startDate, endDate, privacyStatus: 'public' })
       .then((data: { items: SearchTermRow[] }) => data.items ?? []), setSearchTerms, () => active)
     return () => { active = false }
   }, [])

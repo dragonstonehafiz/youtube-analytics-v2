@@ -19,6 +19,7 @@ interface Props {
 }
 
 const TOP_N = 6
+const OTHER_ITEMIZE_N = 3
 const OTHER_KEY = '__other__'
 
 export default function SearchTermVideosDonutCard({
@@ -28,6 +29,9 @@ export default function SearchTermVideosDonutCard({
   const topVideos = videos.slice(0, TOP_N)
   const otherVideos = videos.slice(TOP_N)
   const otherViews = otherVideos.reduce((s, v) => s + v.views, 0)
+  const itemizedOtherVideos = otherVideos.slice(0, OTHER_ITEMIZE_N)
+  const remainderVideos = otherVideos.slice(OTHER_ITEMIZE_N)
+  const remainderViews = remainderVideos.reduce((s, v) => s + v.views, 0)
 
   const slices = [
     ...topVideos.map((v, i) => ({ key: v.id, label: v.title, views: v.views, colorClass: categoricalColorClass(i) })),
@@ -92,7 +96,7 @@ export default function SearchTermVideosDonutCard({
         {otherVideos.length > 0 && (
           <>
             <div className="search-videos-donut-legend-divider">Other includes:</div>
-            {otherVideos.map(v => (
+            {itemizedOtherVideos.map(v => (
               <div key={v.id} className="search-videos-donut-legend-item search-videos-donut-legend-item--sub">
                 {v.thumbnail_url
                   ? <img src={v.thumbnail_url} alt="" className="search-videos-donut-thumb" />
@@ -102,6 +106,14 @@ export default function SearchTermVideosDonutCard({
                 <span className="search-videos-donut-legend-views">{v.views.toLocaleString()}</span>
               </div>
             ))}
+            {remainderVideos.length > 0 && (
+              <div className="search-videos-donut-legend-item search-videos-donut-legend-item--sub">
+                <div className="search-videos-donut-thumb search-videos-donut-thumb--placeholder" />
+                <span className={`search-videos-donut-legend-swatch ${CATEGORICAL_OTHER_CLASS}`} />
+                <span className="search-videos-donut-legend-label">{remainderVideos.length} more videos</span>
+                <span className="search-videos-donut-legend-views">{remainderViews.toLocaleString()}</span>
+              </div>
+            )}
           </>
         )}
       </div>

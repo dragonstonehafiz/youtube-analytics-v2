@@ -8,17 +8,17 @@ vi.mock('@/api', () => ({
   getTopVideosByViews: vi.fn(),
   getVideos: vi.fn(),
   getChannelTrafficSources: vi.fn(),
-  getTopSearchTerms: vi.fn(),
+  getSearchTerms: vi.fn(),
   getVideosBySearchTerm: vi.fn(),
 }))
 
-import { getChannelTrafficSources, getTopVideosByViews, getVideos, getTopSearchTerms, getVideosBySearchTerm } from '@/api'
+import { getChannelTrafficSources, getTopVideosByViews, getVideos, getSearchTerms, getVideosBySearchTerm } from '@/api'
 import Home from '@/pages/Home'
 
 const mockGetTopVideosByViews = vi.mocked(getTopVideosByViews)
 const mockGetVideos = vi.mocked(getVideos)
 const mockGetChannelTrafficSources = vi.mocked(getChannelTrafficSources)
-const mockGetTopSearchTerms = vi.mocked(getTopSearchTerms)
+const mockGetSearchTerms = vi.mocked(getSearchTerms)
 const mockGetVideosBySearchTerm = vi.mocked(getVideosBySearchTerm)
 
 /** The five cards whose own request drives their loading indicator directly. */
@@ -93,7 +93,7 @@ beforeEach(() => {
   mockGetTopVideosByViews.mockReturnValue(new Promise(() => {}))
   mockGetVideos.mockReturnValue(new Promise(() => {}))
   mockGetChannelTrafficSources.mockReturnValue(new Promise(() => {}))
-  mockGetTopSearchTerms.mockReturnValue(new Promise(() => {}))
+  mockGetSearchTerms.mockReturnValue(new Promise(() => {}))
   mockGetVideosBySearchTerm.mockReturnValue(new Promise(() => {}))
 })
 
@@ -160,7 +160,7 @@ describe('independent resolution', () => {
 
 describe('top videos by search term', () => {
   it('defaults to the top term and pools videos and shorts together, with no content_type filter', async () => {
-    mockGetTopSearchTerms.mockResolvedValue({ items: [{ search_term: 'cats', views: 10 }] })
+    mockGetSearchTerms.mockResolvedValue({ items: [{ search_term: 'cats', views: 10 }] })
     mockGetVideosBySearchTerm.mockResolvedValue({
       items: [
         { id: 'v-1', title: 'A cat video', thumbnail_url: null, content_type: 'video', views: 7 },

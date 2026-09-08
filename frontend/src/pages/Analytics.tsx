@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react'
-import { getVideoStats, getChannelAnalytics, getTopVideosByViews, getVideosPublished, getVideos, getChannelTrafficSources, getTopVideosByTrafficSource, getTopSearchTerms, getVideosBySearchTerm, getRelatedVideoReferrers, getRelatedVideoDestinations } from '@/api'
+import { getVideoStats, getChannelAnalytics, getTopVideosByViews, getVideosPublished, getVideos, getChannelTrafficSources, getTopVideosByTrafficSource, getSearchTerms, getVideosBySearchTerm, getRelatedVideoReferrers, getRelatedVideoDestinations } from '@/api'
 import type { AnalyticsRow, VideoStats, TopVideo, TopVideoSortBy, PublishedVideo, Video, TrafficSourceRow, TrafficSourceTopVideo, SearchTermRow, SearchTermVideo, RelatedReferrersResponse, RelatedDestinationRow } from '@/types'
 import PeriodSelect, { last28Dates } from '@/components/PeriodSelect'
 import { toTopVideoShape, last7Dates } from '@/lib/topVideos'
@@ -26,7 +26,7 @@ import './Analytics.css'
 const RECENT_COUNT = 10
 // Show every video with views for the selected term, not just a "top" handful.
 const ALL_VIDEOS_FOR_TERM_LIMIT = 1000
-const RELATED_DESTINATIONS_LIMIT = 10
+const RELATED_VIDEOS_FETCH_LIMIT = 1000
 const EMPTY_RELATED_REFERRERS: RelatedReferrersResponse = { items: [], total_named_views: 0 }
 
 type Tab = 'analytics' | 'traffic-sources' | 'comments'
@@ -57,6 +57,7 @@ export default function Analytics() {
   const [trafficSources, setTrafficSources] = useState<RequestState<TrafficSourceRow[]>>(pending([]))
   const [topVideosBySource, setTopVideosBySource] = useState<RequestState<Record<string, TrafficSourceTopVideo[]>>>(pending({}))
   const tsTab = toTrafficSourcesSubTab(searchParams.get('ts_tab'))
+  const relatedTabVisible = tab === 'traffic-sources' && tsTab === 'related'
   const [videoTerm, setVideoTerm] = useState<string | null>(null)
   const [shortTerm, setShortTerm] = useState<string | null>(null)
   const [searchTerms, setSearchTerms] = useState<RequestState<SearchTermRow[]>>(pending([]))
@@ -149,11 +150,11 @@ export default function Analytics() {
   useEffect(() => {
     let active = true
     const query = { startDate: startDate || undefined, endDate: endDate || undefined, title: title || undefined, privacyStatus: privacyStatus || undefined }
-    track(getTopSearchTerms(query)
+    track(getSearchTerms(query)
       .then((data: { items: SearchTermRow[] }) => data.items ?? []), setSearchTerms, () => active, 'Could not load search terms')
-    track(getTopSearchTerms({ ...query, contentType: 'video' })
+    track(getSearchTerms({ ...query, contentType: 'video' })
       .then((data: { items: SearchTermRow[] }) => data.items ?? []), setSearchTermsByVideo, () => active, 'Could not load search terms')
-    track(getTopSearchTerms({ ...query, contentType: 'short' })
+    track(getSearchTerms({ ...query, contentType: 'short' })
       .then((data: { items: SearchTermRow[] }) => data.items ?? []), setSearchTermsByShort, () => active, 'Could not load search terms')
     return () => { active = false }
   }, [startDate, endDate, title, privacyStatus])
@@ -177,33 +178,40 @@ export default function Analytics() {
     return () => { active = false }
   }, [shortTerm, searchTermsByShort.data, startDate, endDate, title, privacyStatus])
 
-  // The two referrer-breakdown cards each own one own-filtered referrers call.
+  // The two referrer-breakdown cards each own one own-filtered referrers call. Deferred
+  // until the Related Videos sub-tab is actually visible, and refetched whenever the
+  // filters change while it's visible — switching into the sub-tab fetches fresh data
+  // rather than relying on whatever was current the last time it was open.
   useEffect(() => {
+    if (!relatedTabVisible) return
     let active = true
     const query = { startDate: startDate || undefined, endDate: endDate || undefined, title: title || undefined, contentType: contentType || undefined, privacyStatus: privacyStatus || undefined }
-    track(getRelatedVideoReferrers(true, query, RELATED_DESTINATIONS_LIMIT)
+    track(getRelatedVideoReferrers(true, query, RELATED_VIDEOS_FETCH_LIMIT)
       .then((data: RelatedReferrersResponse) => data), setRelatedReferrersMine, () => active, 'Could not load Related Video referrers')
-    track(getRelatedVideoReferrers(false, query, RELATED_DESTINATIONS_LIMIT)
+    track(getRelatedVideoReferrers(false, query, RELATED_VIDEOS_FETCH_LIMIT)
       .then((data: RelatedReferrersResponse) => data), setRelatedReferrersOther, () => active, 'Could not load Related Video referrers')
     return () => { active = false }
-  }, [startDate, endDate, contentType, privacyStatus, title])
+  }, [relatedTabVisible, startDate, endDate, contentType, privacyStatus, title])
 
-  // Each destination-drill-down card owns its own referrer selection independently.
+  // Each destination-drill-down card owns its own referrer selection independently,
+  // deferred the same way as the referrer-breakdown cards above.
   useEffect(() => {
+    if (!relatedTabVisible) return
     let active = true
     if (!mineReferrerId) { setRelatedDestinationsMine({ data: [], loading: false, error: null }); return }
-    track(getRelatedVideoDestinations(mineReferrerId, startDate || undefined, endDate || undefined, RELATED_DESTINATIONS_LIMIT)
+    track(getRelatedVideoDestinations(mineReferrerId, startDate || undefined, endDate || undefined, RELATED_VIDEOS_FETCH_LIMIT)
       .then((data: { items: RelatedDestinationRow[] }) => data.items ?? []), setRelatedDestinationsMine, () => active, 'Could not load destinations')
     return () => { active = false }
-  }, [mineReferrerId, startDate, endDate])
+  }, [relatedTabVisible, mineReferrerId, startDate, endDate])
 
   useEffect(() => {
+    if (!relatedTabVisible) return
     let active = true
     if (!otherReferrerId) { setRelatedDestinationsOther({ data: [], loading: false, error: null }); return }
-    track(getRelatedVideoDestinations(otherReferrerId, startDate || undefined, endDate || undefined, RELATED_DESTINATIONS_LIMIT)
+    track(getRelatedVideoDestinations(otherReferrerId, startDate || undefined, endDate || undefined, RELATED_VIDEOS_FETCH_LIMIT)
       .then((data: { items: RelatedDestinationRow[] }) => data.items ?? []), setRelatedDestinationsOther, () => active, 'Could not load destinations')
     return () => { active = false }
-  }, [otherReferrerId, startDate, endDate])
+  }, [relatedTabVisible, otherReferrerId, startDate, endDate])
 
   // The sortable top-video table reloads on its own sort change, and on nothing else's.
   useEffect(() => {

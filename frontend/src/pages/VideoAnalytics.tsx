@@ -18,7 +18,7 @@ import '@/components/VideoMetaCard.css'
 import './Analytics.css'
 import './VideoAnalytics.css'
 
-const RELATED_DESTINATIONS_LIMIT = 10
+const RELATED_VIDEOS_FETCH_LIMIT = 1000
 const EMPTY_RELATED_REFERRERS: RelatedReferrersResponse = { items: [], total_named_views: 0 }
 
 type Tab = 'analytics' | 'traffic-sources' | 'comments'
@@ -71,6 +71,7 @@ export default function VideoAnalytics() {
   const [rows, setRows] = useState<RequestState<AnalyticsRow[]>>(pending([]))
   const [trafficSources, setTrafficSources] = useState<RequestState<TrafficSourceRow[]>>(pending([]))
   const tsTab = toTrafficSourcesSubTab(searchParams.get('ts_tab'))
+  const relatedTabVisible = tab === 'traffic-sources' && tsTab === 'related'
   const [searchTerms, setSearchTerms] = useState<RequestState<SearchTermRow[]>>(pending([]))
   const [relatedReferrersMine, setRelatedReferrersMine] = useState<RequestState<RelatedReferrersResponse>>(pending(EMPTY_RELATED_REFERRERS))
   const [relatedReferrersOther, setRelatedReferrersOther] = useState<RequestState<RelatedReferrersResponse>>(pending(EMPTY_RELATED_REFERRERS))
@@ -97,26 +98,29 @@ export default function VideoAnalytics() {
     return () => { active = false }
   }, [id, startDate, endDate])
 
-  // The two referrer-breakdown cards each own one own-filtered, video-scoped referrers call.
+  // The two referrer-breakdown cards each own one own-filtered, video-scoped referrers
+  // call. Deferred until the Related Videos sub-tab is actually visible, and refetched
+  // whenever the filters change while it's visible.
   useEffect(() => {
-    if (!id) return
+    if (!id || !relatedTabVisible) return
     let active = true
-    track(getVideoRelatedVideoReferrers(id, true, startDate || undefined, endDate || undefined, RELATED_DESTINATIONS_LIMIT)
+    track(getVideoRelatedVideoReferrers(id, true, startDate || undefined, endDate || undefined, RELATED_VIDEOS_FETCH_LIMIT)
       .then((data: RelatedReferrersResponse) => data), setRelatedReferrersMine, () => active, 'Could not load Related Video referrers')
-    track(getVideoRelatedVideoReferrers(id, false, startDate || undefined, endDate || undefined, RELATED_DESTINATIONS_LIMIT)
+    track(getVideoRelatedVideoReferrers(id, false, startDate || undefined, endDate || undefined, RELATED_VIDEOS_FETCH_LIMIT)
       .then((data: RelatedReferrersResponse) => data), setRelatedReferrersOther, () => active, 'Could not load Related Video referrers')
     return () => { active = false }
-  }, [id, startDate, endDate])
+  }, [id, relatedTabVisible, startDate, endDate])
 
   // The outbound card has no dropdown: this video's own ID is always the referrer, via
   // the channel-scoped destinations route (no video-scoped destinations route exists).
+  // Deferred the same way as the referrer-breakdown cards above.
   useEffect(() => {
-    if (!id) return
+    if (!id || !relatedTabVisible) return
     let active = true
-    track(getRelatedVideoDestinations(id, startDate || undefined, endDate || undefined, RELATED_DESTINATIONS_LIMIT)
+    track(getRelatedVideoDestinations(id, startDate || undefined, endDate || undefined, RELATED_VIDEOS_FETCH_LIMIT)
       .then((data: { items: RelatedDestinationRow[] }) => data.items ?? []), setRelatedDestinations, () => active, 'Could not load destinations')
     return () => { active = false }
-  }, [id, startDate, endDate])
+  }, [id, relatedTabVisible, startDate, endDate])
 
   const handleTsTabChange = (t: TrafficSourcesSubTab) => {
     setSearchParams(prev => {
