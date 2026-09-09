@@ -8,7 +8,7 @@ from unittest import mock
 from googleapiclient.errors import HttpError
 
 from sync import stages
-from sync.monthly_insights import MonthlyWindow, weekly_sub_windows
+from sync.monthly_insights import MonthlyWindow
 from sync.stages import SyncCounts
 from youtube import analytics_api
 
@@ -18,14 +18,10 @@ def _http_error(status: int, body: bytes) -> HttpError:
     return HttpError(resp=SimpleNamespace(status=status, reason="error"), content=body)
 
 
-def _weekly_calls(video_id: str, *month_windows: MonthlyWindow) -> set[tuple[str, str, str]]:
-    """Expand MonthlyWindows into the (video_id, start, end) weekly sub-calls
-    sync_related_video_insights actually issues for them."""
-    return {
-        (video_id, start, end)
-        for window in month_windows
-        for start, end in weekly_sub_windows(window)
-    }
+def _monthly_calls(video_id: str, *month_windows: MonthlyWindow) -> set[tuple[str, str, str]]:
+    """Expand MonthlyWindows into the (video_id, start, end) calls
+    sync_related_video_insights actually issues for them — one call per calendar month."""
+    return {(video_id, window.start_date, window.end_date) for window in month_windows}
 
 
 class FetchVideoRelatedVideosTest(unittest.TestCase):
@@ -223,7 +219,7 @@ class SyncRelatedVideoInsightsStageTest(unittest.TestCase):
         calls = {(c.args[0], c.args[1], c.args[2]) for c in fetch.call_args_list}
         self.assertEqual(
             calls,
-            _weekly_calls("v1", *self.windows) | _weekly_calls("v2", *self.windows),
+            _monthly_calls("v1", *self.windows) | _monthly_calls("v2", *self.windows),
         )
 
     def test_never_reads_traffic_source_data(self) -> None:
@@ -251,21 +247,20 @@ class SyncRelatedVideoInsightsStageTest(unittest.TestCase):
 
         stages.sync_related_video_insights("incremental", None, counts)
 
-        weekly_call_count = len(_weekly_calls("v1", *self.windows))
-        self.assertEqual(counts.rows_fetched, 3 * weekly_call_count)
-        # One upsert per month (weekly results are combined first), not one per weekly call.
+        monthly_call_count = len(_monthly_calls("v1", *self.windows))
+        self.assertEqual(counts.rows_fetched, 3 * monthly_call_count)
+        # One upsert per month — one call per month now, so these are the same count.
         self.assertEqual(counts.rows_written, len(self.windows))
 
-    def test_same_referrer_across_weekly_calls_within_a_month_sums_not_overwrites(self) -> None:
-        # Only mock the March window (2 weekly calls) so the assertion below stays exact.
+    def test_one_call_per_month_passes_its_referrers_straight_through_to_upsert(self) -> None:
+        # Only mock the March window so the assertion below stays exact.
         self.windows_mock.return_value = [MonthlyWindow("2024-03", "2024-03-01", "2024-03-14")]
         mock.patch("sync.stages.database.get_owned_video_ids", return_value=["v1"]).start()
         mock.patch(
             "sync.stages.youtube.fetch_video_related_videos",
-            side_effect=[
-                analytics_api.RelatedVideosResult(raw_row_count=1, referrers=[{"referrer_video_id": "ref-1", "views": 5}]),
-                analytics_api.RelatedVideosResult(raw_row_count=1, referrers=[{"referrer_video_id": "ref-1", "views": 3}]),
-            ],
+            return_value=analytics_api.RelatedVideosResult(
+                raw_row_count=1, referrers=[{"referrer_video_id": "ref-1", "views": 8}]
+            ),
         ).start()
         upsert = mock.patch("sync.stages.database.upsert_related_videos", return_value=1).start()
 
@@ -292,7 +287,7 @@ class SyncRelatedVideoInsightsStageTest(unittest.TestCase):
 
     def test_does_not_affect_search_insights_state(self) -> None:
         """A Related failure must never touch search_insights's checkpoint or state —
-        the two stages share no code path beyond the generic weekly-windowing helper."""
+        the two stages share no code path beyond the generic monthly-windowing helpers."""
         mock.patch("sync.stages.database.get_owned_video_ids", return_value=["v1"]).start()
         mock.patch(
             "sync.stages.youtube.fetch_video_related_videos", side_effect=RuntimeError("boom")
@@ -335,7 +330,7 @@ class SyncRelatedVideoInsightsScopeTest(unittest.TestCase):
             MonthlyWindow("2024-02", "2024-02-10", "2024-02-29"),
             MonthlyWindow("2024-03", "2024-03-01", "2024-03-14"),
         ]
-        self.assertEqual(calls, _weekly_calls("v1", *expected_months))
+        self.assertEqual(calls, _monthly_calls("v1", *expected_months))
 
     def test_all_scope_requests_every_month_since_publish(self) -> None:
         mock.patch("sync.stages.database.get_owned_video_ids", return_value=["v1"]).start()
@@ -357,7 +352,7 @@ class SyncRelatedVideoInsightsScopeTest(unittest.TestCase):
             MonthlyWindow("2024-02", "2024-02-01", "2024-02-29"),
             MonthlyWindow("2024-03", "2024-03-01", "2024-03-14"),
         ]
-        self.assertEqual(calls, _weekly_calls("v1", *expected_months))
+        self.assertEqual(calls, _monthly_calls("v1", *expected_months))
 
     def test_year_and_all_scope_skip_videos_with_no_publish_date(self) -> None:
         mock.patch("sync.stages.database.get_owned_video_ids", return_value=["v1"]).start()
@@ -431,7 +426,7 @@ class SyncRelatedVideoInsightsScopeTest(unittest.TestCase):
             MonthlyWindow("2024-02", "2024-02-01", "2024-02-29"),
             MonthlyWindow("2024-03", "2024-03-01", "2024-03-14"),
         ]
-        self.assertEqual(calls, _weekly_calls("v1", *expected_months))
+        self.assertEqual(calls, _monthly_calls("v1", *expected_months))
 
     def test_incremental_scope_backfills_from_publish_date_on_first_sync(self) -> None:
         mock.patch("sync.stages.database.get_owned_video_ids", return_value=["v1"]).start()
@@ -454,7 +449,7 @@ class SyncRelatedVideoInsightsScopeTest(unittest.TestCase):
             MonthlyWindow("2024-02", "2024-02-01", "2024-02-29"),
             MonthlyWindow("2024-03", "2024-03-01", "2024-03-14"),
         ]
-        self.assertEqual(calls, _weekly_calls("v1", *expected_months))
+        self.assertEqual(calls, _monthly_calls("v1", *expected_months))
 
     def test_incremental_scope_collapses_to_fixed_two_windows_when_already_caught_up(self) -> None:
         mock.patch("sync.stages.database.get_owned_video_ids", return_value=["v1"]).start()
@@ -476,7 +471,7 @@ class SyncRelatedVideoInsightsScopeTest(unittest.TestCase):
             MonthlyWindow("2024-02", "2024-02-01", "2024-02-29"),
             MonthlyWindow("2024-03", "2024-03-01", "2024-03-14"),
         ]
-        self.assertEqual(calls, _weekly_calls("v1", *expected_months))
+        self.assertEqual(calls, _monthly_calls("v1", *expected_months))
 
     def test_incremental_scope_closes_the_gap_left_by_an_interrupted_backfill(self) -> None:
         mock.patch("sync.stages.database.get_owned_video_ids", return_value=["v1"]).start()
@@ -501,7 +496,7 @@ class SyncRelatedVideoInsightsScopeTest(unittest.TestCase):
             MonthlyWindow("2024-02", "2024-02-01", "2024-02-29"),
             MonthlyWindow("2024-03", "2024-03-01", "2024-03-14"),
         ]
-        self.assertEqual(calls, _weekly_calls("v1", *expected_months))
+        self.assertEqual(calls, _monthly_calls("v1", *expected_months))
 
 
 class ResolveRelatedVideoMetadataTest(unittest.TestCase):

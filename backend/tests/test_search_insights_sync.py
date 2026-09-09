@@ -8,19 +8,15 @@ from unittest import mock
 from googleapiclient.errors import HttpError
 
 from sync import stages
-from sync.monthly_insights import MonthlyWindow, monthly_search_windows, monthly_windows_for_range, weekly_sub_windows
+from sync.monthly_insights import MonthlyWindow, monthly_search_windows, monthly_windows_for_range
 from sync.stages import SyncCounts
 from youtube import analytics_api
 
 
-def _weekly_calls(video_id: str, *month_windows: MonthlyWindow) -> set[tuple[str, str, str]]:
-    """Expand MonthlyWindows into the (video_id, start, end) weekly sub-calls
-    sync_search_insights actually issues for them."""
-    return {
-        (video_id, start, end)
-        for window in month_windows
-        for start, end in weekly_sub_windows(window)
-    }
+def _monthly_calls(video_id: str, *month_windows: MonthlyWindow) -> set[tuple[str, str, str]]:
+    """Expand MonthlyWindows into the (video_id, start, end) calls sync_search_insights
+    actually issues for them — one call per calendar month, not per week."""
+    return {(video_id, window.start_date, window.end_date) for window in month_windows}
 
 
 def _http_error(status: int, body: bytes) -> HttpError:
@@ -101,37 +97,6 @@ class MonthlyWindowsForRangeTest(unittest.TestCase):
     def test_year_boundary_rolls_over(self) -> None:
         windows = monthly_windows_for_range(date(2023, 12, 20), date(2024, 1, 10))
         self.assertEqual([w.month for w in windows], ["2023-12", "2024-01"])
-
-
-class WeeklySubWindowsTest(unittest.TestCase):
-    def test_full_month_splits_into_7_day_chunks_with_a_short_final_chunk(self) -> None:
-        window = MonthlyWindow("2024-02", "2024-02-01", "2024-02-29")
-        chunks = weekly_sub_windows(window)
-        self.assertEqual(
-            chunks,
-            [
-                ("2024-02-01", "2024-02-07"),
-                ("2024-02-08", "2024-02-14"),
-                ("2024-02-15", "2024-02-21"),
-                ("2024-02-22", "2024-02-28"),
-                ("2024-02-29", "2024-02-29"),
-            ],
-        )
-
-    def test_exact_multiple_of_seven_days_has_no_short_final_chunk(self) -> None:
-        window = MonthlyWindow("2024-06", "2024-06-01", "2024-06-14")
-        chunks = weekly_sub_windows(window)
-        self.assertEqual(chunks, [("2024-06-01", "2024-06-07"), ("2024-06-08", "2024-06-14")])
-
-    def test_single_day_window_is_one_chunk(self) -> None:
-        window = MonthlyWindow("2024-03", "2024-03-01", "2024-03-01")
-        self.assertEqual(weekly_sub_windows(window), [("2024-03-01", "2024-03-01")])
-
-    def test_partial_month_window_chunks_from_its_own_start_not_the_1st(self) -> None:
-        window = MonthlyWindow("2024-02", "2024-02-10", "2024-02-29")
-        chunks = weekly_sub_windows(window)
-        self.assertEqual(chunks[0], ("2024-02-10", "2024-02-16"))
-        self.assertEqual(chunks[-1], ("2024-02-24", "2024-02-29"))
 
 
 class FetchVideoSearchTermsTest(unittest.TestCase):
@@ -301,7 +266,7 @@ class SyncSearchRelatedInsightsStageTest(unittest.TestCase):
         calls = {(c.args[0], c.args[1], c.args[2]) for c in fetch.call_args_list}
         self.assertEqual(
             calls,
-            _weekly_calls("v1", *self.windows) | _weekly_calls("v2", *self.windows),
+            _monthly_calls("v1", *self.windows) | _monthly_calls("v2", *self.windows),
         )
 
     def test_never_reads_traffic_source_data(self) -> None:
@@ -329,21 +294,18 @@ class SyncSearchRelatedInsightsStageTest(unittest.TestCase):
 
         stages.sync_search_insights("incremental", None, counts)
 
-        weekly_call_count = len(_weekly_calls("v1", *self.windows))
-        self.assertEqual(counts.rows_fetched, 3 * weekly_call_count)
-        # One upsert per month (weekly results are combined first), not one per weekly call.
+        monthly_call_count = len(_monthly_calls("v1", *self.windows))
+        self.assertEqual(counts.rows_fetched, 3 * monthly_call_count)
+        # One upsert per month — one call per month now, so these are the same count.
         self.assertEqual(counts.rows_written, len(self.windows))
 
-    def test_same_term_across_weekly_calls_within_a_month_sums_not_overwrites(self) -> None:
-        # Only mock the March window (2 weekly calls) so the assertion below stays exact.
+    def test_one_call_per_month_passes_its_terms_straight_through_to_upsert(self) -> None:
+        # Only mock the March window so the assertion below stays exact.
         self.windows_mock.return_value = [MonthlyWindow("2024-03", "2024-03-01", "2024-03-14")]
         mock.patch("sync.stages.database.get_owned_video_ids", return_value=["v1"]).start()
         mock.patch(
             "sync.stages.youtube.fetch_video_search_terms",
-            side_effect=[
-                analytics_api.SearchTermsResult(raw_row_count=1, terms=[{"search_term": "cats", "views": 5}]),
-                analytics_api.SearchTermsResult(raw_row_count=1, terms=[{"search_term": "cats", "views": 3}]),
-            ],
+            return_value=analytics_api.SearchTermsResult(raw_row_count=1, terms=[{"search_term": "cats", "views": 8}]),
         ).start()
         upsert = mock.patch("sync.stages.database.upsert_search_terms", return_value=1).start()
 
@@ -395,7 +357,7 @@ class SyncSearchRelatedInsightsScopeTest(unittest.TestCase):
             MonthlyWindow("2024-02", "2024-02-10", "2024-02-29"),
             MonthlyWindow("2024-03", "2024-03-01", "2024-03-14"),
         ]
-        self.assertEqual(calls, _weekly_calls("v1", *expected_months))
+        self.assertEqual(calls, _monthly_calls("v1", *expected_months))
 
     def test_all_scope_requests_every_month_since_publish(self) -> None:
         mock.patch("sync.stages.database.get_owned_video_ids", return_value=["v1"]).start()
@@ -417,7 +379,7 @@ class SyncSearchRelatedInsightsScopeTest(unittest.TestCase):
             MonthlyWindow("2024-02", "2024-02-01", "2024-02-29"),
             MonthlyWindow("2024-03", "2024-03-01", "2024-03-14"),
         ]
-        self.assertEqual(calls, _weekly_calls("v1", *expected_months))
+        self.assertEqual(calls, _monthly_calls("v1", *expected_months))
 
     def test_year_and_all_scope_skip_videos_with_no_publish_date(self) -> None:
         mock.patch("sync.stages.database.get_owned_video_ids", return_value=["v1"]).start()
@@ -491,7 +453,7 @@ class SyncSearchRelatedInsightsScopeTest(unittest.TestCase):
             MonthlyWindow("2024-02", "2024-02-01", "2024-02-29"),
             MonthlyWindow("2024-03", "2024-03-01", "2024-03-14"),
         ]
-        self.assertEqual(calls, _weekly_calls("v1", *expected_months))
+        self.assertEqual(calls, _monthly_calls("v1", *expected_months))
 
     def test_incremental_scope_backfills_from_publish_date_on_first_sync(self) -> None:
         mock.patch("sync.stages.database.get_owned_video_ids", return_value=["v1"]).start()
@@ -508,14 +470,14 @@ class SyncSearchRelatedInsightsScopeTest(unittest.TestCase):
 
         stages.sync_search_insights("incremental", None, SyncCounts())
 
-        # Jan (partial), Feb, Mar (partial, through "yesterday") — each split into weekly calls.
+        # Jan (partial), Feb, Mar (partial, through "yesterday") — one call each.
         calls = {c.args[0:3] for c in fetch.call_args_list}
         expected_months = [
             MonthlyWindow("2024-01", "2024-01-20", "2024-01-31"),
             MonthlyWindow("2024-02", "2024-02-01", "2024-02-29"),
             MonthlyWindow("2024-03", "2024-03-01", "2024-03-14"),
         ]
-        self.assertEqual(calls, _weekly_calls("v1", *expected_months))
+        self.assertEqual(calls, _monthly_calls("v1", *expected_months))
 
     def test_incremental_scope_collapses_to_fixed_two_windows_when_already_caught_up(self) -> None:
         # today is mocked to 2024-03-15, so "already caught up" means last stored month
@@ -539,7 +501,7 @@ class SyncSearchRelatedInsightsScopeTest(unittest.TestCase):
             MonthlyWindow("2024-02", "2024-02-01", "2024-02-29"),
             MonthlyWindow("2024-03", "2024-03-01", "2024-03-14"),
         ]
-        self.assertEqual(calls, _weekly_calls("v1", *expected_months))
+        self.assertEqual(calls, _monthly_calls("v1", *expected_months))
 
     def test_incremental_scope_closes_the_gap_left_by_an_interrupted_backfill(self) -> None:
         # A video whose backfill was interrupted after 2023-11 must not be treated as
@@ -559,7 +521,7 @@ class SyncSearchRelatedInsightsScopeTest(unittest.TestCase):
 
         stages.sync_search_insights("incremental", None, SyncCounts())
 
-        # Nov, Dec, Jan, Feb, Mar (partial) — each split into weekly calls.
+        # Nov, Dec, Jan, Feb, Mar (partial) — one call each.
         calls = {c.args[0:3] for c in fetch.call_args_list}
         expected_months = [
             MonthlyWindow("2023-11", "2023-11-01", "2023-11-30"),
@@ -568,7 +530,7 @@ class SyncSearchRelatedInsightsScopeTest(unittest.TestCase):
             MonthlyWindow("2024-02", "2024-02-01", "2024-02-29"),
             MonthlyWindow("2024-03", "2024-03-01", "2024-03-14"),
         ]
-        self.assertEqual(calls, _weekly_calls("v1", *expected_months))
+        self.assertEqual(calls, _monthly_calls("v1", *expected_months))
 
 
 if __name__ == "__main__":

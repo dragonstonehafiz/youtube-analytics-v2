@@ -620,12 +620,11 @@ class RelatedVideoInsightsStageDetailLoggingTest(unittest.TestCase):
         # The per-video record is the first line; a later metadata-resolution summary
         # (from the newly encountered "ref-1" referrer) is a separate, stage-level line.
         messages = [record.getMessage() for record in captured.records]
-        # One 7-day window is exactly one weekly sub-call, so months=1 calls=1.
-        self.assertEqual(messages[0], "related_video_insights 1/1 video=v1 months=1 calls=1 rows=1 title='Sample Video'")
+        self.assertEqual(messages[0], "related_video_insights 1/1 video=v1 months=1 rows=1 title='Sample Video'")
         self.assertEqual(counts.rows_fetched, 1)
         upsert_mock.assert_called_once_with("v1", "2020-01", [{"referrer_video_id": "ref-1", "views": 5}])
 
-    def test_no_record_per_week_only_one_per_video(self) -> None:
+    def test_no_record_per_month_only_one_per_video(self) -> None:
         mock.patch(
             "sync.stages.monthly_insights.monthly_windows_for_range",
             return_value=[

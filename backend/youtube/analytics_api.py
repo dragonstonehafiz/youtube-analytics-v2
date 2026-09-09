@@ -260,10 +260,8 @@ def fetch_video_related_videos(video_id: str, start_date: str, end_date: str) ->
 
     Issues exactly one non-paginated reports.query request: maxResults=25, startIndex
     omitted entirely. Retry may repeat this identical request, but the API is never
-    asked for a second page, even when exactly 25 rows come back. This function has no
-    knowledge of weekly sub-windowing — the caller (the Related Video Insights sync
-    stage) invokes it once per weekly_sub_windows() chunk of a calendar month, not once
-    per month.
+    asked for a second page, even when exactly 25 rows come back. The caller (the
+    Related Video Insights sync stage) invokes it once per calendar month.
     """
     service = _analytics_client()
     params = {

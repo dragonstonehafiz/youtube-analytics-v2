@@ -407,14 +407,11 @@ def sync_search_insights(scope: str, year: int | None, counts: SyncCounts) -> No
     yesterday; a video with no publish date is skipped. Each (video, month) upsert
     commits independently.
 
-    Each month is fetched as multiple weekly (7-day) sub-requests rather than one
-    monthly request, combining their term views in memory before that month's single
-    upsert. The Search Analytics detail report hard-caps each request at 25 rows with
-    no pagination past that (verified live, not a bug in this codebase — see
+    Each month is fetched as a single request spanning the whole calendar month. The
+    Search Analytics detail report hard-caps each request at 25 rows with no pagination
+    past that (verified live, not a bug in this codebase — see
     search-insights-api-findings.md), so a video whose real search traffic spans more
-    than 25 distinct terms in a month permanently loses everything past the cap.
-    Narrowing each request to a week raises how many of a month's real terms fit under
-    that same 25-row ceiling before the rest gets dropped.
+    than 25 distinct terms in a month loses everything past the cap.
 
     The owned-video worklist is prefiltered to videos published on or before this
     stage's effective range end (see `_effective_range_end()`) before progress or
@@ -463,20 +460,13 @@ def sync_search_insights(scope: str, year: int | None, counts: SyncCounts) -> No
             windows = incremental_windows
 
         rows_before = counts.rows_fetched
-        calls = 0
         for window in windows:
-            combined_views: dict[str, int] = {}
-            for week_start, week_end in monthly_insights.weekly_sub_windows(window):
-                result = youtube.fetch_video_search_terms(video_id, week_start, week_end)
-                calls += 1
-                counts.rows_fetched += result.raw_row_count
-                for term in result.terms:
-                    combined_views[term["search_term"]] = combined_views.get(term["search_term"], 0) + term["views"]
-            terms = [{"search_term": search_term, "views": views} for search_term, views in combined_views.items()]
-            counts.rows_written += database.upsert_search_terms(video_id, window.month, terms)
+            result = youtube.fetch_video_search_terms(video_id, window.start_date, window.end_date)
+            counts.rows_fetched += result.raw_row_count
+            counts.rows_written += database.upsert_search_terms(video_id, window.month, result.terms)
         _logger.debug(
-            "search_insights %d/%d video=%s months=%d calls=%d rows=%d title=%r",
-            i, total, video_id, len(windows), calls, counts.rows_fetched - rows_before, title,
+            "search_insights %d/%d video=%s months=%d rows=%d title=%r",
+            i, total, video_id, len(windows), counts.rows_fetched - rows_before, title,
         )
 
 
@@ -497,9 +487,8 @@ def sync_related_video_insights(scope: str, year: int | None, counts: SyncCounts
     through yesterday; a video with no publish date is skipped. Each (video, month)
     upsert commits independently.
 
-    Each month is fetched as multiple weekly (7-day) sub-requests rather than one
-    monthly request, combining referrer views in memory before that month's single
-    upsert — the same 25-row-per-request cap and reasoning as search_insights (see
+    Each month is fetched as a single request spanning the whole calendar month — same
+    25-row-per-request cap and reasoning as search_insights (see
     search-insights-api-findings.md).
 
     The owned-video worklist is captured once at stage start, so a referrer resolved
@@ -562,25 +551,14 @@ def sync_related_video_insights(scope: str, year: int | None, counts: SyncCounts
             windows = incremental_windows
 
         rows_before = counts.rows_fetched
-        calls = 0
         for window in windows:
-            combined_views: dict[str, int] = {}
-            for week_start, week_end in monthly_insights.weekly_sub_windows(window):
-                result = youtube.fetch_video_related_videos(video_id, week_start, week_end)
-                calls += 1
-                counts.rows_fetched += result.raw_row_count
-                for referrer in result.referrers:
-                    referrer_id = referrer["referrer_video_id"]
-                    combined_views[referrer_id] = combined_views.get(referrer_id, 0) + referrer["views"]
-            referrers = [
-                {"referrer_video_id": referrer_id, "views": views}
-                for referrer_id, views in combined_views.items()
-            ]
-            counts.rows_written += database.upsert_related_videos(video_id, window.month, referrers)
-            newly_encountered_ids.update(combined_views.keys())
+            result = youtube.fetch_video_related_videos(video_id, window.start_date, window.end_date)
+            counts.rows_fetched += result.raw_row_count
+            counts.rows_written += database.upsert_related_videos(video_id, window.month, result.referrers)
+            newly_encountered_ids.update(r["referrer_video_id"] for r in result.referrers)
         _logger.debug(
-            "related_video_insights %d/%d video=%s months=%d calls=%d rows=%d title=%r",
-            i, total, video_id, len(windows), calls, counts.rows_fetched - rows_before, title,
+            "related_video_insights %d/%d video=%s months=%d rows=%d title=%r",
+            i, total, video_id, len(windows), counts.rows_fetched - rows_before, title,
         )
 
     _resolve_related_video_metadata(newly_encountered_ids, counts)
