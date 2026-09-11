@@ -174,6 +174,17 @@ def make_fx_rate(day: str, usd_to_sgd: float) -> dict:
     return {"date": day, "usd_to_sgd": usd_to_sgd}
 
 
+def make_search_term(search_term: str = "term", *, views: int = 1) -> dict:
+    """Return a search-term response row dict, shaped for database.upsert_search_terms."""
+    return {"search_term": search_term, "views": views}
+
+
+def make_related_referrer(referrer_video_id: str = "ref-1", *, views: int = 1) -> dict:
+    """Return a Related Video referrer response row dict, shaped for
+    database.upsert_related_videos."""
+    return {"referrer_video_id": referrer_video_id, "views": views}
+
+
 def make_comment_author(
     author_id: str,
     display_name: str,
@@ -233,7 +244,7 @@ def seed_dataset() -> None:
                        content_type="short", privacy_status="unlisted", view_count=75, like_count=7, comment_count=1),
         ]
         for video in videos:
-            database.upsert_video(video)
+            database.upsert_own_video(video)
 
         database.upsert_playlist(make_playlist("p-full", "Full Playlist", item_count=2))
         database.upsert_playlist(make_playlist("p-empty", "Empty Playlist", item_count=0))
@@ -265,6 +276,10 @@ def seed_dataset() -> None:
             database.upsert_video_traffic_source(row)
 
         database.upsert_fx_rate(make_fx_rate("2024-01-06", 1.35))
+
+        database.upsert_search_terms("v-1", "2024-01", [make_search_term("alpha tutorial", views=6)])
+
+        database.upsert_related_videos("v-1", "2024-01", [make_related_referrer("v-2", views=4)])
 
         database.upsert_comment_author(make_comment_author("channel:UC1", "Ann Author", youtube_channel_id="UC1"))
         database.upsert_comment(make_comment("c-1", "v-1", "channel:UC1", text="great video", published_at="2024-01-10T00:00:00Z"))

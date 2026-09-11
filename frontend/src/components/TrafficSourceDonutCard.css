@@ -34,8 +34,6 @@
   display: flex;
   flex-direction: column;
   gap: 0.4rem;
-  max-height: 160px;
-  overflow-y: auto;
 }
 
 .traffic-donut-legend-item {
@@ -58,6 +56,7 @@
 
 .traffic-donut-legend-label {
   flex: 1;
+  min-width: 0;
   color: var(--text);
   overflow: hidden;
   text-overflow: ellipsis;

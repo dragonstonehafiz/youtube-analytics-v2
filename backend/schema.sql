@@ -11,6 +11,7 @@ CREATE TABLE IF NOT EXISTS videos (
     view_count INTEGER,
     like_count INTEGER,
     comment_count INTEGER,
+    own INTEGER NOT NULL DEFAULT 1 CHECK (own IN (0, 1)),
     updated_at TEXT NOT NULL
 );
 
@@ -92,6 +93,28 @@ CREATE INDEX IF NOT EXISTS idx_comments_author ON comments(author_id);
 CREATE INDEX IF NOT EXISTS idx_comments_published_at ON comments(published_at);
 CREATE INDEX IF NOT EXISTS idx_comments_like_count ON comments(like_count);
 CREATE INDEX IF NOT EXISTS idx_comments_video_published_at ON comments(video_id, published_at);
+
+CREATE TABLE IF NOT EXISTS search_terms (
+    video_id TEXT NOT NULL REFERENCES videos(id) ON DELETE CASCADE,
+    month TEXT NOT NULL,
+    search_term TEXT NOT NULL,
+    views INTEGER NOT NULL CHECK (views > 0),
+    updated_at TEXT NOT NULL,
+    PRIMARY KEY (video_id, month, search_term)
+);
+
+CREATE INDEX IF NOT EXISTS idx_search_terms_month ON search_terms(month);
+
+CREATE TABLE IF NOT EXISTS related_videos (
+    target_video_id TEXT NOT NULL REFERENCES videos(id) ON DELETE CASCADE,
+    month TEXT NOT NULL,
+    referrer_video_id TEXT NOT NULL,
+    views INTEGER NOT NULL CHECK (views > 0),
+    updated_at TEXT NOT NULL,
+    PRIMARY KEY (target_video_id, month, referrer_video_id)
+);
+
+CREATE INDEX IF NOT EXISTS idx_related_videos_month ON related_videos(month);
 
 CREATE TABLE IF NOT EXISTS fx_rates (
     date TEXT PRIMARY KEY,

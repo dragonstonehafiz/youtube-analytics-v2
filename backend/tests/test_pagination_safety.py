@@ -44,7 +44,7 @@ class VideoNeverDeletesTest(unittest.TestCase):
             "sync.stages.youtube.fetch_videos",
             return_value=[{"id": "v1", "channel_id": "UC1", "title": "Kept"}],
         ).start()
-        self.upsert = mock.patch("sync.stages.database.upsert_video").start()
+        self.upsert = mock.patch("sync.stages.database.upsert_own_video").start()
         self.delete = mock.patch("sync.stages.database.delete_videos_not_in").start()
 
     def test_complete_pagination_upserts_and_returns_owned_ids_without_deleting(self) -> None:
@@ -85,7 +85,7 @@ class VideoOwnershipFilterTest(unittest.TestCase):
         mock.patch(
             "sync.stages.youtube.fetch_all_video_ids", return_value=([], False)
         ).start()
-        self.upsert = mock.patch("sync.stages.database.upsert_video").start()
+        self.upsert = mock.patch("sync.stages.database.upsert_own_video").start()
         mock.patch("sync.stages.database.delete_videos_not_in").start()
 
     def test_playlist_only_video_owned_by_channel_is_upserted_and_retained(self) -> None:
@@ -136,7 +136,7 @@ class VideoDetailFetchGapTest(unittest.TestCase):
         mock.patch(
             "sync.stages.youtube.fetch_all_video_ids", return_value=(["v1", "v2", "v3"], False)
         ).start()
-        mock.patch("sync.stages.database.upsert_video").start()
+        mock.patch("sync.stages.database.upsert_own_video").start()
         mock.patch("sync.stages.database.delete_videos_not_in").start()
 
     def test_full_detail_fetch_logs_nothing(self) -> None:
@@ -185,7 +185,7 @@ class VideoShortsClassificationGateTest(unittest.TestCase):
             "sync.stages.youtube.fetch_videos",
             return_value=[{"id": "v1", "channel_id": "UC1", "title": "Kept", "content_type": None}],
         ).start()
-        self.upsert = mock.patch("sync.stages.database.upsert_video").start()
+        self.upsert = mock.patch("sync.stages.database.upsert_own_video").start()
         mock.patch("sync.stages.database.delete_videos_not_in").start()
 
     def test_complete_shorts_pagination_classifies_normally(self) -> None:

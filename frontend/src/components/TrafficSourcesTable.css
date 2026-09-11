@@ -1,9 +1,4 @@
 .traffic-sources-section {
-  margin-top: 1.5rem;
-}
-
-/* The card shell carries the gap under the heading; the scroll wrapper sits flush in it. */
-.traffic-sources-table-card {
   margin-top: 0.75rem;
 }
 

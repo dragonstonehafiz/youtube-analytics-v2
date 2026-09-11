@@ -42,10 +42,14 @@ const STAGE_ROWS: readonly StageRow[] = [
   { stage: 'pruning', label: 'Pruning', description: 'Removes videos no longer found during complete discovery' },
   { stage: 'video_analytics', label: 'Video Analytics', description: 'Daily per-video metrics' },
   { stage: 'video_traffic_sources', label: 'Traffic Sources', description: 'Daily video traffic metrics' },
+  { stage: 'search_insights', label: 'Search Insights', description: 'Per-video search term views' },
+  { stage: 'related_video_insights', label: 'Related Video Insights', description: 'Per-video Related Video referrer views' },
   { stage: 'fx_rates', label: 'FX Rates', description: 'USD to SGD conversion rates' },
 ]
 
-const PERIOD_AWARE_STAGES: readonly PeriodAwareSyncStage[] = ['video_analytics', 'video_traffic_sources']
+const PERIOD_AWARE_STAGES: readonly PeriodAwareSyncStage[] = [
+  'video_analytics', 'video_traffic_sources', 'search_insights', 'related_video_insights',
+]
 
 const SCOPE_AWARE_STAGES: readonly ScopeAwareSyncStage[] = ['comments']
 
@@ -68,12 +72,16 @@ const ALL_INCLUDED: IncludedMap = {
   pruning: false,
   video_analytics: true,
   video_traffic_sources: true,
+  search_insights: true,
+  related_video_insights: true,
   fx_rates: true,
 }
 
 const DEFAULT_PERIODS: PeriodMap = {
   video_analytics: INCREMENTAL,
   video_traffic_sources: INCREMENTAL,
+  search_insights: INCREMENTAL,
+  related_video_insights: INCREMENTAL,
 }
 
 const DEFAULT_SCOPES: ScopeMap = {
@@ -147,9 +155,12 @@ function toPlanStage(stage: SyncStage, period: string): SyncPlanStage {
   return { stage, scope: 'year', year: Number(period) }
 }
 
-const STAGE_LABELS: Readonly<Record<string, string>> = Object.fromEntries(
-  STAGE_ROWS.map(row => [row.stage, row.label]),
-)
+const STAGE_LABELS: Readonly<Record<string, string>> = {
+  // Retired stage id (renamed to 'search_insights') that may still appear in
+  // historical sync_runs rows; not migrated, just given a display label here.
+  search_related_insights: 'Search Insights',
+  ...Object.fromEntries(STAGE_ROWS.map(row => [row.stage, row.label])),
+}
 
 const STATUS_LABELS: Readonly<Record<SyncRunStatus, string>> = {
   running: 'Running',

@@ -35,7 +35,7 @@ class VideoScopeTestCase(IsolatedDatabaseTestCase):
             ("v-d", "Delta Episode", "video", "public", "2024-01-04T00:00:00Z"),
         )
         for video_id, title, content_type, privacy_status, published_at in videos:
-            database.upsert_video({
+            database.upsert_own_video({
                 "id": video_id, "channel_id": "c1", "title": title,
                 "description": "", "published_at": published_at, "duration_seconds": 100,
                 "thumbnail_url": "", "content_type": content_type, "privacy_status": privacy_status,
@@ -387,6 +387,51 @@ class ChannelRouteRegressionTest(VideoScopeTestCase):
     def test_channel_traffic_source_top_videos_stay_channel_wide(self) -> None:
         body = self._get("/analytics/traffic-sources/top", **DATE_RANGE)
         self.assertEqual([row["id"] for row in body["items"]["SEARCH"]], ["v-a", "v-b", "v-c", "v-d"])
+
+
+class ExternalVideoExclusionRouteTest(VideoScopeTestCase):
+    """An external (own=0) video's data must never surface through the live HTTP
+    routes, even when it has real analytics/traffic-source rows stored — reaffirming
+    Step 2's database-layer exclusion holds end-to-end through this router."""
+
+    def setUp(self) -> None:
+        super().setUp()
+        database.upsert_related_video({
+            "id": "v-e", "channel_id": "cOther", "title": "External Episode",
+            "description": "", "published_at": "2024-01-05T00:00:00Z", "duration_seconds": 100,
+            "thumbnail_url": "", "content_type": "video", "privacy_status": "public",
+            "view_count": 10, "like_count": 1, "comment_count": 0,
+        }, own=False)
+        database.upsert_video_analytics({
+            "video_id": "v-e", "date": "2024-01-05", "views": 9999,
+            "watch_time_minutes": 9999, "estimated_revenue": 1.0,
+            "average_view_duration_seconds": 5, "average_view_percentage": 50.0,
+            "likes": 1, "subscribers_gained": 0, "subscribers_lost": 0,
+        })
+        database.upsert_video_traffic_source({
+            "video_id": "v-e", "date": "2024-01-05", "traffic_source_type": "SEARCH",
+            "views": 9999, "watch_time_minutes": 9999,
+        })
+
+    def test_aggregated_analytics_excludes_the_external_video(self) -> None:
+        body = self._get("/analytics/videos", **DATE_RANGE)
+        self.assertEqual(sum(row["views"] for row in body["items"]), 650)
+
+    def test_top_videos_excludes_the_external_video(self) -> None:
+        body = self._get("/analytics/videos/top", **DATE_RANGE)
+        self.assertNotIn("v-e", [row["id"] for row in body["items"]])
+
+    def test_traffic_sources_excludes_the_external_video(self) -> None:
+        body = self._get("/analytics/traffic-sources", **DATE_RANGE)
+        self.assertEqual(sum(row["views"] for row in body["items"]), 1300)
+
+    def test_traffic_source_top_videos_excludes_the_external_video(self) -> None:
+        body = self._get("/analytics/traffic-sources/top", **DATE_RANGE)
+        self.assertNotIn("v-e", [row["id"] for row in body["items"]["SEARCH"]])
+
+    def test_search_insights_video_route_404s_for_the_external_video(self) -> None:
+        response = self.client.get("/analytics/videos/v-e/search-insights", params=DATE_RANGE)
+        self.assertEqual(response.status_code, 404)
 
 
 if __name__ == "__main__":

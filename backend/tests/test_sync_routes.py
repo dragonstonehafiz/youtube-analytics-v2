@@ -101,6 +101,64 @@ class ValidPlanTest(SyncRoutesTestCase):
         self.assertEqual(response.status_code, 200)
         self.assertEqual(self.queued_stages, ["playlists", "videos", "pruning"])
 
+    def test_search_insights_is_accepted_alone(self) -> None:
+        response = self._post({"stages": [{"stage": "search_insights", "scope": "incremental"}]})
+
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(self.queued_stages, ["search_insights"])
+
+    def test_search_insights_accepts_full_history_and_year_scopes(self) -> None:
+        response = self._post({"stages": [{"stage": "search_insights", "scope": "all"}]})
+        self.assertEqual(response.status_code, 200)
+
+        response = self._post({
+            "stages": [{"stage": "search_insights", "scope": "year", "year": 2024}]
+        })
+        self.assertEqual(response.status_code, 200)
+        by_stage = {stage.stage: stage for stage in self.execute.call_args[0][0]}
+        self.assertEqual((by_stage["search_insights"].scope, by_stage["search_insights"].year),
+                         ("year", 2024))
+
+    def test_search_insights_and_video_traffic_sources_are_independently_selectable(self) -> None:
+        response = self._post({"stages": [{"stage": "video_traffic_sources", "scope": "incremental"}]})
+
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(self.queued_stages, ["video_traffic_sources"])
+
+    def test_related_video_insights_is_accepted_alone(self) -> None:
+        response = self._post({"stages": [{"stage": "related_video_insights", "scope": "incremental"}]})
+
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(self.queued_stages, ["related_video_insights"])
+
+    def test_related_video_insights_accepts_full_history_and_year_scopes(self) -> None:
+        response = self._post({"stages": [{"stage": "related_video_insights", "scope": "all"}]})
+        self.assertEqual(response.status_code, 200)
+
+        response = self._post({
+            "stages": [{"stage": "related_video_insights", "scope": "year", "year": 2024}]
+        })
+        self.assertEqual(response.status_code, 200)
+        by_stage = {stage.stage: stage for stage in self.execute.call_args[0][0]}
+        self.assertEqual(
+            (by_stage["related_video_insights"].scope, by_stage["related_video_insights"].year),
+            ("year", 2024),
+        )
+
+    def test_search_insights_and_related_video_insights_are_independently_selectable(self) -> None:
+        response = self._post({"stages": [{"stage": "related_video_insights", "scope": "incremental"}]})
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(self.queued_stages, ["related_video_insights"])
+
+        response = self._post({
+            "stages": [
+                {"stage": "search_insights", "scope": "incremental"},
+                {"stage": "related_video_insights", "scope": "incremental"},
+            ]
+        })
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(self.queued_stages, ["search_insights", "related_video_insights"])
+
     def test_reservation_is_released_after_the_queued_plan_runs(self) -> None:
         response = self._post({"stages": [{"stage": "videos"}]})
 
@@ -160,6 +218,22 @@ class SemanticRejectionTest(SyncRoutesTestCase):
     def test_future_year_is_rejected(self) -> None:
         self._assert_rejected(
             {"stages": [{"stage": "video_analytics", "scope": "year", "year": 2099}]}, 400
+        )
+
+    def test_search_insights_without_scope_is_rejected(self) -> None:
+        self._assert_rejected({"stages": [{"stage": "search_insights"}]}, 400)
+
+    def test_search_insights_year_without_year_scope_is_rejected(self) -> None:
+        self._assert_rejected(
+            {"stages": [{"stage": "search_insights", "year": 2024}]}, 400
+        )
+
+    def test_related_video_insights_without_scope_is_rejected(self) -> None:
+        self._assert_rejected({"stages": [{"stage": "related_video_insights"}]}, 400)
+
+    def test_related_video_insights_year_without_year_scope_is_rejected(self) -> None:
+        self._assert_rejected(
+            {"stages": [{"stage": "related_video_insights", "year": 2024}]}, 400
         )
 
 

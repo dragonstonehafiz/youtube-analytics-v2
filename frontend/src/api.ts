@@ -7,6 +7,10 @@ import type {
   SyncPlan,
   SyncQueuedResponse,
   SyncRunsResponse,
+  SearchTermRow,
+  SearchTermVideo,
+  RelatedReferrersResponse,
+  RelatedDestinationRow,
 } from '@/types'
 
 const BASE = "http://localhost:8000"
@@ -74,6 +78,106 @@ export const getTopVideosByTrafficSource = (params?: Record<string, string>) =>
 
 export const getPlaylistTopVideosByTrafficSource = (id: string, params?: Record<string, string>) =>
   fetch(buildUrl(`/analytics/playlists/${id}/traffic-sources/top`, params)).then(r => r.json())
+
+/** Filters accepted by every search-insights endpoint. Scope comes from the path, not here. */
+export interface SearchInsightsQuery {
+  startDate?: string
+  endDate?: string
+  contentType?: string
+  privacyStatus?: string
+  title?: string
+}
+
+function searchInsightsParams(query: SearchInsightsQuery): Record<string, string> {
+  return {
+    ...(query.startDate && { start_date: query.startDate }),
+    ...(query.endDate && { end_date: query.endDate }),
+    ...(query.contentType && { content_type: query.contentType }),
+    ...(query.privacyStatus && { privacy_status: query.privacyStatus }),
+    ...(query.title && { title: query.title }),
+  }
+}
+
+async function fetchJson<T>(path: string, params?: Record<string, string>): Promise<T> {
+  const response = await fetch(buildUrl(path, params))
+  if (!response.ok) throw new Error(`Search insights request failed (${response.status})`)
+  return response.json() as Promise<T>
+}
+
+export const getSearchTerms = (query: SearchInsightsQuery = {}): Promise<{ items: SearchTermRow[] }> =>
+  fetchJson("/analytics/search-insights", searchInsightsParams(query))
+
+export const getTopSearchTerms = (query: SearchInsightsQuery = {}): Promise<{ items: SearchTermRow[] }> =>
+  fetchJson("/analytics/search-insights/top", searchInsightsParams(query))
+
+export const getVideosBySearchTerm = (searchTerm: string, query: SearchInsightsQuery = {}, limit?: number): Promise<{ items: SearchTermVideo[] }> =>
+  fetchJson("/analytics/search-insights/videos", { ...searchInsightsParams(query), search_term: searchTerm, ...(limit !== undefined && { limit: String(limit) }) })
+
+export const getPlaylistSearchTerms = (id: string, query: SearchInsightsQuery = {}): Promise<{ items: SearchTermRow[] }> =>
+  fetchJson(`/analytics/playlists/${id}/search-insights`, searchInsightsParams(query))
+
+export const getPlaylistTopSearchTerms = (id: string, query: SearchInsightsQuery = {}): Promise<{ items: SearchTermRow[] }> =>
+  fetchJson(`/analytics/playlists/${id}/search-insights/top`, searchInsightsParams(query))
+
+export const getPlaylistVideosBySearchTerm = (id: string, searchTerm: string, query: SearchInsightsQuery = {}, limit?: number): Promise<{ items: SearchTermVideo[] }> =>
+  fetchJson(`/analytics/playlists/${id}/search-insights/videos`, { ...searchInsightsParams(query), search_term: searchTerm, ...(limit !== undefined && { limit: String(limit) }) })
+
+export const getVideoSearchTerms = (id: string, startDate?: string, endDate?: string): Promise<{ items: SearchTermRow[] }> =>
+  fetchJson(`/analytics/videos/${id}/search-insights`, {
+    ...(startDate && { start_date: startDate }),
+    ...(endDate && { end_date: endDate }),
+  })
+
+/** Filters accepted by the channel/playlist Related Video referrers endpoints. Scope
+ * comes from the path, `own` and `limit` are passed separately since every caller sets
+ * them explicitly. */
+export interface RelatedVideosQuery {
+  startDate?: string
+  endDate?: string
+  contentType?: string
+  privacyStatus?: string
+  title?: string
+}
+
+function relatedVideosParams(query: RelatedVideosQuery): Record<string, string> {
+  return {
+    ...(query.startDate && { start_date: query.startDate }),
+    ...(query.endDate && { end_date: query.endDate }),
+    ...(query.contentType && { content_type: query.contentType }),
+    ...(query.privacyStatus && { privacy_status: query.privacyStatus }),
+    ...(query.title && { title: query.title }),
+  }
+}
+
+export const getRelatedVideoReferrers = (own: boolean, query: RelatedVideosQuery = {}, limit?: number): Promise<RelatedReferrersResponse> =>
+  fetchJson("/analytics/related-videos/referrers", { ...relatedVideosParams(query), own: String(own), ...(limit !== undefined && { limit: String(limit) }) })
+
+export const getRelatedVideoDestinations = (referrerVideoId: string, startDate?: string, endDate?: string, limit?: number): Promise<{ items: RelatedDestinationRow[] }> =>
+  fetchJson("/analytics/related-videos/destinations", {
+    ...(startDate && { start_date: startDate }),
+    ...(endDate && { end_date: endDate }),
+    referrer_video_id: referrerVideoId,
+    ...(limit !== undefined && { limit: String(limit) }),
+  })
+
+export const getPlaylistRelatedVideoReferrers = (id: string, own: boolean, query: RelatedVideosQuery = {}, limit?: number): Promise<RelatedReferrersResponse> =>
+  fetchJson(`/analytics/playlists/${id}/related-videos/referrers`, { ...relatedVideosParams(query), own: String(own), ...(limit !== undefined && { limit: String(limit) }) })
+
+export const getPlaylistRelatedVideoDestinations = (id: string, referrerVideoId: string, startDate?: string, endDate?: string, limit?: number): Promise<{ items: RelatedDestinationRow[] }> =>
+  fetchJson(`/analytics/playlists/${id}/related-videos/destinations`, {
+    ...(startDate && { start_date: startDate }),
+    ...(endDate && { end_date: endDate }),
+    referrer_video_id: referrerVideoId,
+    ...(limit !== undefined && { limit: String(limit) }),
+  })
+
+export const getVideoRelatedVideoReferrers = (id: string, own: boolean, startDate?: string, endDate?: string, limit?: number): Promise<RelatedReferrersResponse> =>
+  fetchJson(`/analytics/videos/${id}/related-videos/referrers`, {
+    ...(startDate && { start_date: startDate }),
+    ...(endDate && { end_date: endDate }),
+    own: String(own),
+    ...(limit !== undefined && { limit: String(limit) }),
+  })
 
 export const getVideosPublished = (startDate?: string, endDate?: string, contentType?: string, privacyStatus?: string, playlistId?: string, title?: string) =>
   fetch(buildUrl("/videos/published", { ...(startDate && { start_date: startDate }), ...(endDate && { end_date: endDate }), ...(contentType && { content_type: contentType }), ...(privacyStatus && { privacy_status: privacyStatus }), ...(playlistId && { playlist_id: playlistId }), ...(title && { title }) })).then(r => r.json())

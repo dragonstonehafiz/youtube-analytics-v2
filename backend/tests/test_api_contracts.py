@@ -32,6 +32,13 @@ class VideoContractTest(ApiContractTestCase):
         self.assertEqual(response.status_code, 404)
         self.assertEqual(response.json()["detail"], "Video not found")
 
+    def test_own_field_is_an_exact_json_boolean_not_an_integer(self) -> None:
+        body = self.client.get("/videos/v-1").json()
+        self.assertIs(body["item"]["own"], True)
+
+        list_body = self.client.get("/videos").json()
+        self.assertIs(list_body["items"][0]["own"], True)
+
     def test_page_below_one_is_422(self) -> None:
         self.assertEqual(self.client.get("/videos", params={"page": 0}).status_code, 422)
 

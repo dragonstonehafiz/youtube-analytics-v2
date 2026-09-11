@@ -52,7 +52,7 @@ class CommentsTestCase(IsolatedDatabaseTestCase):
 class SchemaTest(CommentsTestCase):
     def test_repeated_init_db_is_idempotent(self) -> None:
         database.init_db()
-        database.upsert_video(_video("v1", "A"))
+        database.upsert_own_video(_video("v1", "A"))
         database.upsert_comment_author(_author("channel:UC1", "Ann", "UC1"))
         database.upsert_comment(_comment("c1", "v1", "channel:UC1"))
 
@@ -67,14 +67,14 @@ class SchemaTest(CommentsTestCase):
             database.upsert_comment(_comment("c1", "missing-video", "channel:UC1"))
 
     def test_comment_requires_an_existing_author(self) -> None:
-        database.upsert_video(_video("v1", "A"))
+        database.upsert_own_video(_video("v1", "A"))
 
         with self.assertRaises(sqlite3.IntegrityError):
             database.upsert_comment(_comment("c1", "v1", "channel:nobody"))
 
     def test_deleting_a_video_cascades_to_its_comments_only(self) -> None:
-        database.upsert_video(_video("v1", "A"))
-        database.upsert_video(_video("v2", "B"))
+        database.upsert_own_video(_video("v1", "A"))
+        database.upsert_own_video(_video("v2", "B"))
         database.upsert_comment_author(_author("channel:UC1", "Ann", "UC1"))
         database.upsert_comment(_comment("c1", "v1", "channel:UC1"))
         database.upsert_comment(_comment("c2", "v2", "channel:UC1"))
@@ -86,7 +86,7 @@ class SchemaTest(CommentsTestCase):
         self.assertEqual(items[0]["id"], "c2")
 
     def test_a_referenced_author_cannot_be_deleted(self) -> None:
-        database.upsert_video(_video("v1", "A"))
+        database.upsert_own_video(_video("v1", "A"))
         database.upsert_comment_author(_author("channel:UC1", "Ann", "UC1"))
         database.upsert_comment(_comment("c1", "v1", "channel:UC1"))
 
@@ -95,7 +95,7 @@ class SchemaTest(CommentsTestCase):
                 conn.execute("DELETE FROM comment_authors WHERE id = 'channel:UC1'")
 
     def test_negative_counts_are_rejected(self) -> None:
-        database.upsert_video(_video("v1", "A"))
+        database.upsert_own_video(_video("v1", "A"))
         database.upsert_comment_author(_author("channel:UC1", "Ann", "UC1"))
 
         with self.assertRaises(sqlite3.IntegrityError):
@@ -115,7 +115,7 @@ class SchemaTest(CommentsTestCase):
 class AuthorIdentityTest(CommentsTestCase):
     def setUp(self) -> None:
         super().setUp()
-        database.upsert_video(_video("v1", "A"))
+        database.upsert_own_video(_video("v1", "A"))
 
     def test_one_author_is_reused_across_comments_and_refreshed(self) -> None:
         database.upsert_comment_author(_author("channel:UC1", "Old Name", "UC1"))
@@ -152,7 +152,7 @@ class AuthorIdentityTest(CommentsTestCase):
         self.assertEqual(items[0]["author_display_name"], "Kept")
 
     def test_known_comment_ids_are_scoped_to_one_video(self) -> None:
-        database.upsert_video(_video("v2", "B"))
+        database.upsert_own_video(_video("v2", "B"))
         database.upsert_comment_author(_author("channel:UC1", "Ann", "UC1"))
         database.upsert_comment(_comment("c1", "v1", "channel:UC1"))
         database.upsert_comment(_comment("c2", "v2", "channel:UC1"))
@@ -166,9 +166,9 @@ class SeededCommentsTestCase(CommentsTestCase):
 
     def setUp(self) -> None:
         super().setUp()
-        database.upsert_video(_video("v-in", "Series Episode 1"))
-        database.upsert_video(_video("v-also-in", "Series Episode 2", content_type="short"))
-        database.upsert_video(_video("v-out", "Unrelated Vlog"))
+        database.upsert_own_video(_video("v-in", "Series Episode 1"))
+        database.upsert_own_video(_video("v-also-in", "Series Episode 2", content_type="short"))
+        database.upsert_own_video(_video("v-out", "Unrelated Vlog"))
 
         database.upsert_playlist({
             "id": "p1", "title": "Series", "description": "", "published_at": None,
@@ -337,6 +337,28 @@ class RequestValidationTest(SeededCommentsTestCase):
                 with self.subTest(path=path, method=method):
                     response = getattr(self.client, method)(path)
                     self.assertEqual(response.status_code, 405)
+
+
+class ExternalVideoExclusionRouteTest(SeededCommentsTestCase):
+    """An external (own=0) video's comments must never surface through the live HTTP
+    routes, reaffirming Step 2's database-layer exclusion end-to-end."""
+
+    def setUp(self) -> None:
+        super().setUp()
+        database.upsert_related_video(_video("v-ext", "External Video"), own=False)
+        database.upsert_comment(_comment(
+            "c-ext", "v-ext", "channel:UC1", text="external comment",
+            published_at="2025-01-01T00:00:00Z", like_count=1000,
+        ))
+
+    def test_channel_comments_exclude_the_external_video(self) -> None:
+        body = self.client.get("/comments").json()
+        self.assertNotIn("c-ext", self.ids(body))
+        self.assertEqual(body["total"], 3)
+
+    def test_video_scoped_route_404s_for_the_external_video(self) -> None:
+        response = self.client.get("/comments/videos/v-ext")
+        self.assertEqual(response.status_code, 404)
 
 
 if __name__ == "__main__":

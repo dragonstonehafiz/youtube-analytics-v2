@@ -82,7 +82,7 @@ class StartBackgroundSchedulerTest(unittest.TestCase):
             [s.stage for s in stages],
             [
                 "playlists", "videos", "comments", "video_analytics",
-                "video_traffic_sources", "fx_rates",
+                "video_traffic_sources", "search_insights", "related_video_insights", "fx_rates",
             ],
         )
         by_stage = {s.stage: s for s in stages}

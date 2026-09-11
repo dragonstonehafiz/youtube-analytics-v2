@@ -45,7 +45,7 @@ def list_video_comments(
 
     Video title and content type are fixed by the scope, so neither is accepted here.
     """
-    if not database.get_video(video_id):
+    if not database.get_owned_video(video_id):
         raise HTTPException(status_code=404, detail="Video not found")
     items, total = database.get_video_comments(
         video_id, page, page_size, sort_by, text, author, start_date, end_date

@@ -1,6 +1,6 @@
 // @vitest-environment jsdom
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
-import { act, cleanup, fireEvent, render, screen, waitFor } from '@testing-library/react'
+import { act, cleanup, fireEvent, render, screen, waitFor, within } from '@testing-library/react'
 import { MemoryRouter, Route, Routes, useLocation } from 'react-router-dom'
 
 vi.mock('@/api', () => ({
@@ -12,6 +12,10 @@ vi.mock('@/api', () => ({
   getVideosPublished: vi.fn(),
   getPlaylistTrafficSources: vi.fn(),
   getPlaylistTopVideosByTrafficSource: vi.fn(),
+  getPlaylistSearchTerms: vi.fn(),
+  getPlaylistVideosBySearchTerm: vi.fn(),
+  getPlaylistRelatedVideoReferrers: vi.fn(),
+  getPlaylistRelatedVideoDestinations: vi.fn(),
   getDateRange: vi.fn(),
 }))
 
@@ -19,11 +23,15 @@ import {
   getDateRange,
   getPlaylist,
   getPlaylistAnalytics,
+  getPlaylistRelatedVideoDestinations,
+  getPlaylistRelatedVideoReferrers,
+  getPlaylistSearchTerms,
   getPlaylistTopVideosByTrafficSource,
   getPlaylistTopVideosByViews,
   getPlaylistTrafficSources,
   getPlaylistVideoStats,
   getPlaylistVideos,
+  getPlaylistVideosBySearchTerm,
   getVideosPublished,
 } from '@/api'
 import PlaylistAnalytics from '@/pages/PlaylistAnalytics'
@@ -37,6 +45,10 @@ const mockGetPlaylistTopVideosByViews = vi.mocked(getPlaylistTopVideosByViews)
 const mockGetVideosPublished = vi.mocked(getVideosPublished)
 const mockGetPlaylistTrafficSources = vi.mocked(getPlaylistTrafficSources)
 const mockGetPlaylistTopVideosByTrafficSource = vi.mocked(getPlaylistTopVideosByTrafficSource)
+const mockGetPlaylistSearchTerms = vi.mocked(getPlaylistSearchTerms)
+const mockGetPlaylistVideosBySearchTerm = vi.mocked(getPlaylistVideosBySearchTerm)
+const mockGetPlaylistRelatedVideoReferrers = vi.mocked(getPlaylistRelatedVideoReferrers)
+const mockGetPlaylistRelatedVideoDestinations = vi.mocked(getPlaylistRelatedVideoDestinations)
 const mockGetDateRange = vi.mocked(getDateRange)
 
 /** AnalyticsChart and TrafficSourceChart measure their container; jsdom has no real implementation. */
@@ -97,6 +109,10 @@ beforeEach(() => {
   mockGetVideosPublished.mockResolvedValue({ items: [] })
   mockGetPlaylistTrafficSources.mockResolvedValue({ items: [] })
   mockGetPlaylistTopVideosByTrafficSource.mockResolvedValue({ items: {} })
+  mockGetPlaylistSearchTerms.mockResolvedValue({ items: [] })
+  mockGetPlaylistVideosBySearchTerm.mockResolvedValue({ items: [] })
+  mockGetPlaylistRelatedVideoReferrers.mockResolvedValue({ items: [], total_named_views: 0 })
+  mockGetPlaylistRelatedVideoDestinations.mockResolvedValue({ items: [] })
   mockGetDateRange.mockResolvedValue({ earliest_year: 2022 })
 })
 
@@ -157,6 +173,129 @@ describe('playlist sidebar cards', () => {
 
     expect(sidebarRecentCalls().some(c => c[8] === 'short')).toBe(false)
     expect(sidebarTopCalls().some(c => c[4] === 'short')).toBe(false)
+  })
+})
+
+describe('Traffic Sources sub-tabs (Search Insights)', () => {
+  it('defaults to the Traffic Sources sub-tab, switching to Search Insights renders its three columns', async () => {
+    renderPlaylistAnalytics('/playlists/pl1?tab=traffic-sources')
+    await waitFor(() => expect(mockGetPlaylistTrafficSources).toHaveBeenCalled())
+    expect(screen.queryByText('Top Search Terms')).toBeNull()
+
+    fireEvent.click(screen.getByRole('button', { name: 'Search Insights' }))
+    expect(await screen.findByText('Top Search Terms')).toBeDefined()
+    expect(await screen.findByText('Top Search Terms — Videos')).toBeDefined()
+    expect(await screen.findByText('Top Search Terms — Shorts')).toBeDefined()
+  })
+
+  it('scopes every search-insights request to this playlist id and the analytics_* filters', async () => {
+    renderPlaylistAnalytics(
+      '/playlists/pl1?tab=traffic-sources&analytics_title=foo&analytics_privacy_status=private',
+    )
+
+    await waitFor(() => expect(mockGetPlaylistSearchTerms).toHaveBeenCalled())
+    for (const call of mockGetPlaylistSearchTerms.mock.calls) {
+      expect(call[0]).toBe('pl1')
+      expect(call[1]?.title).toBe('foo')
+      expect(call[1]?.privacyStatus).toBe('private')
+    }
+  })
+
+  it('each sidebar card fetches videos scoped to this playlist id and its own content type', async () => {
+    mockGetPlaylistSearchTerms.mockResolvedValue({ items: [{ search_term: 'cats', views: 10 }] })
+    renderPlaylistAnalytics('/playlists/pl1?tab=traffic-sources&ts_tab=search')
+
+    expect(await screen.findByText('Top Videos by Search Term')).toBeDefined()
+    expect(await screen.findByText('Top Shorts by Search Term')).toBeDefined()
+    await waitFor(() => expect(mockGetPlaylistVideosBySearchTerm).toHaveBeenCalled())
+    for (const call of mockGetPlaylistVideosBySearchTerm.mock.calls) {
+      expect(call[0]).toBe('pl1')
+    }
+    const contentTypes = mockGetPlaylistVideosBySearchTerm.mock.calls.map(call => call[2]?.contentType)
+    expect(contentTypes).toContain('video')
+    expect(contentTypes).toContain('short')
+  })
+
+  it('selecting a term in one sidebar card does not affect the other', async () => {
+    mockGetPlaylistSearchTerms.mockResolvedValue({
+      items: [{ search_term: 'cats', views: 10 }, { search_term: 'dogs', views: 5 }],
+    })
+    renderPlaylistAnalytics('/playlists/pl1?tab=traffic-sources&ts_tab=search')
+
+    const videoCard = (await screen.findByText('Top Videos by Search Term')).closest('.search-videos-donut')
+    const videoSelect = within(videoCard as HTMLElement).getByRole('combobox')
+    mockGetPlaylistVideosBySearchTerm.mockClear()
+    fireEvent.change(videoSelect, { target: { value: 'dogs' } })
+
+    await waitFor(() => expect(mockGetPlaylistVideosBySearchTerm).toHaveBeenCalledWith(
+      'pl1', 'dogs', expect.objectContaining({ contentType: 'video' }), expect.any(Number),
+    ))
+    expect(mockGetPlaylistVideosBySearchTerm.mock.calls.some(
+      call => call[1] === 'dogs' && call[2]?.contentType === 'short',
+    )).toBe(false)
+  })
+
+  it('an unrecognized ts_tab value falls back to the Traffic Sources sub-tab', async () => {
+    const { container } = renderPlaylistAnalytics('/playlists/pl1?tab=traffic-sources&ts_tab=bogus')
+    await waitFor(() => expect(mockGetPlaylistTrafficSources).toHaveBeenCalled())
+
+    const subTabStrip = container.querySelectorAll('.tabs')[1] as HTMLElement
+    const sourcesTab = within(subTabStrip).getByRole('button', { name: 'Traffic Sources' })
+    expect(sourcesTab.className).toContain('active')
+    expect(screen.queryByText('Top Search Terms')).toBeNull()
+  })
+})
+
+describe('Related Videos sub-tab', () => {
+  const mineRow = { referrer_video_id: 'ref-mine', title: 'My Video', thumbnail_url: null, referrer_own: true, views: 50 }
+  const externalRow = { referrer_video_id: 'ref-ext', title: 'External Video', thumbnail_url: null, referrer_own: false, views: 30 }
+
+  beforeEach(() => {
+    mockGetPlaylistRelatedVideoReferrers.mockImplementation(async (_id: string, own: boolean) =>
+      own
+        ? { items: [mineRow], total_named_views: 80 }
+        : { items: [externalRow], total_named_views: 80 })
+  })
+
+  it('fetches nothing until the Related Videos sub-tab is actually visible', async () => {
+    renderPlaylistAnalytics('/playlists/pl1?tab=traffic-sources&ts_tab=sources')
+    await waitFor(() => expect(mockGetPlaylistTrafficSources).toHaveBeenCalled())
+    expect(mockGetPlaylistRelatedVideoReferrers).not.toHaveBeenCalled()
+    expect(mockGetPlaylistRelatedVideoDestinations).not.toHaveBeenCalled()
+
+    fireEvent.click(screen.getByRole('button', { name: 'Related Videos' }))
+    await waitFor(() => expect(mockGetPlaylistRelatedVideoReferrers).toHaveBeenCalledTimes(2))
+    await waitFor(() => expect(mockGetPlaylistRelatedVideoDestinations).toHaveBeenCalledTimes(2))
+  })
+
+  it('renders both rows of cards scoped to this playlist', async () => {
+    renderPlaylistAnalytics('/playlists/pl1?tab=traffic-sources&ts_tab=related')
+
+    expect(await screen.findByText('Related Traffic from My Channel')).toBeDefined()
+    expect(await screen.findByText('Related Traffic from Other Channels')).toBeDefined()
+    await waitFor(() => expect(mockGetPlaylistRelatedVideoReferrers).toHaveBeenCalledTimes(2))
+    for (const call of mockGetPlaylistRelatedVideoReferrers.mock.calls) {
+      expect(call[0]).toBe('pl1')
+    }
+  })
+
+  it('scopes destination requests to this playlist id, one call per bucket', async () => {
+    renderPlaylistAnalytics('/playlists/pl1?tab=traffic-sources&ts_tab=related')
+    await waitFor(() => expect(mockGetPlaylistRelatedVideoDestinations).toHaveBeenCalledTimes(2))
+    for (const call of mockGetPlaylistRelatedVideoDestinations.mock.calls) {
+      expect(call[0]).toBe('pl1')
+    }
+    expect(mockGetPlaylistRelatedVideoDestinations.mock.calls.map(c => c[1]).sort()).toEqual(['ref-ext', 'ref-mine'])
+  })
+
+  it('forwards the analytics_* filters, not the Videos tab namespace', async () => {
+    renderPlaylistAnalytics(
+      '/playlists/pl1?tab=traffic-sources&ts_tab=related&title=videostab&analytics_title=foo&analytics_privacy_status=private',
+    )
+    await waitFor(() => expect(mockGetPlaylistRelatedVideoReferrers).toHaveBeenCalledTimes(2))
+    for (const call of mockGetPlaylistRelatedVideoReferrers.mock.calls) {
+      expect(call[2]).toEqual(expect.objectContaining({ title: 'foo', privacyStatus: 'private' }))
+    }
   })
 })
 

@@ -8,22 +8,31 @@ vi.mock('@/api', () => ({
   getTopVideosByViews: vi.fn(),
   getVideos: vi.fn(),
   getChannelTrafficSources: vi.fn(),
+  getSearchTerms: vi.fn(),
+  getVideosBySearchTerm: vi.fn(),
 }))
 
-import { getChannelTrafficSources, getTopVideosByViews, getVideos } from '@/api'
+import { getChannelTrafficSources, getTopVideosByViews, getVideos, getSearchTerms, getVideosBySearchTerm } from '@/api'
 import Home from '@/pages/Home'
 
 const mockGetTopVideosByViews = vi.mocked(getTopVideosByViews)
 const mockGetVideos = vi.mocked(getVideos)
 const mockGetChannelTrafficSources = vi.mocked(getChannelTrafficSources)
+const mockGetSearchTerms = vi.mocked(getSearchTerms)
+const mockGetVideosBySearchTerm = vi.mocked(getVideosBySearchTerm)
 
-/** The four data cards, in the order the Dashboard lays them out. */
+/** The five cards whose own request drives their loading indicator directly. */
 const CARD_HEADINGS = [
   'Top Videos (Last 28 Days)',
   'Top Shorts (Last 28 Days)',
   'Latest Uploads',
   'Traffic Sources (Last 28 Days)',
+  'Top Search Terms (Last 28 Days)',
 ] as const
+
+/** This card's own request never starts until a default term exists, so before the term
+ * list resolves it renders its empty state rather than a loading indicator. */
+const VIDEO_BY_TERM_HEADING = 'Top Videos by Search Term (Last 28 Days)'
 
 function topVideo(overrides: Partial<TopVideo> = {}): TopVideo {
   return {
@@ -84,6 +93,8 @@ beforeEach(() => {
   mockGetTopVideosByViews.mockReturnValue(new Promise(() => {}))
   mockGetVideos.mockReturnValue(new Promise(() => {}))
   mockGetChannelTrafficSources.mockReturnValue(new Promise(() => {}))
+  mockGetSearchTerms.mockReturnValue(new Promise(() => {}))
+  mockGetVideosBySearchTerm.mockReturnValue(new Promise(() => {}))
 })
 
 afterEach(() => {
@@ -95,10 +106,13 @@ describe('dashboard card shells', () => {
   it('renders every data card shell and indicator before any request resolves', () => {
     const { container } = renderHome()
 
-    expect(container.querySelectorAll('.async-card')).toHaveLength(CARD_HEADINGS.length)
+    expect(container.querySelectorAll('.async-card')).toHaveLength(CARD_HEADINGS.length + 1)
     for (const heading of CARD_HEADINGS) {
       expect(within(cardFor(heading)).getByRole('status')).toBeDefined()
     }
+    // No default term exists yet (the term list is still loading), so this card shows its
+    // empty state rather than a spinner — it never issued its own request to be pending on.
+    expect(within(cardFor(VIDEO_BY_TERM_HEADING)).getByText('No videos for this term')).toBeDefined()
   })
 
   it('leaves the static navigation cards out of the loading surfaces', () => {
@@ -126,7 +140,7 @@ describe('independent resolution', () => {
     // The same shell carried both states.
     expect(cardFor('Top Videos (Last 28 Days)')).toBe(shell)
     expect(within(shell).queryByRole('status')).toBeNull()
-    for (const heading of ['Top Shorts (Last 28 Days)', 'Latest Uploads', 'Traffic Sources (Last 28 Days)']) {
+    for (const heading of ['Top Shorts (Last 28 Days)', 'Latest Uploads', 'Traffic Sources (Last 28 Days)', 'Top Search Terms (Last 28 Days)']) {
       expect(within(cardFor(heading)).getByRole('status')).toBeDefined()
     }
   })
@@ -141,6 +155,28 @@ describe('independent resolution', () => {
     await waitFor(() =>
       expect(within(cardFor('Latest Uploads')).getByText('The newest upload')).toBeDefined())
     expect(within(cardFor('Top Videos (Last 28 Days)')).getByRole('status')).toBeDefined()
+  })
+})
+
+describe('top videos by search term', () => {
+  it('defaults to the top term and pools videos and shorts together, with no content_type filter', async () => {
+    mockGetSearchTerms.mockResolvedValue({ items: [{ search_term: 'cats', views: 10 }] })
+    mockGetVideosBySearchTerm.mockResolvedValue({
+      items: [
+        { id: 'v-1', title: 'A cat video', thumbnail_url: null, content_type: 'video', views: 7 },
+        { id: 'v-2', title: 'A cat short', thumbnail_url: null, content_type: 'short', views: 3 },
+      ],
+    })
+    renderHome()
+
+    await waitFor(() => expect(mockGetVideosBySearchTerm).toHaveBeenCalled())
+    const [term, query] = mockGetVideosBySearchTerm.mock.calls[0]
+    expect(term).toBe('cats')
+    expect(query).not.toHaveProperty('contentType')
+
+    const shell = cardFor(VIDEO_BY_TERM_HEADING)
+    await waitFor(() => expect(within(shell).getByText('A cat video')).toBeDefined())
+    expect(within(shell).getByText('A cat short')).toBeDefined()
   })
 })
 

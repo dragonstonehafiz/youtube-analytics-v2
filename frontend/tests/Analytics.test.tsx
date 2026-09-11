@@ -11,6 +11,10 @@ vi.mock('@/api', () => ({
   getVideos: vi.fn(),
   getChannelTrafficSources: vi.fn(),
   getTopVideosByTrafficSource: vi.fn(),
+  getSearchTerms: vi.fn(),
+  getVideosBySearchTerm: vi.fn(),
+  getRelatedVideoReferrers: vi.fn(),
+  getRelatedVideoDestinations: vi.fn(),
   getComments: vi.fn(),
   getVideoComments: vi.fn(),
   getPlaylistComments: vi.fn(),
@@ -22,10 +26,14 @@ import {
   getChannelTrafficSources,
   getComments,
   getDateRange,
+  getRelatedVideoDestinations,
+  getRelatedVideoReferrers,
+  getSearchTerms,
   getTopVideosByTrafficSource,
   getTopVideosByViews,
   getVideoStats,
   getVideos,
+  getVideosBySearchTerm,
   getVideosPublished,
 } from '@/api'
 import Analytics from '@/pages/Analytics'
@@ -38,6 +46,10 @@ const mockGetVideosPublished = vi.mocked(getVideosPublished)
 const mockGetVideos = vi.mocked(getVideos)
 const mockGetChannelTrafficSources = vi.mocked(getChannelTrafficSources)
 const mockGetTopVideosByTrafficSource = vi.mocked(getTopVideosByTrafficSource)
+const mockGetSearchTerms = vi.mocked(getSearchTerms)
+const mockGetVideosBySearchTerm = vi.mocked(getVideosBySearchTerm)
+const mockGetRelatedVideoReferrers = vi.mocked(getRelatedVideoReferrers)
+const mockGetRelatedVideoDestinations = vi.mocked(getRelatedVideoDestinations)
 const mockGetComments = vi.mocked(getComments)
 const mockGetDateRange = vi.mocked(getDateRange)
 
@@ -106,6 +118,10 @@ beforeEach(() => {
   mockGetVideos.mockResolvedValue({ items: [] })
   mockGetChannelTrafficSources.mockResolvedValue({ items: [] })
   mockGetTopVideosByTrafficSource.mockResolvedValue({ items: {} })
+  mockGetSearchTerms.mockResolvedValue({ items: [] })
+  mockGetVideosBySearchTerm.mockResolvedValue({ items: [] })
+  mockGetRelatedVideoReferrers.mockResolvedValue({ items: [], total_named_views: 0 })
+  mockGetRelatedVideoDestinations.mockResolvedValue({ items: [] })
   mockGetComments.mockResolvedValue({ items: [], total: 0, page: 1, page_size: 25 })
   mockGetDateRange.mockResolvedValue({ earliest_year: 2022 })
 })
@@ -172,6 +188,114 @@ describe('tab selection and URL state', () => {
     expect(activeTabButton()?.textContent).toBe('Analytics')
     expect(await screen.findByText('Top 10 Videos by Watch Time')).toBeDefined()
     expect(screen.queryByText('No comments found')).toBeNull()
+  })
+})
+
+describe('Traffic Sources sub-tabs', () => {
+  it('defaults to the Traffic Sources sub-tab, switching to Search Insights renders its three columns', async () => {
+    renderAnalytics('/analytics?tab=traffic-sources')
+    await waitFor(() => expect(mockGetChannelTrafficSources).toHaveBeenCalled())
+    expect(screen.queryByText('Top Search Terms')).toBeNull()
+
+    fireEvent.click(screen.getByRole('button', { name: 'Search Insights' }))
+    expect(await screen.findByText('Top Search Terms')).toBeDefined()
+    expect(await screen.findByText('Top Search Terms — Videos')).toBeDefined()
+    expect(await screen.findByText('Top Search Terms — Shorts')).toBeDefined()
+  })
+
+  it('renders one independent sidebar card per content type, each with its own dropdown', async () => {
+    mockGetSearchTerms.mockResolvedValue({ items: [{ search_term: 'cats', views: 10 }] })
+    renderAnalytics('/analytics?tab=traffic-sources&ts_tab=search')
+
+    expect(await screen.findByText('Top Videos by Search Term')).toBeDefined()
+    expect(await screen.findByText('Top Shorts by Search Term')).toBeDefined()
+    await waitFor(() => expect(mockGetVideosBySearchTerm).toHaveBeenCalled())
+    const contentTypes = mockGetVideosBySearchTerm.mock.calls.map(call => call[1]?.contentType)
+    expect(contentTypes).toContain('video')
+    expect(contentTypes).toContain('short')
+  })
+})
+
+describe('Related Videos sub-tab', () => {
+  const mineRow = { referrer_video_id: 'ref-mine', title: 'My Video', thumbnail_url: null, referrer_own: true, views: 50 }
+  const externalRow = { referrer_video_id: 'ref-ext', title: 'External Video', thumbnail_url: null, referrer_own: false, views: 30 }
+  const unresolvedRow = { referrer_video_id: 'ref-unresolved', title: null, thumbnail_url: null, referrer_own: null, views: 10 }
+
+  beforeEach(() => {
+    mockGetRelatedVideoReferrers.mockImplementation(async (own: boolean) =>
+      own
+        ? { items: [mineRow], total_named_views: 90 }
+        : { items: [externalRow, unresolvedRow], total_named_views: 90 })
+  })
+
+  it('defaults to Traffic Sources, switching to Related Videos renders both rows of cards', async () => {
+    renderAnalytics('/analytics?tab=traffic-sources')
+    await waitFor(() => expect(mockGetChannelTrafficSources).toHaveBeenCalled())
+    expect(screen.queryByText('Related Traffic from My Channel')).toBeNull()
+
+    fireEvent.click(screen.getByRole('button', { name: 'Related Videos' }))
+    expect(await screen.findByText('Related Traffic from My Channel')).toBeDefined()
+    expect(await screen.findByText('Related Traffic from Other Channels')).toBeDefined()
+    expect(await screen.findByText('Top Destinations — My Channel')).toBeDefined()
+    expect(await screen.findByText('Top Destinations — Other Channels')).toBeDefined()
+  })
+
+  it('fetches nothing until the Related Videos sub-tab is actually visible', async () => {
+    renderAnalytics('/analytics?tab=traffic-sources&ts_tab=sources')
+    await waitFor(() => expect(mockGetChannelTrafficSources).toHaveBeenCalled())
+    expect(mockGetRelatedVideoReferrers).not.toHaveBeenCalled()
+    expect(mockGetRelatedVideoDestinations).not.toHaveBeenCalled()
+
+    fireEvent.click(screen.getByRole('button', { name: 'Related Videos' }))
+    await waitFor(() => expect(mockGetRelatedVideoReferrers).toHaveBeenCalledTimes(2))
+    await waitFor(() => expect(mockGetRelatedVideoDestinations).toHaveBeenCalledTimes(2))
+  })
+
+  it('requests referrers for both ownership buckets, forwarding the page filters', async () => {
+    renderAnalytics(
+      '/analytics?tab=traffic-sources&ts_tab=related&title=foo&content_type=video&privacy_status=public&start_date=2024-01-10&end_date=2024-01-20',
+    )
+    await waitFor(() => expect(mockGetRelatedVideoReferrers).toHaveBeenCalledTimes(2))
+
+    const calls = mockGetRelatedVideoReferrers.mock.calls
+    expect(calls.map(c => c[0]).sort()).toEqual([false, true])
+    for (const call of calls) {
+      expect(call[1]).toEqual({
+        startDate: '2024-01-10', endDate: '2024-01-20', title: 'foo', contentType: 'video', privacyStatus: 'public',
+      })
+      expect(call[2]).toBe(1000)
+    }
+  })
+
+  it('links an owned referrer internally, an external referrer to YouTube, and leaves an unresolved referrer unlinked', async () => {
+    renderAnalytics('/analytics?tab=traffic-sources&ts_tab=related')
+    const internalLink = await screen.findByRole('link', { name: 'My Video' })
+    expect(internalLink.getAttribute('href')).toBe('/analytics/videos/ref-mine?tab=traffic-sources&ts_tab=related')
+
+    const externalLink = screen.getByRole('link', { name: 'External Video' })
+    expect(externalLink.getAttribute('href')).toBe('https://www.youtube.com/watch?v=ref-ext')
+    expect(externalLink.getAttribute('target')).toBe('_blank')
+
+    expect(screen.getByText('Unavailable Video: ref-unresolved')).toBeDefined()
+    expect(screen.queryByRole('link', { name: /Unavailable Video/ })).toBeNull()
+  })
+
+  it("each destination card starts with its own bucket's top referrer and fetches independently", async () => {
+    renderAnalytics('/analytics?tab=traffic-sources&ts_tab=related')
+    await waitFor(() => expect(mockGetRelatedVideoDestinations).toHaveBeenCalledTimes(2))
+    expect(mockGetRelatedVideoDestinations.mock.calls.map(c => c[0]).sort()).toEqual(['ref-ext', 'ref-mine'])
+  })
+
+  it('selecting a referrer in one destination card does not affect the other', async () => {
+    renderAnalytics('/analytics?tab=traffic-sources&ts_tab=related')
+    await waitFor(() => expect(mockGetRelatedVideoDestinations).toHaveBeenCalledTimes(2))
+    mockGetRelatedVideoDestinations.mockClear()
+
+    const otherSelect = screen.getByRole('combobox', { name: 'Top Destinations — Other Channels referrer' })
+    fireEvent.change(otherSelect, { target: { value: 'ref-unresolved' } })
+
+    await waitFor(() => expect(mockGetRelatedVideoDestinations).toHaveBeenCalledTimes(1))
+    expect(mockGetRelatedVideoDestinations.mock.calls[0][0]).toBe('ref-unresolved')
   })
 })
 

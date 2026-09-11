@@ -6,7 +6,6 @@ from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 
 import database
-import sync
 from logging_config import exception_context, get_logger
 from routes import router
 
@@ -28,7 +27,6 @@ async def lifespan(app: FastAPI):
             stranded = database.mark_incomplete_sync_runs()
             if stranded:
                 _logger.warning("Marked stranded sync stages incomplete count=%d", stranded)
-            sync.start_background_scheduler()
         except Exception as exc:
             _logger.error("Application startup failed %s", exception_context(exc))
             raise

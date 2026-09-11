@@ -133,6 +133,92 @@ class ValidatePlanTest(unittest.TestCase):
         with self.assertRaises(PlanValidationError):
             validate_plan([PlanStage("pruning", "all"), PlanStage("playlists"), PlanStage("videos")])
 
+    def test_accepts_search_insights_alone(self) -> None:
+        stages = validate_plan([PlanStage("search_insights", "incremental")])
+        self.assertEqual([s.stage for s in stages], ["search_insights"])
+        self.assertEqual(recorded_scope(stages[0]), "incremental")
+        self.assertIsNone(recorded_year(stages[0]))
+
+    def test_accepts_full_history_and_year_scope_on_search_insights(self) -> None:
+        stages = validate_plan([PlanStage("search_insights", "all")])
+        self.assertEqual(recorded_scope(stages[0]), "all")
+
+        stages = validate_plan([PlanStage("search_insights", "year", 2024)])
+        self.assertEqual(recorded_scope(stages[0]), "year")
+        self.assertEqual(recorded_year(stages[0]), 2024)
+
+    def test_rejects_search_insights_without_scope(self) -> None:
+        with self.assertRaises(PlanValidationError):
+            validate_plan([PlanStage("search_insights")])
+
+    def test_rejects_year_on_search_insights_without_year_scope(self) -> None:
+        with self.assertRaises(PlanValidationError):
+            validate_plan([PlanStage("search_insights", None, 2024)])
+
+    def test_search_insights_and_video_traffic_sources_select_independently(self) -> None:
+        stages = validate_plan([PlanStage("search_insights", "incremental")])
+        self.assertEqual([s.stage for s in stages], ["search_insights"])
+
+        stages = validate_plan([PlanStage("video_traffic_sources", "incremental")])
+        self.assertEqual([s.stage for s in stages], ["video_traffic_sources"])
+
+    def test_search_insights_sits_after_video_traffic_sources_and_before_fx_rates(self) -> None:
+        stages = validate_plan([
+            PlanStage("fx_rates"),
+            PlanStage("search_insights", "incremental"),
+            PlanStage("video_traffic_sources", "incremental"),
+        ])
+        self.assertEqual(
+            [s.stage for s in stages],
+            ["video_traffic_sources", "search_insights", "fx_rates"],
+        )
+
+    def test_accepts_related_video_insights_alone(self) -> None:
+        stages = validate_plan([PlanStage("related_video_insights", "incremental")])
+        self.assertEqual([s.stage for s in stages], ["related_video_insights"])
+        self.assertEqual(recorded_scope(stages[0]), "incremental")
+        self.assertIsNone(recorded_year(stages[0]))
+
+    def test_accepts_full_history_and_year_scope_on_related_video_insights(self) -> None:
+        stages = validate_plan([PlanStage("related_video_insights", "all")])
+        self.assertEqual(recorded_scope(stages[0]), "all")
+
+        stages = validate_plan([PlanStage("related_video_insights", "year", 2024)])
+        self.assertEqual(recorded_scope(stages[0]), "year")
+        self.assertEqual(recorded_year(stages[0]), 2024)
+
+    def test_rejects_related_video_insights_without_scope(self) -> None:
+        with self.assertRaises(PlanValidationError):
+            validate_plan([PlanStage("related_video_insights")])
+
+    def test_rejects_year_on_related_video_insights_without_year_scope(self) -> None:
+        with self.assertRaises(PlanValidationError):
+            validate_plan([PlanStage("related_video_insights", None, 2024)])
+
+    def test_search_insights_and_related_video_insights_select_independently_in_every_combination(self) -> None:
+        stages = validate_plan([PlanStage("search_insights", "incremental")])
+        self.assertEqual([s.stage for s in stages], ["search_insights"])
+
+        stages = validate_plan([PlanStage("related_video_insights", "incremental")])
+        self.assertEqual([s.stage for s in stages], ["related_video_insights"])
+
+        stages = validate_plan([
+            PlanStage("search_insights", "incremental"),
+            PlanStage("related_video_insights", "incremental"),
+        ])
+        self.assertEqual([s.stage for s in stages], ["search_insights", "related_video_insights"])
+
+    def test_related_video_insights_sits_after_search_insights_and_before_fx_rates(self) -> None:
+        stages = validate_plan([
+            PlanStage("fx_rates"),
+            PlanStage("related_video_insights", "incremental"),
+            PlanStage("search_insights", "incremental"),
+        ])
+        self.assertEqual(
+            [s.stage for s in stages],
+            ["search_insights", "related_video_insights", "fx_rates"],
+        )
+
     def test_rejects_pruning_without_playlists_or_videos(self) -> None:
         with self.assertRaises(PlanValidationError):
             validate_plan([PlanStage("pruning")])
@@ -186,12 +272,12 @@ class RecordedValuesTest(unittest.TestCase):
 
 
 class FullIncrementalPlanTest(unittest.TestCase):
-    def test_contains_all_six_non_destructive_stages_in_canonical_order(self) -> None:
+    def test_contains_all_eight_non_destructive_stages_in_canonical_order(self) -> None:
         self.assertEqual(
             [s.stage for s in full_incremental_plan()],
             [
                 "playlists", "videos", "comments", "video_analytics",
-                "video_traffic_sources", "fx_rates",
+                "video_traffic_sources", "search_insights", "related_video_insights", "fx_rates",
             ],
         )
 

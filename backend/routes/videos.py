@@ -61,7 +61,7 @@ def get_videos_published(
 @router.get("/videos/{video_id}")
 def get_video(video_id: str) -> dict:
     """Return a single video by ID."""
-    video = database.get_video(video_id)
+    video = database.get_owned_video(video_id)
     if not video:
         raise HTTPException(status_code=404, detail="Video not found")
     return {"item": video}
@@ -74,7 +74,7 @@ def get_video_analytics(
     end_date: str | None = Query(default=None),
 ) -> dict:
     """Return daily analytics rows for a video, each tagged with content_type, with optional date filters."""
-    video = database.get_video(video_id)
+    video = database.get_owned_video(video_id)
     if not video:
         raise HTTPException(status_code=404, detail="Video not found")
     return {"items": database.get_video_analytics(video_id, start_date, end_date)}
@@ -87,7 +87,7 @@ def get_video_traffic_sources(
     end_date: str | None = Query(default=None),
 ) -> dict:
     """Return daily traffic source rows for a video with optional date filters."""
-    video = database.get_video(video_id)
+    video = database.get_owned_video(video_id)
     if not video:
         raise HTTPException(status_code=404, detail="Video not found")
     return {"items": database.get_video_traffic_sources(video_id, start_date, end_date)}

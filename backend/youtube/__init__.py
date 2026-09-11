@@ -1,6 +1,13 @@
 from __future__ import annotations
 
-from .analytics_api import iter_video_analytics, iter_video_traffic_sources
+from .analytics_api import (
+    RelatedVideosResult,
+    SearchTermsResult,
+    fetch_video_related_videos,
+    fetch_video_search_terms,
+    iter_video_analytics,
+    iter_video_traffic_sources,
+)
 from .auth import get_credentials
 from .data_api import (
     COMMENT_THREADS_PAGE_SIZE,
@@ -15,11 +22,15 @@ from .data_api import (
 
 __all__ = [
     "COMMENT_THREADS_PAGE_SIZE",
+    "RelatedVideosResult",
+    "SearchTermsResult",
     "fetch_all_video_ids",
     "fetch_channel_identity",
     "fetch_playlist_items",
     "fetch_playlists",
     "fetch_shorts_video_ids",
+    "fetch_video_related_videos",
+    "fetch_video_search_terms",
     "fetch_videos",
     "get_credentials",
     "iter_comment_threads",

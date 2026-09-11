@@ -1,0 +1,127 @@
+.search-videos-donut {
+  padding: 1.25rem 1.5rem;
+  display: flex;
+  flex-direction: column;
+  gap: 0.75rem;
+}
+
+.search-videos-donut > .async-card-body {
+  display: flex;
+  flex-direction: column;
+  gap: 0.75rem;
+}
+
+.search-videos-donut-heading {
+  display: flex;
+  flex-direction: column;
+  gap: 0.5rem;
+}
+
+.search-videos-donut-select {
+  width: 100%;
+  border: 1.5px solid var(--border);
+  border-radius: var(--radius-sm);
+  padding: 0.35rem 0.6rem;
+  font-size: 13px;
+  color: var(--text);
+  background: var(--surface);
+  outline: none;
+  transition: border-color 0.15s;
+}
+
+.search-videos-donut-select:focus {
+  border-color: var(--blue);
+}
+
+.search-videos-donut-chart-wrap {
+  position: relative;
+  width: 100%;
+}
+
+.search-videos-donut-chart-wrap .recharts-tooltip-wrapper {
+  z-index: 1;
+}
+
+.search-videos-donut-center {
+  position: absolute;
+  top: 50%;
+  left: 50%;
+  transform: translate(-50%, -50%);
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  pointer-events: none;
+}
+
+.search-videos-donut-center-value {
+  font-size: 16px;
+  font-weight: 700;
+  color: var(--text-heading);
+}
+
+.search-videos-donut-center-label {
+  font-size: 11px;
+  color: var(--text-secondary);
+}
+
+.search-videos-donut-legend {
+  display: flex;
+  flex-direction: column;
+  gap: 0.4rem;
+}
+
+.search-videos-donut-legend-item {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  font-size: 12px;
+}
+
+.search-videos-donut-legend-item--sub {
+  padding-left: 0.75rem;
+}
+
+.search-videos-donut-thumb {
+  width: 40px;
+  height: 24px;
+  object-fit: cover;
+  border-radius: 3px;
+  flex-shrink: 0;
+  display: block;
+}
+
+.search-videos-donut-thumb--placeholder {
+  background: var(--border);
+}
+
+.search-videos-donut-legend-swatch {
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  flex-shrink: 0;
+}
+
+.search-videos-donut-legend-label {
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.search-videos-donut-legend-views {
+  color: var(--text-secondary);
+  font-weight: 600;
+  flex-shrink: 0;
+}
+
+.search-videos-donut-legend-divider {
+  margin-top: 0.15rem;
+  font-size: 11px;
+  font-weight: 600;
+  color: var(--text-secondary);
+  text-transform: uppercase;
+  letter-spacing: 0.03em;
+  border-top: 1px solid var(--border-light);
+  padding-top: 0.4rem;
+}

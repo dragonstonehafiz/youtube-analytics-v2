@@ -6,6 +6,7 @@ export interface Video {
   duration_seconds: number | null
   thumbnail_url: string | null
   content_type: string
+  own: boolean
   view_count: number
   like_count: number
   comment_count: number
@@ -86,7 +87,8 @@ export interface SyncStatusResponse {
 }
 
 /** Sync stages whose date range is configurable. */
-export type PeriodAwareSyncStage = 'video_analytics' | 'video_traffic_sources'
+export type PeriodAwareSyncStage =
+  'video_analytics' | 'video_traffic_sources' | 'search_insights' | 'related_video_insights'
 
 /** Sync stages that choose how far back to scan but have no per-year view. */
 export type ScopeAwareSyncStage = 'comments'
@@ -204,6 +206,54 @@ export interface TrafficSourceTopVideo {
   content_type: string
   views: number
   watch_time_minutes: number
+}
+
+export interface SearchTermRow {
+  search_term: string
+  views: number
+}
+
+export interface SearchTermVideo {
+  id: string
+  title: string
+  thumbnail_url: string | null
+  content_type: string | null
+  views: number
+}
+
+/**
+ * One Related Video referrer, aggregated across the requested months. `referrer_own` is
+ * `true` for a referrer confirmed as this channel's own video, `false` for everything
+ * else (external or unresolved), and `null` only when the referrer's metadata could not
+ * be resolved at all — `title`/`thumbnail_url` are `null` in that same case.
+ */
+export interface RelatedReferrerRow {
+  referrer_video_id: string
+  title: string | null
+  thumbnail_url: string | null
+  referrer_own: boolean | null
+  views: number
+}
+
+/**
+ * The referrers endpoint response: ranked/capped `items` plus `total_named_views`, the
+ * scope's true unfiltered total across every named referrer regardless of the `own`
+ * filter or `limit` applied to `items` — used to compute the read-time Other /
+ * unattributed residual without a second, uncapped request.
+ */
+export interface RelatedReferrersResponse {
+  items: RelatedReferrerRow[]
+  total_named_views: number
+}
+
+/** One destination (target) video for a given Related Video referrer, aggregated
+ * across the requested months. Always an owned video by construction. */
+export interface RelatedDestinationRow {
+  target_video_id: string
+  title: string
+  thumbnail_url: string | null
+  content_type: string
+  views: number
 }
 
 export interface PublishedVideo {

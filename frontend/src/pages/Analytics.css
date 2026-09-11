@@ -46,6 +46,71 @@
   }
 }
 
+/* The Traffic Sources tab's sub-tab strip sits directly under the chart card on all
+   three analytics pages (Channel/Playlist/Video) — none of them wrap it in
+   .analytics-layout, so it needs its own top margin instead of inheriting one. */
+.ts-subtabs {
+  margin-top: 1.5rem;
+}
+
+.search-insights-columns {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 1.5rem;
+  margin-top: 0.75rem;
+}
+
+/* Grid items default to min-width: auto, so an unbroken long title/term (no spaces to
+   wrap on) can force its track past its fr share — this gives ellipsis truncation
+   inside a card an actual constrained width to work with. */
+.search-insights-columns > *,
+.search-insights-videos > * {
+  min-width: 0;
+}
+
+@media (max-width: 900px) {
+  .search-insights-columns {
+    grid-template-columns: 1fr;
+  }
+}
+
+.search-insights-videos {
+  display: grid;
+  grid-template-columns: repeat(2, 1fr);
+  gap: 1.5rem;
+  margin-top: 1.5rem;
+}
+
+@media (max-width: 900px) {
+  .search-insights-videos {
+    grid-template-columns: 1fr;
+  }
+}
+
+/* Related Videos sub-tab: two rows of two cards each, no sidebar. Used for both the
+   referrer-breakdown row and the destinations-by-referrer row; the second row gets
+   this same class plus the shared top margin below via the adjacent-sibling rule. */
+.related-videos-columns {
+  display: grid;
+  grid-template-columns: repeat(2, 1fr);
+  gap: 1.5rem;
+  margin-top: 0.75rem;
+}
+
+.related-videos-columns > * {
+  min-width: 0;
+}
+
+.related-videos-columns + .related-videos-columns {
+  margin-top: 1.5rem;
+}
+
+@media (max-width: 900px) {
+  .related-videos-columns {
+    grid-template-columns: 1fr;
+  }
+}
+
 /* Analytics page scope: page frame, tabs, filters shared across
    Channel/Playlist/Video Analytics without affecting other pages */
 .analytics-page {

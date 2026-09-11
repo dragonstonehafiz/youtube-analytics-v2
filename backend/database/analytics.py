@@ -60,8 +60,9 @@ def get_video_analytics(
     start_date: str | None = None,
     end_date: str | None = None,
 ) -> list[dict]:
-    """Return daily analytics rows for a video, ordered by date, with optional date filters."""
-    conditions = ["va.video_id = ?"]
+    """Return daily analytics rows for an owned video, ordered by date, with optional
+    date filters. Returns no rows for an external video."""
+    conditions = ["va.video_id = ?", "v.own = 1"]
     params: list = [video_id]
     if start_date:
         conditions.append("va.date >= ?")
@@ -115,7 +116,7 @@ def get_aggregated_analytics(
     if scoped_ids is not None and not scoped_ids:
         return []
 
-    conditions = ["1=1"]
+    conditions = ["v.own = 1"]
     params: list = []
 
     if scoped_ids:
@@ -192,7 +193,7 @@ def get_top_videos_by_views(
         return []
 
     order_by = _TOP_VIDEO_SORT_ORDER_BY.get(sort_by, _TOP_VIDEO_SORT_ORDER_BY["views"])
-    conditions = ["1=1"]
+    conditions = ["v.own = 1"]
     params: list = []
 
     if scoped_ids:

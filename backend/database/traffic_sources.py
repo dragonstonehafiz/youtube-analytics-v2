@@ -66,8 +66,9 @@ def get_video_traffic_sources(
     start_date: str | None = None,
     end_date: str | None = None,
 ) -> list[dict]:
-    """Return daily traffic source rows for a video, ordered by date, with optional date filters."""
-    conditions = ["vts.video_id = ?"]
+    """Return daily traffic source rows for an owned video, ordered by date, with
+    optional date filters. Returns no rows for an external video."""
+    conditions = ["vts.video_id = ?", "v.own = 1"]
     params: list = [video_id]
     if start_date:
         conditions.append("vts.date >= ?")
@@ -81,6 +82,7 @@ def get_video_traffic_sources(
             f"""
             SELECT vts.date, vts.traffic_source_type, vts.views, vts.watch_time_minutes
             FROM video_traffic_sources vts
+            JOIN videos v ON v.id = vts.video_id
             WHERE {where}
             ORDER BY vts.date, vts.traffic_source_type
             """,
@@ -106,7 +108,7 @@ def get_aggregated_traffic_sources(
     if scoped_ids is not None and not scoped_ids:
         return []
 
-    conditions = ["1=1"]
+    conditions = ["v.own = 1"]
     params: list = []
 
     if scoped_ids:
@@ -166,7 +168,7 @@ def get_top_videos_by_traffic_source(
     if scoped_ids is not None and not scoped_ids:
         return {}
 
-    conditions = ["1=1"]
+    conditions = ["v.own = 1"]
     params: list = []
 
     if scoped_ids:

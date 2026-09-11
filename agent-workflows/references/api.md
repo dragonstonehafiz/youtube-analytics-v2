@@ -16,6 +16,8 @@ Public FastAPI contracts: every route, its parameters, defaults, and response sh
 - [Playlists](#playlists)
 - [Channel analytics](#channel-analytics)
 - [Playlist analytics](#playlist-analytics)
+- [Search insights](#search-insights)
+- [Related videos](#related-videos)
 - [Comments](#comments)
 - [Metadata](#metadata)
 - [Synchronization](#synchronization)
@@ -26,7 +28,8 @@ Public FastAPI contracts: every route, its parameters, defaults, and response sh
 - All list endpoints return `{ items: [...] }`; paginated endpoints additionally return `{ total, page, page_size }`.
 - Date filters are always optional query params named `start_date`/`end_date` (ISO `YYYY-MM-DD`).
 - `content_type` ∈ `video` | `short`; `privacy_status` ∈ `public` | `private` | `unlisted`. Both are optional filters on nearly every endpoint below.
-- 404s are raised explicitly wherever a route takes a `video_id`/`playlist_id` path param and the row doesn't exist (every playlist-scoped route in `routes/playlists.py`/`routes/analytics.py` and every single-video route in `routes/videos.py`).
+- 404s are raised explicitly wherever a route takes a `video_id`/`playlist_id` path param and the row doesn't exist (every playlist-scoped route in `routes/playlists.py`/`routes/analytics.py` and every single-video route in `routes/videos.py`). A `video_id` naming an external (`own=false`) video — one known only as a Related Video referrer — 404s identically to an unknown one, on every route below that takes one.
+- Every `Video` payload carries `own: boolean` — `true` for a channel-owned video, `false` for an external video whose metadata was pulled in as a Related Video referrer (see `database.md`'s ownership boundary). Every video-listing/lookup route below returns only `own=true` rows; `own=false` rows are exposed solely as referrer metadata on the [Related videos](#related-videos) endpoints.
 
 ## Videos
 
@@ -53,6 +56,7 @@ GET  /videos/published
 
 GET  /videos/{video_id}
   → { item: Video } | 404
+  404 for an external (own=false) video, exactly like a nonexistent one — see database.md's ownership boundary.
 
 GET  /videos/{video_id}/analytics
   ?start_date, end_date
@@ -170,6 +174,92 @@ parameterized `v.title LIKE ?` (bound to `%{title}%`) case-insensitive partial-m
 on playlist routes, with the video-ID scope. Omitting `title` produces
 identical results to before this filter existed.
 
+## Search insights
+
+Months are filtered server-side by each date's `YYYY-MM` prefix (`database.md`'s `_month_bound_conditions()`) — a missing bound is unbounded on that side (all-time), matching every other date filter on the Analytics page; `start_date` after `end_date` yields no rows. There is no separate month/date param; the frontend passes whatever `start_date`/`end_date` the host page already has.
+
+```
+GET  /analytics/search-insights
+  ?start_date, end_date, content_type, privacy_status, title
+  → { items: SearchTermRow[] }   # every term, channel-wide, no cap — SearchTermRow = { search_term, views }
+
+GET  /analytics/search-insights/top
+  Same query params
+  → { items: SearchTermRow[] }   # same as above, capped to the top 10 by views
+
+GET  /analytics/search-insights/videos
+  ?search_term (required), start_date, end_date, content_type, privacy_status, title
+  → { items: SearchTermVideo[] }   # top 10 videos for that ONE term, channel-wide
+  SearchTermVideo = { id, title, thumbnail_url, content_type, views }
+  422 if search_term is omitted.
+
+GET  /analytics/playlists/{playlist_id}/search-insights
+  Same query params as /analytics/search-insights
+  → { items: SearchTermRow[] } | 404 if playlist not found
+
+GET  /analytics/playlists/{playlist_id}/search-insights/top
+  Same query params
+  → { items: SearchTermRow[] } | 404 if playlist not found   # capped to top 10
+
+GET  /analytics/playlists/{playlist_id}/search-insights/videos
+  ?search_term (required), start_date, end_date, content_type, privacy_status, title
+  → { items: SearchTermVideo[] } | 404 if playlist not found
+
+GET  /analytics/videos/{video_id}/search-insights
+  ?start_date, end_date   # no title/content_type/privacy_status — a fixed video already has one of each
+  → { items: SearchTermRow[] } | 404 if video not found   # that video's own terms, no cap
+```
+
+`get_search_terms()`/`get_video_search_terms()` (`database.md`) are the only backing queries — `/search-insights` and `/search-insights/top` are the *same* database call with `limit=None` vs `limit=10`; there is no separate "top" function. `/search-insights/videos` calls `get_videos_by_search_term()`, a single-term lookup, not a per-term-grouped query — the frontend requests it once per selected term, not once for every term that exists.
+
+No endpoint here returns a chart-shaped envelope (no `donuts`, no `unattributed_views`, no coverage/residual fields) — these are plain aggregate rows, the same shape as every other aggregation endpoint above. A frontend chart that wants a read-time residual against traffic totals computes it itself from `/analytics/traffic-sources` (requesting the full calendar-month range) — the backend does not compute or store one.
+
+## Related videos
+
+Same month-filtering convention as [Search insights](#search-insights) — server-side `YYYY-MM`-prefix matching via `database.md`'s `_month_bound_conditions()`, a missing bound unbounded on that side, no separate month/date param.
+
+```
+GET  /analytics/related-videos/referrers
+  ?start_date, end_date, content_type, privacy_status, title, own (required), limit=10
+  → { items: RelatedReferrerRow[], total_named_views: number }
+  RelatedReferrerRow = { referrer_video_id, title, thumbnail_url, referrer_own, views }
+  referrer_own ∈ true | false | null — true: confirmed this channel's own video;
+  false: everything else, including a referrer with no resolved metadata at all;
+  null appears only on an individual item, never as a value of the `own` query param.
+  own (query param) selects which of those two buckets `items` is drawn from: true
+  or false, never null — a caller wanting the null-inclusive "not confirmed ours"
+  bucket passes own=false. total_named_views is the scope's true unfiltered
+  SUM(views) across every real referrer regardless of the own/limit filters.
+  422 if `own` is omitted.
+
+GET  /analytics/related-videos/destinations
+  ?referrer_video_id (required), start_date, end_date, limit=10
+  → { items: RelatedDestinationRow[] }
+  RelatedDestinationRow = { target_video_id, title, thumbnail_url, content_type, views }
+  Top destination (target) videos for one referrer, channel-wide. The referrer's own
+  ownership is irrelevant here — any video, owned or external, can be a referrer.
+
+GET  /analytics/playlists/{playlist_id}/related-videos/referrers
+  Same query params as the channel-wide referrers route
+  → { items: RelatedReferrerRow[], total_named_views: number } | 404 if playlist not found
+  Scoped to the playlist's member videos via the same _resolve_playlist_video_ids() flow
+  as every other playlist-analytics route.
+
+GET  /analytics/playlists/{playlist_id}/related-videos/destinations
+  Same query params as the channel-wide destinations route
+  → { items: RelatedDestinationRow[] } | 404 if playlist not found
+
+GET  /analytics/videos/{video_id}/related-videos/referrers
+  ?start_date, end_date, own (required), limit   # limit is optional here, unbounded by default
+  → { items: RelatedReferrerRow[], total_named_views: number } | 404 if video not found
+  Related Video referrers to a single owned video. There is no video-scoped destinations
+  route: a single video's target-scoped rows only ever have that video as the
+  destination, so the video page's outbound card instead calls the channel-wide
+  destinations route with referrer_video_id fixed to this video's own ID.
+```
+
+Backed by `database.get_related_video_referrers()`/`get_related_video_destinations()` (`database.md`) — no separate query function per route. Like Search insights, no endpoint here returns a chart-shaped envelope: no coverage table, no persisted or read-time residual, no `period_start`/`period_end`. The only cross-bucket total is `total_named_views`, and it is a real stored-row sum, not a computed gap against aggregate Traffic Sources.
+
 ## Comments
 
 Read-only: `routes/comments.py` declares `GET` handlers and nothing else, so every other
@@ -222,9 +312,10 @@ GET  /sync/status
 POST /sync/trigger
   Body (JSON): { stages: [ { stage, scope?, year? }, ... ] }
     stage ∈ videos | playlists | comments | pruning | video_analytics |
-            video_traffic_sources | fx_rates
-    scope ∈ incremental | year | all   # video_analytics / video_traffic_sources only,
-                                       # required for those two, forbidden on the rest
+            video_traffic_sources | search_insights | related_video_insights | fx_rates
+    scope ∈ incremental | year | all   # video_analytics / video_traffic_sources /
+                                       # search_insights / related_video_insights only,
+                                       # required for those four, forbidden on the rest
                                        # except comments, which takes incremental | all
                                        # (optional; omitted means incremental)
     year  (int)                        # required with scope=year, forbidden otherwise —
@@ -237,7 +328,11 @@ POST /sync/trigger
   Each period-aware stage carries its own scope/year — the two can differ in one plan.
   Submission order is irrelevant: the backend always executes in canonical stage order
   (playlists → videos → comments → pruning → video_analytics → video_traffic_sources →
-  fx_rates).
+  search_insights → related_video_insights → fx_rates).
+  search_insights and related_video_insights are each independently period-aware
+  (scope/year required, like video_analytics/video_traffic_sources) and share no
+  dependency with video_traffic_sources or with each other — selecting/deselecting
+  any one of them never affects the others (see sync.md).
   `comments` only inserts and updates; scope=all re-reads full comment history but still
   deletes no comments (see sync.md).
   `pruning` is the only stage that deletes video rows (cascades to video_analytics/
@@ -262,7 +357,10 @@ GET  /sync/runs
   Stages that never started have no row, so run_count omits them.
   error_message and batch_id are part of the contract but are never rendered.
   sync_type ∈ videos | playlists | comments | pruning | video_analytics |
-              video_traffic_sources | fx_rates
+              video_traffic_sources | search_insights | related_video_insights | fx_rates
+  A historical row stored under the retired id search_related_insights (the stage's
+  name before it was split into search_insights/related_video_insights) may still
+  appear here — the frontend renders it with a display-only label alias (see frontend.md).
   status ∈ running | incomplete | success | failed
   incomplete is written by the startup sweep for a stage a killed process left
   running; it keeps completed_at = null. A batch's status is the worst status

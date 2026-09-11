@@ -21,6 +21,8 @@ from .stages import (
     sync_fx_rates,
     sync_playlists,
     sync_pruning,
+    sync_related_video_insights,
+    sync_search_insights,
     sync_video_analytics,
     sync_video_traffic_sources,
     sync_videos,
@@ -49,6 +51,8 @@ _STAGE_MESSAGES: dict[str, str | None] = {
     "pruning": "Pruning videos...",
     "video_analytics": None,
     "video_traffic_sources": None,
+    "search_insights": None,
+    "related_video_insights": None,
     "fx_rates": "Syncing FX rates...",
 }
 
@@ -61,6 +65,8 @@ _STAGE_FAILURE_LABELS: dict[str, str] = {
     "pruning": "pruning videos",
     "video_analytics": "syncing video analytics",
     "video_traffic_sources": "syncing video traffic sources",
+    "search_insights": "syncing search insights",
+    "related_video_insights": "syncing related video insights",
     "fx_rates": "syncing FX rates",
 }
 
@@ -192,6 +198,12 @@ def execute_plan(stages: Sequence[PlanStage]) -> None:
             elif name == "video_traffic_sources":
                 def run(counts: SyncCounts, stage: PlanStage = stage) -> None:
                     sync_video_traffic_sources(recorded_scope(stage), stage.year, counts)
+            elif name == "search_insights":
+                def run(counts: SyncCounts, stage: PlanStage = stage) -> None:
+                    sync_search_insights(recorded_scope(stage), stage.year, counts)
+            elif name == "related_video_insights":
+                def run(counts: SyncCounts, stage: PlanStage = stage) -> None:
+                    sync_related_video_insights(recorded_scope(stage), stage.year, counts)
             else:
                 def run(counts: SyncCounts) -> None:
                     sync_fx_rates(counts)

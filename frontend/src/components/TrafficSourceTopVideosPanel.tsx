@@ -22,7 +22,6 @@ export default function TrafficSourceTopVideosPanel({ rows, bySource, loading, e
 
   return (
     <div className="traffic-source-top-videos-section">
-      <div className="section-header">Top Videos by Traffic Source</div>
       <AsyncCard
         variant="table"
         loading={loading}

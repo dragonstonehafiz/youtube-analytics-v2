@@ -1,14 +1,18 @@
 import { useEffect, useState } from 'react'
 import { Link } from 'react-router-dom'
-import { getTopVideosByViews, getVideos, getChannelTrafficSources } from '@/api'
-import type { TopVideo, Video, TrafficSourceRow } from '@/types'
+import { getTopVideosByViews, getVideos, getChannelTrafficSources, getSearchTerms, getVideosBySearchTerm } from '@/api'
+import type { TopVideo, Video, TrafficSourceRow, SearchTermRow, SearchTermVideo } from '@/types'
 import type { RequestState } from '@/lib/requestState'
 import { pending, track } from '@/lib/requestState'
 import VideoCarouselCard from '@/components/VideoCarouselCard'
 import TrafficSourceDonutCard from '@/components/TrafficSourceDonutCard'
+import SearchTermsDonutCard from '@/components/SearchTermsDonutCard'
+import SearchTermVideosDonutCard from '@/components/SearchTermVideosDonutCard'
 import './Home.css'
 
 const RECENT_COUNT = 10
+// Show every video with views for the selected term, not just a "top" handful.
+const ALL_VIDEOS_FOR_TERM_LIMIT = 1000
 
 function last28Dates(): [string, string] {
   const today = new Date()
@@ -59,6 +63,9 @@ export default function Home() {
   const [topShorts, setTopShorts] = useState<RequestState<TopVideo[]>>(pending([]))
   const [recentVideos, setRecentVideos] = useState<RequestState<TopVideo[]>>(pending([]))
   const [trafficSourceRows, setTrafficSourceRows] = useState<RequestState<TrafficSourceRow[]>>(pending([]))
+  const [searchTerms, setSearchTerms] = useState<RequestState<SearchTermRow[]>>(pending([]))
+  const [videoTerm, setVideoTerm] = useState<string | null>(null)
+  const [videosForTerm, setVideosForTerm] = useState<RequestState<SearchTermVideo[]>>(pending([]))
 
   useEffect(() => {
     let active = true
@@ -72,8 +79,22 @@ export default function Home() {
       .then((data: { items: Video[] }) => (data.items ?? []).map(toTopVideoShape)), setRecentVideos, () => active)
     track(getChannelTrafficSources({ start_date: startDate, end_date: endDate, privacy_status: 'public' })
       .then((data: { items: TrafficSourceRow[] }) => data.items ?? []), setTrafficSourceRows, () => active)
+    track(getSearchTerms({ startDate, endDate, privacyStatus: 'public' })
+      .then((data: { items: SearchTermRow[] }) => data.items ?? []), setSearchTerms, () => active)
     return () => { active = false }
   }, [])
+
+  // The video-by-term card owns its own term selection, defaulting to the top term once
+  // the term list resolves. No content_type split here — videos and shorts are pooled.
+  useEffect(() => {
+    let active = true
+    const [startDate, endDate] = last28Dates()
+    const term = videoTerm || searchTerms.data[0]?.search_term
+    if (!term) { setVideosForTerm({ data: [], loading: false, error: null }); return }
+    track(getVideosBySearchTerm(term, { startDate, endDate, privacyStatus: 'public' }, ALL_VIDEOS_FOR_TERM_LIMIT)
+      .then((data: { items: SearchTermVideo[] }) => data.items ?? []), setVideosForTerm, () => active, 'Could not load videos')
+    return () => { active = false }
+  }, [videoTerm, searchTerms.data])
 
   return (
     <div className="home">
@@ -112,6 +133,22 @@ export default function Home() {
           rows={trafficSourceRows.data}
           loading={trafficSourceRows.loading}
           error={trafficSourceRows.error}
+        />
+        <SearchTermsDonutCard
+          title="Top Search Terms (Last 28 Days)"
+          rows={searchTerms.data}
+          loading={searchTerms.loading}
+          error={searchTerms.error}
+        />
+        <SearchTermVideosDonutCard
+          title="Top Videos by Search Term (Last 28 Days)"
+          terms={searchTerms.data}
+          termsLoading={searchTerms.loading}
+          selectedTerm={videoTerm || searchTerms.data[0]?.search_term || null}
+          onSelectTerm={setVideoTerm}
+          videos={videosForTerm.data}
+          loading={videosForTerm.loading}
+          error={videosForTerm.error}
         />
       </div>
     </div>
