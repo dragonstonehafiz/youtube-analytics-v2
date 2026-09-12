@@ -127,8 +127,8 @@ export default function TrafficSourceChart({ rows, uploadedVideos, loading, erro
   }), [rows])
 
   const buckets = useMemo(() =>
-    computeUploadBuckets(chartRows, uploadedVideos, cardWidth),
-    [uploadedVideos, chartRows, cardWidth]
+    computeUploadBuckets(rows, uploadedVideos, cardWidth),
+    [uploadedVideos, rows, cardWidth]
   )
 
   const hasOther = useMemo(

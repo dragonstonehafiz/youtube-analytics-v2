@@ -192,6 +192,12 @@ class AggregatedTrafficSourcesScopeTest(VideoScopeTestCase):
         rows = database.get_aggregated_traffic_sources(start_date=START_DATE, end_date=END_DATE, video_ids=["v-a"])
         self.assertEqual({row["traffic_source_type"] for row in rows}, {"SEARCH", "SUGGESTED"})
 
+    def test_zero_fill_shape_is_preserved_under_scope(self) -> None:
+        rows = database.get_aggregated_traffic_sources(start_date=START_DATE, end_date=END_DATE, video_ids=["v-a", "v-b"])
+        self.assertEqual([row["date"] for row in rows[:2]], ["2024-01-01", "2024-01-01"])
+        self.assertEqual({row["traffic_source_type"] for row in rows}, {"SEARCH", "SUGGESTED"})
+        self.assertEqual(rows[-1]["date"], "2024-01-05")
+
 
 class TopVideosByTrafficSourceScopeTest(VideoScopeTestCase):
     def test_omitted_scope_covers_every_video(self) -> None:
