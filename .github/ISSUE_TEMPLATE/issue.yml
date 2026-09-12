@@ -1,13 +1,23 @@
-name: Enhancement
-description: Propose an improvement to existing functionality
-labels:
-  - enhancement
+name: Issue
+description: Report a bug, propose a feature, or suggest an improvement
 body:
   - type: textarea
-    id: description
+    id: goals
     attributes:
-      label: Description
-      description: What should change, and why?
+      label: Goals
+      description: >-
+        In at most two short paragraphs, explain the proposed addition,
+        change, or fix, and why it matters.
+    validations:
+      required: true
+
+  - type: textarea
+    id: verified-facts
+    attributes:
+      label: Verified facts
+      description: >-
+        Succinct, relevant evidence confirmed by direct inspection —
+        not an explanation of how the system works.
     validations:
       required: true
 
@@ -22,15 +32,18 @@ body:
         more than five by default; add more only for distinct essential outcomes
         that cannot reasonably be consolidated.
       placeholder: |
-        - [ ] **AC-1:** The improved behavior is observable in the affected area
+        - [ ] **AC-1:** The new capability is available and behaves as described
         - [ ] **AC-2:** The named edge case produces the expected result
         - [ ] **AC-3:** Existing behavior in the affected area is unchanged
     validations:
       required: true
 
   - type: textarea
-    id: additional-context
+    id: ai-context
     attributes:
-      label: Additional context
+      label: AI context
+      description: >-
+        Brief technical pointers or constraints useful to an implementing AI.
+        Label any uncertainty explicitly.
     validations:
       required: false

@@ -1,13 +1,13 @@
 ---
 name: programming-workflow
-description: Use for implementation planning — turning an approved issue, local issue file, or scoped request into an evidence-backed, dependency-ordered implementation plan; investigating code, tracing data/control flow, assessing affected layers, and selecting proportionate verification before any code is written.
+description: Use for implementation planning — turning an approved issue, local issue file, or scoped request into a concise, evidence-backed, dependency-ordered implementation plan; investigating code and selecting proportionate verification before any code is written.
 ---
 
 # Programming Workflow
 
 ## When this applies
 
-Use this skill when asked to plan an implementation, break a request into ordered steps, assess affected layers or compatibility impact, or revise an existing plan after requirements change.
+Use this skill when asked to plan an implementation, break a request into dependency-ordered steps, assess compatibility or existing-data impact, or revise an existing plan after requirements change.
 
 Read `implementation-planning.md` in full before planning.
 
