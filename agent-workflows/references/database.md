@@ -7,14 +7,15 @@ Persistence layer, schema, and query conventions. Owns everything about how data
 ## Authoritative source files
 
 - `backend/schema.sql`
-- `backend/database/connection.py`, `backend/database/videos.py`, `backend/database/playlists.py`, `backend/database/analytics.py`, `backend/database/traffic_sources.py`, `backend/database/comments.py`, `backend/database/fx_rates.py`, `backend/database/sync_runs.py`, `backend/database/search_terms.py`, `backend/database/related_videos.py`
-- `backend/scripts/issue-48-migration.py` — standalone, one-time migration for pre-existing databases (see [Compatibility constraints](#compatibility-constraints)); not run by `init_db()`
+- `backend/database/connection.py`, `backend/database/videos.py`, `backend/database/playlists.py`, `backend/database/analytics.py`, `backend/database/traffic_sources.py`, `backend/database/comments.py`, `backend/database/fx_rates.py`, `backend/database/sync_runs.py`, `backend/database/search_terms.py`, `backend/database/related_videos.py`, `backend/database/sync_coverage.py`
+- `backend/scripts/issue-48-migration.py`, `backend/scripts/issue-62-migration.py` — standalone, one-time migrations for pre-existing databases (see [Compatibility constraints](#compatibility-constraints)); neither is run by `init_db()`
 
 ## Contents
 
 - [Connection behavior](#connection-behavior)
 - [Schema](#schema)
 - [Ownership boundary](#ownership-boundary)
+- [Sync coverage](#sync-coverage)
 - [Relationships and deletion behavior](#relationships-and-deletion-behavior)
 - [Timestamp behavior](#timestamp-behavior)
 - [Query conventions](#query-conventions)
@@ -34,7 +35,7 @@ Persistence layer, schema, and query conventions. Owns everything about how data
 
 ## Schema
 
-Eleven tables:
+Twelve tables:
 
 ```sql
 videos                  -- id, channel_id, title, description, published_at, duration_seconds, thumbnail_url,
@@ -74,6 +75,9 @@ related_videos          -- target_video_id, month, referrer_video_id, views, upd
                         --   video row (mirrors playlist_items.video_id's own no-FK precedent)
 sync_runs                -- id, batch_id, sync_type, scope, year, status, started_at, completed_at,
                         --   rows_fetched, rows_written, rows_deleted, error_message
+sync_coverage           -- collector, video_id, period_key, completed_at
+                        --   PRIMARY KEY (collector, video_id, period_key); period_key is "YYYY-MM" for
+                        --   every collector — see Sync coverage below
 ```
 
 Indexes: `idx_video_analytics_date`, `idx_video_analytics_video`, `idx_video_traffic_sources_date`, `idx_video_traffic_sources_video`, `idx_playlist_items_playlist`, `idx_comments_video`, `idx_comments_author`, `idx_comments_published_at`, `idx_comments_like_count`, `idx_comments_video_published_at`, `idx_search_terms_month`, `idx_related_videos_month`, `idx_sync_runs_started_at`, `idx_sync_runs_type_started`.
@@ -105,12 +109,27 @@ Every other video-scoped read (`get_all_videos`, `get_videos_published`, `get_ea
 `database/related_videos.py` stores and reports monthly Related Video referrer data, upsert-only (no delete-and-replace), matching `search_terms`'s own retention precedent — a referrer omitted or zeroed in a later sync is left untouched, not deleted.
 
 - `upsert_related_videos(target_video_id, month, referrers)` — validates the whole payload (month format, referrer ID/views shape) before writing, aggregates duplicate referrer IDs in the same call, drops non-positive-view rows, and raises `ValueError` if `target_video_id` is not currently an owned video (Related rows only ever describe traffic *into* an owned target; a video can appear here as a referrer regardless of its own ownership, but never as an unowned target). Returns the number of referrers upserted.
-- `get_last_related_videos_month(target_video_id)` — the Related collector's own checkpoint (`MAX(month)` for that target), never inferred from Search rows, aggregate Traffic Sources, a sync run, or the mere existence of a video.
+- `get_last_related_videos_month(target_video_id)` — `MAX(month)` in `related_videos` for that target. Still present and still reporting-row-derived, but no longer read by `sync_related_video_insights()`'s incremental selection, which now uses `sync_coverage` instead (see [Sync coverage](#sync-coverage) and `sync.md`) — this function is kept only because other reporting/tests may still call it, not because it drives resume logic.
 - `get_related_video_referrers(start_date=None, end_date=None, content_type=None, privacy_status=None, title=None, video_ids=None, own=None, limit=None) -> {"items": [...], "total_named_views": int}` — referrers aggregated across owned target videos, summed across the months overlapping `start_date`/`end_date` (a missing bound is unbounded on that side, via the shared `_month_bound_conditions()` below), ordered by views descending then referrer ID ascending. `video_ids`/`content_type`/`privacy_status`/`title` all filter the *target* side, with the same three-state `video_ids` scoping convention as the other aggregate helpers (`None` = every owned video, populated = that set, empty = no rows). `own` filters the *referrer* side: `True` matches only a referrer confirmed as this channel's own video; `False` matches everything else, including a referrer with no resolved metadata at all (`COALESCE(ref.own, 0) = 0` — an unresolved referrer is "not confirmed ours," so it belongs in the non-owned bucket, never in neither bucket); `None` (the default) returns every referrer regardless of ownership. `limit=None` returns every referrer. `total_named_views` is a second, independent query in the same call: the scope's unfiltered `SUM(views)` across every real referrer regardless of the `own`/`limit` filters, so a caller never has to fetch an unranked/uncapped row set just to total it.
 - `get_related_video_destinations(referrer_video_id, start_date=None, end_date=None, video_ids=None, limit=None)` — the top destination (target) videos for one given referrer, summed across the overlapping months, ordered by views descending then target ID ascending. The referrer's own ownership is irrelevant to this query — any video, owned or external, can be a referrer. `video_ids` scopes the destination set the same three-state way.
-- There is no coverage table, no persisted residual, no `period_start`/`period_end` columns, and no read-time "unattributed" figure computed against aggregate Traffic Sources — the backend returns only real, stored `related_videos` rows, the same discipline `search_terms` follows (see [Search terms](#aggregation-and-filtering-semantics) below).
+- There is no persisted residual, no `period_start`/`period_end` columns on `related_videos` itself, and no read-time "unattributed" figure computed against aggregate Traffic Sources — the backend returns only real, stored `related_videos` rows, the same discipline `search_terms` follows (see [Search terms](#aggregation-and-filtering-semantics) below). `sync_coverage` (below) tracks *completion*, separately from this table, and is never read by any reporting/aggregation query.
 
 A shared `_month_bound_conditions(alias, start_date, end_date)` (`database/connection.py`) builds independent `<alias>.month >= ?` / `<alias>.month <= ?` conditions from each date's `YYYY-MM` prefix; both `search_terms.py` and `related_videos.py` use it with their own table alias.
+
+## Sync coverage
+
+`database/sync_coverage.py` persists, independently of any reporting table, which calendar months the four Analytics API stages (`video_analytics`, `video_traffic_sources`, `search_insights`, `related_video_insights` — these four strings are also the `collector` values) have successfully finished checking. It exists because a successful Analytics API response with zero reportable rows (e.g. a video with no views that month) leaves no reporting row anywhere, so a reporting table's `MAX(date)`/`MAX(month)` cannot distinguish "not checked yet" from "checked and genuinely empty." See `sync.md` for how the sync stages use this to select work; this section covers only the storage.
+
+- Schema: `sync_coverage(collector, video_id, period_key, completed_at)`, `PRIMARY KEY (collector, video_id, period_key)`, `video_id REFERENCES videos(id) ON DELETE CASCADE`. `period_key` is always `"YYYY-MM"` — there is no daily or yearly granularity, and no `granularity` column: every collector uses the same month-shaped key, so a column that never varies would be dead weight. Video Analytics/Traffic Sources track completion by calendar month the same as Search/Related Insights do, even though their own API requests can span many months or years in one call (see `sync.md`) — the granularity of *what gets marked done* is independent of the granularity of *what gets requested*.
+- `get_covered_periods(collector, video_id, start_key, end_key) -> set[str]` — the `period_key`s already marked complete for one video/collector within an inclusive `[start_key, end_key]` range.
+- `upsert_coverage(collector, video_id, period_keys) -> int` — marks one or many months complete, refreshing `completed_at` (`_now()`) on an already-complete month; returns the count upserted. Callers must only pass periods whose request/response fully succeeded — the function has no way to tell a genuine empty result from an unfinished one, so that guarantee is the caller's (`sync/stages.py`'s) responsibility.
+- Both functions take `collector`/`video_id`/`period_key` as plain strings with no format or enum validation — every caller is sync-stage or migration code in this same codebase, not external input, so a typo'd collector name is a bug caught by tests/mypy, not a runtime input to defend against.
+- `sync_coverage` is written and read exclusively by the sync stages (`sync/stages.py`) and the manual initializer (`scripts/issue-62-migration.py`, below) — no reporting/aggregation query anywhere joins against it or reads it, and it has no HTTP-facing shape in `api.md`.
+- Comments and FX rates have no equivalent table: they retain their existing reporting-row-derived boundaries (`get_comment_ids_for_video`'s overlap window, `get_last_fx_rate()`), since they're sourced from the Data API and Yahoo Finance respectively, outside this table's Analytics-API-only scope.
+
+### Existing-database migration
+
+`backend/scripts/issue-62-migration.py` is a standalone, one-time, idempotent script for an existing database: it reads only `videos.id`/`videos.own`/`videos.published_at` for `own = 1` rows and the local current date, then marks every calendar month from each owned video's publish month through the current month complete for all four collectors — using the same conflict-upsert SQL `upsert_coverage()` uses, executed directly against one connection so the whole run commits as a single transaction (not by calling `upsert_coverage()` itself, which opens its own connection per call). It never reads or writes any Analytics reporting table. This is an explicit operator baseline assertion, not an evidence backfill: unlike the runtime sync rule above, it declares a month done whether or not a corresponding reporting row exists, since a pre-existing database's Analytics history is trusted as already synced. It calls `init_db()` first so `sync_coverage` exists even on a pre-Issue-62 database, and is safe to rerun (identical resulting rows each time). See `backend/README.md` for when to run it.
 
 ## Relationships and deletion behavior
 
@@ -121,6 +140,7 @@ A shared `_month_bound_conditions(alias, start_date, end_date)` (`database/conne
 - `comments.video_id → videos.id` **ON DELETE CASCADE**
 - `search_terms.video_id → videos.id` **ON DELETE CASCADE**
 - `related_videos.target_video_id → videos.id` **ON DELETE CASCADE**; `related_videos.referrer_video_id` has **no FK** — it's a raw YouTube video ID that may describe an external channel's video with no row in `videos` at all until metadata resolution runs (see [Related Videos](#related-videos))
+- `sync_coverage.video_id → videos.id` **ON DELETE CASCADE** — deleting a video (via pruning) naturally cascades away its coverage state along with its reporting rows; there is no orphaned-coverage cleanup step
 - `comments.author_id → comment_authors.id` **ON DELETE RESTRICT** — a commenter row cannot be deleted while any comment still references it
 - Cascades only take effect because `PRAGMA foreign_keys = ON` is set on every connection
 
@@ -203,3 +223,4 @@ Every upsert helper sets `updated_at = _now()` on the Python side before the que
 - The `video_ids` parameter is appended **after** every existing parameter on all four scoped helpers, so current positional callers keep binding to the same arguments. Callers should still pass it by keyword. It binds one `?` per ID, so a scope is bounded by SQLite's parameter limit — practical for playlist-sized collections, not for arbitrarily large ID sets.
 - `backend/scripts/issue-48-migration.py` is a standalone, one-time script for adding `videos.own` to a pre-existing database (idempotent — checks `PRAGMA table_info(videos)` before altering). It is intentionally not wired into `init_db()`: a one-time fixup doesn't belong in code that runs on every app start.
 - The `own = MAX(own, excluded.own)` no-downgrade rule in `_upsert_video_row()` means `own` can only ever move from `0` to `1` over a row's lifetime, never back — there is no code path that demotes a confirmed-owned video to external.
+- `backend/scripts/issue-62-migration.py` (see [Sync coverage](#sync-coverage)) is likewise standalone and not wired into `init_db()`, but unlike `issue-48-migration.py` it doesn't alter the schema — `sync_coverage` already exists on any database via `CREATE TABLE IF NOT EXISTS`, so this script only inserts baseline completion rows. It raises `ValueError` and writes nothing if any owned video lacks a `published_at`, rather than guessing a start date for it.

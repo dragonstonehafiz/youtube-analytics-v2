@@ -73,6 +73,7 @@ backend/
     comments.py
     fx_rates.py
     sync_runs.py
+    sync_coverage.py     # persisted per-video/month completion for the four Analytics API stages
 
   sync/                # Sync plans, orchestration, and the startup freshness check
     status.py
@@ -80,6 +81,11 @@ backend/
     orchestration.py
     stages.py
     scheduler.py
+    coverage.py          # pure sync_coverage selection helpers (missing/coalescing), no I/O
+
+  scripts/             # standalone, one-time, idempotent migrations for pre-existing databases
+    issue-48-migration.py
+    issue-62-migration.py
 
   tests/               # stdlib unittest suite (database, API contracts, sync, logging) run via pytest
     conftest.py          # autouse fixture that fails closed on real network/OAuth access
@@ -135,6 +141,13 @@ an in-flight API request or database write — then records the stage it was on 
 keep their `success` rows, and stages that had not started yet get none. Data already
 committed is never rolled back, and no new sync can start until the stopping worker has
 actually exited.
+
+Video Analytics, Traffic Sources, Search Insights, and Related Video Insights resume
+Incremental work from a persisted `sync_coverage` table (see `agent-workflows/references/database.md`
+and `sync.md`) instead of scanning their own reporting tables for a checkpoint, so a
+successful response with zero reportable rows is remembered as checked rather than
+looking unsynced forever. A fresh database needs no setup for this — it starts with no
+coverage rows, which Incremental treats like any other gap and backfills from scratch.
 
 ## Logging
 

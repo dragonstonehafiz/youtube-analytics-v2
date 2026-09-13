@@ -281,6 +281,11 @@ def seed_dataset() -> None:
 
         database.upsert_related_videos("v-1", "2024-01", [make_related_referrer("v-2", views=4)])
 
+        database.upsert_coverage("video_analytics", "v-1", ["2024-01"])
+        database.upsert_coverage("video_traffic_sources", "v-1", ["2024-01"])
+        database.upsert_coverage("search_insights", "v-1", ["2024-01"])
+        database.upsert_coverage("related_video_insights", "v-1", ["2024-01"])
+
         database.upsert_comment_author(make_comment_author("channel:UC1", "Ann Author", youtube_channel_id="UC1"))
         database.upsert_comment(make_comment("c-1", "v-1", "channel:UC1", text="great video", published_at="2024-01-10T00:00:00Z"))
 
