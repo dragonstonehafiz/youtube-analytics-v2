@@ -217,7 +217,7 @@ class CommentStageBehaviourTest(CommentStageTestCase):
         for name, patched in discovery.items():
             with self.subTest(call=name):
                 patched.assert_not_called()
-        self.iter_threads.assert_called_once_with("v1", title="A video")
+        self.iter_threads.assert_called_once_with("v1", title="A video", checkpoint=mock.ANY)
 
 
 def _raw_thread(

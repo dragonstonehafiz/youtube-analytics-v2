@@ -85,7 +85,8 @@ def _run_stage(
     year: int | None,
     fn: Callable[[SyncCounts], None],
 ) -> None:
-    """Run one sync stage, recording a sync_runs row that reflects partial progress on failure."""
+    """Run one sync stage, recording a sync_runs row that reflects partial progress on
+    failure or cooperative cancellation."""
     counts = SyncCounts()
     _logger.info("Sync stage started %s", _format_stage_counts(sync_type, counts))
 
@@ -101,6 +102,22 @@ def _run_stage(
 
     try:
         fn(counts)
+    except status.SyncCancelled:
+        _logger.info(
+            "Sync stage cancelled %s scope=%s year=%s", _format_stage_counts(sync_type, counts), scope, year
+        )
+        try:
+            database.cancel_sync_run(
+                sync_run_id, counts.rows_fetched, counts.rows_written, counts.rows_deleted
+            )
+        except Exception as cancel_exc:
+            _logger.error(
+                "Sync stage persistence failed %s operation=cancel_sync_run %s",
+                _format_stage_counts(sync_type, counts),
+                exception_context(cancel_exc),
+            )
+            raise
+        raise
     except Exception as exc:
         _logger.error(
             "Sync stage failed %s scope=%s year=%s %s",
@@ -172,6 +189,7 @@ def execute_plan(stages: Sequence[PlanStage]) -> None:
             stage = plan.get(name)
             if stage is None:
                 continue
+            status.raise_if_stopping()
             current_stage = name
             message = _STAGE_MESSAGES[name]
             if message:
@@ -209,8 +227,11 @@ def execute_plan(stages: Sequence[PlanStage]) -> None:
                     sync_fx_rates(counts)
 
             _run_stage(batch_id, name, recorded_scope(stage), recorded_year(stage), run)
+        status.raise_if_stopping()
         status.complete_sync("Sync complete")
 
+    except status.SyncCancelled:
+        status.cancel_sync("Sync stopped")
     except Exception:
         status.fail_sync(_failure_message(current_stage))
         raise

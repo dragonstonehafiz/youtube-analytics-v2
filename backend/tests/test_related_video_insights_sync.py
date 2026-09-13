@@ -272,7 +272,7 @@ class SyncRelatedVideoInsightsStageTest(unittest.TestCase):
         mock.patch("sync.stages.database.get_owned_video_ids", return_value=["v1", "v2"]).start()
         mock.patch("sync.stages.database.upsert_related_videos", return_value=1).start()
 
-        def fetch_side_effect(video_id: str, start: str, end: str) -> analytics_api.RelatedVideosResult:
+        def fetch_side_effect(video_id: str, start: str, end: str, **kwargs: object) -> analytics_api.RelatedVideosResult:
             if video_id == "v2":
                 raise RuntimeError("quota exceeded")
             return analytics_api.RelatedVideosResult(

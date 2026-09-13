@@ -79,8 +79,10 @@ def sync_videos(counts: SyncCounts, playlist_video_ids: set[str]) -> set[str]:
     here rather than left to show up only as an unexplained DB shortfall.
     """
     channel_id, uploads_id = youtube.fetch_channel_identity()
-    shorts_ids, shorts_truncated = youtube.fetch_shorts_video_ids(uploads_id)
-    uploads_ids, _ = youtube.fetch_all_video_ids(uploads_id)
+    shorts_ids, shorts_truncated = youtube.fetch_shorts_video_ids(
+        uploads_id, checkpoint=status.raise_if_stopping
+    )
+    uploads_ids, _ = youtube.fetch_all_video_ids(uploads_id, checkpoint=status.raise_if_stopping)
 
     if shorts_truncated:
         _logger.warning("videos classification skipped reason=shorts_pagination_truncated")
@@ -91,6 +93,8 @@ def sync_videos(counts: SyncCounts, playlist_video_ids: set[str]) -> set[str]:
 
     fetched_videos: list[dict] = []
     for i in range(0, len(candidate_ids), 50):
+        if i > 0:
+            status.raise_if_stopping()
         batch = candidate_ids[i : i + 50]
         for video in youtube.fetch_videos(batch):
             if not shorts_truncated:
@@ -111,7 +115,9 @@ def sync_videos(counts: SyncCounts, playlist_video_ids: set[str]) -> set[str]:
         if video_id in fetched_by_id and fetched_by_id[video_id].get("channel_id") == channel_id
     }
 
-    for video_id, video in fetched_by_id.items():
+    for i, (video_id, video) in enumerate(fetched_by_id.items()):
+        if i > 0:
+            status.raise_if_stopping()
         if video_id in uploads_id_set or video_id in owned_playlist_only_ids:
             database.upsert_own_video(video)
             counts.rows_written += 1
@@ -130,12 +136,14 @@ def sync_playlists(counts: SyncCounts) -> set[str]:
     Returns every non-null playlist-item video ID seen, for `sync_videos()` to combine
     with the uploads-playlist IDs.
     """
-    playlists, playlists_truncated = youtube.fetch_playlists()
+    playlists, playlists_truncated = youtube.fetch_playlists(checkpoint=status.raise_if_stopping)
     all_items: dict[str, list[dict]] = {}
     truncated_playlists: set[str] = set()
-    for playlist in playlists:
+    for i, playlist in enumerate(playlists):
+        if i > 0:
+            status.raise_if_stopping()
         items, items_truncated = youtube.fetch_playlist_items(
-            playlist["id"], playlist_title=playlist.get("title")
+            playlist["id"], playlist_title=playlist.get("title"), checkpoint=status.raise_if_stopping
         )
         all_items[playlist["id"]] = items
         if items_truncated:
@@ -149,7 +157,9 @@ def sync_playlists(counts: SyncCounts) -> set[str]:
         if item.get("video_id")
     }
 
-    for playlist in playlists:
+    for i, playlist in enumerate(playlists):
+        if i > 0:
+            status.raise_if_stopping()
         database.upsert_playlist(playlist)
         counts.rows_written += 1
         if playlist["id"] in truncated_playlists:
@@ -169,6 +179,7 @@ def sync_playlists(counts: SyncCounts) -> set[str]:
         )
         return playlist_video_ids
 
+    status.raise_if_stopping()
     counts.rows_deleted += database.delete_playlists_not_in([p["id"] for p in playlists])
     return playlist_video_ids
 
@@ -207,6 +218,8 @@ def sync_comments(scope: str, counts: SyncCounts) -> None:
     total = len(video_ids)
 
     for i, video_id in enumerate(video_ids, start=1):
+        if i > 1:
+            status.raise_if_stopping()
         status.update_sync_progress(f"Syncing comments ({i}/{total})...")
         video = database.get_owned_video(video_id)
         title = video.get("title") if video else None
@@ -214,8 +227,12 @@ def sync_comments(scope: str, counts: SyncCounts) -> None:
         fetched_before = counts.rows_fetched
         written_before = counts.rows_written
         overlap_remaining: int | None = None
+        first_pair = True
 
-        for item in youtube.iter_comment_threads(video_id, title=title):
+        for item in youtube.iter_comment_threads(video_id, title=title, checkpoint=status.raise_if_stopping):
+            if not first_pair:
+                status.raise_if_stopping()
+            first_pair = False
             counts.rows_fetched += 1
             comment = item["comment"]
 
@@ -256,6 +273,7 @@ def sync_comments(scope: str, counts: SyncCounts) -> None:
 def sync_pruning(counts: SyncCounts, channel_owned_ids: set[str]) -> None:
     """Delete every DB video not in `channel_owned_ids`, the channel-owned set built by
     `sync_playlists()` and `sync_videos()` in this same plan."""
+    status.raise_if_stopping()
     counts.rows_deleted += database.delete_videos_not_in(sorted(channel_owned_ids))
 
 
@@ -282,6 +300,8 @@ def sync_video_analytics(scope: str, year: int | None, counts: SyncCounts) -> No
     video_ids = database.get_owned_video_ids(published_through=end_date)
     total = len(video_ids)
     for i, video_id in enumerate(video_ids, start=1):
+        if i > 1:
+            status.raise_if_stopping()
         status.update_sync_progress(f"Syncing video analytics ({i}/{total})...")
         video = database.get_owned_video(video_id)
         if not video or not video.get("published_at"):
@@ -312,9 +332,14 @@ def sync_video_analytics(scope: str, year: int | None, counts: SyncCounts) -> No
             continue
 
         rows_before = counts.rows_fetched
+        first_row = True
         for row in youtube.iter_video_analytics(
-            video_id, start, range_end, publish_date=publish_date, title=title
+            video_id, start, range_end, publish_date=publish_date, title=title,
+            checkpoint=status.raise_if_stopping,
         ):
+            if not first_row:
+                status.raise_if_stopping()
+            first_row = False
             counts.rows_fetched += 1
             database.upsert_video_analytics(row)
             counts.rows_written += 1
@@ -347,6 +372,8 @@ def sync_video_traffic_sources(scope: str, year: int | None, counts: SyncCounts)
     video_ids = database.get_owned_video_ids(published_through=end_date)
     total = len(video_ids)
     for i, video_id in enumerate(video_ids, start=1):
+        if i > 1:
+            status.raise_if_stopping()
         status.update_sync_progress(f"Syncing traffic sources ({i}/{total})...")
         video = database.get_owned_video(video_id)
         if not video or not video.get("published_at"):
@@ -377,9 +404,14 @@ def sync_video_traffic_sources(scope: str, year: int | None, counts: SyncCounts)
             continue
 
         rows_before = counts.rows_fetched
+        first_row = True
         for row in youtube.iter_video_traffic_sources(
-            video_id, start, range_end, publish_date=publish_date, title=title
+            video_id, start, range_end, publish_date=publish_date, title=title,
+            checkpoint=status.raise_if_stopping,
         ):
+            if not first_row:
+                status.raise_if_stopping()
+            first_row = False
             counts.rows_fetched += 1
             database.upsert_video_traffic_source(row)
             counts.rows_written += 1
@@ -429,6 +461,8 @@ def sync_search_insights(scope: str, year: int | None, counts: SyncCounts) -> No
     total = len(video_ids)
 
     for i, video_id in enumerate(video_ids, start=1):
+        if i > 1:
+            status.raise_if_stopping()
         video = database.get_owned_video(video_id)
         title = video.get("title") if video else None
         status.update_sync_progress(f"Syncing search insights ({i}/{total})...")
@@ -460,8 +494,12 @@ def sync_search_insights(scope: str, year: int | None, counts: SyncCounts) -> No
             windows = incremental_windows
 
         rows_before = counts.rows_fetched
-        for window in windows:
-            result = youtube.fetch_video_search_terms(video_id, window.start_date, window.end_date)
+        for j, window in enumerate(windows):
+            if j > 0:
+                status.raise_if_stopping()
+            result = youtube.fetch_video_search_terms(
+                video_id, window.start_date, window.end_date, checkpoint=status.raise_if_stopping
+            )
             counts.rows_fetched += result.raw_row_count
             counts.rows_written += database.upsert_search_terms(video_id, window.month, result.terms)
         _logger.debug(
@@ -520,6 +558,8 @@ def sync_related_video_insights(scope: str, year: int | None, counts: SyncCounts
     newly_encountered_ids: set[str] = set()
 
     for i, video_id in enumerate(video_ids, start=1):
+        if i > 1:
+            status.raise_if_stopping()
         video = database.get_owned_video(video_id)
         title = video.get("title") if video else None
         status.update_sync_progress(f"Syncing related video insights ({i}/{total})...")
@@ -551,8 +591,12 @@ def sync_related_video_insights(scope: str, year: int | None, counts: SyncCounts
             windows = incremental_windows
 
         rows_before = counts.rows_fetched
-        for window in windows:
-            result = youtube.fetch_video_related_videos(video_id, window.start_date, window.end_date)
+        for j, window in enumerate(windows):
+            if j > 0:
+                status.raise_if_stopping()
+            result = youtube.fetch_video_related_videos(
+                video_id, window.start_date, window.end_date, checkpoint=status.raise_if_stopping
+            )
             counts.rows_fetched += result.raw_row_count
             counts.rows_written += database.upsert_related_videos(video_id, window.month, result.referrers)
             newly_encountered_ids.update(r["referrer_video_id"] for r in result.referrers)
@@ -586,6 +630,8 @@ def _resolve_related_video_metadata(newly_encountered_ids: set[str], counts: Syn
 
     resolved = 0
     for i in range(0, len(unknown_ids), 50):
+        if i > 0:
+            status.raise_if_stopping()
         batch = unknown_ids[i : i + 50]
         try:
             fetched = youtube.fetch_videos(batch)
@@ -595,7 +641,9 @@ def _resolve_related_video_metadata(newly_encountered_ids: set[str], counts: Syn
                 len(batch), exception_context(exc),
             )
             continue
-        for video in fetched:
+        for j, video in enumerate(fetched):
+            if j > 0:
+                status.raise_if_stopping()
             counts.rows_fetched += 1
             database.upsert_related_video(video, own=video.get("channel_id") == channel_id)
             counts.rows_written += 1
@@ -633,6 +681,8 @@ def sync_fx_rates(counts: SyncCounts) -> None:
 
     current = start
     while current <= yesterday:
+        if current > start:
+            status.raise_if_stopping()
         day_str = current.isoformat()
         if day_str in closes:
             carry = closes[day_str]

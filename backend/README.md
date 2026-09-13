@@ -106,6 +106,7 @@ GET  /comments/videos/{id}    Top-level comments on one video
 GET  /comments/playlists/{id} Top-level comments on a playlist's videos
 GET  /sync/status             Active sync status and progress
 POST /sync/trigger            Queue a manual sync of the selected stages (JSON plan body)
+POST /sync/stop               Request cooperative cancellation of the active sync
 GET  /sync/runs               Recent sync-stage records, newest first
 ```
 
@@ -126,6 +127,14 @@ bodies are never fetched. It offers two scopes rather than a period: **Increment
 (the default, used by the startup sync) reads each video back to the comments it already
 holds, or to December 1 of the previous year for a video with none, and **All**
 re-reads every comment. Neither scope ever deletes a comment.
+
+The active manual or startup sync can be stopped cooperatively via `POST /sync/stop`.
+The worker keeps running until it reaches its next safe checkpoint — never interrupting
+an in-flight API request or database write — then records the stage it was on as
+`cancelled` with whatever counters it had accumulated. Earlier stages in the same batch
+keep their `success` rows, and stages that had not started yet get none. Data already
+committed is never rolled back, and no new sync can start until the stopping worker has
+actually exited.
 
 ## Logging
 

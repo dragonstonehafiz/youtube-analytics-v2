@@ -4,6 +4,7 @@ import type {
   VideoStats,
   TopVideoSortBy,
   SyncStatusResponse,
+  SyncStopResponse,
   SyncPlan,
   SyncQueuedResponse,
   SyncRunsResponse,
@@ -256,6 +257,17 @@ export const triggerSync = async (plan: SyncPlan): Promise<SyncQueuedResponse> =
   })
   if (!response.ok) throw new Error(await syncErrorMessage(response))
   return response.json() as Promise<SyncQueuedResponse>
+}
+
+/**
+ * Request cancellation of the active sync, manual or startup-origin. Idempotent while
+ * already stopping. Rejects with a safe message (derived only from the HTTP status or
+ * `detail` text, never a raw exception body) on 409 when no sync is active.
+ */
+export const stopSync = async (): Promise<SyncStopResponse> => {
+  const response = await fetch(buildUrl("/sync/stop"), { method: "POST" })
+  if (!response.ok) throw new Error(await syncErrorMessage(response))
+  return response.json() as Promise<SyncStopResponse>
 }
 
 /**

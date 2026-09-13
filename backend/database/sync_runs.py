@@ -50,6 +50,19 @@ def fail_sync_run(
         )
 
 
+def cancel_sync_run(sync_run_id: int, rows_fetched: int, rows_written: int, rows_deleted: int) -> None:
+    """Mark a sync stage cancelled while preserving partial counters, with no error message."""
+    with get_connection() as conn:
+        conn.execute(
+            """
+            UPDATE sync_runs
+            SET status = 'cancelled', completed_at = ?, rows_fetched = ?, rows_written = ?, rows_deleted = ?
+            WHERE id = ?
+            """,
+            (_now(), rows_fetched, rows_written, rows_deleted, sync_run_id),
+        )
+
+
 def mark_incomplete_sync_runs() -> int:
     """Mark stages stranded by a previous process as incomplete; return how many changed.
 
@@ -68,11 +81,11 @@ def mark_incomplete_sync_runs() -> int:
 
 
 # Worst-first. A batch reports the most severe status among its stages.
-_BATCH_STATUS_PRECEDENCE = ("failed", "incomplete", "running", "success")
+_BATCH_STATUS_PRECEDENCE = ("failed", "incomplete", "running", "cancelled", "success")
 
 
 def _batch_status(runs: list[dict]) -> str:
-    """Return the batch's overall status: failed > incomplete > running > success."""
+    """Return the batch's overall status: failed > incomplete > running > cancelled > success."""
     present = {run["status"] for run in runs}
     for status in _BATCH_STATUS_PRECEDENCE:
         if status in present:

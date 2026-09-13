@@ -404,6 +404,68 @@ class RunsRouteTest(SyncRoutesTestCase):
         self.get_runs.assert_called_once_with(1, 25)
 
 
+class StopRouteTest(SyncRoutesTestCase):
+    def test_stop_while_running_transitions_to_stopping(self) -> None:
+        self.assertTrue(sync.try_begin_sync("Starting sync..."))
+
+        response = self.client.post("/sync/stop")
+
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(response.json(), {"stopping": True})
+        self.assertEqual(sync.get_sync_status()["state"], "stopping")
+
+    def test_repeated_stop_is_idempotent(self) -> None:
+        sync.try_begin_sync("Starting sync...")
+        self.client.post("/sync/stop")
+
+        response = self.client.post("/sync/stop")
+
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(response.json(), {"stopping": True})
+
+    def test_stop_while_idle_returns_409_with_safe_text(self) -> None:
+        response = self.client.post("/sync/stop")
+
+        self.assertEqual(response.status_code, 409)
+        self.assertEqual(response.json()["detail"], "No sync in progress")
+
+    def test_stop_after_success_returns_409_and_leaves_result_terminal(self) -> None:
+        sync.try_begin_sync("Starting sync...")
+        sync.complete_sync("Sync complete")
+
+        response = self.client.post("/sync/stop")
+
+        self.assertEqual(response.status_code, 409)
+        self.assertEqual(sync.get_sync_status()["state"], "success")
+
+    def test_stop_after_cancellation_returns_409(self) -> None:
+        sync.try_begin_sync("Starting sync...")
+        sync.request_stop()
+        sync.cancel_sync("Sync stopped")
+
+        response = self.client.post("/sync/stop")
+
+        self.assertEqual(response.status_code, 409)
+
+    def test_a_competing_trigger_is_rejected_while_stopping(self) -> None:
+        sync.try_begin_sync("Starting sync...")
+        sync.request_stop()
+
+        response = self._post({"stages": [{"stage": "videos"}]})
+
+        self.assertEqual(response.status_code, 409)
+        self.execute.assert_not_called()
+
+    def test_status_immediately_reflects_stopping(self) -> None:
+        sync.try_begin_sync("Starting sync...")
+
+        self.client.post("/sync/stop")
+
+        self.assertEqual(
+            self.client.get("/sync/status").json(), {"state": "stopping", "message": "Stopping sync..."}
+        )
+
+
 class AddTaskFailureTest(SyncRoutesTestCase):
     def test_reservation_is_rolled_back_when_enqueueing_fails(self) -> None:
         self._patch("fastapi.BackgroundTasks.add_task", side_effect=RuntimeError("queue full"))

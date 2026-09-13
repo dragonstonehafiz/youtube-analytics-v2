@@ -318,6 +318,65 @@ class BatchStatusTest(SyncRunsTestCase):
         self.assertEqual(by_id, {"batch-a": "success", "batch-b": "failed"})
 
 
+class CancelSyncRunTest(SyncRunsTestCase):
+    def test_a_cancelled_run_records_partial_counters_and_no_error(self) -> None:
+        run_id = self._seed("2024-05-01T10:00:00+00:00", "batch-a")
+
+        database.cancel_sync_run(run_id, 5, 3, 1)
+
+        child = database.get_sync_runs(1, 25)[0][0]["runs"][0]
+        self.assertEqual(child["status"], "cancelled")
+        self.assertIsNotNone(child["completed_at"])
+        self.assertIsNone(child["error_message"])
+        self.assertEqual(
+            (child["rows_fetched"], child["rows_written"], child["rows_deleted"]), (5, 3, 1))
+
+
+class BatchStatusCancelledPrecedenceTest(SyncRunsTestCase):
+    def _status_of_only_batch(self) -> str:
+        items, _ = database.get_sync_runs(1, 25)
+        return str(items[0]["status"])
+
+    def test_a_cancelled_stage_alongside_successful_ones_reports_cancelled(self) -> None:
+        done = self._seed("2024-05-01T10:00:00+00:00", "batch-a")
+        database.complete_sync_run(done, 1, 1, 0)
+        cancelled = self._seed("2024-05-01T10:01:00+00:00", "batch-a")
+        database.cancel_sync_run(cancelled, 2, 1, 0)
+
+        self.assertEqual(self._status_of_only_batch(), "cancelled")
+
+    def test_failed_outranks_cancelled(self) -> None:
+        failed = self._seed("2024-05-01T10:00:00+00:00", "batch-a")
+        cancelled = self._seed("2024-05-01T10:01:00+00:00", "batch-a")
+        database.fail_sync_run(failed, "boom", 0, 0, 0)
+        database.cancel_sync_run(cancelled, 1, 0, 0)
+
+        self.assertEqual(self._status_of_only_batch(), "failed")
+
+    def test_incomplete_outranks_cancelled(self) -> None:
+        self._seed("2024-05-01T10:00:00+00:00", "batch-a")
+        database.mark_incomplete_sync_runs()
+        cancelled = self._seed("2024-05-01T10:01:00+00:00", "batch-a")
+        database.cancel_sync_run(cancelled, 1, 0, 0)
+
+        self.assertEqual(self._status_of_only_batch(), "incomplete")
+
+    def test_running_outranks_cancelled(self) -> None:
+        cancelled = self._seed("2024-05-01T10:00:00+00:00", "batch-a")
+        database.cancel_sync_run(cancelled, 1, 0, 0)
+        self._seed("2024-05-01T10:01:00+00:00", "batch-a")
+
+        self.assertEqual(self._status_of_only_batch(), "running")
+
+    def test_cancelled_outranks_success(self) -> None:
+        done = self._seed("2024-05-01T10:00:00+00:00", "batch-a")
+        cancelled = self._seed("2024-05-01T10:01:00+00:00", "batch-a")
+        database.complete_sync_run(done, 1, 1, 0)
+        database.cancel_sync_run(cancelled, 1, 0, 0)
+
+        self.assertEqual(self._status_of_only_batch(), "cancelled")
+
+
 class ChildContentTest(SyncRunsTestCase):
     def test_children_keep_every_stored_field(self) -> None:
         self._seed("2024-05-01T10:00:00+00:00", "batch-a", "videos")

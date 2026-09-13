@@ -404,6 +404,78 @@ class StageFailureLoggingTest(OrchestrationTestCase):
         self.assertNotIn("quotaExceeded", result["message"])
 
 
+class CancellationTest(OrchestrationTestCase):
+    def test_cancellation_during_a_stage_marks_only_that_stage_cancelled(self) -> None:
+        def cancel_during(counts: object, playlist_video_ids: object) -> None:
+            self.calls.append("sync_videos")
+            counts.rows_written = 4  # type: ignore[attr-defined]
+            status.request_stop()
+            status.raise_if_stopping()
+
+        self.stage_mocks["sync_playlists"].side_effect = lambda *args: self.calls.append("sync_playlists")
+        self.stage_mocks["sync_videos"].side_effect = cancel_during
+
+        status.try_begin_sync()
+
+        execute_plan([PlanStage("playlists"), PlanStage("videos"), PlanStage("fx_rates")])
+
+        self.assertEqual(self.calls, ["sync_playlists", "sync_videos"])
+        self.db.complete_sync_run.assert_called_once()  # playlists
+        self.db.cancel_sync_run.assert_called_once()  # videos
+        self.assertEqual(self.db.cancel_sync_run.call_args[0][1:], (0, 4, 0))
+        self.db.fail_sync_run.assert_not_called()
+
+    def test_cancellation_between_stages_prevents_the_next_stage_from_starting(self) -> None:
+        status.try_begin_sync()
+
+        def stop_after_playlists(*args: object) -> None:
+            self.calls.append("sync_playlists")
+            status.request_stop()
+
+        self.stage_mocks["sync_playlists"].side_effect = stop_after_playlists
+
+        execute_plan([PlanStage("playlists"), PlanStage("videos")])
+
+        self.assertEqual(self.calls, ["sync_playlists"])
+        self.stage_mocks["sync_videos"].assert_not_called()
+        self.assertEqual(self.recorded_stages, ["playlists"])
+
+    def test_cancellation_sets_terminal_cancelled_state_without_raising(self) -> None:
+        status.try_begin_sync()
+        status.request_stop()
+
+        execute_plan([PlanStage("videos")])
+
+        self.assertEqual(status.get_sync_status(), {"state": "cancelled", "message": "Sync stopped"})
+
+    def test_cancellation_is_not_logged_as_a_stage_failure(self) -> None:
+        def cancel_during(*args: object) -> None:
+            self.calls.append("sync_videos")
+            status.request_stop()
+            status.raise_if_stopping()
+
+        self.stage_mocks["sync_videos"].side_effect = cancel_during
+        status.try_begin_sync()
+
+        with self.assertLogs("youtube_analytics.sync", level="INFO") as captured:
+            execute_plan([PlanStage("videos")])
+
+        messages = [record.getMessage() for record in captured.records]
+        self.assertFalse(any(m.startswith("Sync stage failed") for m in messages))
+        self.assertTrue(any(m.startswith("Sync stage cancelled") for m in messages))
+
+    def test_run_plan_reports_true_and_terminal_cancelled_for_startup_cancellation(self) -> None:
+        def cancel_during(*args: object) -> None:
+            self.calls.append("sync_videos")
+            status.request_stop()
+            status.raise_if_stopping()
+
+        self.stage_mocks["sync_videos"].side_effect = cancel_during
+
+        self.assertTrue(run_plan([PlanStage("videos")]))
+        self.assertEqual(status.get_sync_status()["state"], "cancelled")
+
+
 class PersistenceFailureLoggingTest(OrchestrationTestCase):
     def test_create_sync_run_failure_logs_error_and_reraises_without_stage_call(self) -> None:
         self.db.create_sync_run.side_effect = RuntimeError("db locked")

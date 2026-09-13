@@ -44,8 +44,22 @@ class SyncPlanRequest(BaseModel):
 
 @router.get("/sync/status")
 def sync_status() -> sync.SyncStatus:
-    """Return the current sync lifecycle state (idle/running/success/failed) and its safe message."""
+    """Return the current sync lifecycle state (idle/running/stopping/success/failed/
+    cancelled) and its safe message."""
     return sync.get_sync_status()
+
+
+@router.post("/sync/stop")
+def stop_sync() -> dict:
+    """Request cancellation of the active sync, manual or startup-origin, idempotently.
+
+    Returns `{"stopping": true}` when a running sync transitions to stopping or one is
+    already stopping. Returns 409 with a fixed safe detail when no sync is active
+    (idle or a terminal state), which never mutates any result.
+    """
+    if not sync.request_stop():
+        raise HTTPException(status_code=409, detail="No sync in progress")
+    return {"stopping": True}
 
 
 @router.post("/sync/trigger")

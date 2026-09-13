@@ -6,6 +6,8 @@
   --surface-glass: rgba(255, 255, 255, 0.75);
   --border: #e2e8f0;
   --border-light: rgba(255, 255, 255, 0.6);
+  /* --text-heading (#111827) at 45% opacity, for a modal backdrop scrim. */
+  --overlay: rgba(17, 24, 39, 0.45);
 
   --blue: #1a73e8;
   --blue-dark: #1557b0;
@@ -154,6 +156,30 @@ input, select {
 .btn-ghost:hover {
   background: var(--blue-light);
   border-color: var(--blue);
+}
+
+/* Danger button, for destructive/irreversible-feeling actions like stopping a sync. */
+.btn-danger {
+  background: var(--red);
+  color: #fff;
+  border: none;
+  border-radius: var(--radius-sm);
+  padding: 0.5rem 1rem;
+  font-size: 13px;
+  font-weight: 600;
+  cursor: pointer;
+  transition: opacity 0.15s, transform 0.1s;
+}
+
+.btn-danger:hover {
+  opacity: 0.92;
+  transform: translateY(-1px);
+}
+
+.btn-danger:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+  transform: none;
 }
 
 /* Back button */

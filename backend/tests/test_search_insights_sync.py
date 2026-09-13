@@ -317,7 +317,7 @@ class SyncSearchRelatedInsightsStageTest(unittest.TestCase):
         mock.patch("sync.stages.database.get_owned_video_ids", return_value=["v1", "v2"]).start()
         upsert = mock.patch("sync.stages.database.upsert_search_terms", return_value=1).start()
 
-        def fetch_side_effect(video_id: str, start: str, end: str, title: str | None = None) -> analytics_api.SearchTermsResult:
+        def fetch_side_effect(video_id: str, start: str, end: str, **kwargs: object) -> analytics_api.SearchTermsResult:
             if video_id == "v2":
                 raise RuntimeError("quota exceeded")
             return analytics_api.SearchTermsResult(raw_row_count=1, terms=[{"search_term": "cats", "views": 1}])

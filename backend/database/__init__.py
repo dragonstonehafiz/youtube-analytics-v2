@@ -42,6 +42,7 @@ from .search_terms import (
     upsert_search_terms,
 )
 from .sync_runs import (
+    cancel_sync_run,
     complete_sync_run,
     create_sync_run,
     fail_sync_run,
@@ -71,6 +72,7 @@ from .videos import (
 )
 
 __all__ = [
+    "cancel_sync_run",
     "complete_sync_run",
     "create_sync_run",
     "delete_orphan_comment_authors",
