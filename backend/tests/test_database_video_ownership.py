@@ -345,3 +345,35 @@ class PublishedThroughWorklistBoundaryTest(IsolatedDatabaseTestCase):
     def test_unbounded_call_still_returns_every_owned_video(self) -> None:
         ids = set(database.get_owned_video_ids())
         self.assertEqual(ids, {"v-before", "v-on-bound-early", "v-on-bound-late", "v-after", "v-unknown"})
+
+
+class WorklistOrderTest(IsolatedDatabaseTestCase):
+    """get_owned_video_ids() must return a deterministic oldest-first order regardless
+    of insertion order: dated rows ascending by published_at, ties broken by ascending
+    id, then undated rows last ordered by ascending id. Every SQL-backed per-video sync
+    stage relies on this single worklist for its processing order."""
+
+    def setUp(self) -> None:
+        super().setUp()
+        # IDs are deliberately anti-correlated with publication date — the oldest video
+        # ("v-z") has the lexically latest ID and the newest video ("v-a") has the
+        # lexically earliest — so an incorrect implementation ordering by id alone (or
+        # by insertion/primary-key order) cannot coincidentally pass. "v-m"/"v-n" share
+        # a timestamp to prove ties still break by ascending id, and "v-x"/"v-y" are
+        # undated to prove undated rows sort last, also by ascending id.
+        database.upsert_own_video(make_video("v-a", "Newest", published_at="2024-03-01T00:00:00Z"))
+        database.upsert_own_video(make_video("v-x", "Undated 1"))
+        database.upsert_own_video(make_video("v-n", "Tied 2", published_at="2024-02-01T00:00:00Z"))
+        database.upsert_own_video(make_video("v-z", "Oldest", published_at="2024-01-01T00:00:00Z"))
+        database.upsert_own_video(make_video("v-y", "Undated 2"))
+        database.upsert_own_video(make_video("v-m", "Tied 1", published_at="2024-02-01T00:00:00Z"))
+        with database.get_connection() as conn:
+            conn.execute("UPDATE videos SET published_at = NULL WHERE id IN ('v-x', 'v-y')")
+
+    def test_unbounded_worklist_is_dated_oldest_first_then_id_tied_then_undated_by_id(self) -> None:
+        ids = database.get_owned_video_ids()
+        self.assertEqual(ids, ["v-z", "v-m", "v-n", "v-a", "v-x", "v-y"])
+
+    def test_bounded_worklist_keeps_the_same_relative_order_excluding_only_dated_rows_after_the_bound(self) -> None:
+        ids = database.get_owned_video_ids(published_through="2024-02-01")
+        self.assertEqual(ids, ["v-z", "v-m", "v-n", "v-x", "v-y"])

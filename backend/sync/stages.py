@@ -254,7 +254,9 @@ def sync_comments(scope: str, counts: SyncCounts) -> None:
 
     The worklist is `database.get_owned_video_ids()` and nothing else: this stage never
     discovers, refreshes, or looks up videos through YouTube, so a video absent from
-    SQLite simply has no comments imported until the videos stage adds it.
+    SQLite simply has no comments imported until the videos stage adds it. That helper
+    returns videos oldest-published-first (ID-tied, undated last), so this stage
+    processes them in that same order.
 
     scope="incremental" bounds each video independently. A video with stored comments is
     read newest-first only until the first comment already held locally, plus
@@ -348,7 +350,8 @@ def sync_video_analytics(scope: str, year: int | None, counts: SyncCounts) -> No
     stage's effective range end (see `_effective_range_end()`) before progress or
     per-video processing begins — a video uploaded after that date can have no data in
     range and so makes no API call, updates no progress, and emits no per-video log
-    record.
+    record. That worklist is oldest-published-first (ID-tied, undated last), so this
+    stage processes videos in that same order.
     """
     today = date.today()
     effective_end = _effective_range_end(scope, year, today - timedelta(days=1))
@@ -418,7 +421,8 @@ def sync_video_traffic_sources(scope: str, year: int | None, counts: SyncCounts)
     stage's effective range end (see `_effective_range_end()`) before progress or
     per-video processing begins — a video uploaded after that date can have no data in
     range and so makes no API call, updates no progress, and emits no per-video log
-    record.
+    record. That worklist is oldest-published-first (ID-tied, undated last), so this
+    stage processes videos in that same order.
     """
     today = date.today()
     effective_end = _effective_range_end(scope, year, today - timedelta(days=1))
@@ -502,7 +506,8 @@ def sync_search_insights(scope: str, year: int | None, counts: SyncCounts) -> No
     stage's effective range end (see `_effective_range_end()`) before progress or
     per-video processing begins — a video uploaded after that date can have no data in
     range and so makes no API call, updates no progress, and emits no per-video log
-    record.
+    record. That worklist is oldest-published-first (ID-tied, undated last), so this
+    stage processes videos in that same order.
     """
     today = date.today()
     yesterday = today - timedelta(days=1)
@@ -598,7 +603,8 @@ def sync_related_video_insights(scope: str, year: int | None, counts: SyncCounts
     stage's effective range end (see `_effective_range_end()`) before progress or
     per-video processing begins — a video uploaded after that date can have no data in
     range and so makes no API call, updates no progress, and emits no per-video log
-    record.
+    record. That worklist is oldest-published-first (ID-tied, undated last), so this
+    stage processes videos in that same order.
     """
     today = date.today()
     yesterday = today - timedelta(days=1)
