@@ -123,7 +123,8 @@ def get_aggregated_traffic_sources(
         conditions.append("vts.date <= ?")
         params.append(end_date)
     if title:
-        conditions.append("v.title LIKE ?")
+        conditions.append("(v.title LIKE ? OR v.id LIKE ?)")
+        params.append(f"%{title}%")
         params.append(f"%{title}%")
 
     where = " AND ".join(conditions)
@@ -183,7 +184,8 @@ def get_top_videos_by_traffic_source(
         conditions.append("vts.date <= ?")
         params.append(end_date)
     if title:
-        conditions.append("v.title LIKE ?")
+        conditions.append("(v.title LIKE ? OR v.id LIKE ?)")
+        params.append(f"%{title}%")
         params.append(f"%{title}%")
 
     where = " AND ".join(conditions)

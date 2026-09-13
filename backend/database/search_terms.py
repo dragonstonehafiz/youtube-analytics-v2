@@ -80,7 +80,8 @@ def _search_terms_conditions(
         conditions.append("v.privacy_status = ?")
         params.append(privacy_status)
     if title:
-        conditions.append("v.title LIKE ?")
+        conditions.append("(v.title LIKE ? OR v.id LIKE ?)")
+        params.append(f"%{title}%")
         params.append(f"%{title}%")
     return conditions, params
 

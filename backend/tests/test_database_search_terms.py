@@ -176,6 +176,16 @@ class GetSearchTermsTest(SearchInsightsReportingTestCase):
         rows = database.get_search_terms(start_date="2024-01-01", end_date="2024-01-31", title="alpha")
         self.assertEqual({r["search_term"] for r in rows}, {"cats", "dogs"})
 
+    def test_title_filter_matches_video_id(self) -> None:
+        rows = database.get_search_terms(start_date="2024-01-01", end_date="2024-01-31", title="v-1")
+        self.assertEqual({r["search_term"] for r in rows}, {"cats", "dogs"})
+
+    def test_title_filter_id_match_combines_with_content_type(self) -> None:
+        rows = database.get_search_terms(
+            start_date="2024-01-01", end_date="2024-01-31", title="v-1", content_type="short",
+        )
+        self.assertEqual(rows, [])
+
     def test_video_ids_scope_limits_to_those_videos(self) -> None:
         rows = database.get_search_terms(start_date="2024-01-01", end_date="2024-01-31", video_ids=["v-2"])
         self.assertEqual([(r["search_term"], r["views"]) for r in rows], [("cats", 3)])
@@ -267,6 +277,10 @@ class GetVideosBySearchTermTest(SearchInsightsReportingTestCase):
     def test_missing_dates_return_every_month(self) -> None:
         videos = database.get_videos_by_search_term("cats")
         self.assertEqual([v["id"] for v in videos], ["v-1", "v-2"])
+
+    def test_title_filter_matches_video_id(self) -> None:
+        videos = database.get_videos_by_search_term("cats", start_date="2024-01-01", end_date="2024-01-31", title="v-2")
+        self.assertEqual([v["id"] for v in videos], ["v-2"])
 
 
 if __name__ == "__main__":

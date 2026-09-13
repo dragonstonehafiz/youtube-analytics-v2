@@ -135,7 +135,8 @@ def get_aggregated_analytics(
         conditions.append("va.date <= ?")
         params.append(end_date)
     if title:
-        conditions.append("v.title LIKE ?")
+        conditions.append("(v.title LIKE ? OR v.id LIKE ?)")
+        params.append(f"%{title}%")
         params.append(f"%{title}%")
 
     where = " AND ".join(conditions)
@@ -212,7 +213,8 @@ def get_top_videos_by_views(
         conditions.append("va.date <= ?")
         params.append(end_date)
     if title:
-        conditions.append("v.title LIKE ?")
+        conditions.append("(v.title LIKE ? OR v.id LIKE ?)")
+        params.append(f"%{title}%")
         params.append(f"%{title}%")
 
     where = " AND ".join(conditions)

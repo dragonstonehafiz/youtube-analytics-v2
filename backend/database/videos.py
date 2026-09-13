@@ -96,7 +96,8 @@ def get_all_videos(
     conditions: list[str] = ["v.own = 1"]
     params: list[object] = []
     if title:
-        conditions.append("v.title LIKE ?")
+        conditions.append("(v.title LIKE ? OR v.id LIKE ?)")
+        params.append(f"%{title}%")
         params.append(f"%{title}%")
     if start_date:
         conditions.append("v.published_at >= ?")
@@ -183,7 +184,8 @@ def get_videos_published(
         conditions.append("v.privacy_status = ?")
         params.append(privacy_status)
     if title:
-        conditions.append("v.title LIKE ?")
+        conditions.append("(v.title LIKE ? OR v.id LIKE ?)")
+        params.append(f"%{title}%")
         params.append(f"%{title}%")
     where = " AND ".join(conditions)
     with get_connection() as conn:
@@ -284,7 +286,8 @@ def get_video_stats(
     conditions: list[str] = ["v.own = 1"]
     params: list[object] = []
     if title:
-        conditions.append("v.title LIKE ?")
+        conditions.append("(v.title LIKE ? OR v.id LIKE ?)")
+        params.append(f"%{title}%")
         params.append(f"%{title}%")
     if content_type:
         conditions.append("v.content_type = ?")
@@ -388,7 +391,8 @@ def get_playlist_video_stats(
     ]
     params: list[object] = [playlist_id]
     if title:
-        conditions.append("v.title LIKE ?")
+        conditions.append("(v.title LIKE ? OR v.id LIKE ?)")
+        params.append(f"%{title}%")
         params.append(f"%{title}%")
     if content_type:
         conditions.append("v.content_type = ?")

@@ -28,6 +28,12 @@ Public FastAPI contracts: every route, its parameters, defaults, and response sh
 - All list endpoints return `{ items: [...] }`; paginated endpoints additionally return `{ total, page, page_size }`.
 - Date filters are always optional query params named `start_date`/`end_date` (ISO `YYYY-MM-DD`).
 - `content_type` ∈ `video` | `short`; `privacy_status` ∈ `public` | `private` | `unlisted`. Both are optional filters on nearly every endpoint below.
+- Every `title`/`video_title` query parameter below is a case-insensitive substring match against **either** the
+  relevant entity's title **or** its ID (see `database.md`'s Title filter note): a video's `title` matches
+  `videos.title` or `videos.id`, a playlist's `title` (on `/playlists`) matches `playlists.title` or
+  `playlists.id`, `video_title` on the comments routes matches the parent video's title or ID, and `title` on
+  the Related Videos routes matches only the *target* video's title or ID, never a referrer's. The parameter
+  name and response shape are unchanged; this only widens what a supplied value can match.
 - 404s are raised explicitly wherever a route takes a `video_id`/`playlist_id` path param and the row doesn't exist (every playlist-scoped route in `routes/playlists.py`/`routes/analytics.py` and every single-video route in `routes/videos.py`). A `video_id` naming an external (`own=false`) video — one known only as a Related Video referrer — 404s identically to an unknown one, on every route below that takes one.
 - Every `Video` payload carries `own: boolean` — `true` for a channel-owned video, `false` for an external video whose metadata was pulled in as a Related Video referrer (see `database.md`'s ownership boundary). Every video-listing/lookup route below returns only `own=true` rows; `own=false` rows are exposed solely as referrer metadata on the [Related videos](#related-videos) endpoints.
 
@@ -168,10 +174,10 @@ separate endpoints with their own query parameters, response envelopes, error be
 `limit=10` on the two top routes.
 
 All nine routes above (the four channel-analytics routes, `/videos/published`, and the four
-playlist-analytics routes) accept `title` as an optional query parameter, applying the same
-parameterized `v.title LIKE ?` (bound to `%{title}%`) case-insensitive partial-match predicate as `/videos` and
-`/videos/stats` (see `database.md`) — combined with any other supplied filters via `AND`, and,
-on playlist routes, with the video-ID scope. Omitting `title` produces
+playlist-analytics routes) accept `title` as an optional query parameter, matching the video's title
+or ID (see `database.md`'s Title filter note) — the same parameterized, case-insensitive
+partial-match predicate as `/videos` and `/videos/stats` — combined with any other supplied filters
+via `AND`, and, on playlist routes, with the video-ID scope. Omitting `title` produces
 identical results to before this filter existed.
 
 ## Search insights
@@ -272,7 +278,7 @@ GET  /comments
   sort_by ∈ newest | oldest | likes — a value outside that set is a 422, not a silent fallback
   → { items: Comment[], total, page, page_size }
   text/video_title/author are case-insensitive substring matches on the comment body, the parent
-  video's title, and the commenter's display name. start_date/end_date filter the comment's own
+  video's title or ID, and the commenter's display name. start_date/end_date filter the comment's own
   published_at, not the video's. Every row carries the joined author snapshot plus video_title,
   video_content_type, and video_thumbnail_url — see database.md.
 

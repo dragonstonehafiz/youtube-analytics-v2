@@ -303,6 +303,19 @@ class GetRelatedVideoReferrersTest(IsolatedDatabaseTestCase):
         self.assertIsNone(item["thumbnail_url"])
         self.assertIsNone(item["referrer_own"])
 
+    def test_title_filter_matches_target_video_id(self) -> None:
+        database.upsert_related_videos("v-1", "2024-01", [make_related_referrer("ref-mine", views=5)])
+        database.upsert_related_videos("v-2", "2024-01", [make_related_referrer("ref-mine", views=4)])
+        result = database.get_related_video_referrers(title="v-1")
+        self.assertEqual(result["items"][0]["views"], 5)
+        self.assertEqual(result["total_named_views"], 5)
+
+    def test_title_filter_does_not_match_a_referrer_id(self) -> None:
+        database.upsert_related_videos("v-1", "2024-01", [make_related_referrer("ref-mine", views=5)])
+        result = database.get_related_video_referrers(title="ref-mine")
+        self.assertEqual(result["items"], [])
+        self.assertEqual(result["total_named_views"], 0)
+
     def test_resolved_referrer_own_is_a_real_boolean(self) -> None:
         database.upsert_related_videos("v-1", "2024-01", [
             make_related_referrer("ref-mine", views=5),

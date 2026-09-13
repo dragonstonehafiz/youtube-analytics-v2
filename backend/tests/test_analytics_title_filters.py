@@ -4,6 +4,7 @@ import unittest
 
 import database
 from routes.analytics import router as analytics_router
+from routes.playlists import router as playlists_router
 from routes.videos import router as videos_router
 from tests.support import IsolatedDatabaseTestCase, create_test_client
 
@@ -13,7 +14,7 @@ class TitleFilterTestCase(IsolatedDatabaseTestCase):
 
     def setUp(self) -> None:
         super().setUp()
-        self.client = create_test_client(analytics_router, videos_router)
+        self.client = create_test_client(analytics_router, videos_router, playlists_router)
         self._seed()
 
     def _seed(self) -> None:
@@ -122,6 +123,42 @@ class ChannelRouteTitleFilterTest(TitleFilterTestCase):
         survivors = self._get("/videos/published")
         self.assertEqual({row["id"] for row in survivors["items"]}, {"v-in", "v-out", "v-other"})
 
+    def test_aggregated_analytics_matches_video_id(self) -> None:
+        body = self._get("/analytics/videos", title="v-other", start_date="2024-01-01", end_date="2024-01-31")
+        total_views = sum(row["views"] for row in body["items"])
+        self.assertEqual(total_views, 300)
+
+    def test_top_videos_by_views_matches_video_id(self) -> None:
+        body = self._get("/analytics/videos/top", title="v-in", start_date="2024-01-01", end_date="2024-01-31")
+        ids = {row["id"] for row in body["items"]}
+        self.assertEqual(ids, {"v-in"})
+
+    def test_published_videos_matches_video_id(self) -> None:
+        body = self._get("/videos/published", title="v-out")
+        ids = {row["id"] for row in body["items"]}
+        self.assertEqual(ids, {"v-out"})
+
+    def test_traffic_sources_matches_video_id(self) -> None:
+        body = self._get("/analytics/traffic-sources", title="v-other", start_date="2024-01-01", end_date="2024-01-31")
+        total_views = sum(row["views"] for row in body["items"])
+        self.assertEqual(total_views, 300)
+
+    def test_top_videos_by_traffic_source_matches_video_id(self) -> None:
+        body = self._get("/analytics/traffic-sources/top", title="v-in", start_date="2024-01-01", end_date="2024-01-31")
+        ids = {row["id"] for row in body["items"].get("SEARCH", [])}
+        self.assertEqual(ids, {"v-in"})
+
+    def test_top_videos_by_views_matches_case_insensitive_partial_id(self) -> None:
+        body = self._get("/analytics/videos/top", title="V-OTH", start_date="2024-01-01", end_date="2024-01-31")
+        ids = {row["id"] for row in body["items"]}
+        self.assertEqual(ids, {"v-other"})
+
+    def test_video_stats_matches_case_insensitive_partial_id(self) -> None:
+        body = self._get("/videos/stats", title="V-OTH", start_date="2024-01-01", end_date="2024-01-31")
+        self.assertEqual(body["new_short_count"], 1)
+        self.assertEqual(body["new_short_views"], 300)
+        self.assertEqual(body["new_video_count"], 0)
+
     def test_invalid_sort_by_still_returns_422(self) -> None:
         response = self.client.get("/analytics/videos/top", params={"sort_by": "bogus"})
         self.assertEqual(response.status_code, 422)
@@ -165,6 +202,27 @@ class PlaylistRouteTitleFilterTest(TitleFilterTestCase):
     def test_unknown_playlist_still_returns_404(self) -> None:
         response = self.client.get("/analytics/playlists/does-not-exist", params={"title": "series"})
         self.assertEqual(response.status_code, 404)
+
+    def test_playlist_top_videos_matches_video_id(self) -> None:
+        body = self._get("/analytics/playlists/p1/top", title="v-in", start_date="2024-01-01", end_date="2024-01-31")
+        ids = {row["id"] for row in body["items"]}
+        self.assertEqual(ids, {"v-in"})
+
+    def test_playlist_top_videos_id_match_excludes_out_of_playlist_video(self) -> None:
+        """v-out's ID matches, but it is not a member of playlist p1."""
+        body = self._get("/analytics/playlists/p1/top", title="v-out", start_date="2024-01-01", end_date="2024-01-31")
+        self.assertEqual(body["items"], [])
+
+    def test_playlist_video_stats_matches_case_insensitive_partial_id(self) -> None:
+        body = self._get("/playlists/p1/videos/stats", title="V-IN", start_date="2024-01-01", end_date="2024-01-31")
+        self.assertEqual(body["new_video_count"], 1)
+        self.assertEqual(body["new_video_views"], 100)
+
+    def test_playlist_video_stats_id_match_excludes_out_of_playlist_video(self) -> None:
+        """v-out's ID matches, but it is not a member of playlist p1."""
+        body = self._get("/playlists/p1/videos/stats", title="v-out", start_date="2024-01-01", end_date="2024-01-31")
+        self.assertEqual(body["new_video_count"], 0)
+        self.assertEqual(body["new_video_views"], 0)
 
     def test_omitted_title_backward_compatible(self) -> None:
         body = self._get("/analytics/playlists/p1/top", start_date="2024-01-01", end_date="2024-01-31")
