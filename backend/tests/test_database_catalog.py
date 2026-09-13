@@ -131,6 +131,19 @@ class GetAllVideosFilterTest(VideoCatalogTestCase):
         self.assertEqual(items, [])
         self.assertEqual(total, 0)
 
+    def test_title_filter_matches_video_id(self) -> None:
+        items, total = database.get_all_videos(title="v-3")
+        self.assertEqual({i["id"] for i in items}, {"v-3"})
+        self.assertEqual(total, 1)
+
+    def test_id_match_combines_with_other_filters_and_pagination(self) -> None:
+        items, total = database.get_all_videos(title="v-3", content_type="short", page=1, page_size=10)
+        self.assertEqual([i["id"] for i in items], ["v-3"])
+        self.assertEqual(total, 1)
+        items, total = database.get_all_videos(title="v-3", content_type="video", page=1, page_size=10)
+        self.assertEqual(items, [])
+        self.assertEqual(total, 0)
+
 
 class GetVideoTest(VideoCatalogTestCase):
     def test_unknown_video_returns_none(self) -> None:
@@ -175,6 +188,12 @@ class GetAllPlaylistsTest(PlaylistCatalogTestCase):
         self._seed_sortable_playlists()
         items, _ = database.get_all_playlists(title="beta")
         self.assertEqual({p["id"] for p in items}, {"p-2"})
+
+    def test_title_filter_matches_playlist_id_when_title_does_not_contain_term(self) -> None:
+        self._seed_sortable_playlists()
+        items, total = database.get_all_playlists(title="p-2")
+        self.assertEqual({p["id"] for p in items}, {"p-2"})
+        self.assertEqual(total, 1)
 
     def test_publication_date_bounds_are_inclusive(self) -> None:
         self._seed_sortable_playlists()
@@ -266,6 +285,14 @@ class GetPlaylistVideosTest(PlaylistCatalogTestCase):
     def test_combined_filters_scoped_to_playlist(self) -> None:
         items, _ = database.get_playlist_videos("p-1", title="alpha")
         self.assertEqual([i["id"] for i in items], ["v-1"])
+
+    def test_title_filter_matches_video_id_scoped_to_playlist(self) -> None:
+        items, total = database.get_playlist_videos("p-1", title="v-1")
+        self.assertEqual([i["id"] for i in items], ["v-1"])
+        self.assertEqual(total, 1)
+        items, total = database.get_playlist_videos("p-1", title="v-3")
+        self.assertEqual(items, [])
+        self.assertEqual(total, 0)
 
 
 if __name__ == "__main__":

@@ -50,7 +50,8 @@ def get_all_playlists(
     conditions: list[str] = []
     params: list[object] = []
     if title:
-        conditions.append("p.title LIKE ?")
+        conditions.append("(p.title LIKE ? OR p.id LIKE ?)")
+        params.append(f"%{title}%")
         params.append(f"%{title}%")
     if start_date:
         conditions.append("p.published_at >= ?")
@@ -176,7 +177,8 @@ def get_playlist_videos(
     conditions: list[str] = ["pi.playlist_id = ?", "v.own = 1"]
     params: list[object] = [playlist_id]
     if title:
-        conditions.append("v.title LIKE ?")
+        conditions.append("(v.title LIKE ? OR v.id LIKE ?)")
+        params.append(f"%{title}%")
         params.append(f"%{title}%")
     if start_date:
         conditions.append("v.published_at >= ?")

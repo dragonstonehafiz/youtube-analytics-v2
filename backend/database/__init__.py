@@ -41,7 +41,9 @@ from .search_terms import (
     get_videos_by_search_term,
     upsert_search_terms,
 )
+from .sync_coverage import get_covered_periods, upsert_coverage
 from .sync_runs import (
+    cancel_sync_run,
     complete_sync_run,
     create_sync_run,
     fail_sync_run,
@@ -71,6 +73,7 @@ from .videos import (
 )
 
 __all__ = [
+    "cancel_sync_run",
     "complete_sync_run",
     "create_sync_run",
     "delete_orphan_comment_authors",
@@ -86,6 +89,7 @@ __all__ = [
     "get_comment_ids_for_video",
     "get_comments",
     "get_connection",
+    "get_covered_periods",
     "get_earliest_published_year",
     "get_fx_rates",
     "get_last_analytics_date",
@@ -118,6 +122,7 @@ __all__ = [
     "init_db",
     "upsert_comment",
     "upsert_comment_author",
+    "upsert_coverage",
     "upsert_fx_rate",
     "upsert_own_video",
     "upsert_playlist",

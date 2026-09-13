@@ -404,7 +404,8 @@ class VideoAnalyticsStageDetailLoggingTest(unittest.TestCase):
         mock.patch(
             "sync.stages.database.get_owned_video", return_value={"published_at": "2020-01-01T00:00:00Z", "title": "Eligible Video"}
         ).start()
-        mock.patch("sync.stages.database.get_last_analytics_date", return_value=None).start()
+        mock.patch("sync.stages.database.get_covered_periods", return_value=set()).start()
+        mock.patch("sync.stages.database.upsert_coverage").start()
         mock.patch("sync.stages.database.upsert_video_analytics").start()
         mock.patch("sync.stages.youtube.iter_video_analytics", return_value=iter([])).start()
         counts = SyncCounts()
@@ -420,7 +421,8 @@ class VideoAnalyticsStageDetailLoggingTest(unittest.TestCase):
         mock.patch(
             "sync.stages.database.get_owned_video", return_value={"published_at": "2020-01-01T00:00:00Z", "title": "Sample Video"}
         ).start()
-        mock.patch("sync.stages.database.get_last_analytics_date", return_value=None).start()
+        mock.patch("sync.stages.database.get_covered_periods", return_value=set()).start()
+        mock.patch("sync.stages.database.upsert_coverage").start()
         upsert_mock = mock.patch("sync.stages.database.upsert_video_analytics").start()
         rows = [{"video_id": "v1", "date": "2020-01-01"}, {"video_id": "v1", "date": "2020-01-02"}]
         mock.patch("sync.stages.youtube.iter_video_analytics", return_value=iter(rows)).start()
@@ -440,7 +442,8 @@ class VideoAnalyticsStageDetailLoggingTest(unittest.TestCase):
         mock.patch(
             "sync.stages.database.get_owned_video", return_value={"published_at": "2020-01-01T00:00:00Z", "title": "Sample Video"}
         ).start()
-        mock.patch("sync.stages.database.get_last_analytics_date", return_value=None).start()
+        mock.patch("sync.stages.database.get_covered_periods", return_value=set()).start()
+        mock.patch("sync.stages.database.upsert_coverage").start()
         mock.patch("sync.stages.database.upsert_video_analytics").start()
         rows = [{"video_id": "v1", "date": f"2020-01-{i:02d}"} for i in range(1, 11)]
         mock.patch("sync.stages.youtube.iter_video_analytics", return_value=iter(rows)).start()
@@ -514,7 +517,8 @@ class VideoTrafficSourcesStageDetailLoggingTest(unittest.TestCase):
         mock.patch(
             "sync.stages.database.get_owned_video", return_value={"published_at": "2020-01-01T00:00:00Z", "title": "Sample Video"}
         ).start()
-        mock.patch("sync.stages.database.get_last_traffic_source_date", return_value=None).start()
+        mock.patch("sync.stages.database.get_covered_periods", return_value=set()).start()
+        mock.patch("sync.stages.database.upsert_coverage").start()
         upsert_mock = mock.patch("sync.stages.database.upsert_video_traffic_source").start()
         rows = [{"video_id": "v1", "date": "2020-01-01", "traffic_source_type": "YT_SEARCH"}]
         mock.patch("sync.stages.youtube.iter_video_traffic_sources", return_value=iter(rows)).start()
@@ -606,6 +610,7 @@ class RelatedVideoInsightsStageDetailLoggingTest(unittest.TestCase):
         mock.patch(
             "sync.stages.database.get_owned_video", return_value={"published_at": "2020-01-01T00:00:00Z", "title": "Sample Video"}
         ).start()
+        mock.patch("sync.stages.database.upsert_coverage").start()
         upsert_mock = mock.patch("sync.stages.database.upsert_related_videos", return_value=1).start()
         result = analytics_api.RelatedVideosResult(
             raw_row_count=1, referrers=[{"referrer_video_id": "ref-1", "views": 5}]
@@ -636,7 +641,8 @@ class RelatedVideoInsightsStageDetailLoggingTest(unittest.TestCase):
         mock.patch(
             "sync.stages.database.get_owned_video", return_value={"published_at": "2020-01-01T00:00:00Z", "title": "Sample Video"}
         ).start()
-        mock.patch("sync.stages.database.get_last_related_videos_month", return_value="2020-01").start()
+        mock.patch("sync.stages.database.get_covered_periods", return_value=set()).start()
+        mock.patch("sync.stages.database.upsert_coverage").start()
         mock.patch("sync.stages.database.upsert_related_videos", return_value=0).start()
         mock.patch(
             "sync.stages.youtube.fetch_video_related_videos",

@@ -96,7 +96,8 @@ def get_all_videos(
     conditions: list[str] = ["v.own = 1"]
     params: list[object] = []
     if title:
-        conditions.append("v.title LIKE ?")
+        conditions.append("(v.title LIKE ? OR v.id LIKE ?)")
+        params.append(f"%{title}%")
         params.append(f"%{title}%")
     if start_date:
         conditions.append("v.published_at >= ?")
@@ -183,7 +184,8 @@ def get_videos_published(
         conditions.append("v.privacy_status = ?")
         params.append(privacy_status)
     if title:
-        conditions.append("v.title LIKE ?")
+        conditions.append("(v.title LIKE ? OR v.id LIKE ?)")
+        params.append(f"%{title}%")
         params.append(f"%{title}%")
     where = " AND ".join(conditions)
     with get_connection() as conn:
@@ -217,6 +219,12 @@ def get_owned_video_ids(published_through: str | None = None) -> list[str]:
     keeps its existing downstream (skip/fallback) handling instead of being silently
     excluded here. Omitting the argument (the default) returns the complete owned
     worklist, unchanged — this is what Comments continues to use.
+
+    Both bounded and unbounded calls return the same deterministic order: videos with a
+    known `published_at` first (oldest to newest), tied timestamps broken by ascending
+    `id`, then videos with a null `published_at` last, also ordered by ascending `id`.
+    Every per-video sync stage built on this worklist therefore processes videos
+    oldest-first without needing to sort the result itself.
     """
     conditions = ["own = 1"]
     params: list[str] = []
@@ -226,7 +234,13 @@ def get_owned_video_ids(published_through: str | None = None) -> list[str]:
         params.append(f"{exclusive_upper.isoformat()}T00:00:00")
     where = " AND ".join(conditions)
     with get_connection() as conn:
-        rows = conn.execute(f"SELECT id FROM videos WHERE {where}", params).fetchall()
+        rows = conn.execute(
+            f"""
+            SELECT id FROM videos WHERE {where}
+            ORDER BY (published_at IS NULL), published_at ASC, id ASC
+            """,
+            params,
+        ).fetchall()
     return [r["id"] for r in rows]
 
 
@@ -272,7 +286,8 @@ def get_video_stats(
     conditions: list[str] = ["v.own = 1"]
     params: list[object] = []
     if title:
-        conditions.append("v.title LIKE ?")
+        conditions.append("(v.title LIKE ? OR v.id LIKE ?)")
+        params.append(f"%{title}%")
         params.append(f"%{title}%")
     if content_type:
         conditions.append("v.content_type = ?")
@@ -376,7 +391,8 @@ def get_playlist_video_stats(
     ]
     params: list[object] = [playlist_id]
     if title:
-        conditions.append("v.title LIKE ?")
+        conditions.append("(v.title LIKE ? OR v.id LIKE ?)")
+        params.append(f"%{title}%")
         params.append(f"%{title}%")
     if content_type:
         conditions.append("v.content_type = ?")

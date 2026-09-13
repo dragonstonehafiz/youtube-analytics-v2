@@ -90,7 +90,7 @@ indefinitely and are safe to delete between runs.
 |---|---|
 | `server.py` | FastAPI app construction, CORS, lifespan (`init_db` → `mark_incomplete_sync_runs` → `start_background_scheduler`) |
 | `routes/videos.py`, `routes/playlists.py`, `routes/analytics.py`, `routes/comments.py`, `routes/synchronization.py`, `routes/metadata.py` | API route handlers, grouped by resource — thin wrappers around `database` helpers; `routes/__init__.py` aggregates them in a fixed order into one `router` |
-| `sync/status.py` | Global sync-status lifecycle (`idle \| running \| success \| failed`, plus message) and the `try_begin_sync()` reservation primitive, behind one lock |
+| `sync/status.py` | Global sync-status lifecycle (`idle \| running \| stopping \| success \| failed \| cancelled`, plus message) behind one lock, with `try_begin_sync()`/`request_stop()` reservation primitives and the `raise_if_stopping()` cooperative-cancellation checkpoint |
 | `sync/plans.py` | Plan types, canonical `STAGE_ORDER`, derived `FULL_SYNC_TYPES`, available years, `validate_plan()` |
 | `sync/orchestration.py` | `execute_plan()`/`run_plan()`, stage registry, selected-stage sequencing, `sync_runs` tracking |
 | `sync/stages.py` | The nine sync stage implementations plus the shared incremental-lookback calculation, the Related Video referrer metadata resolver, and the comment bootstrap cutoff |
@@ -151,6 +151,7 @@ backend/
     test_analytics_video_scopes.py, test_analytics_title_filters.py,
     test_sync_plans.py, test_sync_orchestration.py, test_sync_status.py,
     test_sync_scheduler.py, test_sync_routes.py, test_sync_checkpoint.py, test_sync_runs.py,
+    test_sync_cancellation.py,
     test_application_logging.py, test_sync_detail_logging.py,
     test_pagination_safety.py, test_comment_sync.py, test_comments_api.py,
     test_database_search_terms.py, test_search_insights_sync.py, test_search_insights_api.py,

@@ -122,6 +122,16 @@ CREATE TABLE IF NOT EXISTS fx_rates (
     updated_at TEXT NOT NULL
 );
 
+CREATE TABLE IF NOT EXISTS sync_coverage (
+    collector TEXT NOT NULL,
+    video_id TEXT NOT NULL REFERENCES videos(id) ON DELETE CASCADE,
+    period_key TEXT NOT NULL,
+    completed_at TEXT NOT NULL,
+    PRIMARY KEY (collector, video_id, period_key)
+);
+
+CREATE INDEX IF NOT EXISTS idx_sync_coverage_video ON sync_coverage(video_id);
+
 CREATE TABLE IF NOT EXISTS sync_runs (
     id INTEGER PRIMARY KEY AUTOINCREMENT,
     batch_id TEXT NOT NULL,

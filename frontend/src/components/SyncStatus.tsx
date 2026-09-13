@@ -41,10 +41,27 @@ export default function SyncStatus() {
     )
   }
 
+  if (status.state === 'stopping') {
+    return (
+      <div className="sync-status stopping">
+        <span className="sync-status-dot" />
+        <span className="sync-status-message">{status.message || 'Stopping sync...'}</span>
+      </div>
+    )
+  }
+
   if (status.state === 'failed') {
     return (
       <div className="sync-status failed">
         <span className="sync-status-message">{status.message || 'Sync failed'}</span>
+      </div>
+    )
+  }
+
+  if (status.state === 'cancelled') {
+    return (
+      <div className="sync-status cancelled">
+        <span className="sync-status-idle">{status.message || 'Sync cancelled'}</span>
       </div>
     )
   }

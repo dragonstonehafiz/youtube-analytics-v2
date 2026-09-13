@@ -63,6 +63,8 @@ The initial sync pulls your channel's full history and can take a while for larg
 
 Comments are the one exception to "full history on first sync": the automatic sync imports top-level comments no further back than December 1 of the previous year. Choose **All** on the Comments row of the Sync page to pull the rest. Only top-level comments are stored — replies are counted but never downloaded.
 
+An active sync — manual or automatic — can be stopped from the Sync page with the **Stop sync** button. Stopping is cooperative: the current request or database write finishes first, so it may take a moment to take effect, and no data already saved is rolled back.
+
 ## Docker
 
 Make sure `backend/secrets/client_secret.json` and `backend/.env` exist (see Local setup above), then:

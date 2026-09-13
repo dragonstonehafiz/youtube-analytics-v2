@@ -13,17 +13,31 @@ import type {
 vi.mock('@/api', () => ({
   getSyncStatus: vi.fn(),
   triggerSync: vi.fn(),
+  stopSync: vi.fn(),
   getDateRange: vi.fn(),
   getSyncRuns: vi.fn(),
 }))
 
-import { getDateRange, getSyncRuns, getSyncStatus, triggerSync } from '@/api'
+import { getDateRange, getSyncRuns, getSyncStatus, stopSync, triggerSync } from '@/api'
 import Sync from '@/pages/Sync'
 
 const mockGetSyncStatus = vi.mocked(getSyncStatus)
 const mockGetSyncRuns = vi.mocked(getSyncRuns)
 const mockTriggerSync = vi.mocked(triggerSync)
+const mockStopSync = vi.mocked(stopSync)
 const mockGetDateRange = vi.mocked(getDateRange)
+
+// jsdom does not implement the native <dialog> modal methods; polyfill the minimal
+// open/close behaviour the component relies on so tests can drive it like a browser would.
+if (!HTMLDialogElement.prototype.showModal) {
+  HTMLDialogElement.prototype.showModal = function (this: HTMLDialogElement) {
+    this.setAttribute('open', '')
+  }
+  HTMLDialogElement.prototype.close = function (this: HTMLDialogElement) {
+    this.removeAttribute('open')
+    this.dispatchEvent(new Event('close'))
+  }
+}
 
 /** Raw values that must never reach the DOM through any history cell. */
 const SECRET_ERROR = 'TRACEBACK-SENTINEL-do-not-render'
@@ -129,6 +143,7 @@ beforeEach(() => {
   mockGetDateRange.mockResolvedValue({ earliest_year: 2022 })
   mockGetSyncRuns.mockResolvedValue(page([batch()]))
   mockTriggerSync.mockResolvedValue({ queued: true })
+  mockStopSync.mockResolvedValue({ stopping: true })
 })
 
 afterEach(() => {
@@ -259,12 +274,12 @@ describe('lifecycle feedback stays out of the page', () => {
     expect(screen.queryByText('Status unavailable')).toBeNull()
   })
 
-  it('keeps the button copy fixed while a sync is running', async () => {
+  it('replaces the submit action with Stop sync while a sync is running', async () => {
     mockGetSyncStatus.mockResolvedValue({ state: 'running', message: 'Syncing videos' })
     renderSync('/sync')
 
-    await waitFor(() =>
-      expect(screen.getByRole('button', { name: 'Sync selected' })).toHaveProperty('disabled', true))
+    await waitFor(() => expect(screen.getByRole('button', { name: 'Stop sync' })).toBeDefined())
+    expect(screen.queryByRole('button', { name: 'Sync selected' })).toBeNull()
     expect(screen.queryByText('Sync in progress')).toBeNull()
     expect(screen.queryByText('Syncing videos')).toBeNull()
   })
@@ -283,8 +298,16 @@ describe('the manual form is preserved', () => {
     mockGetSyncStatus.mockResolvedValue({ state: 'running', message: 'Syncing' })
     renderSync('/sync')
 
+    await waitFor(() => expect(screen.getByRole('button', { name: 'Stop sync' })).toBeDefined())
+    screen.getAllByRole('checkbox').forEach(box => expect(box).toHaveProperty('disabled', true))
+  })
+
+  it('locks every stage control while a sync is stopping', async () => {
+    mockGetSyncStatus.mockResolvedValue({ state: 'stopping', message: 'Stopping sync...' })
+    renderSync('/sync')
+
     await waitFor(() =>
-      expect(screen.getByRole('button', { name: 'Sync selected' })).toHaveProperty('disabled', true))
+      expect(screen.getByRole('button', { name: 'Stopping…' })).toHaveProperty('disabled', true))
     screen.getAllByRole('checkbox').forEach(box => expect(box).toHaveProperty('disabled', true))
   })
 
@@ -702,6 +725,7 @@ describe('status reporting', () => {
     ['failed', 'Failed'],
     ['running', 'Running'],
     ['incomplete', 'Incomplete'],
+    ['cancelled', 'Cancelled'],
   ] as const)('renders the backend batch status %s as %s', async (status, label) => {
     await renderBatch({ status })
 
@@ -955,6 +979,85 @@ describe('expanded stage details', () => {
     await expandFirst()
 
     expect(document.body.textContent).not.toContain(SECRET_BATCH_ID)
+  })
+})
+
+describe('stop sync workflow', () => {
+  const renderRunning = async () => {
+    mockGetSyncStatus.mockResolvedValue({ state: 'running', message: 'Syncing videos' })
+    renderSync('/sync')
+    await waitFor(() => expect(screen.getByRole('button', { name: 'Stop sync' })).toBeDefined())
+  }
+
+  it('opens a confirmation dialog on Stop sync', async () => {
+    await renderRunning()
+
+    fireEvent.click(screen.getByRole('button', { name: 'Stop sync' }))
+
+    const dialog = await screen.findByRole('dialog')
+    expect(within(dialog).getByText('Stop sync?')).toBeDefined()
+    expect(mockStopSync).not.toHaveBeenCalled()
+  })
+
+  it('dismissing via Keep syncing makes no API call and leaves the sync running', async () => {
+    await renderRunning()
+    fireEvent.click(screen.getByRole('button', { name: 'Stop sync' }))
+    await screen.findByRole('dialog')
+
+    fireEvent.click(screen.getByRole('button', { name: 'Keep syncing' }))
+
+    expect(mockStopSync).not.toHaveBeenCalled()
+    expect(screen.getByRole('button', { name: 'Stop sync' })).toBeDefined()
+  })
+
+  it('confirming issues exactly one stopSync call and shows a disabled Stopping… action', async () => {
+    await renderRunning()
+    fireEvent.click(screen.getByRole('button', { name: 'Stop sync' }))
+    await screen.findByRole('dialog')
+
+    fireEvent.click(within(screen.getByRole('dialog')).getByRole('button', { name: 'Stop sync' }))
+
+    await waitFor(() =>
+      expect(screen.getByRole('button', { name: 'Stopping…' })).toHaveProperty('disabled', true))
+    expect(mockStopSync).toHaveBeenCalledTimes(1)
+  })
+
+  it('repeated confirm clicks issue only one request', async () => {
+    let resolveStop: (value: { stopping: boolean }) => void = () => {}
+    mockStopSync.mockReturnValue(new Promise(resolve => { resolveStop = resolve }))
+    await renderRunning()
+    fireEvent.click(screen.getByRole('button', { name: 'Stop sync' }))
+    await screen.findByRole('dialog')
+    const confirm = within(screen.getByRole('dialog')).getByRole('button', { name: 'Stop sync' })
+
+    fireEvent.click(confirm)
+    fireEvent.click(confirm)
+    resolveStop({ stopping: true })
+
+    await waitFor(() => expect(screen.getByRole('button', { name: 'Stopping…' })).toBeDefined())
+    expect(mockStopSync).toHaveBeenCalledTimes(1)
+  })
+
+  it('a rejected stop request refreshes status and restores the normal action on a terminal result', async () => {
+    mockStopSync.mockRejectedValue(new Error('No sync in progress'))
+    await renderRunning()
+    fireEvent.click(screen.getByRole('button', { name: 'Stop sync' }))
+    await screen.findByRole('dialog')
+    mockGetSyncStatus.mockResolvedValue({ state: 'success', message: 'Sync complete' })
+
+    fireEvent.click(within(screen.getByRole('dialog')).getByRole('button', { name: 'Stop sync' }))
+
+    await waitFor(() => expect(screen.getByRole('button', { name: 'Sync selected' })).toBeDefined())
+    expect(screen.queryByRole('dialog')).toBeNull()
+  })
+
+  it('renders the stopping state distinctly in history and does not treat it as failure', async () => {
+    mockGetSyncRuns.mockResolvedValue(page([batch([run({ status: 'cancelled', error_message: null })], { status: 'cancelled' })]))
+    renderSync('/sync?tab=history')
+    await screen.findByRole('table')
+
+    expect(within(parentTable()).getAllByRole('cell')[1].textContent).toBe('Cancelled')
+    expect(document.body.textContent).not.toContain('Failed')
   })
 })
 

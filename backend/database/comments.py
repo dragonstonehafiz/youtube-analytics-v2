@@ -137,7 +137,8 @@ def _query_comments(
         conditions.append("c.text LIKE ?")
         params.append(f"%{text}%")
     if video_title:
-        conditions.append("v.title LIKE ?")
+        conditions.append("(v.title LIKE ? OR v.id LIKE ?)")
+        params.append(f"%{video_title}%")
         params.append(f"%{video_title}%")
     if author:
         conditions.append("ca.display_name LIKE ?")

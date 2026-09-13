@@ -8,7 +8,7 @@ from unittest import mock
 from googleapiclient.errors import HttpError
 
 from sync import stages
-from sync.monthly_insights import MonthlyWindow
+from sync.monthly_insights import MonthlyWindow, monthly_windows_for_range
 from sync.stages import SyncCounts
 from youtube import analytics_api
 
@@ -174,11 +174,12 @@ class SyncRelatedVideoInsightsStageTest(unittest.TestCase):
         self.windows_mock = mock.patch(
             "sync.stages.monthly_insights.monthly_search_windows", return_value=self.windows
         ).start()
+        # No published_at: these tests exercise the no-publish-date fallback (the fixed
+        # previous+current windows), independent of coverage — the coverage-driven
+        # incremental path has its own test class below.
         mock.patch("sync.stages.database.get_owned_video", return_value={"title": "T"}).start()
         mock.patch("sync.stages.status.update_sync_progress").start()
-        # These tests exercise the plain "already has data" incremental refresh path;
-        # the first-sync backfill path has its own test class below.
-        mock.patch("sync.stages.database.get_last_related_videos_month", return_value="2024-01").start()
+        mock.patch("sync.stages.database.upsert_coverage").start()
         # Metadata resolution is exercised by its own test class; keep it a no-op here.
         mock.patch("sync.stages.database.get_all_video_ids", return_value=[]).start()
         self.fetch_channel_identity = mock.patch(
@@ -272,7 +273,7 @@ class SyncRelatedVideoInsightsStageTest(unittest.TestCase):
         mock.patch("sync.stages.database.get_owned_video_ids", return_value=["v1", "v2"]).start()
         mock.patch("sync.stages.database.upsert_related_videos", return_value=1).start()
 
-        def fetch_side_effect(video_id: str, start: str, end: str) -> analytics_api.RelatedVideosResult:
+        def fetch_side_effect(video_id: str, start: str, end: str, **kwargs: object) -> analytics_api.RelatedVideosResult:
             if video_id == "v2":
                 raise RuntimeError("quota exceeded")
             return analytics_api.RelatedVideosResult(
@@ -304,6 +305,7 @@ class SyncRelatedVideoInsightsScopeTest(unittest.TestCase):
     def setUp(self) -> None:
         self.addCleanup(mock.patch.stopall)
         mock.patch("sync.stages.status.update_sync_progress").start()
+        mock.patch("sync.stages.database.upsert_coverage").start()
         mock.patch("sync.stages.database.get_all_video_ids", return_value=[]).start()
         mock.patch("sync.stages.youtube.fetch_channel_identity", return_value=("UC1", "UU1")).start()
         self.mock_date = mock.patch("sync.stages.date").start()
@@ -434,7 +436,7 @@ class SyncRelatedVideoInsightsScopeTest(unittest.TestCase):
             "sync.stages.database.get_owned_video",
             return_value={"title": "T", "published_at": "2024-01-20T00:00:00Z"},
         ).start()
-        mock.patch("sync.stages.database.get_last_related_videos_month", return_value=None).start()
+        mock.patch("sync.stages.database.get_covered_periods", return_value=set()).start()
         fetch = mock.patch(
             "sync.stages.youtube.fetch_video_related_videos",
             return_value=analytics_api.RelatedVideosResult(raw_row_count=0, referrers=[]),
@@ -452,12 +454,16 @@ class SyncRelatedVideoInsightsScopeTest(unittest.TestCase):
         self.assertEqual(calls, _monthly_calls("v1", *expected_months))
 
     def test_incremental_scope_collapses_to_fixed_two_windows_when_already_caught_up(self) -> None:
+        # "today" is frozen to 2024-03-15, so "already caught up" means every month
+        # through last month (2024-02) is covered — leaving exactly the forced
+        # previous+current refresh, same months re-fetched regardless of coverage.
         mock.patch("sync.stages.database.get_owned_video_ids", return_value=["v1"]).start()
         mock.patch(
             "sync.stages.database.get_owned_video",
             return_value={"title": "T", "published_at": "2020-01-01T00:00:00Z"},
         ).start()
-        mock.patch("sync.stages.database.get_last_related_videos_month", return_value="2024-02").start()
+        covered = {w.month for w in monthly_windows_for_range(date(2020, 1, 1), date(2024, 2, 29))}
+        mock.patch("sync.stages.database.get_covered_periods", return_value=covered).start()
         fetch = mock.patch(
             "sync.stages.youtube.fetch_video_related_videos",
             return_value=analytics_api.RelatedVideosResult(raw_row_count=0, referrers=[]),
@@ -474,12 +480,16 @@ class SyncRelatedVideoInsightsScopeTest(unittest.TestCase):
         self.assertEqual(calls, _monthly_calls("v1", *expected_months))
 
     def test_incremental_scope_closes_the_gap_left_by_an_interrupted_backfill(self) -> None:
+        # A video whose backfill was interrupted after 2023-10 must not be treated as
+        # "fully caught up" just because it has *some* coverage — it should resume from
+        # the first uncovered month forward, not silently skip the months in between.
         mock.patch("sync.stages.database.get_owned_video_ids", return_value=["v1"]).start()
         mock.patch(
             "sync.stages.database.get_owned_video",
             return_value={"title": "T", "published_at": "2020-01-01T00:00:00Z"},
         ).start()
-        mock.patch("sync.stages.database.get_last_related_videos_month", return_value="2023-11").start()
+        covered = {w.month for w in monthly_windows_for_range(date(2020, 1, 1), date(2023, 10, 31))}
+        mock.patch("sync.stages.database.get_covered_periods", return_value=covered).start()
         fetch = mock.patch(
             "sync.stages.youtube.fetch_video_related_videos",
             return_value=analytics_api.RelatedVideosResult(raw_row_count=0, referrers=[]),
@@ -647,7 +657,7 @@ class SyncRelatedVideoInsightsMetadataIntegrationTest(unittest.TestCase):
         self.addCleanup(mock.patch.stopall)
         mock.patch("sync.stages.status.update_sync_progress").start()
         mock.patch("sync.stages.database.get_owned_video", return_value={"title": "T"}).start()
-        mock.patch("sync.stages.database.get_last_related_videos_month", return_value="2024-01").start()
+        mock.patch("sync.stages.database.upsert_coverage").start()
         mock.patch(
             "sync.stages.monthly_insights.monthly_search_windows",
             return_value=[MonthlyWindow("2024-03", "2024-03-01", "2024-03-14")],

@@ -2,7 +2,7 @@ from __future__ import annotations
 
 import json
 import re
-from collections.abc import Iterator
+from collections.abc import Callable, Iterator
 from typing import Any
 
 from googleapiclient.discovery import build
@@ -33,6 +33,10 @@ AUTHOR_COMMENT_KEY_PREFIX = "comment:"
 _RECOVERABLE_COMMENT_REASONS = frozenset({"commentsDisabled", "videoNotFound"})
 
 _logger = get_logger("sync")
+
+
+def _noop_checkpoint() -> None:
+    """Default checkpoint for callers outside sync code: never signals cancellation."""
 
 
 def _data_client() -> Any:
@@ -149,9 +153,14 @@ def fetch_channel_identity() -> tuple[str, str]:
     return channel["id"], channel["contentDetails"]["relatedPlaylists"]["uploads"]
 
 
-def fetch_shorts_video_ids(uploads_playlist_id: str) -> tuple[set[str], bool]:
+def fetch_shorts_video_ids(
+    uploads_playlist_id: str, checkpoint: Callable[[], None] = _noop_checkpoint
+) -> tuple[set[str], bool]:
     """Return the set of video IDs that are Shorts via the UUSH playlist, and whether
     pagination ended early on an anomaly.
+
+    `checkpoint` is invoked before requesting each page after the first, letting a sync
+    caller stop cooperatively between pages; it defaults to a no-op for other callers.
 
     Raises RuntimeError if the UUSH playlist is unavailable.
     """
@@ -166,6 +175,8 @@ def fetch_shorts_video_ids(uploads_playlist_id: str) -> tuple[set[str], bool]:
     truncated = False
 
     while True:
+        if page > 0:
+            checkpoint()
         try:
             response = yt.playlistItems().list(
                 part="contentDetails",
@@ -193,7 +204,9 @@ def fetch_shorts_video_ids(uploads_playlist_id: str) -> tuple[set[str], bool]:
     return video_ids, truncated
 
 
-def fetch_all_video_ids(uploads_playlist_id: str) -> tuple[list[str], bool]:
+def fetch_all_video_ids(
+    uploads_playlist_id: str, checkpoint: Callable[[], None] = _noop_checkpoint
+) -> tuple[list[str], bool]:
     """Return all video IDs from the uploads playlist, and whether pagination ended
     early on an anomaly.
 
@@ -201,6 +214,9 @@ def fetch_all_video_ids(uploads_playlist_id: str) -> tuple[list[str], bool]:
     truncated result here is a partial view of the channel — never a complete one that
     happens to be short. `sync_videos()` reconciles deletions against this list and must
     skip that step when the flag is set.
+
+    `checkpoint` is invoked before requesting each page after the first, letting a sync
+    caller stop cooperatively between pages; it defaults to a no-op for other callers.
     """
     yt = _data_client()
     video_ids: list[str] = []
@@ -210,6 +226,8 @@ def fetch_all_video_ids(uploads_playlist_id: str) -> tuple[list[str], bool]:
     truncated = False
 
     while True:
+        if page > 0:
+            checkpoint()
         response = yt.playlistItems().list(
             part="contentDetails",
             playlistId=uploads_playlist_id,
@@ -273,9 +291,13 @@ def fetch_videos(video_ids: list[str]) -> list[dict]:
     return results
 
 
-def fetch_playlists() -> tuple[list[dict], bool]:
+def fetch_playlists(checkpoint: Callable[[], None] = _noop_checkpoint) -> tuple[list[dict], bool]:
     """Return all playlists for the authenticated channel, and whether pagination ended
-    early on an anomaly."""
+    early on an anomaly.
+
+    `checkpoint` is invoked before requesting each page after the first, letting a sync
+    caller stop cooperatively between pages; it defaults to a no-op for other callers.
+    """
     yt = _data_client()
     playlists: list[dict] = []
     seen_tokens: set[str] = set()
@@ -284,6 +306,8 @@ def fetch_playlists() -> tuple[list[dict], bool]:
     truncated = False
 
     while True:
+        if page > 0:
+            checkpoint()
         response = yt.playlists().list(
             part="snippet,contentDetails",
             mine=True,
@@ -320,13 +344,18 @@ def fetch_playlists() -> tuple[list[dict], bool]:
 
 
 def fetch_playlist_items(
-    playlist_id: str, playlist_title: str | None = None
+    playlist_id: str,
+    playlist_title: str | None = None,
+    checkpoint: Callable[[], None] = _noop_checkpoint,
 ) -> tuple[list[dict], bool]:
     """Return all items in a playlist, and whether pagination ended early on an anomaly.
 
     `playlist_title` is used only to name the playlist in this function's page log
     records; the playlistItems response carries video titles, not the owning
     playlist's, so the caller supplies it.
+
+    `checkpoint` is invoked before requesting each page after the first, letting a sync
+    caller stop cooperatively between pages; it defaults to a no-op for other callers.
 
     The cursor history is created here, per call, so paginating one playlist can never
     make another playlist's identical token look like a repeat.
@@ -339,6 +368,8 @@ def fetch_playlist_items(
     truncated = False
 
     while True:
+        if page > 0:
+            checkpoint()
         response = yt.playlistItems().list(
             part="snippet,contentDetails",
             playlistId=playlist_id,
@@ -431,11 +462,16 @@ def _normalize_comment_thread(item: dict, video_id: str) -> dict | None:
     }
 
 
-def iter_comment_threads(video_id: str, title: str | None = None) -> Iterator[dict]:
+def iter_comment_threads(
+    video_id: str, title: str | None = None, checkpoint: Callable[[], None] = _noop_checkpoint
+) -> Iterator[dict]:
     """Yield one video's top-level comments newest first, fetching a page at a time.
 
     Each yielded item is `{"author": {...}, "comment": {...}}`, shaped for
     `database.upsert_comment_author()` and `database.upsert_comment()` respectively.
+
+    `checkpoint` is invoked before requesting each page after the first, letting a sync
+    caller stop cooperatively between pages; it defaults to a no-op for other callers.
 
     One request carries at most COMMENT_THREADS_PAGE_SIZE comments and the next is only
     made once the consumer has worked through the previous ones, so a caller that stops
@@ -457,6 +493,8 @@ def iter_comment_threads(video_id: str, title: str | None = None) -> Iterator[di
     page = 0
 
     while True:
+        if page > 0:
+            checkpoint()
         try:
             response = yt.commentThreads().list(
                 part="snippet",

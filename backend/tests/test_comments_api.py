@@ -238,6 +238,19 @@ class ChannelCommentsRouteTest(SeededCommentsTestCase):
 
         self.assertEqual(sorted(self.ids(body)), ["c-mid", "c-old"])
 
+    def test_filters_by_video_id(self) -> None:
+        body = self.client.get("/comments", params={"video_title": "v-out"}).json()
+
+        self.assertEqual(self.ids(body), ["c-new"])
+
+    def test_video_id_filter_combines_with_other_filters_to_exclude_a_match(self) -> None:
+        body = self.client.get(
+            "/comments", params={"video_title": "v-out", "author": "bloggs"}
+        ).json()
+
+        self.assertEqual(body["items"], [])
+        self.assertEqual(body["total"], 0)
+
     def test_filters_by_author_display_name(self) -> None:
         body = self.client.get("/comments", params={"author": "bloggs"}).json()
 
@@ -300,6 +313,18 @@ class ScopedCommentsRouteTest(SeededCommentsTestCase):
         body = self.client.get("/comments/playlists/p1").json()
 
         self.assertNotIn("c-new", self.ids(body))
+
+    def test_playlist_scope_filters_by_video_id(self) -> None:
+        body = self.client.get("/comments/playlists/p1", params={"video_title": "v-also-in"}).json()
+
+        self.assertEqual(self.ids(body), ["c-mid"])
+        self.assertEqual(body["total"], 1)
+
+    def test_playlist_scope_video_id_of_non_member_video_matches_nothing(self) -> None:
+        body = self.client.get("/comments/playlists/p1", params={"video_title": "v-out"}).json()
+
+        self.assertEqual(body["items"], [])
+        self.assertEqual(body["total"], 0)
 
     def test_scoped_filters_and_sorts_still_apply(self) -> None:
         body = self.client.get(

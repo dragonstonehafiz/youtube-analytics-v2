@@ -18,6 +18,12 @@
   gap: 1.5rem;
 }
 
+/* .analytics-layout already supplies the gap above this grid; without this override,
+   TopVideosList's own top margin would push the table below the first sidebar card. */
+.analytics-main > .top-videos-section:first-child {
+  margin-top: 0;
+}
+
 @media (max-width: 1024px) {
   .analytics-layout {
     grid-template-columns: 1fr;

@@ -84,12 +84,32 @@ class AggregatedTrafficSourcesTest(IsolatedDatabaseTestCase):
         search_row = next(r for r in rows if r["traffic_source_type"] == "SEARCH" and r["date"] == "2024-01-01")
         self.assertEqual(search_row["views"], 70)
 
-    def test_missing_month_is_zero_filled_on_the_first_of_the_month_only(self) -> None:
+    def test_every_missing_intermediate_day_is_zero_filled_for_each_source_type(self) -> None:
         rows = database.get_video_traffic_sources("v-1", start_date="2024-01-01", end_date="2024-03-15")
         february_rows = [r for r in rows if r["date"].startswith("2024-02")]
-        self.assertEqual([r["date"] for r in february_rows], ["2024-02-01", "2024-02-01"])
+        self.assertEqual({r["date"] for r in february_rows}, {f"2024-02-{d:02d}" for d in range(1, 30)})
         self.assertEqual({r["traffic_source_type"] for r in february_rows}, {"SEARCH", "SUGGESTED"})
-        self.assertTrue(all(r["views"] == 0 for r in february_rows))
+        self.assertTrue(all(r["views"] == 0 and r["watch_time_minutes"] == 0 for r in february_rows))
+
+    def test_real_rows_are_preserved_alongside_zero_fill(self) -> None:
+        rows = database.get_video_traffic_sources("v-1", start_date="2024-01-01", end_date="2024-03-15")
+        by_key = {(r["date"], r["traffic_source_type"]): r for r in rows}
+        self.assertEqual(by_key[("2024-01-01", "SEARCH")]["views"], 30)
+        self.assertEqual(by_key[("2024-01-01", "SUGGESTED")]["views"], 20)
+        self.assertEqual(by_key[("2024-03-15", "SEARCH")]["views"], 5)
+
+    def test_explicit_mid_month_start_date_is_not_moved_back_to_the_first(self) -> None:
+        rows = database.get_video_traffic_sources("v-1", start_date="2024-03-10", end_date="2024-03-15")
+        self.assertEqual(min(r["date"] for r in rows), "2024-03-10")
+
+    def test_trailing_dates_after_the_last_real_row_are_trimmed(self) -> None:
+        rows = database.get_video_traffic_sources("v-1", start_date="2024-01-01", end_date="2024-06-01")
+        self.assertEqual(max(r["date"] for r in rows), "2024-03-15")
+
+    def test_synthetic_zero_rows_do_not_change_real_totals(self) -> None:
+        rows = database.get_video_traffic_sources("v-1", start_date="2024-01-01", end_date="2024-03-15")
+        self.assertEqual(sum(r["views"] for r in rows), 30 + 20 + 5)
+        self.assertEqual(sum(r["watch_time_minutes"] for r in rows), 10 + 5 + 2)
 
 
 class FxRatesTest(IsolatedDatabaseTestCase):

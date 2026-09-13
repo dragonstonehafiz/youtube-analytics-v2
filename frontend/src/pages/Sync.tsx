@@ -1,6 +1,6 @@
-import { Fragment, useEffect, useState } from 'react'
+import { Fragment, useEffect, useRef, useState } from 'react'
 import type { MouseEvent } from 'react'
-import { getDateRange, getSyncRuns, getSyncStatus, triggerSync } from '@/api'
+import { getDateRange, getSyncRuns, getSyncStatus, stopSync, triggerSync } from '@/api'
 import type {
   PeriodAwareSyncStage,
   ScopeAwareSyncScope,
@@ -167,6 +167,7 @@ const STATUS_LABELS: Readonly<Record<SyncRunStatus, string>> = {
   incomplete: 'Incomplete',
   success: 'Success',
   failed: 'Failed',
+  cancelled: 'Cancelled',
 }
 
 /** Human stage name, falling back to the stored value for a stage the UI no longer offers. */
@@ -249,6 +250,13 @@ export default function Sync() {
   const [submitting, setSubmitting] = useState(false)
   const [error, setError] = useState<string | null>(null)
 
+  // Locally reflects an accepted stop request until the next poll confirms `stopping`,
+  // so the button disables immediately rather than waiting up to STATUS_POLL_MS.
+  const [stopRequested, setStopRequested] = useState(false)
+  const [stopSubmitting, setStopSubmitting] = useState(false)
+  const stopDialogRef = useRef<HTMLDialogElement>(null)
+  const stopButtonRef = useRef<HTMLButtonElement>(null)
+
   useEffect(() => {
     const poll = () =>
       getSyncStatus()
@@ -303,9 +311,18 @@ export default function Sync() {
     : []
 
   const isSyncing = status?.state === 'running'
+  const isStopping = status?.state === 'stopping' || stopRequested
   const awaitingFirstStatus = status === null
-  const locked = isSyncing || submitting || awaitingFirstStatus || statusUnavailable
+  const locked = isSyncing || isStopping || submitting || awaitingFirstStatus || statusUnavailable
   const selectedCount = STAGE_ROWS.filter(row => included[row.stage]).length
+
+  // Once the active sync reaches a terminal state, drop the locally-held stop flags so
+  // the next sync starts from a clean slate rather than one still marked "stopping".
+  useEffect(() => {
+    if (status && status.state !== 'running' && status.state !== 'stopping') {
+      setStopRequested(false)
+    }
+  }, [status])
 
   /** The selector value backing one stage row, or the incremental default when it has none. */
   const selectorValue = (stage: SyncStage): string => {
@@ -320,22 +337,44 @@ export default function Sync() {
       .map(row => toPlanStage(row.stage, selectorValue(row.stage))),
   })
 
+  const refreshStatus = () =>
+    getSyncStatus()
+      .then(s => {
+        setStatus(s)
+        setStatusUnavailable(false)
+      })
+      .catch(() => setStatusUnavailable(true))
+
   const handleSubmit = () => {
     setSubmitting(true)
     setError(null)
     triggerSync(buildPlan())
-      .then(() =>
-        getSyncStatus()
-          .then(s => {
-            setStatus(s)
-            setStatusUnavailable(false)
-          })
-          .catch(() => setStatusUnavailable(true))
-      )
+      .then(refreshStatus)
       .catch((err: unknown) => {
         setError(err instanceof Error ? err.message : 'Could not start sync')
       })
       .finally(() => setSubmitting(false))
+  }
+
+  const openStopDialog = () => stopDialogRef.current?.showModal()
+
+  const closeStopDialog = () => stopDialogRef.current?.close()
+
+  const handleStopDialogClose = () => stopButtonRef.current?.focus()
+
+  const handleConfirmStop = () => {
+    setStopSubmitting(true)
+    stopSync()
+      .then(() => {
+        setStopRequested(true)
+        closeStopDialog()
+      })
+      .catch((err: unknown) => {
+        setError(err instanceof Error ? err.message : 'Could not stop sync')
+        closeStopDialog()
+        refreshStatus()
+      })
+      .finally(() => setStopSubmitting(false))
   }
 
   const toggleStage = (stage: SyncStage) => {
@@ -484,14 +523,63 @@ export default function Sync() {
 
           {error && <p className="sync-error" role="alert">{error}</p>}
 
-          <button
-            type="button"
-            className="btn-primary sync-submit"
-            disabled={locked || selectedCount === 0}
-            onClick={handleSubmit}
+          {isStopping ? (
+            <button type="button" className="btn-danger sync-submit sync-stop-button" disabled>
+              Stopping…
+            </button>
+          ) : isSyncing ? (
+            <button
+              type="button"
+              ref={stopButtonRef}
+              className="btn-danger sync-submit sync-stop-button"
+              onClick={openStopDialog}
+            >
+              Stop sync
+            </button>
+          ) : (
+            <button
+              type="button"
+              className="btn-primary sync-submit"
+              disabled={locked || selectedCount === 0}
+              onClick={handleSubmit}
+            >
+              Sync selected
+            </button>
+          )}
+
+          <dialog
+            ref={stopDialogRef}
+            className="sync-stop-dialog"
+            aria-labelledby="sync-stop-dialog-title"
+            aria-describedby="sync-stop-dialog-description"
+            onClose={handleStopDialogClose}
+            onCancel={closeStopDialog}
           >
-            Sync selected
-          </button>
+            <h2 id="sync-stop-dialog-title" className="sync-stop-dialog-title">Stop sync?</h2>
+            <p id="sync-stop-dialog-description" className="sync-stop-dialog-description">
+              The current request or database write in progress will finish before stopping.
+              Data already committed is kept, and the sync stops at the next safe checkpoint.
+            </p>
+            <div className="sync-stop-dialog-actions">
+              <button
+                type="button"
+                className="btn-ghost"
+                autoFocus
+                disabled={stopSubmitting}
+                onClick={closeStopDialog}
+              >
+                Keep syncing
+              </button>
+              <button
+                type="button"
+                className="btn-danger"
+                disabled={stopSubmitting}
+                onClick={handleConfirmStop}
+              >
+                Stop sync
+              </button>
+            </div>
+          </dialog>
         </>
       ) : (
         <AsyncCard

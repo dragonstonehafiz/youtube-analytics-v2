@@ -28,6 +28,12 @@ Public FastAPI contracts: every route, its parameters, defaults, and response sh
 - All list endpoints return `{ items: [...] }`; paginated endpoints additionally return `{ total, page, page_size }`.
 - Date filters are always optional query params named `start_date`/`end_date` (ISO `YYYY-MM-DD`).
 - `content_type` ∈ `video` | `short`; `privacy_status` ∈ `public` | `private` | `unlisted`. Both are optional filters on nearly every endpoint below.
+- Every `title`/`video_title` query parameter below is a case-insensitive substring match against **either** the
+  relevant entity's title **or** its ID (see `database.md`'s Title filter note): a video's `title` matches
+  `videos.title` or `videos.id`, a playlist's `title` (on `/playlists`) matches `playlists.title` or
+  `playlists.id`, `video_title` on the comments routes matches the parent video's title or ID, and `title` on
+  the Related Videos routes matches only the *target* video's title or ID, never a referrer's. The parameter
+  name and response shape are unchanged; this only widens what a supplied value can match.
 - 404s are raised explicitly wherever a route takes a `video_id`/`playlist_id` path param and the row doesn't exist (every playlist-scoped route in `routes/playlists.py`/`routes/analytics.py` and every single-video route in `routes/videos.py`). A `video_id` naming an external (`own=false`) video — one known only as a Related Video referrer — 404s identically to an unknown one, on every route below that takes one.
 - Every `Video` payload carries `own: boolean` — `true` for a channel-owned video, `false` for an external video whose metadata was pulled in as a Related Video referrer (see `database.md`'s ownership boundary). Every video-listing/lookup route below returns only `own=true` rows; `own=false` rows are exposed solely as referrer metadata on the [Related videos](#related-videos) endpoints.
 
@@ -168,10 +174,10 @@ separate endpoints with their own query parameters, response envelopes, error be
 `limit=10` on the two top routes.
 
 All nine routes above (the four channel-analytics routes, `/videos/published`, and the four
-playlist-analytics routes) accept `title` as an optional query parameter, applying the same
-parameterized `v.title LIKE ?` (bound to `%{title}%`) case-insensitive partial-match predicate as `/videos` and
-`/videos/stats` (see `database.md`) — combined with any other supplied filters via `AND`, and,
-on playlist routes, with the video-ID scope. Omitting `title` produces
+playlist-analytics routes) accept `title` as an optional query parameter, matching the video's title
+or ID (see `database.md`'s Title filter note) — the same parameterized, case-insensitive
+partial-match predicate as `/videos` and `/videos/stats` — combined with any other supplied filters
+via `AND`, and, on playlist routes, with the video-ID scope. Omitting `title` produces
 identical results to before this filter existed.
 
 ## Search insights
@@ -272,7 +278,7 @@ GET  /comments
   sort_by ∈ newest | oldest | likes — a value outside that set is a 422, not a silent fallback
   → { items: Comment[], total, page, page_size }
   text/video_title/author are case-insensitive substring matches on the comment body, the parent
-  video's title, and the commenter's display name. start_date/end_date filter the comment's own
+  video's title or ID, and the commenter's display name. start_date/end_date filter the comment's own
   published_at, not the video's. Every row carries the joined author snapshot plus video_title,
   video_content_type, and video_thumbnail_url — see database.md.
 
@@ -303,11 +309,23 @@ GET  /meta/date-range
 ```
 GET  /sync/status
   → { state, message }
-    state ∈ idle | running | success | failed
+    state ∈ idle | running | stopping | success | failed | cancelled
     message is a safe, operation-specific string; on failure it never contains raw
     exception text, headers, credentials, tokens, or API response content.
-    A terminal result (success/failed) is retained until the next reservation replaces
-    it with running; a fresh backend starts idle with no message.
+    A terminal result (success/failed/cancelled) is retained until the next reservation
+    replaces it with running; a fresh backend starts idle with no message.
+
+POST /sync/stop
+  No body.
+  → { stopping: true }   # accepted: a running sync transitions to stopping, or one
+                         # was already stopping (idempotent — repeated calls are safe)
+  409 "No sync in progress"   # idle, or a terminal state (success/failed/cancelled)
+  Requests cooperative cancellation of the single active sync, manual or
+  startup-origin — there is no batch/run identifier to pass, since only one sync can
+  be active at a time. The worker stops at its next safe checkpoint (never mid-request
+  or mid-transaction; see sync.md), so completion can lag the response. While
+  `stopping`, POST /sync/trigger still returns 409 — a new sync cannot start until the
+  stopping worker has actually exited and released its reservation.
 
 POST /sync/trigger
   Body (JSON): { stages: [ { stage, scope?, year? }, ... ] }
@@ -361,10 +379,13 @@ GET  /sync/runs
   A historical row stored under the retired id search_related_insights (the stage's
   name before it was split into search_insights/related_video_insights) may still
   appear here — the frontend renders it with a display-only label alias (see frontend.md).
-  status ∈ running | incomplete | success | failed
+  status ∈ running | incomplete | success | failed | cancelled
   incomplete is written by the startup sweep for a stage a killed process left
-  running; it keeps completed_at = null. A batch's status is the worst status
-  among its stages: failed > incomplete > running > success.
+  running; it keeps completed_at = null. cancelled is written when a POST /sync/stop
+  request is honored at that stage's next safe checkpoint; it keeps its partial
+  counters and a null error_message, same shape as success but distinguished by
+  status. A batch's status is the worst status among its stages:
+  failed > incomplete > running > cancelled > success.
   Only stages that actually started have rows; a plan's rows share one batch_id.
 ```
 

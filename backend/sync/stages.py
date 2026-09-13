@@ -7,12 +7,7 @@ import database
 import youtube
 from logging_config import exception_context, get_logger
 
-from . import monthly_insights, status
-
-# Incremental syncs re-fetch this many days before the last stored date, since
-# both analytics and traffic-source metrics for recent days are not fully
-# settled by the API until some time after the day ends.
-INCREMENTAL_LOOKBACK_DAYS = 7
+from . import coverage, monthly_insights, status
 
 # How many further comments an incremental scan keeps reading after it recognises the
 # first one it already stores. One maximum-size page, so the overlap costs no extra
@@ -30,13 +25,73 @@ class SyncCounts:
     rows_deleted: int = 0
 
 
-def _incremental_lookback_start(last_date: str | None, publish_date: str) -> str:
-    """Return the incremental sync start date: publish_date if never synced,
-    otherwise INCREMENTAL_LOOKBACK_DAYS before last_date, clamped to publish_date."""
-    if not last_date:
-        return publish_date
-    start = (date.fromisoformat(last_date) - timedelta(days=INCREMENTAL_LOOKBACK_DAYS)).isoformat()
-    return max(start, publish_date)
+def _incremental_monthly_windows(
+    collector: str, video_id: str, publish_date: date, yesterday: date, forced: list[monthly_insights.MonthlyWindow],
+) -> list[monthly_insights.MonthlyWindow]:
+    """Return one video's incremental Analytics-API windows: every uncovered calendar
+    month from publish_date through yesterday, plus the video-eligible months among
+    `forced` (previous/current, from monthly_search_windows()) that aren't already in
+    that missing set — so the pair is always re-checked even when coverage already
+    marks it complete, without fetching it twice when it's also a genuine gap.
+
+    Shared by all four Analytics API stages' incremental selection. Video
+    Analytics/Traffic Sources additionally coalesce the result into date ranges
+    (`coverage.coalesce_missing_windows()`) since one API call can span many months;
+    Search/Related use it as-is, one API call per month.
+    """
+    windows_all = monthly_insights.monthly_windows_for_range(publish_date, yesterday)
+    if not windows_all:
+        return []
+    covered = database.get_covered_periods(collector, video_id, windows_all[0].month, windows_all[-1].month)
+    missing_months = {window.month for window in coverage.missing_windows(windows_all, covered)}
+    forced_months = {window.month for window in forced}
+    # Rebuild from windows_all (rather than concatenating missing + forced) so the
+    # result stays chronologically ordered even when a forced month (e.g. previous
+    # month, if already covered) sorts earlier than a genuinely missing later month —
+    # order matters for coalesce_missing_windows() to merge adjacent months correctly.
+    include_months = missing_months | forced_months
+    return [window for window in windows_all if window.month in include_months]
+
+
+def _video_period_requests(
+    collector: str, video_id: str, scope: str, year: int | None, today: date, end_date: str, publish_date: str,
+) -> list[tuple[str, str, list[str]]]:
+    """Return one video's (start_date, end_date, months_to_mark) requests for a
+    monthly-coverage-tracked Analytics collector (video_analytics/video_traffic_sources).
+    Shared between sync_video_analytics() and sync_video_traffic_sources(), which differ
+    only in which collector/generator/reporting-upsert they use.
+
+    scope="year"/"all" request the single existing scoped range, marking every month it
+    actually spans as complete — including a still-open trailing month, which is
+    harmless: the previous/current pair below is always re-fetched regardless of
+    coverage, and by the time a later Incremental's historical sweep would ever consult
+    that same month again, it has genuinely finished.
+
+    scope="incremental" coalesces `_incremental_monthly_windows()`'s result (every
+    uncovered month through yesterday, plus the always-refreshed previous/current pair)
+    into as few date ranges as possible.
+    """
+    if scope in ("year", "all"):
+        if scope == "year":
+            assert year is not None, "scope=year requires a year"
+            start = max(publish_date, f"{year}-01-01")
+            range_end = min(end_date, f"{year}-12-31")
+        else:
+            start = publish_date
+            range_end = end_date
+        if start > range_end:
+            return []
+        months = [
+            window.month
+            for window in monthly_insights.monthly_windows_for_range(date.fromisoformat(start), date.fromisoformat(range_end))
+        ]
+        return [(start, range_end, months)]
+
+    windows = _incremental_monthly_windows(
+        collector, video_id, date.fromisoformat(publish_date), today - timedelta(days=1),
+        monthly_insights.monthly_search_windows(today),
+    )
+    return [(r.start_date, r.end_date, r.months) for r in coverage.coalesce_missing_windows(windows)]
 
 
 def _effective_range_end(scope: str, year: int | None, yesterday: date) -> date:
@@ -79,8 +134,10 @@ def sync_videos(counts: SyncCounts, playlist_video_ids: set[str]) -> set[str]:
     here rather than left to show up only as an unexplained DB shortfall.
     """
     channel_id, uploads_id = youtube.fetch_channel_identity()
-    shorts_ids, shorts_truncated = youtube.fetch_shorts_video_ids(uploads_id)
-    uploads_ids, _ = youtube.fetch_all_video_ids(uploads_id)
+    shorts_ids, shorts_truncated = youtube.fetch_shorts_video_ids(
+        uploads_id, checkpoint=status.raise_if_stopping
+    )
+    uploads_ids, _ = youtube.fetch_all_video_ids(uploads_id, checkpoint=status.raise_if_stopping)
 
     if shorts_truncated:
         _logger.warning("videos classification skipped reason=shorts_pagination_truncated")
@@ -91,6 +148,8 @@ def sync_videos(counts: SyncCounts, playlist_video_ids: set[str]) -> set[str]:
 
     fetched_videos: list[dict] = []
     for i in range(0, len(candidate_ids), 50):
+        if i > 0:
+            status.raise_if_stopping()
         batch = candidate_ids[i : i + 50]
         for video in youtube.fetch_videos(batch):
             if not shorts_truncated:
@@ -111,7 +170,9 @@ def sync_videos(counts: SyncCounts, playlist_video_ids: set[str]) -> set[str]:
         if video_id in fetched_by_id and fetched_by_id[video_id].get("channel_id") == channel_id
     }
 
-    for video_id, video in fetched_by_id.items():
+    for i, (video_id, video) in enumerate(fetched_by_id.items()):
+        if i > 0:
+            status.raise_if_stopping()
         if video_id in uploads_id_set or video_id in owned_playlist_only_ids:
             database.upsert_own_video(video)
             counts.rows_written += 1
@@ -130,12 +191,14 @@ def sync_playlists(counts: SyncCounts) -> set[str]:
     Returns every non-null playlist-item video ID seen, for `sync_videos()` to combine
     with the uploads-playlist IDs.
     """
-    playlists, playlists_truncated = youtube.fetch_playlists()
+    playlists, playlists_truncated = youtube.fetch_playlists(checkpoint=status.raise_if_stopping)
     all_items: dict[str, list[dict]] = {}
     truncated_playlists: set[str] = set()
-    for playlist in playlists:
+    for i, playlist in enumerate(playlists):
+        if i > 0:
+            status.raise_if_stopping()
         items, items_truncated = youtube.fetch_playlist_items(
-            playlist["id"], playlist_title=playlist.get("title")
+            playlist["id"], playlist_title=playlist.get("title"), checkpoint=status.raise_if_stopping
         )
         all_items[playlist["id"]] = items
         if items_truncated:
@@ -149,7 +212,9 @@ def sync_playlists(counts: SyncCounts) -> set[str]:
         if item.get("video_id")
     }
 
-    for playlist in playlists:
+    for i, playlist in enumerate(playlists):
+        if i > 0:
+            status.raise_if_stopping()
         database.upsert_playlist(playlist)
         counts.rows_written += 1
         if playlist["id"] in truncated_playlists:
@@ -169,6 +234,7 @@ def sync_playlists(counts: SyncCounts) -> set[str]:
         )
         return playlist_video_ids
 
+    status.raise_if_stopping()
     counts.rows_deleted += database.delete_playlists_not_in([p["id"] for p in playlists])
     return playlist_video_ids
 
@@ -188,7 +254,9 @@ def sync_comments(scope: str, counts: SyncCounts) -> None:
 
     The worklist is `database.get_owned_video_ids()` and nothing else: this stage never
     discovers, refreshes, or looks up videos through YouTube, so a video absent from
-    SQLite simply has no comments imported until the videos stage adds it.
+    SQLite simply has no comments imported until the videos stage adds it. That helper
+    returns videos oldest-published-first (ID-tied, undated last), so this stage
+    processes them in that same order.
 
     scope="incremental" bounds each video independently. A video with stored comments is
     read newest-first only until the first comment already held locally, plus
@@ -207,6 +275,8 @@ def sync_comments(scope: str, counts: SyncCounts) -> None:
     total = len(video_ids)
 
     for i, video_id in enumerate(video_ids, start=1):
+        if i > 1:
+            status.raise_if_stopping()
         status.update_sync_progress(f"Syncing comments ({i}/{total})...")
         video = database.get_owned_video(video_id)
         title = video.get("title") if video else None
@@ -214,8 +284,12 @@ def sync_comments(scope: str, counts: SyncCounts) -> None:
         fetched_before = counts.rows_fetched
         written_before = counts.rows_written
         overlap_remaining: int | None = None
+        first_pair = True
 
-        for item in youtube.iter_comment_threads(video_id, title=title):
+        for item in youtube.iter_comment_threads(video_id, title=title, checkpoint=status.raise_if_stopping):
+            if not first_pair:
+                status.raise_if_stopping()
+            first_pair = False
             counts.rows_fetched += 1
             comment = item["comment"]
 
@@ -256,24 +330,28 @@ def sync_comments(scope: str, counts: SyncCounts) -> None:
 def sync_pruning(counts: SyncCounts, channel_owned_ids: set[str]) -> None:
     """Delete every DB video not in `channel_owned_ids`, the channel-owned set built by
     `sync_playlists()` and `sync_videos()` in this same plan."""
+    status.raise_if_stopping()
     counts.rows_deleted += database.delete_videos_not_in(sorted(channel_owned_ids))
 
 
 def sync_video_analytics(scope: str, year: int | None, counts: SyncCounts) -> None:
     """Fetch daily analytics for every video.
 
-    scope="incremental" re-fetches starting INCREMENTAL_LOOKBACK_DAYS before the last
-    synced date (not right after it), since analytics metrics for recent days are not
-    fully settled by the API until some time after that day ends — upserting re-pulled
-    days is a no-op once the data has settled, and corrects any recent day that was
-    stored before its data had fully arrived. scope="year" refetches the given year;
-    scope="all" refetches each video's entire history.
+    scope="incremental" uses `sync_coverage` (collector "video_analytics") to find every
+    uncovered calendar month from publication through two months ago, coalesced into as
+    few date-range requests as possible, plus an unconditional previous/current-month
+    refresh (metrics for a just-finished or in-progress month are not fully settled by
+    the API yet) — see `_video_period_requests()`. scope="year" refetches the given
+    year; scope="all" refetches each video's entire history; both mark every month they
+    span as complete regardless of whether it has fully elapsed, which is safe since the
+    previous/current pair above is always re-fetched independent of coverage.
 
     The owned-video worklist is prefiltered to videos published on or before this
     stage's effective range end (see `_effective_range_end()`) before progress or
     per-video processing begins — a video uploaded after that date can have no data in
     range and so makes no API call, updates no progress, and emits no per-video log
-    record.
+    record. That worklist is oldest-published-first (ID-tied, undated last), so this
+    stage processes videos in that same order.
     """
     today = date.today()
     effective_end = _effective_range_end(scope, year, today - timedelta(days=1))
@@ -282,6 +360,8 @@ def sync_video_analytics(scope: str, year: int | None, counts: SyncCounts) -> No
     video_ids = database.get_owned_video_ids(published_through=end_date)
     total = len(video_ids)
     for i, video_id in enumerate(video_ids, start=1):
+        if i > 1:
+            status.raise_if_stopping()
         status.update_sync_progress(f"Syncing video analytics ({i}/{total})...")
         video = database.get_owned_video(video_id)
         if not video or not video.get("published_at"):
@@ -293,18 +373,8 @@ def sync_video_analytics(scope: str, year: int | None, counts: SyncCounts) -> No
         publish_date = video["published_at"][:10]
         title = video.get("title")
 
-        if scope == "year":
-            start = max(publish_date, f"{year}-01-01")
-            range_end = min(end_date, f"{year}-12-31")
-        elif scope == "all":
-            start = publish_date
-            range_end = end_date
-        else:
-            last_date = database.get_last_analytics_date(video_id)
-            start = _incremental_lookback_start(last_date, publish_date)
-            range_end = end_date
-
-        if start > range_end:
+        requests = _video_period_requests("video_analytics", video_id, scope, year, today, end_date, publish_date)
+        if not requests:
             _logger.debug(
                 "video_analytics %d/%d video=%s skipped reason=empty_range title=%r",
                 i, total, video_id, title,
@@ -312,12 +382,22 @@ def sync_video_analytics(scope: str, year: int | None, counts: SyncCounts) -> No
             continue
 
         rows_before = counts.rows_fetched
-        for row in youtube.iter_video_analytics(
-            video_id, start, range_end, publish_date=publish_date, title=title
-        ):
-            counts.rows_fetched += 1
-            database.upsert_video_analytics(row)
-            counts.rows_written += 1
+        for j, (start, range_end, months) in enumerate(requests):
+            if j > 0:
+                status.raise_if_stopping()
+            first_row = True
+            for row in youtube.iter_video_analytics(
+                video_id, start, range_end, publish_date=publish_date, title=title,
+                checkpoint=status.raise_if_stopping,
+            ):
+                if not first_row:
+                    status.raise_if_stopping()
+                first_row = False
+                counts.rows_fetched += 1
+                database.upsert_video_analytics(row)
+                counts.rows_written += 1
+            status.raise_if_stopping()
+            database.upsert_coverage("video_analytics", video_id, months)
         _logger.debug(
             "video_analytics %d/%d video=%s rows=%d title=%r",
             i, total, video_id, counts.rows_fetched - rows_before, title,
@@ -327,18 +407,22 @@ def sync_video_analytics(scope: str, year: int | None, counts: SyncCounts) -> No
 def sync_video_traffic_sources(scope: str, year: int | None, counts: SyncCounts) -> None:
     """Fetch daily traffic-source breakdowns for every video.
 
-    scope="incremental" re-fetches starting INCREMENTAL_LOOKBACK_DAYS before the last
-    synced date (not right after it), since traffic-source data for a given day is not
-    fully available from the API until some time after that day ends — upserting
-    re-pulled days is a no-op once the data has settled, and corrects any recent day
-    that was stored before its data had fully arrived. scope="year" refetches the
-    given year; scope="all" refetches each video's entire history.
+    scope="incremental" uses `sync_coverage` (collector "video_traffic_sources") to find
+    every uncovered calendar month from publication through two months ago, coalesced
+    into as few date-range requests as possible, plus an unconditional previous/current-
+    month refresh (traffic-source data for a just-finished or in-progress month is not
+    fully settled by the API yet) — see `_video_period_requests()`. scope="year"
+    refetches the given year; scope="all" refetches each video's entire history; both
+    mark every month they span as complete regardless of whether it has fully elapsed,
+    which is safe since the previous/current pair above is always re-fetched
+    independent of coverage.
 
     The owned-video worklist is prefiltered to videos published on or before this
     stage's effective range end (see `_effective_range_end()`) before progress or
     per-video processing begins — a video uploaded after that date can have no data in
     range and so makes no API call, updates no progress, and emits no per-video log
-    record.
+    record. That worklist is oldest-published-first (ID-tied, undated last), so this
+    stage processes videos in that same order.
     """
     today = date.today()
     effective_end = _effective_range_end(scope, year, today - timedelta(days=1))
@@ -347,6 +431,8 @@ def sync_video_traffic_sources(scope: str, year: int | None, counts: SyncCounts)
     video_ids = database.get_owned_video_ids(published_through=end_date)
     total = len(video_ids)
     for i, video_id in enumerate(video_ids, start=1):
+        if i > 1:
+            status.raise_if_stopping()
         status.update_sync_progress(f"Syncing traffic sources ({i}/{total})...")
         video = database.get_owned_video(video_id)
         if not video or not video.get("published_at"):
@@ -358,18 +444,8 @@ def sync_video_traffic_sources(scope: str, year: int | None, counts: SyncCounts)
         publish_date = video["published_at"][:10]
         title = video.get("title")
 
-        if scope == "year":
-            start = max(publish_date, f"{year}-01-01")
-            range_end = min(end_date, f"{year}-12-31")
-        elif scope == "all":
-            start = publish_date
-            range_end = end_date
-        else:
-            last_date = database.get_last_traffic_source_date(video_id)
-            start = _incremental_lookback_start(last_date, publish_date)
-            range_end = end_date
-
-        if start > range_end:
+        requests = _video_period_requests("video_traffic_sources", video_id, scope, year, today, end_date, publish_date)
+        if not requests:
             _logger.debug(
                 "video_traffic_sources %d/%d video=%s skipped reason=empty_range title=%r",
                 i, total, video_id, title,
@@ -377,12 +453,22 @@ def sync_video_traffic_sources(scope: str, year: int | None, counts: SyncCounts)
             continue
 
         rows_before = counts.rows_fetched
-        for row in youtube.iter_video_traffic_sources(
-            video_id, start, range_end, publish_date=publish_date, title=title
-        ):
-            counts.rows_fetched += 1
-            database.upsert_video_traffic_source(row)
-            counts.rows_written += 1
+        for j, (start, range_end, months) in enumerate(requests):
+            if j > 0:
+                status.raise_if_stopping()
+            first_row = True
+            for row in youtube.iter_video_traffic_sources(
+                video_id, start, range_end, publish_date=publish_date, title=title,
+                checkpoint=status.raise_if_stopping,
+            ):
+                if not first_row:
+                    status.raise_if_stopping()
+                first_row = False
+                counts.rows_fetched += 1
+                database.upsert_video_traffic_source(row)
+                counts.rows_written += 1
+            status.raise_if_stopping()
+            database.upsert_coverage("video_traffic_sources", video_id, months)
         _logger.debug(
             "video_traffic_sources %d/%d video=%s rows=%d title=%r",
             i, total, video_id, counts.rows_fetched - rows_before, title,
@@ -392,20 +478,23 @@ def sync_video_traffic_sources(scope: str, year: int | None, counts: SyncCounts)
 def sync_search_insights(scope: str, year: int | None, counts: SyncCounts) -> None:
     """Fetch and upsert monthly Search-source terms for every video.
 
-    scope="incremental" ("New data only") matches video_analytics/video_traffic_sources:
-    it resumes from the video's own last stored month (re-checking that month, the same
-    way the daily lookback re-checks recent days) through yesterday, backfilling from its
-    publish date if it has no stored terms yet at all. A video whose last stored month is
-    already last month collapses to exactly the current+previous refresh, same as before;
-    a video whose backfill was interrupted partway resumes filling the remaining gap
-    instead of being treated as fully caught up just because it has *some* stored data. A
-    video with no publish date falls back to the fixed current+previous refresh, since
-    there is no date to compute a range from.
+    scope="incremental" ("New data only") uses `sync_coverage` (collector
+    "search_insights") via `_incremental_monthly_windows()`: every uncovered calendar
+    month from publication through yesterday, plus an unconditional previous/current-
+    month refresh (search-term data for a just-finished or in-progress month is not
+    fully settled by the API yet). A video whose history is fully covered collapses to
+    exactly that pair, same as before; a video whose backfill was interrupted partway
+    resumes filling the remaining gap instead of being treated as fully caught up just
+    because it has *some* coverage. A video with no publish date falls back to the fixed
+    current+previous refresh, since there is no date to compute a range from.
     scope="year" refreshes every calendar month of the given year that falls within the
     video's published-to-yesterday range; a video with no publish date is skipped.
     scope="all" refreshes every calendar month from the video's publish date through
     yesterday; a video with no publish date is skipped. Each (video, month) upsert
-    commits independently.
+    commits independently, and every scope marks each successfully upserted month
+    complete — including a still-open trailing month for scope="all", which is
+    harmless since the previous/current pair is always re-fetched regardless of
+    coverage.
 
     Each month is fetched as a single request spanning the whole calendar month. The
     Search Analytics detail report hard-caps each request at 25 rows with no pagination
@@ -417,7 +506,8 @@ def sync_search_insights(scope: str, year: int | None, counts: SyncCounts) -> No
     stage's effective range end (see `_effective_range_end()`) before progress or
     per-video processing begins — a video uploaded after that date can have no data in
     range and so makes no API call, updates no progress, and emits no per-video log
-    record.
+    record. That worklist is oldest-published-first (ID-tied, undated last), so this
+    stage processes videos in that same order.
     """
     today = date.today()
     yesterday = today - timedelta(days=1)
@@ -429,6 +519,8 @@ def sync_search_insights(scope: str, year: int | None, counts: SyncCounts) -> No
     total = len(video_ids)
 
     for i, video_id in enumerate(video_ids, start=1):
+        if i > 1:
+            status.raise_if_stopping()
         video = database.get_owned_video(video_id)
         title = video.get("title") if video else None
         status.update_sync_progress(f"Syncing search insights ({i}/{total})...")
@@ -451,19 +543,20 @@ def sync_search_insights(scope: str, year: int | None, counts: SyncCounts) -> No
             windows = monthly_insights.monthly_windows_for_range(start, end)
         elif video and video.get("published_at"):
             publish_date = date.fromisoformat(video["published_at"][:10])
-            last_month = database.get_last_search_terms_month(video_id)
-            start = publish_date if last_month is None else max(
-                date.fromisoformat(f"{last_month}-01"), publish_date
-            )
-            windows = monthly_insights.monthly_windows_for_range(start, yesterday)
+            windows = _incremental_monthly_windows("search_insights", video_id, publish_date, yesterday, incremental_windows)
         else:
             windows = incremental_windows
 
         rows_before = counts.rows_fetched
-        for window in windows:
-            result = youtube.fetch_video_search_terms(video_id, window.start_date, window.end_date)
+        for j, window in enumerate(windows):
+            if j > 0:
+                status.raise_if_stopping()
+            result = youtube.fetch_video_search_terms(
+                video_id, window.start_date, window.end_date, checkpoint=status.raise_if_stopping
+            )
             counts.rows_fetched += result.raw_row_count
             counts.rows_written += database.upsert_search_terms(video_id, window.month, result.terms)
+            database.upsert_coverage("search_insights", video_id, [window.month])
         _logger.debug(
             "search_insights %d/%d video=%s months=%d rows=%d title=%r",
             i, total, video_id, len(windows), counts.rows_fetched - rows_before, title,
@@ -474,18 +567,21 @@ def sync_related_video_insights(scope: str, year: int | None, counts: SyncCounts
     """Fetch and upsert monthly Related Video referrers for every owned video, then
     resolve metadata for newly encountered referrer IDs.
 
-    scope="incremental" ("New data only") matches search_insights/video_analytics/
-    video_traffic_sources: it resumes from the video's own last stored month
-    (re-checking that month) through yesterday, backfilling from its publish date if it
-    has no stored Related rows yet at all. A video whose backfill was interrupted
-    partway resumes filling the remaining gap instead of being treated as fully caught
-    up just because it has *some* stored data. A video with no publish date falls back
-    to the fixed current+previous refresh, since there is no date to compute a range
-    from. scope="year" refreshes every calendar month of the given year that falls
-    within the video's published-to-yesterday range; a video with no publish date is
-    skipped. scope="all" refreshes every calendar month from the video's publish date
+    scope="incremental" ("New data only") uses `sync_coverage` (collector
+    "related_video_insights") via `_incremental_monthly_windows()`: every uncovered
+    calendar month from publication through yesterday, plus an unconditional
+    previous/current-month refresh (Related-video data for a just-finished or
+    in-progress month is not fully settled by the API yet). A video whose backfill was
+    interrupted partway resumes filling the remaining gap instead of being treated as
+    fully caught up just because it has *some* coverage. A video with no publish date
+    falls back to the fixed current+previous refresh, since there is no date to compute
+    a range from. scope="year" refreshes every calendar month of the given year that
+    falls within the video's published-to-yesterday range; a video with no publish date
+    is skipped. scope="all" refreshes every calendar month from the video's publish date
     through yesterday; a video with no publish date is skipped. Each (video, month)
-    upsert commits independently.
+    upsert commits independently, and every scope marks each successfully upserted month
+    complete — including a still-open trailing month for scope="all", which is harmless
+    since the previous/current pair is always re-fetched regardless of coverage.
 
     Each month is fetched as a single request spanning the whole calendar month — same
     25-row-per-request cap and reasoning as search_insights (see
@@ -507,7 +603,8 @@ def sync_related_video_insights(scope: str, year: int | None, counts: SyncCounts
     stage's effective range end (see `_effective_range_end()`) before progress or
     per-video processing begins — a video uploaded after that date can have no data in
     range and so makes no API call, updates no progress, and emits no per-video log
-    record.
+    record. That worklist is oldest-published-first (ID-tied, undated last), so this
+    stage processes videos in that same order.
     """
     today = date.today()
     yesterday = today - timedelta(days=1)
@@ -520,6 +617,8 @@ def sync_related_video_insights(scope: str, year: int | None, counts: SyncCounts
     newly_encountered_ids: set[str] = set()
 
     for i, video_id in enumerate(video_ids, start=1):
+        if i > 1:
+            status.raise_if_stopping()
         video = database.get_owned_video(video_id)
         title = video.get("title") if video else None
         status.update_sync_progress(f"Syncing related video insights ({i}/{total})...")
@@ -542,19 +641,22 @@ def sync_related_video_insights(scope: str, year: int | None, counts: SyncCounts
             windows = monthly_insights.monthly_windows_for_range(start, end)
         elif video and video.get("published_at"):
             publish_date = date.fromisoformat(video["published_at"][:10])
-            last_month = database.get_last_related_videos_month(video_id)
-            start = publish_date if last_month is None else max(
-                date.fromisoformat(f"{last_month}-01"), publish_date
+            windows = _incremental_monthly_windows(
+                "related_video_insights", video_id, publish_date, yesterday, incremental_windows
             )
-            windows = monthly_insights.monthly_windows_for_range(start, yesterday)
         else:
             windows = incremental_windows
 
         rows_before = counts.rows_fetched
-        for window in windows:
-            result = youtube.fetch_video_related_videos(video_id, window.start_date, window.end_date)
+        for j, window in enumerate(windows):
+            if j > 0:
+                status.raise_if_stopping()
+            result = youtube.fetch_video_related_videos(
+                video_id, window.start_date, window.end_date, checkpoint=status.raise_if_stopping
+            )
             counts.rows_fetched += result.raw_row_count
             counts.rows_written += database.upsert_related_videos(video_id, window.month, result.referrers)
+            database.upsert_coverage("related_video_insights", video_id, [window.month])
             newly_encountered_ids.update(r["referrer_video_id"] for r in result.referrers)
         _logger.debug(
             "related_video_insights %d/%d video=%s months=%d rows=%d title=%r",
@@ -586,6 +688,8 @@ def _resolve_related_video_metadata(newly_encountered_ids: set[str], counts: Syn
 
     resolved = 0
     for i in range(0, len(unknown_ids), 50):
+        if i > 0:
+            status.raise_if_stopping()
         batch = unknown_ids[i : i + 50]
         try:
             fetched = youtube.fetch_videos(batch)
@@ -595,7 +699,9 @@ def _resolve_related_video_metadata(newly_encountered_ids: set[str], counts: Syn
                 len(batch), exception_context(exc),
             )
             continue
-        for video in fetched:
+        for j, video in enumerate(fetched):
+            if j > 0:
+                status.raise_if_stopping()
             counts.rows_fetched += 1
             database.upsert_related_video(video, own=video.get("channel_id") == channel_id)
             counts.rows_written += 1
@@ -633,6 +739,8 @@ def sync_fx_rates(counts: SyncCounts) -> None:
 
     current = start
     while current <= yesterday:
+        if current > start:
+            status.raise_if_stopping()
         day_str = current.isoformat()
         if day_str in closes:
             carry = closes[day_str]

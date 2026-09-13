@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import calendar
 import time
+from collections.abc import Callable
 from dataclasses import dataclass
 from datetime import date, timedelta
 from typing import Any
@@ -14,6 +15,10 @@ from logging_config import get_logger
 from .auth import get_credentials
 
 _logger = get_logger("sync")
+
+
+def _noop_checkpoint() -> None:
+    """Default checkpoint for callers outside sync code: never signals cancellation."""
 
 _VIDEO_DAILY_METRICS = [
     "views",
@@ -92,8 +97,16 @@ def _log_page(
     )
 
 
-def _analytics_query(service: Any, params: dict, max_attempts: int = 5) -> dict:
-    """Execute a YouTube Analytics reports.query with exponential-backoff retry."""
+def _analytics_query(
+    service: Any, params: dict, max_attempts: int = 5, checkpoint: Callable[[], None] = _noop_checkpoint
+) -> dict:
+    """Execute a YouTube Analytics reports.query with exponential-backoff retry.
+
+    `checkpoint` is invoked after a retry's backoff sleep returns and before the next
+    attempt is issued, letting a sync caller stop cooperatively between retries; it
+    defaults to a no-op for other callers. Never invoked before the first attempt or
+    while a sleep is in progress.
+    """
     for attempt in range(1, max_attempts + 1):
         try:
             return service.reports().query(**params).execute()
@@ -110,6 +123,7 @@ def _analytics_query(service: Any, params: dict, max_attempts: int = 5) -> dict:
                     attempt, status_code, reason, delay,
                 )
                 time.sleep(delay)
+                checkpoint()
                 continue
             raise RuntimeError(f"YouTube Analytics API error: {exc}") from exc
     return {}
@@ -132,7 +146,11 @@ def _chunk_date_range(start: str, end: str, months: int = 4) -> list[tuple[str, 
 
 
 def _fetch_analytics_rows(
-    service: Any, params: dict, resource: str = "analytics_rows", owner_name: str | None = None
+    service: Any,
+    params: dict,
+    resource: str = "analytics_rows",
+    owner_name: str | None = None,
+    checkpoint: Callable[[], None] = _noop_checkpoint,
 ) -> list[dict[str, Any]]:
     """Fetch all paginated rows from an Analytics reports.query call.
 
@@ -141,6 +159,10 @@ def _fetch_analytics_rows(
     rows than requested means the result set is exhausted; a page record is
     routine DEBUG detail. `owner_name` names the video the report is filtered to;
     its id is read back from the filter.
+
+    `checkpoint` is invoked before requesting each page after the first (and passed
+    into each `_analytics_query()` call for its own retry checkpoints), letting a sync
+    caller stop cooperatively between pages; it defaults to a no-op for other callers.
     """
     results: list[dict[str, Any]] = []
     headers: list[str] | None = None
@@ -149,7 +171,9 @@ def _fetch_analytics_rows(
     page = 0
 
     while True:
-        response = _analytics_query(service, params)
+        if page > 0:
+            checkpoint()
+        response = _analytics_query(service, params, checkpoint=checkpoint)
         rows = response.get("rows") or []
         if headers is None:
             headers = [h["name"] for h in response.get("columnHeaders", [])]
@@ -231,7 +255,9 @@ def _parse_related_videos_response(response: dict, video_id: str, start_date: st
     return RelatedVideosResult(raw_row_count=raw_row_count, referrers=referrers)
 
 
-def fetch_video_search_terms(video_id: str, start_date: str, end_date: str) -> SearchTermsResult:
+def fetch_video_search_terms(
+    video_id: str, start_date: str, end_date: str, checkpoint: Callable[[], None] = _noop_checkpoint
+) -> SearchTermsResult:
     """Fetch one video's top Search-source terms for one exact calendar-month window.
 
     Issues exactly one non-paginated reports.query request: maxResults=25, startIndex
@@ -239,6 +265,9 @@ def fetch_video_search_terms(video_id: str, start_date: str, end_date: str) -> S
     asked for a second page, even when exactly 25 rows come back. Does not clamp the
     window to publication date or skip based on prior traffic — the caller supplies the
     exact calendar-aligned window to query.
+
+    `checkpoint` is forwarded to `_analytics_query()` so a stop request is observed
+    between retries of this request; it defaults to a no-op for other callers.
     """
     service = _analytics_client()
     params = {
@@ -251,17 +280,22 @@ def fetch_video_search_terms(video_id: str, start_date: str, end_date: str) -> S
         "sort": "-views",
         "maxResults": SEARCH_TERMS_MAX_RESULTS,
     }
-    response = _analytics_query(service, params)
+    response = _analytics_query(service, params, checkpoint=checkpoint)
     return _parse_search_terms_response(response, video_id, start_date, end_date)
 
 
-def fetch_video_related_videos(video_id: str, start_date: str, end_date: str) -> RelatedVideosResult:
+def fetch_video_related_videos(
+    video_id: str, start_date: str, end_date: str, checkpoint: Callable[[], None] = _noop_checkpoint
+) -> RelatedVideosResult:
     """Fetch one owned video's top Related Video referrers for one exact date range.
 
     Issues exactly one non-paginated reports.query request: maxResults=25, startIndex
     omitted entirely. Retry may repeat this identical request, but the API is never
     asked for a second page, even when exactly 25 rows come back. The caller (the
     Related Video Insights sync stage) invokes it once per calendar month.
+
+    `checkpoint` is forwarded to `_analytics_query()` so a stop request is observed
+    between retries of this request; it defaults to a no-op for other callers.
     """
     service = _analytics_client()
     params = {
@@ -274,7 +308,7 @@ def fetch_video_related_videos(video_id: str, start_date: str, end_date: str) ->
         "sort": "-views",
         "maxResults": RELATED_VIDEOS_MAX_RESULTS,
     }
-    response = _analytics_query(service, params)
+    response = _analytics_query(service, params, checkpoint=checkpoint)
     return _parse_related_videos_response(response, video_id, start_date, end_date)
 
 
@@ -284,6 +318,7 @@ def iter_video_analytics(
     end_date: str,
     publish_date: str | None = None,
     title: str | None = None,
+    checkpoint: Callable[[], None] = _noop_checkpoint,
 ):
     """Yield daily analytics rows for a single video, one year-chunk at a time.
 
@@ -293,6 +328,10 @@ def iter_video_analytics(
     no documented upper bound on maxResults, so this avoids pagination entirely
     in the common case (confirmed by a live full-year test returning all 365 days
     in one call with no gaps).
+
+    `checkpoint` is invoked before requesting each year-chunk after the first, and
+    forwarded into `_fetch_analytics_rows()` for its own page/retry checkpoints; it
+    defaults to a no-op for other callers.
     """
     effective_start = start_date
     if publish_date:
@@ -303,7 +342,11 @@ def iter_video_analytics(
 
     service = _analytics_client()
 
-    for chunk_start, chunk_end in _chunk_date_range(effective_start, end_date, months=12):
+    for chunk_index, (chunk_start, chunk_end) in enumerate(
+        _chunk_date_range(effective_start, end_date, months=12)
+    ):
+        if chunk_index > 0:
+            checkpoint()
         params = {
             "ids": "channel==MINE",
             "startDate": chunk_start,
@@ -315,7 +358,9 @@ def iter_video_analytics(
             "maxResults": 2000,
             "startIndex": 1,
         }
-        for row in _fetch_analytics_rows(service, params, "video_analytics_rows", title):
+        for row in _fetch_analytics_rows(
+            service, params, "video_analytics_rows", title, checkpoint=checkpoint
+        ):
             yield {
                 "video_id": video_id,
                 "date": row.get("day"),
@@ -336,6 +381,7 @@ def iter_video_traffic_sources(
     end_date: str,
     publish_date: str | None = None,
     title: str | None = None,
+    checkpoint: Callable[[], None] = _noop_checkpoint,
 ):
     """Yield daily traffic-source breakdown rows for a single video, one year-chunk at a time.
 
@@ -345,6 +391,10 @@ def iter_video_traffic_sources(
     of 365 days x 21 traffic source types (7665 rows) so a full year always fits in
     a single page - confirmed by a live full-year test (2883 rows, 365/365 days
     covered, no gaps) returned in one call with no pagination needed.
+
+    `checkpoint` is invoked before requesting each year-chunk after the first, and
+    forwarded into `_fetch_analytics_rows()` for its own page/retry checkpoints; it
+    defaults to a no-op for other callers.
     """
     effective_start = start_date
     if publish_date:
@@ -355,7 +405,11 @@ def iter_video_traffic_sources(
 
     service = _analytics_client()
 
-    for chunk_start, chunk_end in _chunk_date_range(effective_start, end_date, months=12):
+    for chunk_index, (chunk_start, chunk_end) in enumerate(
+        _chunk_date_range(effective_start, end_date, months=12)
+    ):
+        if chunk_index > 0:
+            checkpoint()
         params = {
             "ids": "channel==MINE",
             "startDate": chunk_start,
@@ -367,7 +421,9 @@ def iter_video_traffic_sources(
             "maxResults": 10000,
             "startIndex": 1,
         }
-        for row in _fetch_analytics_rows(service, params, "video_traffic_sources_rows", title):
+        for row in _fetch_analytics_rows(
+            service, params, "video_traffic_sources_rows", title, checkpoint=checkpoint
+        ):
             yield {
                 "video_id": video_id,
                 "date": row.get("day"),

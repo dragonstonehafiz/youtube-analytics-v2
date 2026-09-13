@@ -2,7 +2,7 @@ from __future__ import annotations
 
 import sqlite3
 from collections.abc import Collection
-from datetime import date
+from datetime import date, timedelta
 
 from .connection import _now, get_connection
 
@@ -36,28 +36,24 @@ def get_last_traffic_source_date(video_id: str) -> str | None:
 
 
 def _zero_fill_traffic_sources(rows: list[dict], start_date: str | None, end_date: str | None) -> list[dict]:
-    """Insert a zero row on the 1st of each month, per traffic source type, for months with no data at all."""
+    """Fill missing (date, traffic_source_type) combinations in the traffic source rows with zero values."""
     if not rows:
         return rows
     types = sorted({r["traffic_source_type"] for r in rows})
-    seen = {(r["date"], r["traffic_source_type"]) for r in rows}
-    first = date.fromisoformat(start_date or rows[0]["date"]).replace(day=1)
-    last = date.fromisoformat(end_date or rows[-1]["date"])
-    result = list(rows)
+    by_key = {(r["date"], r["traffic_source_type"]): r for r in rows}
+    real_dates = {r["date"] for r in rows}
+    dates = [r["date"] for r in rows]
+    first = date.fromisoformat(start_date or min(dates))
+    last = date.fromisoformat(end_date or max(dates))
+    result = []
     d = first
     while d <= last:
         ds = d.isoformat()
         for t in types:
-            if (ds, t) not in seen:
-                result.append({"date": ds, "traffic_source_type": t, "views": 0, "watch_time_minutes": 0})
-        if d.month == 12:
-            d = d.replace(year=d.year + 1, month=1)
-        else:
-            d = d.replace(month=d.month + 1)
-    result.sort(key=lambda r: (r["date"], r["traffic_source_type"]))
-    real_dates = {r["date"] for r in rows}
-    last_real_date = max(real_dates)
-    result = [r for r in result if r["date"] <= last_real_date]
+            result.append(by_key.get((ds, t), {"date": ds, "traffic_source_type": t, "views": 0, "watch_time_minutes": 0}))
+        d += timedelta(days=1)
+    while result and result[-1]["date"] not in real_dates:
+        result.pop()
     return result
 
 
@@ -127,7 +123,8 @@ def get_aggregated_traffic_sources(
         conditions.append("vts.date <= ?")
         params.append(end_date)
     if title:
-        conditions.append("v.title LIKE ?")
+        conditions.append("(v.title LIKE ? OR v.id LIKE ?)")
+        params.append(f"%{title}%")
         params.append(f"%{title}%")
 
     where = " AND ".join(conditions)
@@ -187,7 +184,8 @@ def get_top_videos_by_traffic_source(
         conditions.append("vts.date <= ?")
         params.append(end_date)
     if title:
-        conditions.append("v.title LIKE ?")
+        conditions.append("(v.title LIKE ? OR v.id LIKE ?)")
+        params.append(f"%{title}%")
         params.append(f"%{title}%")
 
     where = " AND ".join(conditions)

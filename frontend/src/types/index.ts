@@ -79,11 +79,15 @@ export interface CommentsResponse {
   page_size: number
 }
 
-export type SyncLifecycleState = 'idle' | 'running' | 'success' | 'failed'
+export type SyncLifecycleState = 'idle' | 'running' | 'stopping' | 'success' | 'failed' | 'cancelled'
 
 export interface SyncStatusResponse {
   state: SyncLifecycleState
   message: string
+}
+
+export interface SyncStopResponse {
+  stopping: boolean
 }
 
 /** Sync stages whose date range is configurable. */
@@ -132,7 +136,7 @@ export interface SyncQueuedResponse {
  * a null `completed_at`. `running` therefore means genuinely in flight; the UI renders this
  * field directly and never re-derives it from timestamps.
  */
-export type SyncRunStatus = 'running' | 'incomplete' | 'success' | 'failed'
+export type SyncRunStatus = 'running' | 'incomplete' | 'success' | 'failed' | 'cancelled'
 
 /**
  * One recorded sync-stage run. `error_message` is carried by the API contract but is
