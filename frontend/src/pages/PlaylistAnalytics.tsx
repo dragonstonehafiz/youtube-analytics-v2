@@ -501,14 +501,14 @@ export default function PlaylistAnalytics() {
           {tab === 'analytics' ? (
             <>
               <VideoStatsBar stats={stats.data} loading={stats.loading} error={stats.error} />
+              <AnalyticsChart
+                rows={rows.data}
+                uploadedVideos={publishedVideos.data}
+                loading={rows.loading || publishedVideos.loading}
+                error={rows.error ?? publishedVideos.error}
+              />
               <div className="analytics-layout">
                 <div className="analytics-main">
-                  <AnalyticsChart
-                    rows={rows.data}
-                    uploadedVideos={publishedVideos.data}
-                    loading={rows.loading || publishedVideos.loading}
-                    error={rows.error ?? publishedVideos.error}
-                  />
                   <TopVideosList
                     videos={topVideos.data}
                     sortBy={topVideosSortBy}
