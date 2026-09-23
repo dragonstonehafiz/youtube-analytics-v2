@@ -143,8 +143,8 @@ committed is never rolled back, and no new sync can start until the stopping wor
 actually exited.
 
 Video Analytics, Traffic Sources, Search Insights, and Related Video Insights resume
-Incremental work from a persisted `sync_coverage` table (see `agent-workflows/references/database.md`
-and `sync.md`) instead of scanning their own reporting tables for a checkpoint, so a
+Incremental work from a persisted `sync_coverage` table (see `../docs/database.md`
+and `../docs/sync.md`) instead of scanning their own reporting tables for a checkpoint, so a
 successful response with zero reportable rows is remembered as checked rather than
 looking unsynced forever. A fresh database needs no setup for this — it starts with no
 coverage rows, which Incremental treats like any other gap and backfills from scratch.

@@ -2,14 +2,16 @@
 
 ## Purpose
 
-Procedure for turning a bug report, feature idea, or improvement request into a reviewable draft issue for the destination repository. This file owns the investigation, evidence-handling, scoping, and acceptance-criteria procedure. Field structure lives in that repository's own issue template; implementation detail lives in its own documentation.
+Procedure for turning a bug report, feature idea, or improvement request into a reviewable draft issue for this repository. This file owns the investigation, evidence-handling, scoping, and acceptance-criteria procedure. Field structure lives in the repository's own issue template; implementation detail lives in [`README.md`](README.md)'s reference set.
 
 This produces a **draft** for the user to review. It does not publish anything to GitHub.
 
+Investigating and drafting is the default and requires no special authorization; publishing or modifying anything on GitHub is a separate, explicit action never implied by producing a draft — see [`repository-rules.md`](repository-rules.md) for this repository's safety and permission boundaries.
+
 ## Authoritative inputs
 
-- The destination repository's own issue template (for example, under `.github/ISSUE_TEMPLATE/`).
-- The destination repository's own documentation for the affected area (architecture, data model, API, UI, or equivalent).
+- This repository's own issue template, under `.github/ISSUE_TEMPLATE/`.
+- This repository's own documentation for the affected area — see [`README.md`](README.md)'s ownership map.
 - The current source code — authoritative over any documentation or prior issue when they disagree.
 
 ## Contents
@@ -43,14 +45,14 @@ Related-issue or duplicate searching is not part of this procedure. Use context 
 
 ## Use the shared template
 
-The destination repository uses one issue template for every request — bugs, features, and enhancements alike. Read it to confirm its exact field set and requirements before drafting; do not assume a fixed structure across repositories.
+This repository uses one issue template for every request — bugs, features, and enhancements alike. Read it to confirm its exact field set and requirements before drafting.
 
 ## Inspect current behavior
 
 Never draft from documentation alone. Before writing:
 
 1. Identify the affected application layer.
-2. Load only the destination repository's documentation relevant to that layer.
+2. Load only the reference relevant to that layer from [`README.md`](README.md)'s ownership map.
 3. Inspect the actual current implementation directly (read the file, don't rely on a reference's paraphrase).
 4. Trace enough data/control flow to verify the reported behavior actually happens the way it's claimed to — for a bug, this usually means finding the specific line(s) responsible; for a feature/enhancement, it means confirming the described gap actually exists.
 5. Record concrete files and symbols (e.g. `path/to/file.py:183`) when they clarify the report.

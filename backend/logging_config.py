@@ -8,8 +8,7 @@ Two fixed file destinations live beside the SQLite database under `backend/data/
 All application modules must acquire loggers through `get_logger(area)` rather than
 calling `logging.getLogger()` directly, so configuration happens exactly once
 regardless of which module is imported first. See `backend/README.md` and
-`agent-workflows/references/architecture.md` for the routing rules this module
-implements.
+`docs/architecture.md` for the routing rules this module implements.
 """
 
 from __future__ import annotations

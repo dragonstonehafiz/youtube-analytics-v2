@@ -84,13 +84,16 @@ test file must follow. Prefer the focused single-file form while iterating, the 
 
 For documentation-only changes (no `backend/`/`frontend/` files touched):
 
+- Manually follow every local Markdown link from `AGENTS.md` and every moved `docs/` page, including heading fragments, and confirm each one resolves.
+- Search the repository, excluding this file and historical issue/plan files, for any remaining reference to the retired agent-workflow directories, the old per-agent root instruction file, or the removed workflow validator script — correct any active reference found.
+
 ```bash
-python scripts/validate_agent_workflows.py    # validates skill frontmatter and shared routing
-git diff --check                              # flag trailing whitespace / whitespace errors
+git diff --check                              # flag trailing whitespace / whitespace errors in unstaged changes
+git diff --cached --check                     # same, for already-staged changes
 git status --short -- backend frontend        # confirm no application code changed (tracked or untracked)
 ```
 
-The last command should produce no output when the change is genuinely docs-only. Use `git status --short`, not `git diff --name-only` — the latter only sees tracked files and would miss a new untracked file added under `backend/`/`frontend/`.
+The last command should produce no output when the change is genuinely docs-only, except for an intentional docstring-only edit under `backend/`. Use `git status --short`, not `git diff --name-only` — the latter only sees tracked files and would miss a new untracked file added under `backend/`/`frontend/`.
 
 ## Adding a backend route
 
