@@ -19,9 +19,9 @@ Coding rules, verification expectations, and safety/permission boundaries that a
 
 ## Verification
 
-Run backend commands through `backend/.venv`'s interpreter, not a global `python`/`pip` — `mypy`, `pytest`, and other dev dependencies are installed there, not system-wide. See [`verification.md`](verification.md) for the full command set, including the backend venv requirement and layer-specific checks.
+Run backend commands through `backend/.venv`'s interpreter, not a global `python`/`pip` — `mypy`, `pytest`, and other dev dependencies are installed there, not system-wide. See [`verification.md`](references/verification.md) for the full command set, including the backend venv requirement and layer-specific checks.
 
-Run the relevant command against every changed file, not just the examples in `verification.md`. A full frontend build (`npm run build`) requires explicit approval — it is not part of the default verification loop.
+Run the relevant command against every changed file, not just the examples in `references/verification.md`. A full frontend build (`npm run build`) requires explicit approval — it is not part of the default verification loop.
 
 ## Safety and permissions
 

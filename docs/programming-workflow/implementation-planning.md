@@ -6,14 +6,14 @@ Procedure for turning an approved issue, local issue file, or scoped request int
 
 Use this procedure when asked to plan an implementation, break a request into dependency-ordered steps, assess compatibility or existing-data impact, or revise an existing plan after requirements change. Read this file in full before planning.
 
-Never create commits, run `git push`, or publish anything remotely — see [`repository-rules.md`](repository-rules.md) for this repository's full safety and permission boundaries. Producing a plan never authorizes implementing it.
+Never create commits, run `git push`, or publish anything remotely — see [`repository-rules.md`](../repository-rules.md) for this repository's full safety and permission boundaries. Producing a plan never authorizes implementing it.
 
 ## Authoritative inputs
 
 - The approved issue, local issue file, or current scoped request, and its acceptance criteria.
 - Related issues, PRs, or dependencies already identified.
 - A supplied plan file to revise, when the user hands one off.
-- This repository's own documentation — start from [`README.md`](README.md)'s ownership map to find the reference for the affected area — and [`repository-rules.md`](repository-rules.md) for coding rules, verification commands, and safety boundaries.
+- This repository's own documentation — start from [`README.md`](../README.md)'s ownership map to find the reference for the affected area — and [`repository-rules.md`](../repository-rules.md) for coding rules, verification commands, and safety boundaries.
 - The current source code and current working-tree state — both take priority over documentation and any prior plan when they disagree.
 
 ## Contents
@@ -66,7 +66,7 @@ When no destination is supplied, save a new plan as a local Markdown file under 
 
 ## Select references by affected area
 
-Load only what's relevant to the areas the change touches — expand as tracing reveals a dependency, don't load everything up front. [`README.md`](README.md) is this repository's ownership map from task area to canonical reference (`architecture.md`, `database.md`, `sync.md`, `api.md`, `frontend.md`, `verification.md`).
+Load only what's relevant to the areas the change touches — expand as tracing reveals a dependency, don't load everything up front. [`README.md`](../README.md) is this repository's ownership map from task area to canonical reference (`architecture.md`, `database.md`, `sync.md`, `api.md`, `frontend.md`, `verification.md`, under `docs/references/`).
 
 ## Inspect the implementation
 
@@ -125,7 +125,7 @@ Omit this concern entirely from steps where it doesn't apply — don't invent ve
 
 ## Define focused verification
 
-Select checks proportional to what actually changed, using [`verification.md`](verification.md)'s commands (type checks, linters, tests) scoped to the changed files or layer rather than a full project-wide build by default. Typical proportionate selection:
+Select checks proportional to what actually changed, using [`verification.md`](../references/verification.md)'s commands (type checks, linters, tests) scoped to the changed files or layer rather than a full project-wide build by default. Typical proportionate selection:
 
 - a changed server-side file: run its type checker/linter scoped to that file;
 - a changed client-side file: run its linter and type checker scoped to that file;

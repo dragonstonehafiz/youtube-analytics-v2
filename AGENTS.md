@@ -6,9 +6,9 @@ Read [`docs/repository-rules.md`](docs/repository-rules.md) first — it holds t
 
 ## Repository workflow
 
-- Implementation planning: [`docs/implementation-planning.md`](docs/implementation-planning.md).
-- Issue drafting: [`docs/issue-authoring.md`](docs/issue-authoring.md).
-- Pull request drafting: [`docs/pull-request-authoring.md`](docs/pull-request-authoring.md).
-- Documentation writing and maintenance: [`docs/documentation-maintenance.md`](docs/documentation-maintenance.md).
+- Implementation planning: [`docs/programming-workflow/implementation-planning.md`](docs/programming-workflow/implementation-planning.md).
+- Issue drafting: [`docs/github-workflow/issue-authoring.md`](docs/github-workflow/issue-authoring.md).
+- Pull request drafting: [`docs/github-workflow/pull-request-authoring.md`](docs/github-workflow/pull-request-authoring.md).
+- Documentation writing and maintenance: [`docs/documentation-workflow/documentation-maintenance.md`](docs/documentation-workflow/documentation-maintenance.md).
 - YouTube Analytics codebase discovery (architecture, database, sync, API, frontend, verification references): [`docs/README.md`](docs/README.md).
-- Verification commands: [`docs/verification.md`](docs/verification.md).
+- Verification commands: [`docs/references/verification.md`](docs/references/verification.md).

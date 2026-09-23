@@ -18,7 +18,7 @@ _CLIENT_SECRET_PATH = _SECRETS_DIR / "client_secret.json"
 # `youtube.force-ssl` is what `commentThreads.list` requires; `youtube.readonly` alone is
 # rejected with `insufficientPermissions`. It is the narrowest scope Google offers that
 # grants comment reads, even though it also permits writes the app never makes — every
-# comment path is read-only (see `sync.md`).
+# comment path is read-only (see `docs/references/sync.md`).
 _SCOPES = [
     "https://www.googleapis.com/auth/youtube.readonly",
     "https://www.googleapis.com/auth/youtube.force-ssl",

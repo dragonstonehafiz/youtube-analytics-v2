@@ -72,9 +72,9 @@ See `.github/PULL_REQUEST_TEMPLATE.md` for the PR checklist.
 
 ## Agent workflow documentation
 
-Agent workflow documentation lives under `docs/`: coding/safety rules in `docs/repository-rules.md`, task procedures (implementation planning, issue and PR drafting, documentation maintenance), and this repository's six application references (architecture, database, sync, API, frontend, verification). `AGENTS.md` is a short entry point with direct links into `docs/`.
+Agent workflow documentation lives under `docs/`: coding/safety rules in `docs/repository-rules.md`, task procedures grouped by workflow (`docs/programming-workflow/`, `docs/github-workflow/`, `docs/documentation-workflow/`), and this repository's six application references under `docs/references/` (architecture, database, sync, API, frontend, verification). `AGENTS.md` is a short entry point with direct links into `docs/`.
 
-Follow [`docs/documentation-maintenance.md`](docs/documentation-maintenance.md) when updating these files, using [`docs/README.md`](docs/README.md) to find this repository's canonical ownership map.
+Follow [`docs/documentation-workflow/documentation-maintenance.md`](docs/documentation-workflow/documentation-maintenance.md) when updating these files, using [`docs/README.md`](docs/README.md) to find this repository's canonical ownership map.
 
 - Update the canonical reference alongside any behavior change it describes.
 - Keep `AGENTS.md` limited to universal rules and direct links — do not restate detailed guidance there.
