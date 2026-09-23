@@ -2,16 +2,18 @@
 
 ## Purpose
 
-Procedure for drafting a PR title and a template-compatible PR body from the actual state of a branch's changes, using the destination repository's own conventions. This produces a **draft** for the user to copy into `gh pr create` or the GitHub UI themselves. It never creates a commit, stages files, pushes a branch, or opens/publishes a pull request.
+Procedure for drafting a PR title and a template-compatible PR body from the actual state of a branch's changes, using this repository's own conventions. This produces a **draft** for the user to copy into `gh pr create` or the GitHub UI themselves. It never creates a commit, stages files, pushes a branch, or opens/publishes a pull request.
 
 "PR message" means both the title and the body together.
 
+This is a drafting step only — see [`repository-rules.md`](../repository-rules.md) for this repository's safety and permission boundaries around publishing.
+
 ## Authoritative inputs
 
-- The destination repository's own PR template.
-- The destination repository's own contribution guide — branch naming, title format, and whether the PR title becomes the squash commit message.
+- This repository's own PR template, `.github/PULL_REQUEST_TEMPLATE.md`.
+- [`CONTRIBUTING.md`](../../CONTRIBUTING.md) — branch naming, title format, and the PR title becoming the squash commit message.
 - Any CI check that enforces the title/branch format — treat it as confirmation of the format, not a separate source of rules.
-- The destination repository's own verification guidance — what a completed check for a given layer looks like.
+- [`verification.md`](../references/verification.md) — what a completed check for a given layer looks like.
 - The current `git status` and diff for the branch being described.
 - Verification results actually run and reported earlier in the conversation, or told directly to the agent by the user.
 

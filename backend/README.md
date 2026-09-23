@@ -143,8 +143,8 @@ committed is never rolled back, and no new sync can start until the stopping wor
 actually exited.
 
 Video Analytics, Traffic Sources, Search Insights, and Related Video Insights resume
-Incremental work from a persisted `sync_coverage` table (see `agent-workflows/references/database.md`
-and `sync.md`) instead of scanning their own reporting tables for a checkpoint, so a
+Incremental work from a persisted `sync_coverage` table (see `../docs/references/database.md`
+and `../docs/references/sync.md`) instead of scanning their own reporting tables for a checkpoint, so a
 successful response with zero reportable rows is remembered as checked rather than
 looking unsynced forever. A fresh database needs no setup for this — it starts with no
 coverage rows, which Incremental treats like any other gap and backfills from scratch.
@@ -193,7 +193,7 @@ they reach `application.log` as well:
 | Request retried | `youtube/analytics_api.py::_analytics_query()` |
 
 Every logged field is an identifier, counter, date, name, or pagination token. Titles
-and pagination tokens are logged deliberately — see `sync.md`'s "Sync logging" section
+and pagination tokens are logged deliberately — see `../docs/references/sync.md`'s "Sync logging" section
 for why. Records never carry descriptions, thumbnails, statistics payloads,
 credentials, OAuth tokens, request/response bodies, or raw exception text — failure
 records use only the exception's class name and source location.

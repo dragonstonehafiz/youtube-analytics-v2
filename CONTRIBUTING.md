@@ -72,17 +72,11 @@ See `.github/PULL_REQUEST_TEMPLATE.md` for the PR checklist.
 
 ## Agent workflow documentation
 
-Agent workflow documentation lives under `agent-workflows/`, split into four responsibility-specific subfolders: `programming-workflow/`, `github-workflow/`, and `documentation-workflow/` (each a self-contained, portable bundle usable in other repositories), and `project-docs/` (this repository's own documentation router). Native entrypoints live under `.agents/skills/` and `.claude/skills/`, one pair per responsibility.
+Agent workflow documentation lives under `docs/`: coding/safety rules in `docs/repository-rules.md`, task procedures grouped by workflow (`docs/programming-workflow/`, `docs/github-workflow/`, `docs/documentation-workflow/`), and this repository's six application references under `docs/references/` (architecture, database, sync, API, frontend, verification). `AGENTS.md` is a short entry point with direct links into `docs/`.
 
-Follow `agent-workflows/documentation-workflow/documentation-maintenance.md` when updating these files, using `agent-workflows/project-docs/SKILL.md` to find this repository's canonical ownership map.
-
-Run:
-
-```bash
-python scripts/validate_agent_workflows.py
-```
+Follow [`docs/documentation-workflow/documentation-maintenance.md`](docs/documentation-workflow/documentation-maintenance.md) when updating these files, using [`docs/README.md`](docs/README.md) to find this repository's canonical ownership map.
 
 - Update the canonical reference alongside any behavior change it describes.
-- Do not copy detailed guidance into native entrypoints — they route to the shared bundle content instead.
-- Keep root instructions (`AGENTS.md`, `CLAUDE.md`) limited to universal rules.
+- Keep `AGENTS.md` limited to universal rules and direct links — do not restate detailed guidance there.
 - No application build is required for documentation-only changes.
+- Run `python3 scripts/validate_docs.py` (`py -3` on Windows) from the repository root before committing a documentation change — see [`docs/references/verification.md`](docs/references/verification.md) for what it checks.

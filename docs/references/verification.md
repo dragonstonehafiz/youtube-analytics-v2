@@ -85,12 +85,24 @@ test file must follow. Prefer the focused single-file form while iterating, the 
 For documentation-only changes (no `backend/`/`frontend/` files touched):
 
 ```bash
-python scripts/validate_agent_workflows.py    # validates skill frontmatter and shared routing
-git diff --check                              # flag trailing whitespace / whitespace errors
+python3 scripts/validate_docs.py               # macOS/Linux
+py -3 scripts/validate_docs.py                  # Windows
+```
+
+Run from the repository root. This standard-library-only, read-only script checks, in `AGENTS.md`, the root and application READMEs, `CONTRIBUTING.md`, `.github/**/*.md`, and `docs/**/*.md`:
+
+- every local Markdown link/image target and `#heading` fragment (same-page and cross-page), resolved relative to the containing file;
+- every explicit local documentation path mentioned in a Markdown inline-code span or a backend Python comment/docstring, in root-relative or `./`/`../`-prefixed form (root-relative resolves from the repository root, `./`/`../` forms resolve from the mentioning file).
+
+It prints sorted `file:line: message` diagnostics and exits nonzero on any broken link, fragment, path, or unsupported reference-style link; a clean tree prints a one-line count and exits zero. It does not check external URLs, content inside fenced code blocks, or whether prose is factually accurate — that remains manual review.
+
+```bash
+git diff --check                              # flag trailing whitespace / whitespace errors in unstaged changes
+git diff --cached --check                     # same, for already-staged changes
 git status --short -- backend frontend        # confirm no application code changed (tracked or untracked)
 ```
 
-The last command should produce no output when the change is genuinely docs-only. Use `git status --short`, not `git diff --name-only` — the latter only sees tracked files and would miss a new untracked file added under `backend/`/`frontend/`.
+The last command should produce no output when the change is genuinely docs-only, except for an intentional docstring-only edit under `backend/`. Use `git status --short`, not `git diff --name-only` — the latter only sees tracked files and would miss a new untracked file added under `backend/`/`frontend/`.
 
 ## Adding a backend route
 

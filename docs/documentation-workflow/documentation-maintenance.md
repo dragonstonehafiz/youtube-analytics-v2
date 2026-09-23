@@ -2,7 +2,9 @@
 
 ## Purpose
 
-Procedure for keeping a repository's root instructions, shared playbooks, skill entrypoints, and reference documentation current without reintroducing duplication. This file is itself a procedure, not application knowledge — it applies to any destination repository's own documentation set.
+Procedure for keeping this repository's root instructions and `docs/` reference documentation current without reintroducing duplication. This file is itself a procedure, not application knowledge.
+
+Code and authoritative policy remain the source of truth; documentation follows them, never the reverse. Documentation work does not authorize implementation. See [`repository-rules.md`](../repository-rules.md) for this repository's safety and permission boundaries — never create commits, run `git push`, or publish documentation remotely; destructive deletion or reset requires explicit approval.
 
 ## When this applies
 
@@ -11,10 +13,9 @@ Use this workflow when:
 - application behavior changes;
 - a verification command changes;
 - a coding or safety rule changes;
-- an agent workflow changes;
+- a task procedure changes;
 - a reference is found to be stale;
 - files are renamed or documentation paths change;
-- a skill entrypoint changes;
 - issue templates or contribution rules change.
 
 Documentation updates accompany the implementation they describe — they are not deferred to a later cleanup pass.
@@ -34,17 +35,17 @@ Documentation updates accompany the implementation they describe — they are no
 
 ## Find the ownership map
 
-Every destination repository supplies its own canonical-documentation ownership map — which subject lives in which file. Discover it rather than assuming a fixed list: look for a project-local documentation router or an equivalent index, or infer it from existing cross-references if no explicit index exists. A fact not covered by that map doesn't have an obvious canonical home yet; flag this rather than guessing where it belongs.
+[`README.md`](../README.md) is this repository's canonical-documentation ownership map — which subject lives in which file. A fact not covered by that map doesn't have an obvious canonical home yet; flag this rather than guessing where it belongs.
 
 Every fact should have exactly one canonical home. A file not in the ownership map doesn't own application knowledge — it either summarizes or links to the file that does.
 
 ## Update workflow
 
 1. Inspect the implementation or policy change.
-2. Identify which canonical document owns the affected information, using the destination repository's ownership map.
+2. Identify which canonical document owns the affected information, using [`README.md`](../README.md)'s ownership map.
 3. Update only confirmed current behavior — verify against the actual code or policy, don't paraphrase from memory of what it used to say.
 4. Remove or correct stale statements rather than appending a correction next to them.
-5. Check related documents for links or summaries that also need updating (a root-file one-liner, a cross-reference in another reference file, a routing entry in a skill entrypoint).
+5. Check related documents for links or summaries that also need updating (a root-file one-liner, a cross-reference in another reference file, a routing entry in `AGENTS.md`).
 6. Avoid copying the same detail into multiple files — link instead.
 7. Run documentation validation (see [Verification](#verification)).
 8. Confirm no unrelated runtime/application files changed.
@@ -55,17 +56,13 @@ Code remains authoritative for application behavior. Repository policy files rem
 
 ### Root instructions
 
-Root instruction files (for example `AGENTS.md`/`CLAUDE.md` or an equivalent) contain only rules that apply to virtually every task: coding conventions, dependency restrictions, verification expectations, safety and permission boundaries, and pointers to repo-local skills.
+`AGENTS.md` contains only rules that apply to virtually every task: a one-line pointer to [`repository-rules.md`](../repository-rules.md) and direct links to each `docs/` page for planning, drafting, documentation maintenance, project discovery, and verification.
 
-Component behavior, endpoint details, schema descriptions, and page-specific conventions do not belong in the roots.
+Component behavior, endpoint details, schema descriptions, and page-specific conventions do not belong in `AGENTS.md`.
 
-### Shared playbooks
+### Task procedures
 
-Playbooks own procedures: how to draft an issue, how to create an implementation plan, how to maintain documentation. They link to references instead of embedding detailed application knowledge.
-
-### Skill entrypoints
-
-Native skill entrypoints contain triggering descriptions, workflow selection, direct paths to shared playbooks and references, and progressive-loading guidance. They do not maintain independent copies of the workflows themselves.
+`docs/programming-workflow/implementation-planning.md`, `docs/github-workflow/issue-authoring.md`, `docs/github-workflow/pull-request-authoring.md`, and this file own procedures: how to draft an issue, how to create an implementation plan, how to maintain documentation. They link to references instead of embedding detailed application knowledge.
 
 ### References
 
@@ -93,9 +90,7 @@ When code and a reference disagree:
 
 Limited duplication is allowed only when necessary:
 
-- mandatory rules may appear in multiple root files across native agents (for example, one per agent);
-- multiple native entrypoints for the same skill may contain equivalent routing;
-- concise root verification commands may summarize canonical verification guidance.
+- concise root verification commands in `AGENTS.md` may summarize `docs/references/verification.md`'s canonical guidance.
 
 Detailed behavior is not duplicated across references. When duplication is unavoidable, state which file is canonical and which files contain summaries.
 
@@ -103,25 +98,20 @@ Detailed behavior is not duplicated across references. When duplication is unavo
 
 When moving or renaming documentation:
 
-- update every native skill entrypoint that routes to it;
-- update playbook/reference cross-links;
-- update root pointers;
-- update the destination repository's documentation validator, if any;
-- confirm every relative path resolves from the file containing it;
-- avoid references deeper than one directory below a skill entrypoint where practical.
+- update `AGENTS.md`'s direct links;
+- update every cross-link between `docs/` pages;
+- confirm every relative path resolves from the file containing it.
 
 Do not leave compatibility copies of obsolete documentation unless explicitly required.
 
 ## Verification
 
-Run the destination repository's own documentation validator, if one exists, and note its exact command and what it checks — treat that command as authoritative rather than assuming this file's own examples still apply. A validator of this kind typically confirms: skill entrypoints exist with valid frontmatter, entrypoints route to the same shared targets consistently, and every routing target actually resolves to a real file.
+Run `python3 scripts/validate_docs.py` (`py -3` on Windows) from the repository root — see `docs/references/verification.md`'s Documentation verification section for what it checks. It catches broken local Markdown links, heading fragments, and explicit `docs/` path mentions; it does not check the following, which remain manual:
 
-Also manually confirm what an automated validator cannot determine:
-
-- whether statements accurately reflect the current code;
-- whether content lives in its correct canonical file, not a duplicate;
-- whether unnecessary duplication was introduced;
-- whether application files changed unintentionally.
+- statements accurately reflect the current code;
+- content lives in its correct canonical file, not a duplicate;
+- no unnecessary duplication was introduced;
+- application files changed only when the task genuinely required it.
 
 ## Action boundaries
 
@@ -133,11 +123,11 @@ Also manually confirm what an automated validator cannot determine:
 
 ## Final checklist
 
-- [ ] Change traced to its canonical document via the destination repository's ownership map
+- [ ] Change traced to its canonical document via `README.md`'s ownership map
 - [ ] Only confirmed current behavior written; stale statements corrected, not appended around
-- [ ] Related cross-links, summaries, and routing entries checked and updated
+- [ ] Related cross-links and summaries checked and updated
 - [ ] No detail duplicated across references beyond what's explicitly allowed
 - [ ] No migration commentary, experiment logs, or unverifiable operational claims introduced
-- [ ] Renamed or moved files have every cross-link and skill-entrypoint reference updated
-- [ ] Verification run using the destination repository's own validator; application files confirmed untouched for docs-only work
+- [ ] Renamed or moved files have every cross-link and `AGENTS.md` reference updated
+- [ ] `scripts/validate_docs.py` run and passing; application files confirmed untouched for docs-only work
 - [ ] No commit, push, or remote publication performed
