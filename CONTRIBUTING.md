@@ -79,3 +79,4 @@ Follow [`docs/documentation-workflow/documentation-maintenance.md`](docs/documen
 - Update the canonical reference alongside any behavior change it describes.
 - Keep `AGENTS.md` limited to universal rules and direct links — do not restate detailed guidance there.
 - No application build is required for documentation-only changes.
+- Run `python3 scripts/validate_docs.py` (`py -3` on Windows) from the repository root before committing a documentation change — see [`docs/references/verification.md`](docs/references/verification.md) for what it checks.

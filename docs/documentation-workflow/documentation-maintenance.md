@@ -106,13 +106,12 @@ Do not leave compatibility copies of obsolete documentation unless explicitly re
 
 ## Verification
 
-This repository has no automated documentation validator. Manually confirm instead:
+Run `python3 scripts/validate_docs.py` (`py -3` on Windows) from the repository root — see `docs/references/verification.md`'s Documentation verification section for what it checks. It catches broken local Markdown links, heading fragments, and explicit `docs/` path mentions; it does not check the following, which remain manual:
 
-- every local Markdown link from `AGENTS.md` and the changed `docs/` pages resolves, including heading fragments;
 - statements accurately reflect the current code;
 - content lives in its correct canonical file, not a duplicate;
 - no unnecessary duplication was introduced;
-- application files changed only when the task genuinely required it (see `docs/references/verification.md`'s Documentation verification section).
+- application files changed only when the task genuinely required it.
 
 ## Action boundaries
 
@@ -130,5 +129,5 @@ This repository has no automated documentation validator. Manually confirm inste
 - [ ] No detail duplicated across references beyond what's explicitly allowed
 - [ ] No migration commentary, experiment logs, or unverifiable operational claims introduced
 - [ ] Renamed or moved files have every cross-link and `AGENTS.md` reference updated
-- [ ] Local links manually followed and confirmed; application files confirmed untouched for docs-only work
+- [ ] `scripts/validate_docs.py` run and passing; application files confirmed untouched for docs-only work
 - [ ] No commit, push, or remote publication performed

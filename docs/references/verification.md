@@ -84,8 +84,17 @@ test file must follow. Prefer the focused single-file form while iterating, the 
 
 For documentation-only changes (no `backend/`/`frontend/` files touched):
 
-- Manually follow every local Markdown link from `AGENTS.md` and every moved `docs/` page, including heading fragments, and confirm each one resolves.
-- Search the repository, excluding this file and historical issue/plan files, for any remaining reference to the retired agent-workflow directories, the old per-agent root instruction file, or the removed workflow validator script — correct any active reference found.
+```bash
+python3 scripts/validate_docs.py               # macOS/Linux
+py -3 scripts/validate_docs.py                  # Windows
+```
+
+Run from the repository root. This standard-library-only, read-only script checks, in `AGENTS.md`, the root and application READMEs, `CONTRIBUTING.md`, `.github/**/*.md`, and `docs/**/*.md`:
+
+- every local Markdown link/image target and `#heading` fragment (same-page and cross-page), resolved relative to the containing file;
+- every explicit local documentation path mentioned in a Markdown inline-code span or a backend Python comment/docstring, in root-relative or `./`/`../`-prefixed form (root-relative resolves from the repository root, `./`/`../` forms resolve from the mentioning file).
+
+It prints sorted `file:line: message` diagnostics and exits nonzero on any broken link, fragment, path, or unsupported reference-style link; a clean tree prints a one-line count and exits zero. It does not check external URLs, content inside fenced code blocks, or whether prose is factually accurate — that remains manual review.
 
 ```bash
 git diff --check                              # flag trailing whitespace / whitespace errors in unstaged changes
