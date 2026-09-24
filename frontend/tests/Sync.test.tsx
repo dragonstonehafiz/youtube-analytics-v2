@@ -442,17 +442,15 @@ describe('Search Insights stage', () => {
 })
 
 describe('Related Video Insights stage', () => {
-  it('is selected by default, positioned directly below Search Insights and before FX Rates, with the same period selector as Search Insights', async () => {
+  it('is selected by default, positioned directly below Search Insights, with the same period selector as Search Insights', async () => {
     renderSync('/sync')
     await settled()
 
     const stageOrder = screen.getAllByRole('row').slice(1).map(r => r.textContent ?? '')
     const insightsIndex = stageOrder.findIndex(t => t.includes('Search Insights'))
     const relatedIndex = stageOrder.findIndex(t => t.includes('Related Video Insights'))
-    const fxIndex = stageOrder.findIndex(t => t.includes('FX Rates'))
     expect(insightsIndex).toBeGreaterThanOrEqual(0)
     expect(relatedIndex).toBe(insightsIndex + 1)
-    expect(fxIndex).toBe(relatedIndex + 1)
 
     expect(screen.getByRole('checkbox', { name: 'Related Video Insights' })).toHaveProperty('checked', true)
     const select = screen.getByRole('combobox', { name: 'Related Video Insights period' })

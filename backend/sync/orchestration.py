@@ -1,16 +1,21 @@
 from __future__ import annotations
 
+import threading
 import uuid
 from collections.abc import Callable, Sequence
+from dataclasses import dataclass, field
 
 import database
 from logging_config import exception_context, get_logger
 
 from . import status
 from .plans import (
+    ANALYTICS_STAGES,
     FULL_SYNC_TYPES,
+    PRE_ANALYTICS_STAGES,
     STAGE_ORDER,
     PlanStage,
+    allocate_analytics_workers,
     recorded_scope,
     recorded_year,
     validate_plan,
@@ -153,14 +158,125 @@ def _run_stage(
         _logger.info("Sync stage completed %s", _format_stage_counts(sync_type, counts))
 
 
+def _run_tracked_stage(batch_id: str, name: str, stage: PlanStage, run: Callable[[SyncCounts], None]) -> None:
+    """Run one stage via `_run_stage()`, keeping its entry in the public status message
+    (`sync.status`) in sync with its lifecycle: an initial fixed message is published for
+    a stage whose loop doesn't report its own progress, the entry is removed on success
+    or cancellation, and replaced with its fixed failure label — which stays visible
+    alongside any other stage still active — on a genuine exception. Always re-raises
+    `SyncCancelled` or the stage's own exception; the caller decides what that means at
+    its own level (fail-fast for the serial pre-analytics stages, worker-isolated for the
+    Analytics API stages).
+    """
+    initial_message = _STAGE_MESSAGES[name]
+    if initial_message:
+        status.update_sync_progress(name, initial_message)
+    try:
+        _run_stage(batch_id, name, recorded_scope(stage), recorded_year(stage), run)
+    except status.SyncCancelled:
+        status.end_stage(name)
+        raise
+    except Exception:
+        status.fail_stage(name, _STAGE_FAILURE_LABELS[name])
+        raise
+    else:
+        status.end_stage(name)
+
+
+def _pre_analytics_runner(
+    name: str,
+    stage: PlanStage,
+    playlist_video_ids: Callable[[], set[str]],
+    set_playlist_video_ids: Callable[[set[str]], None],
+    set_channel_owned_ids: Callable[[set[str]], None],
+    channel_owned_ids: Callable[[], set[str]],
+) -> Callable[[SyncCounts], None]:
+    """Build the stage callable for one selected pre-analytics stage, threading the
+    plan-local playlist/channel-owned ID sets between `playlists`, `videos`, and
+    `pruning` via the given accessors."""
+    run: Callable[[SyncCounts], None]
+    if name == "playlists":
+        def run(counts: SyncCounts) -> None:
+            set_playlist_video_ids(sync_playlists(counts))
+    elif name == "videos":
+        def run(counts: SyncCounts) -> None:
+            set_channel_owned_ids(sync_videos(counts, playlist_video_ids()))
+    elif name == "pruning":
+        def run(counts: SyncCounts) -> None:
+            sync_pruning(counts, channel_owned_ids())
+    elif name == "comments":
+        def run(counts: SyncCounts) -> None:
+            sync_comments(recorded_scope(stage), counts)
+    else:
+        def run(counts: SyncCounts) -> None:
+            sync_fx_rates(counts)
+    return run
+
+
+_ANALYTICS_RUNNERS: dict[str, Callable[[PlanStage, SyncCounts], None]] = {
+    "video_analytics": lambda stage, counts: sync_video_analytics(recorded_scope(stage), stage.year, counts),
+    "video_traffic_sources": lambda stage, counts: sync_video_traffic_sources(recorded_scope(stage), stage.year, counts),
+    "search_insights": lambda stage, counts: sync_search_insights(recorded_scope(stage), stage.year, counts),
+    "related_video_insights": lambda stage, counts: sync_related_video_insights(recorded_scope(stage), stage.year, counts),
+}
+
+
+@dataclass
+class _WorkerOutcome:
+    """One Analytics API worker's result, written only by its own thread and read only
+    after `Thread.join()` — no lock needed."""
+
+    cancelled: bool = False
+    failed_stages: list[str] = field(default_factory=list)
+
+
+def _run_analytics_worker(
+    batch_id: str, plan: dict[str, PlanStage], stage_names: Sequence[str], outcome: _WorkerOutcome,
+) -> None:
+    """Run one worker's ordered Analytics API stage queue to completion, or stop it at
+    its own first cancellation or genuine failure — isolated from the other worker,
+    which keeps running its own queue regardless of what happens here."""
+    for name in stage_names:
+        try:
+            status.raise_if_stopping()
+        except status.SyncCancelled:
+            outcome.cancelled = True
+            return
+
+        stage = plan[name]
+
+        def run(counts: SyncCounts, stage: PlanStage = stage, name: str = name) -> None:
+            _ANALYTICS_RUNNERS[name](stage, counts)
+
+        try:
+            _run_tracked_stage(batch_id, name, stage, run)
+        except status.SyncCancelled:
+            outcome.cancelled = True
+            return
+        except Exception:
+            outcome.failed_stages.append(name)
+            return
+
+
+def _multi_failure_message(failed_stages: Sequence[str]) -> str:
+    """Build safe failure text naming every failed Analytics API stage, in canonical
+    stage order regardless of which worker or order they failed in."""
+    ordered = [name for name in ANALYTICS_STAGES if name in failed_stages]
+    labels = ", ".join(_STAGE_FAILURE_LABELS[name] for name in ordered)
+    return f"Sync failed while {labels}"
+
+
 def execute_plan(stages: Sequence[PlanStage]) -> None:
     """Run a validated plan whose active-state reservation the caller already holds.
 
-    Only the selected stages run, always in the canonical STAGE_ORDER regardless of the
-    order they were submitted in, and every started stage gets one sync_runs row sharing
-    a single batch_id. Execution is fail-fast: a failing stage is recorded with its
-    partial counters and later stages neither run nor create rows — which also keeps the
-    batch from qualifying as a complete pipeline run.
+    Only the selected stages run. The selected pre-analytics stages (`PRE_ANALYTICS_STAGES`
+    — playlists, videos, pruning, FX rates, comments) run serially, fail-fast, in that
+    canonical order; every started stage gets one sync_runs row sharing a single
+    batch_id. Once they all succeed, the selected Analytics API stages
+    (`ANALYTICS_STAGES`) are split across at most two independent workers by
+    `allocate_analytics_workers()` and run concurrently — a failure on one worker stops
+    only that worker's remaining queued stages, never the other's. An analytics-only
+    plan (no pre-analytics stage selected) proceeds straight to the workers.
 
     Playlist- and video-discovered IDs are held in local variables for this call only
     (never persisted) and threaded from `sync_playlists()` into `sync_videos()` and from
@@ -172,6 +288,20 @@ def execute_plan(stages: Sequence[PlanStage]) -> None:
     playlist_video_ids: set[str] = set()
     channel_owned_ids: set[str] = set()
     current_stage: str | None = None
+
+    def get_playlist_video_ids() -> set[str]:
+        return playlist_video_ids
+
+    def set_playlist_video_ids(ids: set[str]) -> None:
+        nonlocal playlist_video_ids
+        playlist_video_ids = ids
+
+    def get_channel_owned_ids() -> set[str]:
+        return channel_owned_ids
+
+    def set_channel_owned_ids(ids: set[str]) -> None:
+        nonlocal channel_owned_ids
+        channel_owned_ids = ids
 
     try:
         # Revalidated here, not just at the API boundary, so no caller can drive the
@@ -185,48 +315,43 @@ def execute_plan(stages: Sequence[PlanStage]) -> None:
         selected = ",".join(name for name in STAGE_ORDER if name in plan)
         _logger.info("Sync plan started sync_types=%s", selected)
 
-        for name in STAGE_ORDER:
+        for name in PRE_ANALYTICS_STAGES:
             stage = plan.get(name)
             if stage is None:
                 continue
             status.raise_if_stopping()
             current_stage = name
-            message = _STAGE_MESSAGES[name]
-            if message:
-                status.update_sync_progress(message)
+            run = _pre_analytics_runner(
+                name, stage, get_playlist_video_ids, set_playlist_video_ids,
+                set_channel_owned_ids, get_channel_owned_ids,
+            )
+            _run_tracked_stage(batch_id, name, stage, run)
 
-            run: Callable[[SyncCounts], None]
-            if name == "playlists":
-                def run(counts: SyncCounts) -> None:
-                    nonlocal playlist_video_ids
-                    playlist_video_ids = sync_playlists(counts)
-            elif name == "videos":
-                def run(counts: SyncCounts) -> None:
-                    nonlocal channel_owned_ids
-                    channel_owned_ids = sync_videos(counts, playlist_video_ids)
-            elif name == "comments":
-                def run(counts: SyncCounts, stage: PlanStage = stage) -> None:
-                    sync_comments(recorded_scope(stage), counts)
-            elif name == "pruning":
-                def run(counts: SyncCounts) -> None:
-                    sync_pruning(counts, channel_owned_ids)
-            elif name == "video_analytics":
-                def run(counts: SyncCounts, stage: PlanStage = stage) -> None:
-                    sync_video_analytics(recorded_scope(stage), stage.year, counts)
-            elif name == "video_traffic_sources":
-                def run(counts: SyncCounts, stage: PlanStage = stage) -> None:
-                    sync_video_traffic_sources(recorded_scope(stage), stage.year, counts)
-            elif name == "search_insights":
-                def run(counts: SyncCounts, stage: PlanStage = stage) -> None:
-                    sync_search_insights(recorded_scope(stage), stage.year, counts)
-            elif name == "related_video_insights":
-                def run(counts: SyncCounts, stage: PlanStage = stage) -> None:
-                    sync_related_video_insights(recorded_scope(stage), stage.year, counts)
-            else:
-                def run(counts: SyncCounts) -> None:
-                    sync_fx_rates(counts)
+        status.raise_if_stopping()
 
-            _run_stage(batch_id, name, recorded_scope(stage), recorded_year(stage), run)
+        analytics_selected = [name for name in ANALYTICS_STAGES if name in plan]
+        if analytics_selected:
+            worker_queues = allocate_analytics_workers(analytics_selected)
+            outcomes = [_WorkerOutcome() for _ in worker_queues]
+            threads: list[threading.Thread] = []
+            for queue, outcome in zip(worker_queues, outcomes):
+                if not queue:
+                    continue
+                thread = threading.Thread(
+                    target=_run_analytics_worker, args=(batch_id, plan, queue, outcome),
+                )
+                threads.append(thread)
+                thread.start()
+            for thread in threads:
+                thread.join()
+
+            failed_stages = [name for outcome in outcomes for name in outcome.failed_stages]
+            if failed_stages:
+                status.fail_sync(_multi_failure_message(failed_stages))
+                raise RuntimeError(f"Analytics API workers failed: {', '.join(failed_stages)}")
+            if any(outcome.cancelled for outcome in outcomes):
+                raise status.SyncCancelled()
+
         status.raise_if_stopping()
         status.complete_sync("Sync complete")
 

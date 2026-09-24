@@ -6,23 +6,34 @@ from datetime import date
 
 import database
 
-# Canonical execution order for every sync stage. The backend — not the client — owns
-# this order: a submitted plan always runs in this sequence regardless of the order its
-# stages appear in the request. `pruning` sits after both discovery stages it depends on
-# and before any stage whose rows would otherwise be cascade-deleted out from under it.
-# `comments` reads the video rows `videos` just wrote, so it follows that stage directly;
-# a video pruned afterwards cascade-deletes the comments collected for it here.
-STAGE_ORDER: tuple[str, ...] = (
-    "playlists",
-    "videos",
-    "comments",
-    "pruning",
+# The selected serial stages that must finish, in this order, before any selected
+# Analytics API stage begins. `pruning` sits after both discovery stages it depends on;
+# putting it ahead of `comments` means a video about to be pruned is never fetched for
+# comments in the same plan. `comments` reads the video rows `videos` wrote, and runs
+# against whatever survives pruning.
+PRE_ANALYTICS_STAGES: tuple[str, ...] = ("playlists", "videos", "pruning", "fx_rates", "comments")
+
+# The Analytics API stages, run on up to two independent workers after every selected
+# pre-analytics stage above has succeeded. `video_analytics`/`video_traffic_sources` are
+# the issue's faster scheduling-priority group; `search_insights`/`related_video_insights`
+# are the slower group — see `allocate_analytics_workers()`.
+ANALYTICS_STAGES: tuple[str, ...] = (
     "video_analytics",
     "video_traffic_sources",
     "search_insights",
     "related_video_insights",
-    "fx_rates",
 )
+
+# Canonical execution order for every sync stage. The backend — not the client — owns
+# this order: a submitted plan always runs in this sequence regardless of the order its
+# stages appear in the request.
+STAGE_ORDER: tuple[str, ...] = PRE_ANALYTICS_STAGES + ANALYTICS_STAGES
+
+# The issue's user-specified Analytics API scheduling priorities: comparative ordering
+# within a worker's own queue, not measured durations or a timing guarantee. See
+# `allocate_analytics_workers()` and `docs/references/sync.md`.
+FAST_ANALYTICS_STAGES: frozenset[str] = frozenset({"video_analytics", "video_traffic_sources"})
+SLOW_ANALYTICS_STAGES: frozenset[str] = frozenset({"search_insights", "related_video_insights"})
 
 # Stages that delete data are never selected automatically; a plan built for unattended
 # runs (e.g. the startup sync) must exclude them explicitly.
@@ -167,6 +178,45 @@ def _validate_scope_only(stage: PlanStage) -> None:
         raise PlanValidationError(f"scope must be one of: {', '.join(SCOPE_AWARE_SCOPES)}")
     if stage.year is not None:
         raise PlanValidationError(f"{stage.stage} does not accept a year")
+
+
+def allocate_analytics_workers(
+    selected: Sequence[str],
+) -> tuple[tuple[str, ...], tuple[str, ...]]:
+    """Split the selected Analytics API stages across at most two workers.
+
+    Each worker's own queue runs fast-before-slow. Deterministic, based only on which
+    stages are selected and their canonical order — never on submission order or a
+    duration estimate. Implements the issue's distribution table:
+
+    | Selected stages | Worker A | Worker B |
+    |---|---|---|
+    | One stage | Selected stage | Idle |
+    | Two fast | Fast | Fast |
+    | Two slow | Slow | Slow |
+    | One fast, one slow | Fast | Slow |
+    | Two fast, one slow | Fast -> slow | Fast |
+    | One fast, two slow | Fast -> slow | Slow |
+    | Two fast, two slow | Fast -> slow | Fast -> slow |
+    """
+    selected_set = set(selected)
+    fast = tuple(name for name in ANALYTICS_STAGES if name in FAST_ANALYTICS_STAGES and name in selected_set)
+    slow = tuple(name for name in ANALYTICS_STAGES if name in SLOW_ANALYTICS_STAGES and name in selected_set)
+    total = len(fast) + len(slow)
+
+    if total <= 1:
+        return (fast + slow, ())
+    if total == 2:
+        if len(fast) == 2:
+            return ((fast[0],), (fast[1],))
+        if len(slow) == 2:
+            return ((slow[0],), (slow[1],))
+        return ((fast[0],), (slow[0],))
+    if total == 3:
+        if len(fast) == 2:
+            return ((fast[0], slow[0]), (fast[1],))
+        return ((fast[0], slow[0]), (slow[1],))
+    return ((fast[0], slow[0]), (fast[1], slow[1]))
 
 
 def full_incremental_plan() -> tuple[PlanStage, ...]:

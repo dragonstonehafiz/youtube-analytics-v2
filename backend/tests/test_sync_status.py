@@ -42,12 +42,12 @@ class ProgressTest(SyncStatusTestCase):
     def test_progress_updates_the_message_while_running(self) -> None:
         status.try_begin_sync("Starting sync...")
 
-        status.update_sync_progress("Syncing videos...")
+        status.update_sync_progress("videos", "Syncing videos...")
 
         self.assertEqual(status.get_sync_status()["message"], "Syncing videos...")
 
     def test_progress_is_a_no_op_while_idle(self) -> None:
-        status.update_sync_progress("Syncing videos...")
+        status.update_sync_progress("videos", "Syncing videos...")
 
         self.assertEqual(status.get_sync_status(), {"state": "idle", "message": ""})
 
@@ -55,9 +55,78 @@ class ProgressTest(SyncStatusTestCase):
         status.try_begin_sync("Starting sync...")
         status.complete_sync("Sync complete")
 
-        status.update_sync_progress("Syncing videos...")
+        status.update_sync_progress("videos", "Syncing videos...")
 
         self.assertEqual(status.get_sync_status()["message"], "Sync complete")
+
+    def test_two_active_stages_are_both_visible_in_the_combined_message(self) -> None:
+        status.try_begin_sync("Starting sync...")
+
+        status.update_sync_progress("video_analytics", "Syncing video analytics (1/5)...")
+        status.update_sync_progress("search_insights", "Syncing search insights (1/5)...")
+
+        message = status.get_sync_status()["message"]
+        self.assertIn("Syncing video analytics (1/5)...", message)
+        self.assertIn("Syncing search insights (1/5)...", message)
+
+    def test_a_second_update_to_the_same_stage_replaces_its_own_entry_only(self) -> None:
+        status.try_begin_sync("Starting sync...")
+
+        status.update_sync_progress("video_analytics", "Syncing video analytics (1/5)...")
+        status.update_sync_progress("search_insights", "Syncing search insights (1/5)...")
+        status.update_sync_progress("video_analytics", "Syncing video analytics (2/5)...")
+
+        message = status.get_sync_status()["message"]
+        self.assertNotIn("Syncing video analytics (1/5)...", message)
+        self.assertIn("Syncing video analytics (2/5)...", message)
+        self.assertIn("Syncing search insights (1/5)...", message)
+
+    def test_end_stage_removes_its_entry_but_keeps_the_others(self) -> None:
+        status.try_begin_sync("Starting sync...")
+        status.update_sync_progress("video_analytics", "Syncing video analytics (1/5)...")
+        status.update_sync_progress("search_insights", "Syncing search insights (1/5)...")
+
+        status.end_stage("video_analytics")
+
+        message = status.get_sync_status()["message"]
+        self.assertNotIn("video analytics", message)
+        self.assertIn("Syncing search insights (1/5)...", message)
+
+    def test_fail_stage_keeps_a_fixed_label_visible_while_other_work_continues(self) -> None:
+        status.try_begin_sync("Starting sync...")
+        status.update_sync_progress("video_analytics", "Syncing video analytics (1/5)...")
+        status.update_sync_progress("search_insights", "Syncing search insights (1/5)...")
+
+        status.fail_stage("video_analytics", "syncing video analytics")
+
+        message = status.get_sync_status()["message"]
+        self.assertIn("syncing video analytics failed", message)
+        self.assertIn("Syncing search insights (1/5)...", message)
+
+    def test_multiple_failed_stages_are_all_named(self) -> None:
+        status.try_begin_sync("Starting sync...")
+
+        status.fail_stage("video_analytics", "syncing video analytics")
+        status.fail_stage("search_insights", "syncing search insights")
+
+        message = status.get_sync_status()["message"]
+        self.assertIn("syncing video analytics failed", message)
+        self.assertIn("syncing search insights failed", message)
+
+    def test_end_stage_is_a_no_op_on_the_public_message_while_idle(self) -> None:
+        status.end_stage("video_analytics")  # must not raise
+
+        self.assertEqual(status.get_sync_status(), {"state": "idle", "message": ""})
+
+    def test_reservation_clears_stage_progress_and_failures_from_a_previous_run(self) -> None:
+        status.try_begin_sync("first run")
+        status.update_sync_progress("video_analytics", "Syncing video analytics (1/5)...")
+        status.fail_stage("search_insights", "syncing search insights")
+        status.fail_sync("Sync failed while syncing search insights")
+
+        status.try_begin_sync("second run")
+
+        self.assertEqual(status.get_sync_status(), {"state": "running", "message": "second run"})
 
 
 class TerminalTransitionTest(SyncStatusTestCase):
@@ -120,7 +189,7 @@ class StopRequestTest(SyncStatusTestCase):
         status.try_begin_sync("Starting sync...")
         status.request_stop()
 
-        status.update_sync_progress("Syncing videos...")
+        status.update_sync_progress("videos", "Syncing videos...")
 
         self.assertEqual(status.get_sync_status()["message"], "Stopping sync...")
 

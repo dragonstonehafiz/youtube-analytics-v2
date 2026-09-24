@@ -71,7 +71,7 @@ class ValidPlanTest(SyncRoutesTestCase):
             ]
         })
 
-        self.assertEqual(self.queued_stages, ["videos", "video_analytics", "fx_rates"])
+        self.assertEqual(self.queued_stages, ["videos", "fx_rates", "video_analytics"])
 
     def test_independent_periods_reach_the_executor(self) -> None:
         self._post({

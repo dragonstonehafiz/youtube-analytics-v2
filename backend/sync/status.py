@@ -21,6 +21,20 @@ _lock = threading.Lock()
 _state: SyncLifecycleState = "idle"
 _message: str = ""
 
+# Per-stage live progress and failure text, keyed by stage name. Populated while more
+# than one stage can be active at once (the two Analytics API workers), so one worker's
+# progress update can never clobber the other's. Insertion order is rendering order.
+_stage_progress: dict[str, str] = {}
+_stage_failures: dict[str, str] = {}
+
+
+def _combined_message() -> str:
+    """Render every active stage's progress plus every failed stage's label, in the
+    order each was registered."""
+    parts = list(_stage_progress.values())
+    parts.extend(f"{label} failed" for label in _stage_failures.values())
+    return "; ".join(parts)
+
 
 def get_sync_status() -> SyncStatus:
     """Return the current sync lifecycle state and its safe message. Thread-safe."""
@@ -42,20 +56,48 @@ def try_begin_sync(message: str = "") -> bool:
             return False
         _state = "running"
         _message = message
+        _stage_progress.clear()
+        _stage_failures.clear()
         return True
 
 
-def update_sync_progress(message: str) -> None:
-    """Update the progress message of the currently running sync.
+def update_sync_progress(stage_key: str, message: str) -> None:
+    """Update one stage's progress message while the sync is running.
 
     No-op if no sync is running, so a stray call cannot fabricate a running state and
-    cannot overwrite the stopping message once cancellation has been requested.
+    cannot overwrite the stopping or a terminal message. Safe to call concurrently from
+    more than one worker thread: each stage's text is tracked under its own key, so two
+    active stages' progress is combined rather than one overwriting the other.
     """
     global _message
     with _lock:
         if _state != "running":
             return
-        _message = message
+        _stage_progress[stage_key] = message
+        _message = _combined_message()
+
+
+def end_stage(stage_key: str) -> None:
+    """Remove one stage's progress entry, e.g. once it finishes successfully or is
+    cancelled. Safe to call regardless of lifecycle state; only recomputes the public
+    message while running, so it can never overwrite a stopping or terminal message."""
+    global _message
+    with _lock:
+        _stage_progress.pop(stage_key, None)
+        if _state == "running":
+            _message = _combined_message()
+
+
+def fail_stage(stage_key: str, label: str) -> None:
+    """Record one stage's failure, replacing its progress entry with a fixed label that
+    stays visible — alongside any other stage still active — until the plan's terminal
+    transition or the next reservation clears it."""
+    global _message
+    with _lock:
+        _stage_progress.pop(stage_key, None)
+        _stage_failures[stage_key] = label
+        if _state == "running":
+            _message = _combined_message()
 
 
 def request_stop() -> bool:
@@ -149,3 +191,5 @@ def reset_sync_status() -> None:
     with _lock:
         _state = "idle"
         _message = ""
+        _stage_progress.clear()
+        _stage_failures.clear()

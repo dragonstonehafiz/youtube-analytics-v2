@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import threading
 from pathlib import Path
 
 from google.auth.transport.requests import Request
@@ -27,25 +28,39 @@ _SCOPES = [
 ]
 
 
+# Guards the token-file read/refresh/write sequence below. The two Analytics API
+# workers each build their own client and so can call get_credentials() at the same
+# moment; without this, both could read the same near-expired token, both refresh it,
+# and both write token.json — the last write wins and the other's refresh is wasted, or
+# a reader in between sees a partially written file. The lock makes the whole sequence
+# atomic instead, so concurrent callers simply queue for the same coherent result.
+_credentials_lock = threading.Lock()
+
+
 def get_credentials() -> Credentials:
-    """Return OAuth credentials, refreshing or running the auth flow as needed."""
-    creds: Credentials | None = None
-    if _TOKEN_PATH.exists():
-        creds = Credentials.from_authorized_user_file(str(_TOKEN_PATH), _SCOPES)
+    """Return OAuth credentials, refreshing or running the auth flow as needed.
 
-    if not creds or not creds.valid or not creds.has_scopes(_SCOPES):
-        if creds and creds.expired and creds.refresh_token:
-            try:
-                creds.refresh(Request())
-            except Exception:
-                _TOKEN_PATH.unlink(missing_ok=True)
-                creds = None
+    Thread-safe: concurrent callers (the two Analytics API workers) are serialized so
+    only one refreshes or writes `token.json` at a time.
+    """
+    with _credentials_lock:
+        creds: Credentials | None = None
+        if _TOKEN_PATH.exists():
+            creds = Credentials.from_authorized_user_file(str(_TOKEN_PATH), _SCOPES)
 
-        if not creds or not creds.valid:
-            flow = InstalledAppFlow.from_client_secrets_file(str(_CLIENT_SECRET_PATH), _SCOPES)
-            creds = flow.run_local_server(port=0, access_type="offline", include_granted_scopes="true", prompt="consent")
+        if not creds or not creds.valid or not creds.has_scopes(_SCOPES):
+            if creds and creds.expired and creds.refresh_token:
+                try:
+                    creds.refresh(Request())
+                except Exception:
+                    _TOKEN_PATH.unlink(missing_ok=True)
+                    creds = None
 
-        _TOKEN_PATH.parent.mkdir(parents=True, exist_ok=True)
-        _TOKEN_PATH.write_text(creds.to_json(), encoding="utf-8")
+            if not creds or not creds.valid:
+                flow = InstalledAppFlow.from_client_secrets_file(str(_CLIENT_SECRET_PATH), _SCOPES)
+                creds = flow.run_local_server(port=0, access_type="offline", include_granted_scopes="true", prompt="consent")
 
-    return creds
+            _TOKEN_PATH.parent.mkdir(parents=True, exist_ok=True)
+            _TOKEN_PATH.write_text(creds.to_json(), encoding="utf-8")
+
+        return creds

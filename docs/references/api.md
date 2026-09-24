@@ -344,9 +344,11 @@ POST /sync/trigger
       `pruning` submitted without both `playlists` and `videos` in the same plan
   409 a sync is already in progress
   Each period-aware stage carries its own scope/year — the two can differ in one plan.
-  Submission order is irrelevant: the backend always executes in canonical stage order
-  (playlists → videos → comments → pruning → video_analytics → video_traffic_sources →
-  search_insights → related_video_insights → fx_rates).
+  Submission order is irrelevant: the backend always runs the selected pre-analytics
+  stages serially, in canonical order (playlists → videos → pruning → fx_rates →
+  comments), then splits the selected Analytics API stages (video_analytics,
+  video_traffic_sources, search_insights, related_video_insights) across at most two
+  independent workers (see sync.md).
   search_insights and related_video_insights are each independently period-aware
   (scope/year required, like video_analytics/video_traffic_sources) and share no
   dependency with video_traffic_sources or with each other — selecting/deselecting

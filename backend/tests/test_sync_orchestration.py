@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+import threading
+import time
 import unittest
 from pathlib import Path
 from tempfile import TemporaryDirectory
@@ -100,7 +102,7 @@ class SelectedStageExecutionTest(OrchestrationTestCase):
 
         self.assertEqual(
             self.calls,
-            ["sync_playlists", "sync_video_traffic_sources", "sync_fx_rates"],
+            ["sync_playlists", "sync_fx_rates", "sync_video_traffic_sources"],
         )
 
     def test_pruning_runs_after_playlists_and_videos(self) -> None:
@@ -124,14 +126,14 @@ class SelectedStageExecutionTest(OrchestrationTestCase):
         self.assertEqual(len(self.created), 8)
         self.assertEqual(len(batch_ids), 1)
 
-    def test_comments_runs_immediately_after_videos(self) -> None:
+    def test_comments_runs_after_fx_rates(self) -> None:
         execute_plan([
             PlanStage("fx_rates"),
             PlanStage("comments", "incremental"),
             PlanStage("videos"),
         ])
 
-        self.assertEqual(self.calls, ["sync_videos", "sync_comments", "sync_fx_rates"])
+        self.assertEqual(self.calls, ["sync_videos", "sync_fx_rates", "sync_comments"])
 
     def test_passes_the_requested_scope_to_the_comments_stage(self) -> None:
         execute_plan([PlanStage("comments", "all")])
@@ -512,6 +514,147 @@ class PersistenceFailureLoggingTest(OrchestrationTestCase):
         self.assertEqual(str(ctx.exception), "persist boom")
         messages = [record.getMessage() for record in captured.records]
         self.assertTrue(any("operation=fail_sync_run" in m for m in messages))
+
+
+class AnalyticsWorkerConcurrencyTest(OrchestrationTestCase):
+    """Exercises the real two-worker split with real `threading.Thread`s (the stage
+    functions and database layer are stubbed, but the concurrency itself is real) —
+    events/barriers make each assertion deterministic instead of relying on sleeps."""
+
+    def test_no_analytics_stage_starts_before_pre_analytics_finishes(self) -> None:
+        pre_analytics_done = threading.Event()
+
+        def videos_side_effect(counts: object, playlist_video_ids: object) -> None:
+            self.calls.append("sync_videos")
+            time.sleep(0.02)
+            pre_analytics_done.set()
+
+        def analytics_side_effect(scope: object, year: object, counts: object) -> None:
+            self.assertTrue(pre_analytics_done.is_set())
+            self.calls.append("sync_video_analytics")
+
+        self.stage_mocks["sync_videos"].side_effect = videos_side_effect
+        self.stage_mocks["sync_video_analytics"].side_effect = analytics_side_effect
+
+        execute_plan([PlanStage("videos"), PlanStage("video_analytics", "incremental")])
+
+        self.assertEqual(self.calls, ["sync_videos", "sync_video_analytics"])
+
+    def test_two_analytics_stages_on_different_workers_run_concurrently(self) -> None:
+        barrier = threading.Barrier(2, timeout=2)
+
+        self.stage_mocks["sync_video_analytics"].side_effect = lambda *a: barrier.wait()
+        self.stage_mocks["sync_search_insights"].side_effect = lambda *a: barrier.wait()
+
+        # One fast, one slow: allocate_analytics_workers puts each on its own worker.
+        # If they ran serially, the second stage's barrier.wait() would time out
+        # waiting for a partner that already returned, raising BrokenBarrierError.
+        execute_plan([
+            PlanStage("video_analytics", "incremental"),
+            PlanStage("search_insights", "incremental"),
+        ])
+
+    def test_each_worker_runs_its_own_queue_fast_before_slow(self) -> None:
+        execute_plan([
+            PlanStage("video_analytics", "incremental"),
+            PlanStage("video_traffic_sources", "incremental"),
+            PlanStage("search_insights", "incremental"),
+            PlanStage("related_video_insights", "incremental"),
+        ])
+
+        self.assertLess(self.calls.index("sync_video_analytics"), self.calls.index("sync_search_insights"))
+        self.assertLess(
+            self.calls.index("sync_video_traffic_sources"), self.calls.index("sync_related_video_insights"),
+        )
+
+    def test_analytics_only_plan_never_calls_discovery(self) -> None:
+        execute_plan([PlanStage("video_analytics", "incremental")])
+
+        self.stage_mocks["sync_playlists"].assert_not_called()
+        self.stage_mocks["sync_videos"].assert_not_called()
+        self.assertEqual(self.calls, ["sync_video_analytics"])
+
+    def test_worker_a_failure_does_not_stop_worker_bs_queue(self) -> None:
+        self.stage_mocks["sync_video_analytics"].side_effect = RuntimeError("boom")
+
+        with self.assertRaises(RuntimeError):
+            execute_plan([
+                PlanStage("video_analytics", "incremental"),
+                PlanStage("video_traffic_sources", "incremental"),
+                PlanStage("search_insights", "incremental"),
+                PlanStage("related_video_insights", "incremental"),
+            ])
+
+        # Worker A (video_analytics -> search_insights): the failure stops its own
+        # queue, so search_insights never runs.
+        self.stage_mocks["sync_search_insights"].assert_not_called()
+        # Worker B (video_traffic_sources -> related_video_insights): unaffected.
+        self.assertIn("sync_video_traffic_sources", self.calls)
+        self.assertIn("sync_related_video_insights", self.calls)
+
+        result = status.get_sync_status()
+        self.assertEqual(result["state"], "failed")
+        self.assertIn("syncing video analytics", result["message"])
+
+    def test_status_stays_active_until_both_workers_exit(self) -> None:
+        release = threading.Event()
+        self.stage_mocks["sync_related_video_insights"].side_effect = lambda *a: release.wait(timeout=5)
+
+        status.try_begin_sync("Starting sync...")
+        thread = threading.Thread(
+            target=execute_plan,
+            args=([
+                PlanStage("video_analytics", "incremental"),
+                PlanStage("related_video_insights", "incremental"),
+            ],),
+        )
+        thread.start()
+        try:
+            deadline = time.time() + 2
+            while "sync_video_analytics" not in self.calls and time.time() < deadline:
+                time.sleep(0.01)
+            self.assertIn("sync_video_analytics", self.calls)
+
+            # Worker A (video_analytics alone) has already finished, but Worker B
+            # (related_video_insights) is still blocked — the plan must still be active.
+            self.assertEqual(status.get_sync_status()["state"], "running")
+            self.assertFalse(status.try_begin_sync("second run"))
+        finally:
+            release.set()
+            thread.join(timeout=5)
+
+        self.assertEqual(status.get_sync_status()["state"], "success")
+
+    def test_stop_cancels_both_workers_and_joins_them(self) -> None:
+        stop_requested = threading.Event()
+
+        def stop_after_traffic_sources(scope: object, year: object, counts: object) -> None:
+            self.calls.append("sync_video_traffic_sources")
+            status.request_stop()
+            stop_requested.set()
+
+        def wait_for_stop_then_run(scope: object, year: object, counts: object) -> None:
+            # Blocks worker A's first stage until worker B has requested Stop, so the
+            # checkpoint before each worker's own second stage is guaranteed to see it.
+            stop_requested.wait(timeout=5)
+            self.calls.append("sync_video_analytics")
+
+        self.stage_mocks["sync_video_traffic_sources"].side_effect = stop_after_traffic_sources
+        self.stage_mocks["sync_video_analytics"].side_effect = wait_for_stop_then_run
+
+        status.try_begin_sync("Starting sync...")
+        execute_plan([
+            PlanStage("video_analytics", "incremental"),
+            PlanStage("video_traffic_sources", "incremental"),
+            PlanStage("search_insights", "incremental"),
+            PlanStage("related_video_insights", "incremental"),
+        ])
+
+        self.assertEqual(status.get_sync_status(), {"state": "cancelled", "message": "Sync stopped"})
+        self.assertIn("sync_video_analytics", self.calls)
+        self.assertIn("sync_video_traffic_sources", self.calls)
+        self.stage_mocks["sync_search_insights"].assert_not_called()
+        self.stage_mocks["sync_related_video_insights"].assert_not_called()
 
 
 if __name__ == "__main__":

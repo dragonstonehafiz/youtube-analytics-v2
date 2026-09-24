@@ -9,6 +9,7 @@
   border-radius: var(--radius-sm);
   background: var(--surface);
   font-size: 13px;
+  max-width: 100%;
 }
 
 .sync-status.syncing {
@@ -51,6 +52,7 @@
 .sync-status-message {
   color: var(--blue);
   font-weight: 500;
+  overflow-wrap: break-word;
 }
 
 .sync-status-idle {
