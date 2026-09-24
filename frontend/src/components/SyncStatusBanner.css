@@ -1,0 +1,48 @@
+/* Vertical stack: concurrent stages each get their own full-width row rather than
+   sitting side by side, so a stage's text is never squeezed to fit a shared line. */
+.sync-status-banner {
+  display: flex;
+  flex-direction: column;
+  gap: 0.6rem;
+  margin-bottom: 1.5rem;
+}
+
+.sync-status-banner-row {
+  display: flex;
+  align-items: center;
+  gap: 0.75rem;
+  padding: 0.9rem 1.25rem;
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  background: var(--surface);
+  font-size: 15px;
+  font-weight: 500;
+}
+
+.sync-status-banner-row.syncing,
+.sync-status-banner-row.stopping {
+  border-color: var(--blue-mid);
+  color: var(--blue-dark);
+}
+
+.sync-status-banner-row.failed {
+  border-color: var(--red-mid);
+  color: var(--red);
+}
+
+.sync-status-banner-idle {
+  color: var(--text-secondary);
+}
+
+.sync-status-banner-dot {
+  width: 10px;
+  height: 10px;
+  border-radius: 50%;
+  background: var(--blue);
+  flex-shrink: 0;
+  animation: sync-pulse 1.5s ease-in-out infinite;
+}
+
+.sync-status-banner-message {
+  overflow-wrap: break-word;
+}

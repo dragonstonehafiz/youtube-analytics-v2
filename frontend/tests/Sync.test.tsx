@@ -256,40 +256,39 @@ describe('tab selection and URL state', () => {
   })
 })
 
-describe('lifecycle feedback stays out of the page', () => {
-  it('renders no page-level text while the first status is pending', async () => {
+describe('the status banner reflects the poll', () => {
+  it('renders nothing while the first status is pending', async () => {
     mockGetSyncStatus.mockReturnValue(new Promise(() => {}))
     renderSync('/sync')
 
-    expect(screen.queryByText('Checking sync status...')).toBeNull()
-    expect(screen.queryByText('Waiting for status...')).toBeNull()
+    expect(screen.queryByText('Not syncing')).toBeNull()
+    expect(screen.queryByText('Status unavailable')).toBeNull()
   })
 
-  it('renders no banner and keeps the button copy fixed when status is unavailable', async () => {
+  it('shows the banner when status is unavailable, and keeps the button copy fixed', async () => {
     mockGetSyncStatus.mockRejectedValue(new Error('down'))
     renderSync('/sync')
 
     await waitFor(() =>
       expect(screen.getByRole('button', { name: 'Sync selected' })).toHaveProperty('disabled', true))
-    expect(screen.queryByText('Status unavailable')).toBeNull()
+    await screen.findByText('Status unavailable')
   })
 
-  it('replaces the submit action with Stop sync while a sync is running', async () => {
+  it('replaces the submit action with Stop sync and shows the running message while a sync is running', async () => {
     mockGetSyncStatus.mockResolvedValue({ state: 'running', message: 'Syncing videos', stages: [] })
     renderSync('/sync')
 
     await waitFor(() => expect(screen.getByRole('button', { name: 'Stop sync' })).toBeDefined())
     expect(screen.queryByRole('button', { name: 'Sync selected' })).toBeNull()
-    expect(screen.queryByText('Sync in progress')).toBeNull()
-    expect(screen.queryByText('Syncing videos')).toBeNull()
+    await screen.findByText('Syncing videos')
   })
 
-  it('reports no terminal success or failure text on the page', async () => {
+  it('shows the terminal failure message in the banner', async () => {
     mockGetSyncStatus.mockResolvedValue({ state: 'failed', message: 'Sync failed: quota', stages: [] })
     renderSync('/sync')
     await settled()
 
-    await waitFor(() => expect(screen.queryByText('Sync failed: quota')).toBeNull())
+    await screen.findByText('Sync failed: quota')
   })
 })
 
@@ -1018,6 +1017,32 @@ describe('stop sync workflow', () => {
     await waitFor(() =>
       expect(screen.getByRole('button', { name: 'Stopping…' })).toHaveProperty('disabled', true))
     expect(mockStopSync).toHaveBeenCalledTimes(1)
+  })
+
+  it('shows stopping while the post-stop status refresh is still pending', async () => {
+    await renderRunning()
+    await screen.findByText('Syncing videos')
+    mockGetSyncStatus.mockReturnValue(new Promise(() => {}))
+
+    fireEvent.click(screen.getByRole('button', { name: 'Stop sync' }))
+    await screen.findByRole('dialog')
+    fireEvent.click(within(screen.getByRole('dialog')).getByRole('button', { name: 'Stop sync' }))
+
+    await screen.findByText('Stopping sync...')
+    expect(screen.queryByText('Syncing videos')).toBeNull()
+  })
+
+  it('refreshes status immediately on a successful stop, so the banner does not wait for the next poll', async () => {
+    await renderRunning()
+    await screen.findByText('Syncing videos')
+    mockGetSyncStatus.mockResolvedValue({ state: 'stopping', message: 'Stopping sync...', stages: [] })
+
+    fireEvent.click(screen.getByRole('button', { name: 'Stop sync' }))
+    await screen.findByRole('dialog')
+    fireEvent.click(within(screen.getByRole('dialog')).getByRole('button', { name: 'Stop sync' }))
+
+    await screen.findByText('Stopping sync...')
+    expect(screen.queryByText('Syncing videos')).toBeNull()
   })
 
   it('repeated confirm clicks issue only one request', async () => {

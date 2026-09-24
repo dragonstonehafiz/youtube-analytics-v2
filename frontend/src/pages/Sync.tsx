@@ -15,6 +15,7 @@ import type {
 } from '@/types'
 import { useReplaceSearchParams } from '@/hooks/useReplaceSearchParams'
 import AsyncCard from '@/components/AsyncCard'
+import SyncStatusBanner from '@/components/SyncStatusBanner'
 import './Sync.css'
 
 const STATUS_POLL_MS = 5000
@@ -368,6 +369,7 @@ export default function Sync() {
       .then(() => {
         setStopRequested(true)
         closeStopDialog()
+        refreshStatus()
       })
       .catch((err: unknown) => {
         setError(err instanceof Error ? err.message : 'Could not stop sync')
@@ -442,6 +444,8 @@ export default function Sync() {
       <div className="page-header">
         <h1>Sync</h1>
       </div>
+
+      <SyncStatusBanner status={status} unavailable={statusUnavailable} stopRequested={stopRequested} />
 
       <div className="tabs">
         <button
