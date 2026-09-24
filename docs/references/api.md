@@ -308,10 +308,15 @@ GET  /meta/date-range
 
 ```
 GET  /sync/status
-  → { state, message }
+  → { state, message, stages }
     state ∈ idle | running | stopping | success | failed | cancelled
     message is a safe, operation-specific string; on failure it never contains raw
-    exception text, headers, credentials, tokens, or API response content.
+    exception text, headers, credentials, tokens, or API response content. While more
+    than one stage is active at once (the two Analytics API workers), message joins
+    every active stage's own text together.
+    stages is [{ key, message }], one entry per currently active or just-failed stage,
+    each carrying its own untruncated text (the same text message folds together).
+    Populated only while state is running; [] in every other state.
     A terminal result (success/failed/cancelled) is retained until the next reservation
     replaces it with running; a fresh backend starts idle with no message.
 

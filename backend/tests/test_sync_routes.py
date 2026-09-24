@@ -290,7 +290,10 @@ class ConflictTest(SyncRoutesTestCase):
 
         self._post({"stages": [{"stage": "videos"}]})
 
-        self.assertEqual(sync.get_sync_status(), {"state": "running", "message": "already running"})
+        self.assertEqual(
+            sync.get_sync_status(),
+            {"state": "running", "message": "already running", "stages": []},
+        )
 
 
 class StatusRouteTest(SyncRoutesTestCase):
@@ -298,7 +301,7 @@ class StatusRouteTest(SyncRoutesTestCase):
         response = self.client.get("/sync/status")
 
         self.assertEqual(response.status_code, 200)
-        self.assertEqual(set(response.json()), {"state", "message"})
+        self.assertEqual(set(response.json()), {"state", "message", "stages"})
         self.assertEqual(response.json()["state"], "idle")
 
     def test_status_reports_the_starting_message_before_work_begins(self) -> None:
@@ -312,7 +315,9 @@ class StatusRouteTest(SyncRoutesTestCase):
 
         self._post({"stages": [{"stage": "videos"}]})
 
-        self.assertEqual(observed[0], {"state": "running", "message": "Starting sync..."})
+        self.assertEqual(
+            observed[0], {"state": "running", "message": "Starting sync...", "stages": []}
+        )
 
 
 BATCH_GROUP = {
@@ -462,7 +467,8 @@ class StopRouteTest(SyncRoutesTestCase):
         self.client.post("/sync/stop")
 
         self.assertEqual(
-            self.client.get("/sync/status").json(), {"state": "stopping", "message": "Stopping sync..."}
+            self.client.get("/sync/status").json(),
+            {"state": "stopping", "message": "Stopping sync...", "stages": []},
         )
 
 
@@ -473,7 +479,7 @@ class AddTaskFailureTest(SyncRoutesTestCase):
         with self.assertRaises(RuntimeError):
             self._post({"stages": [{"stage": "videos"}]})
 
-        self.assertEqual(sync.get_sync_status(), {"state": "idle", "message": ""})
+        self.assertEqual(sync.get_sync_status(), {"state": "idle", "message": "", "stages": []})
         self.execute.assert_not_called()
 
 

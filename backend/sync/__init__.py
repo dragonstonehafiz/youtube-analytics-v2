@@ -18,6 +18,7 @@ from .scheduler import start_background_scheduler, synced_today
 from .status import (
     SyncCancelled,
     SyncLifecycleState,
+    SyncStageStatus,
     SyncStatus,
     cancel_sync,
     complete_sync,
@@ -42,6 +43,7 @@ __all__ = [
     "STAGE_ORDER",
     "SyncCancelled",
     "SyncLifecycleState",
+    "SyncStageStatus",
     "SyncStatus",
     "available_years",
     "cancel_sync",

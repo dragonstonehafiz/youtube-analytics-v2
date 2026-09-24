@@ -6,11 +6,20 @@ from typing import Literal, TypedDict
 SyncLifecycleState = Literal["idle", "running", "stopping", "success", "failed", "cancelled"]
 
 
+class SyncStageStatus(TypedDict):
+    """One active stage's own progress or failure text, for the navbar to render as a
+    separate item rather than folded into the combined `message` string."""
+
+    key: str
+    message: str
+
+
 class SyncStatus(TypedDict):
     """The public sync status shape returned by `/sync/status`."""
 
     state: SyncLifecycleState
     message: str
+    stages: list[SyncStageStatus]
 
 
 class SyncCancelled(Exception):
@@ -36,10 +45,28 @@ def _combined_message() -> str:
     return "; ".join(parts)
 
 
+def _stage_entries() -> list[SyncStageStatus]:
+    """Render every active stage's progress plus every failed stage's label as separate
+    entries, in the same order `_combined_message()` joins them in."""
+    entries: list[SyncStageStatus] = [
+        {"key": key, "message": message} for key, message in _stage_progress.items()
+    ]
+    entries.extend(
+        {"key": key, "message": f"{label} failed"} for key, label in _stage_failures.items()
+    )
+    return entries
+
+
 def get_sync_status() -> SyncStatus:
-    """Return the current sync lifecycle state and its safe message. Thread-safe."""
+    """Return the current sync lifecycle state and its safe message. Thread-safe.
+
+    `stages` is populated only while `running`: `_stage_progress`/`_stage_failures` are
+    not cleared on a terminal transition, so surfacing them outside `running` would leak
+    the previous run's stale per-stage entries.
+    """
     with _lock:
-        return {"state": _state, "message": _message}
+        stages = _stage_entries() if _state == "running" else []
+        return {"state": _state, "message": _message, "stages": stages}
 
 
 def try_begin_sync(message: str = "") -> bool:

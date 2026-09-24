@@ -81,9 +81,15 @@ export interface CommentsResponse {
 
 export type SyncLifecycleState = 'idle' | 'running' | 'stopping' | 'success' | 'failed' | 'cancelled'
 
+export interface SyncStageStatus {
+  key: string
+  message: string
+}
+
 export interface SyncStatusResponse {
   state: SyncLifecycleState
   message: string
+  stages: SyncStageStatus[]
 }
 
 export interface SyncStopResponse {

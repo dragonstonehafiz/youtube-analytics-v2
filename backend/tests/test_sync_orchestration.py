@@ -238,7 +238,10 @@ class StatusTest(OrchestrationTestCase):
         self.assertTrue(status.try_begin_sync())
         execute_plan([PlanStage("videos")])
 
-        self.assertEqual(status.get_sync_status(), {"state": "success", "message": "Sync complete"})
+        self.assertEqual(
+            status.get_sync_status(),
+            {"state": "success", "message": "Sync complete", "stages": []},
+        )
 
     def test_reports_a_safe_operation_specific_failure_message(self) -> None:
         self.stage_mocks["sync_videos"].side_effect = RuntimeError("boom")
@@ -401,7 +404,10 @@ class StageFailureLoggingTest(OrchestrationTestCase):
         )
 
         result = status.get_sync_status()
-        self.assertEqual(result, {"state": "failed", "message": "Sync failed while syncing videos"})
+        self.assertEqual(
+            result,
+            {"state": "failed", "message": "Sync failed while syncing videos", "stages": []},
+        )
         self.assertNotIn("FAKE_OAUTH_TOKEN", result["message"])
         self.assertNotIn("quotaExceeded", result["message"])
 
@@ -448,7 +454,10 @@ class CancellationTest(OrchestrationTestCase):
 
         execute_plan([PlanStage("videos")])
 
-        self.assertEqual(status.get_sync_status(), {"state": "cancelled", "message": "Sync stopped"})
+        self.assertEqual(
+            status.get_sync_status(),
+            {"state": "cancelled", "message": "Sync stopped", "stages": []},
+        )
 
     def test_cancellation_is_not_logged_as_a_stage_failure(self) -> None:
         def cancel_during(*args: object) -> None:
@@ -650,7 +659,10 @@ class AnalyticsWorkerConcurrencyTest(OrchestrationTestCase):
             PlanStage("related_video_insights", "incremental"),
         ])
 
-        self.assertEqual(status.get_sync_status(), {"state": "cancelled", "message": "Sync stopped"})
+        self.assertEqual(
+            status.get_sync_status(),
+            {"state": "cancelled", "message": "Sync stopped", "stages": []},
+        )
         self.assertIn("sync_video_analytics", self.calls)
         self.assertIn("sync_video_traffic_sources", self.calls)
         self.stage_mocks["sync_search_insights"].assert_not_called()

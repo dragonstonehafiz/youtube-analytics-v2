@@ -139,7 +139,7 @@ const nestedTable = () => screen.getAllByRole('table')[1]
 const disclosures = () => screen.getAllByRole('button', { name: /^Sync batch started/ })
 
 beforeEach(() => {
-  mockGetSyncStatus.mockResolvedValue({ state: 'idle', message: '' } as SyncStatusResponse)
+  mockGetSyncStatus.mockResolvedValue({ state: 'idle', message: '', stages: [] } as SyncStatusResponse)
   mockGetDateRange.mockResolvedValue({ earliest_year: 2022 })
   mockGetSyncRuns.mockResolvedValue(page([batch()]))
   mockTriggerSync.mockResolvedValue({ queued: true })
@@ -275,7 +275,7 @@ describe('lifecycle feedback stays out of the page', () => {
   })
 
   it('replaces the submit action with Stop sync while a sync is running', async () => {
-    mockGetSyncStatus.mockResolvedValue({ state: 'running', message: 'Syncing videos' })
+    mockGetSyncStatus.mockResolvedValue({ state: 'running', message: 'Syncing videos', stages: [] })
     renderSync('/sync')
 
     await waitFor(() => expect(screen.getByRole('button', { name: 'Stop sync' })).toBeDefined())
@@ -285,7 +285,7 @@ describe('lifecycle feedback stays out of the page', () => {
   })
 
   it('reports no terminal success or failure text on the page', async () => {
-    mockGetSyncStatus.mockResolvedValue({ state: 'failed', message: 'Sync failed: quota' })
+    mockGetSyncStatus.mockResolvedValue({ state: 'failed', message: 'Sync failed: quota', stages: [] })
     renderSync('/sync')
     await settled()
 
@@ -295,7 +295,7 @@ describe('lifecycle feedback stays out of the page', () => {
 
 describe('the manual form is preserved', () => {
   it('locks every stage control while a sync is running', async () => {
-    mockGetSyncStatus.mockResolvedValue({ state: 'running', message: 'Syncing' })
+    mockGetSyncStatus.mockResolvedValue({ state: 'running', message: 'Syncing', stages: [] })
     renderSync('/sync')
 
     await waitFor(() => expect(screen.getByRole('button', { name: 'Stop sync' })).toBeDefined())
@@ -303,7 +303,7 @@ describe('the manual form is preserved', () => {
   })
 
   it('locks every stage control while a sync is stopping', async () => {
-    mockGetSyncStatus.mockResolvedValue({ state: 'stopping', message: 'Stopping sync...' })
+    mockGetSyncStatus.mockResolvedValue({ state: 'stopping', message: 'Stopping sync...', stages: [] })
     renderSync('/sync')
 
     await waitFor(() =>
@@ -351,7 +351,7 @@ describe('the manual form is preserved', () => {
 
   it('does not surface a failed post-trigger status refresh as a form error', async () => {
     mockGetSyncStatus
-      .mockResolvedValueOnce({ state: 'idle', message: '' })
+      .mockResolvedValueOnce({ state: 'idle', message: '', stages: [] })
       .mockRejectedValue(new Error('status down'))
     renderSync('/sync')
     await settled()
@@ -982,7 +982,7 @@ describe('expanded stage details', () => {
 
 describe('stop sync workflow', () => {
   const renderRunning = async () => {
-    mockGetSyncStatus.mockResolvedValue({ state: 'running', message: 'Syncing videos' })
+    mockGetSyncStatus.mockResolvedValue({ state: 'running', message: 'Syncing videos', stages: [] })
     renderSync('/sync')
     await waitFor(() => expect(screen.getByRole('button', { name: 'Stop sync' })).toBeDefined())
   }
@@ -1041,7 +1041,7 @@ describe('stop sync workflow', () => {
     await renderRunning()
     fireEvent.click(screen.getByRole('button', { name: 'Stop sync' }))
     await screen.findByRole('dialog')
-    mockGetSyncStatus.mockResolvedValue({ state: 'success', message: 'Sync complete' })
+    mockGetSyncStatus.mockResolvedValue({ state: 'success', message: 'Sync complete', stages: [] })
 
     fireEvent.click(within(screen.getByRole('dialog')).getByRole('button', { name: 'Stop sync' }))
 

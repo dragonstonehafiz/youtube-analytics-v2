@@ -32,20 +32,20 @@ export default function SyncStatus() {
 
   if (!status) return null
 
+  // The navbar only surfaces a sync in progress or one that just failed; a completed,
+  // cancelled, stopping, or idle sync leaves nothing that still needs the user's attention.
   if (status.state === 'running') {
+    const items = status.stages.length > 0
+      ? status.stages
+      : [{ key: 'running', message: status.message || 'Syncing...' }]
     return (
-      <div className="sync-status syncing">
-        <span className="sync-status-dot" />
-        <span className="sync-status-message">{status.message || 'Syncing...'}</span>
-      </div>
-    )
-  }
-
-  if (status.state === 'stopping') {
-    return (
-      <div className="sync-status stopping">
-        <span className="sync-status-dot" />
-        <span className="sync-status-message">{status.message || 'Stopping sync...'}</span>
+      <div className="sync-status-group">
+        {items.map(item => (
+          <div key={item.key} className="sync-status syncing">
+            <span className="sync-status-dot" />
+            <span className="sync-status-message">{item.message}</span>
+          </div>
+        ))}
       </div>
     )
   }
@@ -58,25 +58,5 @@ export default function SyncStatus() {
     )
   }
 
-  if (status.state === 'cancelled') {
-    return (
-      <div className="sync-status cancelled">
-        <span className="sync-status-idle">{status.message || 'Sync cancelled'}</span>
-      </div>
-    )
-  }
-
-  if (status.state === 'success') {
-    return (
-      <div className="sync-status">
-        <span className="sync-status-idle">{status.message || 'Sync complete'}</span>
-      </div>
-    )
-  }
-
-  return (
-    <div className="sync-status">
-      <span className="sync-status-idle">Not syncing</span>
-    </div>
-  )
+  return null
 }

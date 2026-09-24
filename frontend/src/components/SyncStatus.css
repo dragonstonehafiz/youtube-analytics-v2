@@ -1,3 +1,13 @@
+/* Lays out one pill per concurrently active stage; wraps rather than overflowing the
+   navbar's fixed-width slot. */
+.sync-status-group {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.4rem;
+  justify-content: flex-end;
+  max-width: 100%;
+}
+
 /* Same bordered-pill treatment in both states, matching .sync-banner on the Sync page:
    neutral when idle, blue-tinted while syncing. */
 .sync-status {
@@ -17,15 +27,6 @@
   background: var(--blue-light);
 }
 
-.sync-status.stopping {
-  border-color: var(--blue-mid);
-  background: var(--blue-light);
-}
-
-.sync-status.stopping .sync-status-dot {
-  background: var(--blue-dark);
-}
-
 .sync-status.failed {
   border-color: var(--red-mid);
   background: var(--red-light);
@@ -33,11 +34,6 @@
 
 .sync-status.failed .sync-status-message {
   color: var(--red);
-}
-
-.sync-status.cancelled {
-  border-color: var(--border);
-  background: var(--surface);
 }
 
 .sync-status-dot {

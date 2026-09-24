@@ -13,7 +13,7 @@ class SyncStatusTestCase(unittest.TestCase):
 
 class InitialStateTest(SyncStatusTestCase):
     def test_initial_state_is_idle_with_no_message(self) -> None:
-        self.assertEqual(status.get_sync_status(), {"state": "idle", "message": ""})
+        self.assertEqual(status.get_sync_status(), {"state": "idle", "message": "", "stages": []})
 
 
 class ReservationTest(SyncStatusTestCase):
@@ -21,21 +21,26 @@ class ReservationTest(SyncStatusTestCase):
         self.assertTrue(status.try_begin_sync("Starting sync..."))
 
         self.assertEqual(
-            status.get_sync_status(), {"state": "running", "message": "Starting sync..."}
+            status.get_sync_status(),
+            {"state": "running", "message": "Starting sync...", "stages": []},
         )
 
     def test_second_reservation_while_running_fails_and_preserves_state(self) -> None:
         status.try_begin_sync("first")
 
         self.assertFalse(status.try_begin_sync("second"))
-        self.assertEqual(status.get_sync_status(), {"state": "running", "message": "first"})
+        self.assertEqual(
+            status.get_sync_status(), {"state": "running", "message": "first", "stages": []}
+        )
 
     def test_reservation_after_a_terminal_result_replaces_it(self) -> None:
         status.try_begin_sync("first run")
         status.complete_sync("Sync complete")
 
         self.assertTrue(status.try_begin_sync("second run"))
-        self.assertEqual(status.get_sync_status(), {"state": "running", "message": "second run"})
+        self.assertEqual(
+            status.get_sync_status(), {"state": "running", "message": "second run", "stages": []}
+        )
 
 
 class ProgressTest(SyncStatusTestCase):
@@ -49,7 +54,7 @@ class ProgressTest(SyncStatusTestCase):
     def test_progress_is_a_no_op_while_idle(self) -> None:
         status.update_sync_progress("videos", "Syncing videos...")
 
-        self.assertEqual(status.get_sync_status(), {"state": "idle", "message": ""})
+        self.assertEqual(status.get_sync_status(), {"state": "idle", "message": "", "stages": []})
 
     def test_progress_is_a_no_op_after_a_terminal_result(self) -> None:
         status.try_begin_sync("Starting sync...")
@@ -68,6 +73,34 @@ class ProgressTest(SyncStatusTestCase):
         message = status.get_sync_status()["message"]
         self.assertIn("Syncing video analytics (1/5)...", message)
         self.assertIn("Syncing search insights (1/5)...", message)
+
+    def test_two_active_stages_appear_as_separate_stage_entries(self) -> None:
+        status.try_begin_sync("Starting sync...")
+
+        status.update_sync_progress("video_analytics", "Syncing video analytics (1/5)...")
+        status.update_sync_progress("search_insights", "Syncing search insights (1/5)...")
+
+        self.assertEqual(
+            status.get_sync_status()["stages"],
+            [
+                {"key": "video_analytics", "message": "Syncing video analytics (1/5)..."},
+                {"key": "search_insights", "message": "Syncing search insights (1/5)..."},
+            ],
+        )
+
+    def test_a_failed_stage_appears_alongside_a_still_active_stage(self) -> None:
+        status.try_begin_sync("Starting sync...")
+        status.update_sync_progress("search_insights", "Syncing search insights (1/5)...")
+
+        status.fail_stage("video_analytics", "syncing video analytics")
+
+        self.assertEqual(
+            status.get_sync_status()["stages"],
+            [
+                {"key": "search_insights", "message": "Syncing search insights (1/5)..."},
+                {"key": "video_analytics", "message": "syncing video analytics failed"},
+            ],
+        )
 
     def test_a_second_update_to_the_same_stage_replaces_its_own_entry_only(self) -> None:
         status.try_begin_sync("Starting sync...")
@@ -116,7 +149,7 @@ class ProgressTest(SyncStatusTestCase):
     def test_end_stage_is_a_no_op_on_the_public_message_while_idle(self) -> None:
         status.end_stage("video_analytics")  # must not raise
 
-        self.assertEqual(status.get_sync_status(), {"state": "idle", "message": ""})
+        self.assertEqual(status.get_sync_status(), {"state": "idle", "message": "", "stages": []})
 
     def test_reservation_clears_stage_progress_and_failures_from_a_previous_run(self) -> None:
         status.try_begin_sync("first run")
@@ -126,7 +159,9 @@ class ProgressTest(SyncStatusTestCase):
 
         status.try_begin_sync("second run")
 
-        self.assertEqual(status.get_sync_status(), {"state": "running", "message": "second run"})
+        self.assertEqual(
+            status.get_sync_status(), {"state": "running", "message": "second run", "stages": []}
+        )
 
 
 class TerminalTransitionTest(SyncStatusTestCase):
@@ -136,7 +171,8 @@ class TerminalTransitionTest(SyncStatusTestCase):
         status.complete_sync("Sync complete")
 
         self.assertEqual(
-            status.get_sync_status(), {"state": "success", "message": "Sync complete"}
+            status.get_sync_status(),
+            {"state": "success", "message": "Sync complete", "stages": []},
         )
 
     def test_fail_sync_sets_failed_state_and_message(self) -> None:
@@ -146,7 +182,7 @@ class TerminalTransitionTest(SyncStatusTestCase):
 
         self.assertEqual(
             status.get_sync_status(),
-            {"state": "failed", "message": "Sync failed while syncing videos"},
+            {"state": "failed", "message": "Sync failed while syncing videos", "stages": []},
         )
 
     def test_terminal_result_is_retained_across_repeated_reads(self) -> None:
@@ -164,7 +200,8 @@ class StopRequestTest(SyncStatusTestCase):
         self.assertTrue(status.request_stop())
 
         self.assertEqual(
-            status.get_sync_status(), {"state": "stopping", "message": "Stopping sync..."}
+            status.get_sync_status(),
+            {"state": "stopping", "message": "Stopping sync...", "stages": []},
         )
 
     def test_repeated_stop_requests_are_idempotent(self) -> None:
@@ -226,7 +263,8 @@ class CancelSyncTest(SyncStatusTestCase):
         status.cancel_sync("Sync stopped")
 
         self.assertEqual(
-            status.get_sync_status(), {"state": "cancelled", "message": "Sync stopped"}
+            status.get_sync_status(),
+            {"state": "cancelled", "message": "Sync stopped", "stages": []},
         )
 
     def test_cancel_sync_does_not_overwrite_a_result_already_recorded(self) -> None:
@@ -244,7 +282,8 @@ class CancelSyncTest(SyncStatusTestCase):
         status.complete_sync("Sync complete")
 
         self.assertEqual(
-            status.get_sync_status(), {"state": "cancelled", "message": "Sync stopped"}
+            status.get_sync_status(),
+            {"state": "cancelled", "message": "Sync stopped", "stages": []},
         )
 
     def test_fail_sync_still_applies_while_stopping(self) -> None:
@@ -263,7 +302,7 @@ class ResetTest(SyncStatusTestCase):
 
         status.reset_sync_status()
 
-        self.assertEqual(status.get_sync_status(), {"state": "idle", "message": ""})
+        self.assertEqual(status.get_sync_status(), {"state": "idle", "message": "", "stages": []})
 
 
 if __name__ == "__main__":
