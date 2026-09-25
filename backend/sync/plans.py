@@ -10,8 +10,9 @@ import database
 # Analytics API stage begins. `pruning` sits after both discovery stages it depends on;
 # putting it ahead of `comments` means a video about to be pruned is never fetched for
 # comments in the same plan. `comments` reads the video rows `videos` wrote, and runs
-# against whatever survives pruning.
-PRE_ANALYTICS_STAGES: tuple[str, ...] = ("playlists", "videos", "pruning", "fx_rates", "comments")
+# against whatever survives pruning. `fx_rates` has no dependency on any other stage here
+# and runs last among these five.
+PRE_ANALYTICS_STAGES: tuple[str, ...] = ("playlists", "videos", "pruning", "comments", "fx_rates")
 
 # The Analytics API stages, run on up to two independent workers after every selected
 # pre-analytics stage above has succeeded. `video_analytics`/`video_traffic_sources` are

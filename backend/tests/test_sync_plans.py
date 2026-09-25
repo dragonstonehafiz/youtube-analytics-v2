@@ -122,13 +122,13 @@ class ValidatePlanTest(unittest.TestCase):
         with self.assertRaises(PlanValidationError):
             validate_plan([PlanStage("comments", "all", 2024)])
 
-    def test_comments_runs_after_fx_rates(self) -> None:
+    def test_fx_rates_runs_after_comments(self) -> None:
         stages = validate_plan([
             PlanStage("fx_rates"),
             PlanStage("comments", "incremental"),
             PlanStage("videos"),
         ])
-        self.assertEqual([s.stage for s in stages], ["videos", "fx_rates", "comments"])
+        self.assertEqual([s.stage for s in stages], ["videos", "comments", "fx_rates"])
 
     def test_rejects_scope_on_pruning(self) -> None:
         with self.assertRaises(PlanValidationError):
@@ -275,7 +275,7 @@ class FullIncrementalPlanTest(unittest.TestCase):
         self.assertEqual(
             [s.stage for s in full_incremental_plan()],
             [
-                "playlists", "videos", "fx_rates", "comments", "video_analytics",
+                "playlists", "videos", "comments", "fx_rates", "video_analytics",
                 "video_traffic_sources", "search_insights", "related_video_insights",
             ],
         )

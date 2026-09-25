@@ -81,7 +81,7 @@ class StartBackgroundSchedulerTest(unittest.TestCase):
         self.assertEqual(
             [s.stage for s in stages],
             [
-                "playlists", "videos", "fx_rates", "comments", "video_analytics",
+                "playlists", "videos", "comments", "fx_rates", "video_analytics",
                 "video_traffic_sources", "search_insights", "related_video_insights",
             ],
         )

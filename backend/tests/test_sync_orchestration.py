@@ -126,14 +126,14 @@ class SelectedStageExecutionTest(OrchestrationTestCase):
         self.assertEqual(len(self.created), 8)
         self.assertEqual(len(batch_ids), 1)
 
-    def test_comments_runs_after_fx_rates(self) -> None:
+    def test_fx_rates_runs_after_comments(self) -> None:
         execute_plan([
             PlanStage("fx_rates"),
             PlanStage("comments", "incremental"),
             PlanStage("videos"),
         ])
 
-        self.assertEqual(self.calls, ["sync_videos", "sync_fx_rates", "sync_comments"])
+        self.assertEqual(self.calls, ["sync_videos", "sync_comments", "sync_fx_rates"])
 
     def test_passes_the_requested_scope_to_the_comments_stage(self) -> None:
         execute_plan([PlanStage("comments", "all")])

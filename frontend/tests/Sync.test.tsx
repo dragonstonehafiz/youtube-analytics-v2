@@ -1019,7 +1019,7 @@ describe('stop sync workflow', () => {
     expect(mockStopSync).toHaveBeenCalledTimes(1)
   })
 
-  it('shows stopping while the post-stop status refresh is still pending', async () => {
+  it('shows the Stopping… button while the post-stop status refresh is still pending, keeping the running row visible', async () => {
     await renderRunning()
     await screen.findByText('Syncing videos')
     mockGetSyncStatus.mockReturnValue(new Promise(() => {}))
@@ -1028,21 +1028,24 @@ describe('stop sync workflow', () => {
     await screen.findByRole('dialog')
     fireEvent.click(within(screen.getByRole('dialog')).getByRole('button', { name: 'Stop sync' }))
 
-    await screen.findByText('Stopping sync...')
+    await waitFor(() => expect(screen.getByRole('button', { name: 'Stopping…' })).toBeDefined())
     expect(screen.getByText('Syncing videos')).toBeDefined()
   })
 
-  it('refreshes status immediately on a successful stop, so the banner does not wait for the next poll', async () => {
+  it('refreshes status immediately on a successful stop, so newer poll data does not wait for the next interval tick', async () => {
     await renderRunning()
     await screen.findByText('Syncing videos')
-    mockGetSyncStatus.mockResolvedValue({ active: true, stop_requested: true, stages: [{ key: 'videos', state: 'running', message: 'Syncing videos' }] })
+    mockGetSyncStatus.mockResolvedValue({
+      active: true,
+      stop_requested: true,
+      stages: [{ key: 'videos', state: 'running', message: 'Syncing videos (finishing up)...' }],
+    })
 
     fireEvent.click(screen.getByRole('button', { name: 'Stop sync' }))
     await screen.findByRole('dialog')
     fireEvent.click(within(screen.getByRole('dialog')).getByRole('button', { name: 'Stop sync' }))
 
-    await screen.findByText('Stopping sync...')
-    expect(screen.getByText('Syncing videos')).toBeDefined()
+    await screen.findByText('Syncing videos (finishing up)...')
   })
 
   it('repeated confirm clicks issue only one request', async () => {

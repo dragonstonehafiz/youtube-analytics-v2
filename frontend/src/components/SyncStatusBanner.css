@@ -19,8 +19,7 @@
   font-weight: 500;
 }
 
-.sync-status-banner-row.syncing,
-.sync-status-banner-row.stopping {
+.sync-status-banner-row.syncing {
   border-color: var(--blue-mid);
   color: var(--blue-dark);
 }
@@ -45,11 +44,6 @@
 
 .sync-status-banner-message {
   overflow-wrap: break-word;
-}
-
-.sync-status-banner-row.pending,
-.sync-status-banner-row.cancelled {
-  color: var(--text-secondary);
 }
 
 .sync-status-banner-row.success {

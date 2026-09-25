@@ -5,11 +5,17 @@ import './SyncStatusBanner.css'
 interface SyncStatusBannerProps {
   status: SyncStatusResponse | null
   unavailable: boolean
-  stopRequested: boolean
 }
 
-/** Show each selected stage's own state and retain the stop-request advisory. */
-export default function SyncStatusBanner({ status, unavailable, stopRequested }: SyncStatusBannerProps) {
+/**
+ * Shows only what the user couldn't otherwise know: a stage actively syncing (live
+ * progress), a stage that just failed (needs attention), or a stage that just finished
+ * successfully (they'd otherwise have to go check the data directly to know it's done).
+ * A stage the user cancelled themselves, or one still waiting its turn, tells them
+ * nothing they don't already know, so neither is rendered — and there is deliberately no
+ * separate "stopping"/"stop requested" row, for the same reason.
+ */
+export default function SyncStatusBanner({ status, unavailable }: SyncStatusBannerProps) {
   if (unavailable) {
     return (
       <div className="sync-status-banner">
@@ -19,33 +25,20 @@ export default function SyncStatusBanner({ status, unavailable, stopRequested }:
   }
 
   if (!status) return null
-  if (status.stages.length === 0) {
-    return (
-      <div className="sync-status-banner">
-        <div className="sync-status-banner-row sync-status-banner-idle">Not syncing</div>
-      </div>
-    )
-  }
 
-  const showStopping = status.active && (status.stop_requested || stopRequested)
-  const showStopped = !status.active && status.stop_requested
+  const visible = status.stages.filter(stage => VISIBLE_STATES.has(stage.state))
+  if (visible.length === 0) return null
+
   return (
     <div className="sync-status-banner">
-      {showStopping && (
-        <div className="sync-status-banner-row stopping">
-          <span className="sync-status-banner-dot" />
-          <span className="sync-status-banner-message">Stopping sync...</span>
-        </div>
-      )}
-      {showStopped && (
-        <div className="sync-status-banner-row cancelled">Stop request received</div>
-      )}
-      {status.stages.map(stage => renderStage(stage, status.active))}
+      {visible.map(renderStage)}
     </div>
   )
 }
 
-function renderStage(stage: SyncStageStatus, active: boolean) {
+const VISIBLE_STATES: ReadonlySet<SyncStageStatus['state']> = new Set(['running', 'success', 'failed'])
+
+function renderStage(stage: SyncStageStatus) {
   const label = stageLabel(stage.key)
   if (stage.state === 'running') {
     return (
@@ -62,11 +55,5 @@ function renderStage(stage: SyncStageStatus, active: boolean) {
       </div>
     )
   }
-  if (stage.state === 'pending') {
-    return <div key={stage.key} className="sync-status-banner-row pending">{active ? `Waiting to sync ${label}` : `${label} not run`}</div>
-  }
-  if (stage.state === 'success') {
-    return <div key={stage.key} className="sync-status-banner-row success">{label} synced</div>
-  }
-  return <div key={stage.key} className="sync-status-banner-row cancelled">{label} cancelled</div>
+  return <div key={stage.key} className="sync-status-banner-row success">{label} synced</div>
 }

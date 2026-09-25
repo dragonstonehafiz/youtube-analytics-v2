@@ -41,8 +41,8 @@ const STAGE_ROWS: readonly StageRow[] = [
   { stage: 'playlists', label: 'Playlists', description: 'Playlists metadata and playlist items' },
   { stage: 'videos', label: 'Videos', description: 'Video and video metadata' },
   { stage: 'pruning', label: 'Pruning', description: 'Removes videos no longer found during complete discovery' },
-  { stage: 'fx_rates', label: 'FX Rates', description: 'USD to SGD conversion rates' },
   { stage: 'comments', label: 'Comments', description: 'Top-level comments and commenters on stored videos' },
+  { stage: 'fx_rates', label: 'FX Rates', description: 'USD to SGD conversion rates' },
   { stage: 'video_analytics', label: 'Video Analytics', description: 'Daily per-video metrics' },
   { stage: 'video_traffic_sources', label: 'Traffic Sources', description: 'Daily video traffic metrics' },
   { stage: 'search_insights', label: 'Search Insights', description: 'Per-video search term views' },
@@ -433,7 +433,7 @@ export default function Sync() {
         <h1>Sync</h1>
       </div>
 
-      <SyncStatusBanner status={status} unavailable={statusUnavailable} stopRequested={stopRequested} />
+      <SyncStatusBanner status={status} unavailable={statusUnavailable} />
 
       <div className="tabs">
         <button
