@@ -139,7 +139,7 @@ const nestedTable = () => screen.getAllByRole('table')[1]
 const disclosures = () => screen.getAllByRole('button', { name: /^Sync batch started/ })
 
 beforeEach(() => {
-  mockGetSyncStatus.mockResolvedValue({ state: 'idle', message: '' } as SyncStatusResponse)
+  mockGetSyncStatus.mockResolvedValue({ active: false, stop_requested: false, stages: [] } as SyncStatusResponse)
   mockGetDateRange.mockResolvedValue({ earliest_year: 2022 })
   mockGetSyncRuns.mockResolvedValue(page([batch()]))
   mockTriggerSync.mockResolvedValue({ queued: true })
@@ -256,46 +256,45 @@ describe('tab selection and URL state', () => {
   })
 })
 
-describe('lifecycle feedback stays out of the page', () => {
-  it('renders no page-level text while the first status is pending', async () => {
+describe('the status banner reflects the poll', () => {
+  it('renders nothing while the first status is pending', async () => {
     mockGetSyncStatus.mockReturnValue(new Promise(() => {}))
     renderSync('/sync')
 
-    expect(screen.queryByText('Checking sync status...')).toBeNull()
-    expect(screen.queryByText('Waiting for status...')).toBeNull()
+    expect(screen.queryByText('Not syncing')).toBeNull()
+    expect(screen.queryByText('Status unavailable')).toBeNull()
   })
 
-  it('renders no banner and keeps the button copy fixed when status is unavailable', async () => {
+  it('shows the banner when status is unavailable, and keeps the button copy fixed', async () => {
     mockGetSyncStatus.mockRejectedValue(new Error('down'))
     renderSync('/sync')
 
     await waitFor(() =>
       expect(screen.getByRole('button', { name: 'Sync selected' })).toHaveProperty('disabled', true))
-    expect(screen.queryByText('Status unavailable')).toBeNull()
+    await screen.findByText('Status unavailable')
   })
 
-  it('replaces the submit action with Stop sync while a sync is running', async () => {
-    mockGetSyncStatus.mockResolvedValue({ state: 'running', message: 'Syncing videos' })
+  it('replaces the submit action with Stop sync and shows the running card while a sync is running', async () => {
+    mockGetSyncStatus.mockResolvedValue({ active: true, stop_requested: false, stages: [{ key: 'videos', state: 'running', message: 'Syncing videos' }] })
     renderSync('/sync')
 
     await waitFor(() => expect(screen.getByRole('button', { name: 'Stop sync' })).toBeDefined())
     expect(screen.queryByRole('button', { name: 'Sync selected' })).toBeNull()
-    expect(screen.queryByText('Sync in progress')).toBeNull()
-    expect(screen.queryByText('Syncing videos')).toBeNull()
+    await screen.findByTitle('Syncing videos')
   })
 
-  it('reports no terminal success or failure text on the page', async () => {
-    mockGetSyncStatus.mockResolvedValue({ state: 'failed', message: 'Sync failed: quota' })
+  it('shows the terminal failure card in the banner', async () => {
+    mockGetSyncStatus.mockResolvedValue({ active: false, stop_requested: false, stages: [{ key: 'videos', state: 'failed', message: 'Sync failed: quota' }] })
     renderSync('/sync')
     await settled()
 
-    await waitFor(() => expect(screen.queryByText('Sync failed: quota')).toBeNull())
+    await screen.findByTitle('Sync failed: quota')
   })
 })
 
 describe('the manual form is preserved', () => {
   it('locks every stage control while a sync is running', async () => {
-    mockGetSyncStatus.mockResolvedValue({ state: 'running', message: 'Syncing' })
+    mockGetSyncStatus.mockResolvedValue({ active: true, stop_requested: false, stages: [{ key: 'videos', state: 'running', message: 'Syncing' }] })
     renderSync('/sync')
 
     await waitFor(() => expect(screen.getByRole('button', { name: 'Stop sync' })).toBeDefined())
@@ -303,7 +302,7 @@ describe('the manual form is preserved', () => {
   })
 
   it('locks every stage control while a sync is stopping', async () => {
-    mockGetSyncStatus.mockResolvedValue({ state: 'stopping', message: 'Stopping sync...' })
+    mockGetSyncStatus.mockResolvedValue({ active: true, stop_requested: true, stages: [{ key: 'videos', state: 'running', message: 'Syncing videos' }] })
     renderSync('/sync')
 
     await waitFor(() =>
@@ -351,7 +350,7 @@ describe('the manual form is preserved', () => {
 
   it('does not surface a failed post-trigger status refresh as a form error', async () => {
     mockGetSyncStatus
-      .mockResolvedValueOnce({ state: 'idle', message: '' })
+      .mockResolvedValueOnce({ active: false, stop_requested: false, stages: [] })
       .mockRejectedValue(new Error('status down'))
     renderSync('/sync')
     await settled()
@@ -442,17 +441,15 @@ describe('Search Insights stage', () => {
 })
 
 describe('Related Video Insights stage', () => {
-  it('is selected by default, positioned directly below Search Insights and before FX Rates, with the same period selector as Search Insights', async () => {
+  it('is selected by default, positioned directly below Search Insights, with the same period selector as Search Insights', async () => {
     renderSync('/sync')
     await settled()
 
     const stageOrder = screen.getAllByRole('row').slice(1).map(r => r.textContent ?? '')
     const insightsIndex = stageOrder.findIndex(t => t.includes('Search Insights'))
     const relatedIndex = stageOrder.findIndex(t => t.includes('Related Video Insights'))
-    const fxIndex = stageOrder.findIndex(t => t.includes('FX Rates'))
     expect(insightsIndex).toBeGreaterThanOrEqual(0)
     expect(relatedIndex).toBe(insightsIndex + 1)
-    expect(fxIndex).toBe(relatedIndex + 1)
 
     expect(screen.getByRole('checkbox', { name: 'Related Video Insights' })).toHaveProperty('checked', true)
     const select = screen.getByRole('combobox', { name: 'Related Video Insights period' })
@@ -984,7 +981,7 @@ describe('expanded stage details', () => {
 
 describe('stop sync workflow', () => {
   const renderRunning = async () => {
-    mockGetSyncStatus.mockResolvedValue({ state: 'running', message: 'Syncing videos' })
+    mockGetSyncStatus.mockResolvedValue({ active: true, stop_requested: false, stages: [{ key: 'videos', state: 'running', message: 'Syncing videos' }] })
     renderSync('/sync')
     await waitFor(() => expect(screen.getByRole('button', { name: 'Stop sync' })).toBeDefined())
   }
@@ -1022,6 +1019,35 @@ describe('stop sync workflow', () => {
     expect(mockStopSync).toHaveBeenCalledTimes(1)
   })
 
+  it('shows the Stopping… button while the post-stop status refresh is still pending, keeping the running card visible', async () => {
+    await renderRunning()
+    await screen.findByTitle('Syncing videos')
+    mockGetSyncStatus.mockReturnValue(new Promise(() => {}))
+
+    fireEvent.click(screen.getByRole('button', { name: 'Stop sync' }))
+    await screen.findByRole('dialog')
+    fireEvent.click(within(screen.getByRole('dialog')).getByRole('button', { name: 'Stop sync' }))
+
+    await waitFor(() => expect(screen.getByRole('button', { name: 'Stopping…' })).toBeDefined())
+    expect(screen.getByTitle('Syncing videos')).toBeDefined()
+  })
+
+  it('refreshes status immediately on a successful stop, so newer poll data does not wait for the next interval tick', async () => {
+    await renderRunning()
+    await screen.findByTitle('Syncing videos')
+    mockGetSyncStatus.mockResolvedValue({
+      active: true,
+      stop_requested: true,
+      stages: [{ key: 'videos', state: 'running', message: 'Syncing videos (finishing up)...' }],
+    })
+
+    fireEvent.click(screen.getByRole('button', { name: 'Stop sync' }))
+    await screen.findByRole('dialog')
+    fireEvent.click(within(screen.getByRole('dialog')).getByRole('button', { name: 'Stop sync' }))
+
+    await screen.findByTitle('Syncing videos (finishing up)...')
+  })
+
   it('repeated confirm clicks issue only one request', async () => {
     let resolveStop: (value: { stopping: boolean }) => void = () => {}
     mockStopSync.mockReturnValue(new Promise(resolve => { resolveStop = resolve }))
@@ -1043,7 +1069,7 @@ describe('stop sync workflow', () => {
     await renderRunning()
     fireEvent.click(screen.getByRole('button', { name: 'Stop sync' }))
     await screen.findByRole('dialog')
-    mockGetSyncStatus.mockResolvedValue({ state: 'success', message: 'Sync complete' })
+    mockGetSyncStatus.mockResolvedValue({ active: false, stop_requested: false, stages: [{ key: 'videos', state: 'success', message: '' }] })
 
     fireEvent.click(within(screen.getByRole('dialog')).getByRole('button', { name: 'Stop sync' }))
 

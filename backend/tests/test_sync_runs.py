@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import threading
 import unittest
 
 import database
@@ -415,6 +416,62 @@ class ChildContentTest(SyncRunsTestCase):
 
         self.assertEqual(child["status"], "failed")
         self.assertEqual(child["error_message"], "quota exceeded")
+
+
+class ConcurrentWorkerWritesTest(SyncRunsTestCase):
+    """Exercises real SQLite writes from two threads, matching how the two Analytics API
+    workers each write their own stage rows under one shared batch_id."""
+
+    def test_two_threads_writing_distinct_stages_under_one_batch_both_land(self) -> None:
+        barrier = threading.Barrier(2)
+        errors: list[BaseException] = []
+
+        def worker(sync_type: str) -> None:
+            try:
+                barrier.wait(timeout=5)  # maximize actual write overlap
+                run_id = database.create_sync_run("batch-concurrent", sync_type, "incremental", None)
+                database.complete_sync_run(run_id, rows_fetched=3, rows_written=2, rows_deleted=0)
+            except BaseException as exc:  # noqa: BLE001 - surfaced via assertion below
+                errors.append(exc)
+
+        threads = [
+            threading.Thread(target=worker, args=("video_analytics",)),
+            threading.Thread(target=worker, args=("search_insights",)),
+        ]
+        for t in threads:
+            t.start()
+        for t in threads:
+            t.join(timeout=10)
+
+        self.assertEqual(errors, [])
+        items, total = database.get_sync_runs(1, 25)
+        self.assertEqual(total, 1)
+        self.assertEqual(items[0]["run_count"], 2)
+        self.assertEqual(
+            {r["sync_type"] for r in items[0]["runs"]}, {"video_analytics", "search_insights"},
+        )
+        self.assertEqual({r["status"] for r in items[0]["runs"]}, {"success"})
+
+    def test_concurrent_stage_rows_keep_independent_scopes_and_years(self) -> None:
+        barrier = threading.Barrier(2)
+
+        def worker(sync_type: str, scope: str, year: int | None) -> None:
+            barrier.wait(timeout=5)
+            database.create_sync_run("batch-scoped", sync_type, scope, year)
+
+        threads = [
+            threading.Thread(target=worker, args=("video_analytics", "year", 2024)),
+            threading.Thread(target=worker, args=("video_traffic_sources", "all", None)),
+        ]
+        for t in threads:
+            t.start()
+        for t in threads:
+            t.join(timeout=10)
+
+        items, _ = database.get_sync_runs(1, 25)
+        by_stage = {r["sync_type"]: r for r in items[0]["runs"]}
+        self.assertEqual((by_stage["video_analytics"]["scope"], by_stage["video_analytics"]["year"]), ("year", 2024))
+        self.assertEqual((by_stage["video_traffic_sources"]["scope"], by_stage["video_traffic_sources"]["year"]), ("all", None))
 
 
 if __name__ == "__main__":

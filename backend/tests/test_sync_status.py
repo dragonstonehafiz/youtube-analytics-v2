@@ -11,190 +11,116 @@ class SyncStatusTestCase(unittest.TestCase):
         self.addCleanup(status.reset_sync_status)
 
 
-class InitialStateTest(SyncStatusTestCase):
-    def test_initial_state_is_idle_with_no_message(self) -> None:
-        self.assertEqual(status.get_sync_status(), {"state": "idle", "message": ""})
+class PerStageStatusTest(SyncStatusTestCase):
+    def test_reservation_seeds_selected_stages_in_order(self) -> None:
+        self.assertTrue(status.try_begin_sync(["videos", "comments"]))
+        self.assertEqual(status.get_sync_status(), {
+            "active": True,
+            "stop_requested": False,
+            "stages": [
+                {"key": "videos", "state": "pending", "message": ""},
+                {"key": "comments", "state": "pending", "message": ""},
+            ],
+        })
 
+    def test_only_one_active_reservation_is_allowed(self) -> None:
+        self.assertTrue(status.try_begin_sync(["videos"]))
+        self.assertFalse(status.try_begin_sync(["comments"]))
+        self.assertEqual(status.get_sync_status()["stages"][0]["key"], "videos")
 
-class ReservationTest(SyncStatusTestCase):
-    def test_reservation_sets_running_state_and_message(self) -> None:
-        self.assertTrue(status.try_begin_sync("Starting sync..."))
+    def test_progress_success_failure_and_cancel_are_independent(self) -> None:
+        status.try_begin_sync(["video_analytics", "search_insights", "comments"])
+        status.update_sync_progress("video_analytics", "Syncing video analytics (1/5)...")
+        status.update_sync_progress("search_insights", "Syncing search insights (1/5)...")
+        status.fail_stage("video_analytics", "syncing video analytics")
+        status.complete_stage("search_insights")
+        status.cancel_stage("comments")
+        self.assertEqual(status.get_sync_status()["stages"], [
+            {"key": "video_analytics", "state": "failed", "message": "syncing video analytics failed"},
+            {"key": "search_insights", "state": "success", "message": ""},
+            {"key": "comments", "state": "cancelled", "message": ""},
+        ])
 
-        self.assertEqual(
-            status.get_sync_status(), {"state": "running", "message": "Starting sync..."}
-        )
+    def test_pending_stage_remains_after_plan_finishes(self) -> None:
+        status.try_begin_sync(["videos", "comments"])
+        status.update_sync_progress("videos", "Syncing videos...")
+        status.fail_stage("videos", "syncing videos")
+        status.finish_sync()
+        self.assertEqual(status.get_sync_status(), {
+            "active": False,
+            "stop_requested": False,
+            "stages": [
+                {"key": "videos", "state": "failed", "message": "syncing videos failed"},
+                {"key": "comments", "state": "pending", "message": ""},
+            ],
+        })
 
-    def test_second_reservation_while_running_fails_and_preserves_state(self) -> None:
-        status.try_begin_sync("first")
+    def test_failure_and_running_sibling_have_distinct_states(self) -> None:
+        status.try_begin_sync(["video_analytics", "search_insights"])
+        status.update_sync_progress("video_analytics", "Syncing video analytics...")
+        status.update_sync_progress("search_insights", "Syncing search insights...")
+        status.fail_stage("video_analytics", "syncing video analytics")
+        stages = status.get_sync_status()["stages"]
+        self.assertEqual(stages[0]["state"], "failed")
+        self.assertEqual(stages[1]["state"], "running")
 
-        self.assertFalse(status.try_begin_sync("second"))
-        self.assertEqual(status.get_sync_status(), {"state": "running", "message": "first"})
-
-    def test_reservation_after_a_terminal_result_replaces_it(self) -> None:
-        status.try_begin_sync("first run")
-        status.complete_sync("Sync complete")
-
-        self.assertTrue(status.try_begin_sync("second run"))
-        self.assertEqual(status.get_sync_status(), {"state": "running", "message": "second run"})
-
-
-class ProgressTest(SyncStatusTestCase):
-    def test_progress_updates_the_message_while_running(self) -> None:
-        status.try_begin_sync("Starting sync...")
-
-        status.update_sync_progress("Syncing videos...")
-
-        self.assertEqual(status.get_sync_status()["message"], "Syncing videos...")
-
-    def test_progress_is_a_no_op_while_idle(self) -> None:
-        status.update_sync_progress("Syncing videos...")
-
-        self.assertEqual(status.get_sync_status(), {"state": "idle", "message": ""})
-
-    def test_progress_is_a_no_op_after_a_terminal_result(self) -> None:
-        status.try_begin_sync("Starting sync...")
-        status.complete_sync("Sync complete")
-
-        status.update_sync_progress("Syncing videos...")
-
-        self.assertEqual(status.get_sync_status()["message"], "Sync complete")
-
-
-class TerminalTransitionTest(SyncStatusTestCase):
-    def test_complete_sync_sets_success_state_and_message(self) -> None:
-        status.try_begin_sync("Starting sync...")
-
-        status.complete_sync("Sync complete")
-
-        self.assertEqual(
-            status.get_sync_status(), {"state": "success", "message": "Sync complete"}
-        )
-
-    def test_fail_sync_sets_failed_state_and_message(self) -> None:
-        status.try_begin_sync("Starting sync...")
-
-        status.fail_sync("Sync failed while syncing videos")
-
-        self.assertEqual(
-            status.get_sync_status(),
-            {"state": "failed", "message": "Sync failed while syncing videos"},
-        )
-
-    def test_terminal_result_is_retained_across_repeated_reads(self) -> None:
-        status.try_begin_sync("Starting sync...")
-        status.fail_sync("Sync failed while syncing videos")
-
-        self.assertEqual(status.get_sync_status()["state"], "failed")
-        self.assertEqual(status.get_sync_status()["state"], "failed")
+    def test_unselected_or_inactive_updates_are_noops(self) -> None:
+        status.update_sync_progress("videos", "Syncing videos...")
+        status.try_begin_sync(["videos"])
+        status.finish_sync()
+        status.update_sync_progress("videos", "late update")
+        self.assertEqual(status.get_sync_status()["stages"], [
+            {"key": "videos", "state": "pending", "message": ""},
+        ])
 
 
 class StopRequestTest(SyncStatusTestCase):
-    def test_request_stop_while_running_transitions_to_stopping(self) -> None:
-        status.try_begin_sync("Starting sync...")
-
-        self.assertTrue(status.request_stop())
-
-        self.assertEqual(
-            status.get_sync_status(), {"state": "stopping", "message": "Stopping sync..."}
-        )
-
-    def test_repeated_stop_requests_are_idempotent(self) -> None:
-        status.try_begin_sync("Starting sync...")
-        status.request_stop()
-
-        self.assertTrue(status.request_stop())
-        self.assertEqual(status.get_sync_status()["state"], "stopping")
-
-    def test_stop_request_while_idle_reports_no_active_sync(self) -> None:
+    def test_stop_is_idempotent_and_checkpoint_raises(self) -> None:
         self.assertFalse(status.request_stop())
-        self.assertEqual(status.get_sync_status()["state"], "idle")
-
-    def test_stop_request_after_a_terminal_result_reports_no_active_sync(self) -> None:
-        status.try_begin_sync("Starting sync...")
-        status.complete_sync("Sync complete")
-
-        self.assertFalse(status.request_stop())
-        self.assertEqual(status.get_sync_status()["state"], "success")
-
-    def test_progress_updates_do_not_overwrite_the_stopping_message(self) -> None:
-        status.try_begin_sync("Starting sync...")
-        status.request_stop()
-
-        status.update_sync_progress("Syncing videos...")
-
-        self.assertEqual(status.get_sync_status()["message"], "Stopping sync...")
-
-    def test_reservation_is_rejected_while_stopping(self) -> None:
-        status.try_begin_sync("Starting sync...")
-        status.request_stop()
-
-        self.assertFalse(status.try_begin_sync("second run"))
-        self.assertEqual(status.get_sync_status()["state"], "stopping")
-
-
-class CheckpointTest(SyncStatusTestCase):
-    def test_raise_if_stopping_is_a_no_op_while_running(self) -> None:
-        status.try_begin_sync("Starting sync...")
-
-        status.raise_if_stopping()  # must not raise
-
-    def test_raise_if_stopping_raises_once_stopping_is_requested(self) -> None:
-        status.try_begin_sync("Starting sync...")
-        status.request_stop()
-
+        status.try_begin_sync(["videos"])
+        self.assertTrue(status.request_stop())
+        self.assertTrue(status.request_stop())
+        self.assertEqual(status.get_sync_status()["stop_requested"], True)
         with self.assertRaises(status.SyncCancelled):
             status.raise_if_stopping()
+        status.finish_sync()
+        self.assertFalse(status.request_stop())
 
-    def test_raise_if_stopping_is_a_no_op_while_idle(self) -> None:
-        status.raise_if_stopping()  # must not raise
+    def test_new_reservation_clears_stop_flag_and_previous_stages(self) -> None:
+        status.try_begin_sync(["videos"])
+        status.request_stop()
+        status.finish_sync()
+        status.try_begin_sync(["comments"])
+        self.assertEqual(status.get_sync_status(), {
+            "active": True,
+            "stop_requested": False,
+            "stages": [{"key": "comments", "state": "pending", "message": ""}],
+        })
 
+    def test_stop_still_succeeds_after_all_stages_finish_but_before_release(self) -> None:
+        status.try_begin_sync(["videos"])
+        status.update_sync_progress("videos", "Syncing videos...")
+        status.complete_stage("videos")
 
-class CancelSyncTest(SyncStatusTestCase):
-    def test_cancel_sync_sets_cancelled_state_and_message(self) -> None:
-        status.try_begin_sync("Starting sync...")
+        self.assertTrue(status.request_stop())
+        self.assertTrue(status.get_sync_status()["stop_requested"])
+        status.finish_sync()
+        self.assertEqual(status.get_sync_status()["stages"][0]["state"], "success")
+
+    def test_stage_completing_after_stop_is_recorded_cancelled_not_success(self) -> None:
+        status.try_begin_sync(["videos"])
+        status.update_sync_progress("videos", "Syncing videos...")
         status.request_stop()
 
-        status.cancel_sync("Sync stopped")
+        status.complete_stage("videos")
 
-        self.assertEqual(
-            status.get_sync_status(), {"state": "cancelled", "message": "Sync stopped"}
-        )
+        self.assertEqual(status.get_sync_status()["stages"][0]["state"], "cancelled")
 
-    def test_cancel_sync_does_not_overwrite_a_result_already_recorded(self) -> None:
-        status.try_begin_sync("Starting sync...")
-        status.complete_sync("Sync complete")
-
-        status.cancel_sync("Sync stopped")
-
-        self.assertEqual(status.get_sync_status()["state"], "success")
-
-    def test_complete_sync_settles_stopping_to_cancelled_rather_than_success(self) -> None:
-        status.try_begin_sync("Starting sync...")
+    def test_reset_clears_everything(self) -> None:
+        status.try_begin_sync(["videos"])
         status.request_stop()
-
-        status.complete_sync("Sync complete")
-
-        self.assertEqual(
-            status.get_sync_status(), {"state": "cancelled", "message": "Sync stopped"}
-        )
-
-    def test_fail_sync_still_applies_while_stopping(self) -> None:
-        status.try_begin_sync("Starting sync...")
-        status.request_stop()
-
-        status.fail_sync("Sync failed while syncing videos")
-
-        self.assertEqual(status.get_sync_status()["state"], "failed")
-
-
-class ResetTest(SyncStatusTestCase):
-    def test_reset_returns_to_idle_with_no_message(self) -> None:
-        status.try_begin_sync("Starting sync...")
-        status.complete_sync("Sync complete")
-
         status.reset_sync_status()
-
-        self.assertEqual(status.get_sync_status(), {"state": "idle", "message": ""})
+        self.assertEqual(status.get_sync_status(), {"active": False, "stop_requested": False, "stages": []})
 
 
 if __name__ == "__main__":

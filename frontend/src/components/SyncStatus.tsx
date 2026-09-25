@@ -32,51 +32,26 @@ export default function SyncStatus() {
 
   if (!status) return null
 
-  if (status.state === 'running') {
-    return (
-      <div className="sync-status syncing">
-        <span className="sync-status-dot" />
-        <span className="sync-status-message">{status.message || 'Syncing...'}</span>
-      </div>
-    )
-  }
+  const running = status.active && !status.stop_requested
+    ? status.stages.filter(stage => stage.state === 'running')
+    : []
+  const failed = status.stages.filter(stage => stage.state === 'failed')
 
-  if (status.state === 'stopping') {
-    return (
-      <div className="sync-status stopping">
-        <span className="sync-status-dot" />
-        <span className="sync-status-message">{status.message || 'Stopping sync...'}</span>
-      </div>
-    )
-  }
-
-  if (status.state === 'failed') {
-    return (
-      <div className="sync-status failed">
-        <span className="sync-status-message">{status.message || 'Sync failed'}</span>
-      </div>
-    )
-  }
-
-  if (status.state === 'cancelled') {
-    return (
-      <div className="sync-status cancelled">
-        <span className="sync-status-idle">{status.message || 'Sync cancelled'}</span>
-      </div>
-    )
-  }
-
-  if (status.state === 'success') {
-    return (
-      <div className="sync-status">
-        <span className="sync-status-idle">{status.message || 'Sync complete'}</span>
-      </div>
-    )
-  }
+  if (running.length + failed.length === 0) return null
 
   return (
-    <div className="sync-status">
-      <span className="sync-status-idle">Not syncing</span>
+    <div className="sync-status-group">
+      {running.map(stage => (
+        <div key={stage.key} className="sync-status syncing">
+          <span className="sync-status-dot" />
+          <span className="sync-status-message">{stage.message}</span>
+        </div>
+      ))}
+      {failed.map(stage => (
+        <div key={stage.key} className="sync-status failed">
+          <span className="sync-status-message">{stage.message || 'Sync failed'}</span>
+        </div>
+      ))}
     </div>
   )
 }

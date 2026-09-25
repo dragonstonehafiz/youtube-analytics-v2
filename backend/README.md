@@ -164,7 +164,7 @@ completed sync_type=video_analytics rows_fetched=0 rows_written=0 rows_deleted=0
 
 Routing: the `youtube_analytics.lifecycle` logger (application startup/shutdown) writes
 to `application.log` only. The `youtube_analytics.sync` logger writes `INFO`+ records
-(plan-level outcomes and per-stage start/success/failure) to both files, and `DEBUG`
+(plan starts and per-stage start/success/failure) to both files, and `DEBUG`
 detail records only to `sync.log`. Any other application area writes `INFO`+ to
 `application.log` only. All application modules acquire their logger through
 `get_logger(area)` rather than the standard library's `logging.getLogger()` directly,

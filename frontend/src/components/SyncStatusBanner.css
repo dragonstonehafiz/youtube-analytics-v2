@@ -1,0 +1,95 @@
+/* Its own bordered surface, matching how every other section of this page presents
+   itself (`.card`/`.data-table`) rather than sitting bare on the page background. */
+.sync-status-banner-shell {
+  padding: 0.75rem;
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  background: var(--surface);
+  box-shadow: var(--shadow-md);
+  margin-bottom: 1.5rem;
+}
+
+/* Fixed-size strip: occupies the same height whether it holds zero cards or several, so
+   the tab selector and everything below it never shifts as sync activity starts, changes,
+   or ends. Cards sit side by side and scroll horizontally rather than wrapping to a new
+   row, which would grow the strip's height. */
+.sync-status-banner {
+  display: flex;
+  align-items: center;
+  gap: 0.6rem;
+  height: 6rem;
+  overflow-x: auto;
+  overflow-y: hidden;
+}
+
+.sync-status-banner-empty {
+  flex: 1;
+  text-align: center;
+  color: var(--text-secondary);
+  font-size: 13px;
+}
+
+.sync-status-card {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 0.3rem;
+  flex-shrink: 0;
+  width: 6rem;
+  height: 6rem;
+  padding: 0.5rem;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  background: var(--surface);
+  text-align: center;
+}
+
+/* Colored the same way as the navbar's own sync pills (`SyncStatus.css`): a tinted
+   background plus a matching border, not just a colored border on a white card. */
+.sync-status-card.syncing {
+  border-color: var(--blue-mid);
+  background: var(--blue-light);
+}
+
+.sync-status-card.failed {
+  border-color: var(--red-mid);
+  background: var(--red-light);
+}
+
+.sync-status-card.success {
+  border-color: var(--green-mid);
+  background: var(--green-light);
+}
+
+.sync-status-card-label {
+  display: -webkit-box;
+  -webkit-line-clamp: 2;
+  -webkit-box-orient: vertical;
+  overflow: hidden;
+  font-size: 13px;
+  font-weight: 600;
+  line-height: 1.25;
+  color: var(--text);
+}
+
+.sync-status-card.syncing .sync-status-card-label {
+  color: var(--blue-dark);
+}
+
+.sync-status-card.failed .sync-status-card-label {
+  color: var(--red);
+}
+
+.sync-status-card.success .sync-status-card-label {
+  color: var(--green);
+}
+
+.sync-status-card-dot {
+  width: 9px;
+  height: 9px;
+  border-radius: 50%;
+  background: var(--blue);
+  flex-shrink: 0;
+  animation: sync-pulse 1.5s ease-in-out infinite;
+}

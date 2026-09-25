@@ -6,6 +6,7 @@ from unittest import mock
 from sync.plans import (
     PlanStage,
     PlanValidationError,
+    allocate_analytics_workers,
     available_years,
     full_incremental_plan,
     recorded_scope,
@@ -57,7 +58,7 @@ class ValidatePlanTest(unittest.TestCase):
             PlanStage("video_analytics", "incremental"),
             PlanStage("videos"),
         ])
-        self.assertEqual([s.stage for s in stages], ["videos", "video_analytics", "fx_rates"])
+        self.assertEqual([s.stage for s in stages], ["videos", "fx_rates", "video_analytics"])
 
     def test_is_idempotent(self) -> None:
         once = validate_plan([PlanStage("videos"), PlanStage("video_analytics", "all")])
@@ -121,7 +122,7 @@ class ValidatePlanTest(unittest.TestCase):
         with self.assertRaises(PlanValidationError):
             validate_plan([PlanStage("comments", "all", 2024)])
 
-    def test_comments_runs_immediately_after_videos(self) -> None:
+    def test_fx_rates_runs_after_comments(self) -> None:
         stages = validate_plan([
             PlanStage("fx_rates"),
             PlanStage("comments", "incremental"),
@@ -162,15 +163,14 @@ class ValidatePlanTest(unittest.TestCase):
         stages = validate_plan([PlanStage("video_traffic_sources", "incremental")])
         self.assertEqual([s.stage for s in stages], ["video_traffic_sources"])
 
-    def test_search_insights_sits_after_video_traffic_sources_and_before_fx_rates(self) -> None:
+    def test_search_insights_sits_after_video_traffic_sources(self) -> None:
         stages = validate_plan([
-            PlanStage("fx_rates"),
             PlanStage("search_insights", "incremental"),
             PlanStage("video_traffic_sources", "incremental"),
         ])
         self.assertEqual(
             [s.stage for s in stages],
-            ["video_traffic_sources", "search_insights", "fx_rates"],
+            ["video_traffic_sources", "search_insights"],
         )
 
     def test_accepts_related_video_insights_alone(self) -> None:
@@ -208,15 +208,14 @@ class ValidatePlanTest(unittest.TestCase):
         ])
         self.assertEqual([s.stage for s in stages], ["search_insights", "related_video_insights"])
 
-    def test_related_video_insights_sits_after_search_insights_and_before_fx_rates(self) -> None:
+    def test_related_video_insights_sits_after_search_insights(self) -> None:
         stages = validate_plan([
-            PlanStage("fx_rates"),
             PlanStage("related_video_insights", "incremental"),
             PlanStage("search_insights", "incremental"),
         ])
         self.assertEqual(
             [s.stage for s in stages],
-            ["search_insights", "related_video_insights", "fx_rates"],
+            ["search_insights", "related_video_insights"],
         )
 
     def test_rejects_pruning_without_playlists_or_videos(self) -> None:
@@ -276,8 +275,8 @@ class FullIncrementalPlanTest(unittest.TestCase):
         self.assertEqual(
             [s.stage for s in full_incremental_plan()],
             [
-                "playlists", "videos", "comments", "video_analytics",
-                "video_traffic_sources", "search_insights", "related_video_insights", "fx_rates",
+                "playlists", "videos", "comments", "fx_rates", "video_analytics",
+                "video_traffic_sources", "search_insights", "related_video_insights",
             ],
         )
 
@@ -295,6 +294,65 @@ class FullIncrementalPlanTest(unittest.TestCase):
         self.assertEqual(by_stage["video_traffic_sources"].scope, "incremental")
         self.assertIsNone(by_stage["video_analytics"].year)
         self.assertIsNone(by_stage["video_traffic_sources"].year)
+
+
+class AllocateAnalyticsWorkersTest(unittest.TestCase):
+    def test_one_fast_stage_alone(self) -> None:
+        self.assertEqual(
+            allocate_analytics_workers(["video_analytics"]), (("video_analytics",), ()),
+        )
+
+    def test_one_slow_stage_alone(self) -> None:
+        self.assertEqual(
+            allocate_analytics_workers(["search_insights"]), (("search_insights",), ()),
+        )
+
+    def test_two_fast_stages_split_one_each(self) -> None:
+        self.assertEqual(
+            allocate_analytics_workers(["video_analytics", "video_traffic_sources"]),
+            (("video_analytics",), ("video_traffic_sources",)),
+        )
+
+    def test_two_slow_stages_split_one_each(self) -> None:
+        self.assertEqual(
+            allocate_analytics_workers(["search_insights", "related_video_insights"]),
+            (("search_insights",), ("related_video_insights",)),
+        )
+
+    def test_one_fast_one_slow_split_one_each(self) -> None:
+        self.assertEqual(
+            allocate_analytics_workers(["video_analytics", "search_insights"]),
+            (("video_analytics",), ("search_insights",)),
+        )
+
+    def test_two_fast_one_slow_pairs_the_first_fast_with_the_slow(self) -> None:
+        self.assertEqual(
+            allocate_analytics_workers(["video_analytics", "video_traffic_sources", "search_insights"]),
+            (("video_analytics", "search_insights"), ("video_traffic_sources",)),
+        )
+
+    def test_one_fast_two_slow_pairs_the_fast_with_the_first_slow(self) -> None:
+        self.assertEqual(
+            allocate_analytics_workers(["video_analytics", "search_insights", "related_video_insights"]),
+            (("video_analytics", "search_insights"), ("related_video_insights",)),
+        )
+
+    def test_all_four_selected_matches_the_issues_example(self) -> None:
+        self.assertEqual(
+            allocate_analytics_workers([
+                "video_analytics", "video_traffic_sources", "search_insights", "related_video_insights",
+            ]),
+            (("video_analytics", "search_insights"), ("video_traffic_sources", "related_video_insights")),
+        )
+
+    def test_selection_order_does_not_affect_the_result(self) -> None:
+        self.assertEqual(
+            allocate_analytics_workers(["related_video_insights", "search_insights"]),
+            allocate_analytics_workers(["search_insights", "related_video_insights"]),
+        )
+
+    def test_no_analytics_stages_selected(self) -> None:
+        self.assertEqual(allocate_analytics_workers([]), ((), ()))
 
 
 if __name__ == "__main__":

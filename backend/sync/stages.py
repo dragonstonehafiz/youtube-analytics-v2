@@ -277,7 +277,7 @@ def sync_comments(scope: str, counts: SyncCounts) -> None:
     for i, video_id in enumerate(video_ids, start=1):
         if i > 1:
             status.raise_if_stopping()
-        status.update_sync_progress(f"Syncing comments ({i}/{total})...")
+        status.update_sync_progress("comments", f"Syncing comments ({i}/{total})...")
         video = database.get_owned_video(video_id)
         title = video.get("title") if video else None
         known_ids = database.get_comment_ids_for_video(video_id)
@@ -362,7 +362,7 @@ def sync_video_analytics(scope: str, year: int | None, counts: SyncCounts) -> No
     for i, video_id in enumerate(video_ids, start=1):
         if i > 1:
             status.raise_if_stopping()
-        status.update_sync_progress(f"Syncing video analytics ({i}/{total})...")
+        status.update_sync_progress("video_analytics", f"Syncing video analytics ({i}/{total})...")
         video = database.get_owned_video(video_id)
         if not video or not video.get("published_at"):
             _logger.debug(
@@ -433,7 +433,7 @@ def sync_video_traffic_sources(scope: str, year: int | None, counts: SyncCounts)
     for i, video_id in enumerate(video_ids, start=1):
         if i > 1:
             status.raise_if_stopping()
-        status.update_sync_progress(f"Syncing traffic sources ({i}/{total})...")
+        status.update_sync_progress("video_traffic_sources", f"Syncing traffic sources ({i}/{total})...")
         video = database.get_owned_video(video_id)
         if not video or not video.get("published_at"):
             _logger.debug(
@@ -523,7 +523,7 @@ def sync_search_insights(scope: str, year: int | None, counts: SyncCounts) -> No
             status.raise_if_stopping()
         video = database.get_owned_video(video_id)
         title = video.get("title") if video else None
-        status.update_sync_progress(f"Syncing search insights ({i}/{total})...")
+        status.update_sync_progress("search_insights", f"Syncing search insights ({i}/{total})...")
 
         if scope in ("year", "all"):
             if not video or not video.get("published_at"):
@@ -621,7 +621,7 @@ def sync_related_video_insights(scope: str, year: int | None, counts: SyncCounts
             status.raise_if_stopping()
         video = database.get_owned_video(video_id)
         title = video.get("title") if video else None
-        status.update_sync_progress(f"Syncing related video insights ({i}/{total})...")
+        status.update_sync_progress("related_video_insights", f"Syncing related video insights ({i}/{total})...")
 
         if scope in ("year", "all"):
             if not video or not video.get("published_at"):

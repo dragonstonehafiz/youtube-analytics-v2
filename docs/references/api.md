@@ -308,24 +308,29 @@ GET  /meta/date-range
 
 ```
 GET  /sync/status
-  → { state, message }
-    state ∈ idle | running | stopping | success | failed | cancelled
-    message is a safe, operation-specific string; on failure it never contains raw
-    exception text, headers, credentials, tokens, or API response content.
-    A terminal result (success/failed/cancelled) is retained until the next reservation
-    replaces it with running; a fresh backend starts idle with no message.
+  → { active, stop_requested, stages }
+    active is true while a plan reservation is held; stop_requested reports an
+    accepted cooperative cancellation request.
+    stages is one entry per selected stage, in canonical plan order:
+      { key, state, message }
+    state ∈ pending | running | success | failed | cancelled.
+    pending means waiting while active is true and not run after an ordinary plan end; an
+    accepted stop changes stages that never started to cancelled;
+    running carries the stage's current safe progress text; success/cancelled have an
+    empty message; failed carries a fixed, safe stage-specific message.
+    A fresh backend starts inactive with no stages. The latest plan's per-stage results
+    remain visible until the next reservation replaces them.
 
 POST /sync/stop
   No body.
-  → { stopping: true }   # accepted: a running sync transitions to stopping, or one
-                         # was already stopping (idempotent — repeated calls are safe)
-  409 "No sync in progress"   # idle, or a terminal state (success/failed/cancelled)
-  Requests cooperative cancellation of the single active sync, manual or
-  startup-origin — there is no batch/run identifier to pass, since only one sync can
-  be active at a time. The worker stops at its next safe checkpoint (never mid-request
-  or mid-transaction; see sync.md), so completion can lag the response. While
-  `stopping`, POST /sync/trigger still returns 409 — a new sync cannot start until the
-  stopping worker has actually exited and released its reservation.
+  → { stopping: true }   # accepted: an active sync has stop_requested set (idempotent)
+  409 "No sync in progress"   # no active plan or no cancellable stage remains
+  Requests cooperative cancellation of the active sync, manual or startup-origin —
+  there is no batch/run identifier to pass, since only one sync can be active at a time.
+  The worker stops at its next safe checkpoint (never mid-request or mid-transaction;
+  see sync.md), so completion can lag the response. While the active reservation remains
+  held, POST /sync/trigger returns 409. A stop request is rejected once every selected
+  stage is terminal, even if the executor is still releasing the reservation.
 
 POST /sync/trigger
   Body (JSON): { stages: [ { stage, scope?, year? }, ... ] }
@@ -344,9 +349,11 @@ POST /sync/trigger
       `pruning` submitted without both `playlists` and `videos` in the same plan
   409 a sync is already in progress
   Each period-aware stage carries its own scope/year — the two can differ in one plan.
-  Submission order is irrelevant: the backend always executes in canonical stage order
-  (playlists → videos → comments → pruning → video_analytics → video_traffic_sources →
-  search_insights → related_video_insights → fx_rates).
+  Submission order is irrelevant: the backend always runs the selected pre-analytics
+  stages serially, in canonical order (playlists → videos → pruning → fx_rates →
+  comments), then splits the selected Analytics API stages (video_analytics,
+  video_traffic_sources, search_insights, related_video_insights) across at most two
+  independent workers (see sync.md).
   search_insights and related_video_insights are each independently period-aware
   (scope/year required, like video_analytics/video_traffic_sources) and share no
   dependency with video_traffic_sources or with each other — selecting/deselecting

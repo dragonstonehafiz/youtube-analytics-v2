@@ -44,18 +44,17 @@ class SyncPlanRequest(BaseModel):
 
 @router.get("/sync/status")
 def sync_status() -> sync.SyncStatus:
-    """Return the current sync lifecycle state (idle/running/stopping/success/failed/
-    cancelled) and its safe message."""
+    """Return reservation state and independent status for each selected stage."""
     return sync.get_sync_status()
 
 
 @router.post("/sync/stop")
 def stop_sync() -> dict:
-    """Request cancellation of the active sync, manual or startup-origin, idempotently.
+    """Request cooperative cancellation of the active sync, manual or startup-origin.
 
-    Returns `{"stopping": true}` when a running sync transitions to stopping or one is
-    already stopping. Returns 409 with a fixed safe detail when no sync is active
-    (idle or a terminal state), which never mutates any result.
+    Returns {"stopping": true} when a plan is active, including repeated requests.
+    Returns 409 with a fixed safe detail when no plan is active or all selected stages
+    are already terminal; it never mutates the retained per-stage results.
     """
     if not sync.request_stop():
         raise HTTPException(status_code=409, detail="No sync in progress")
@@ -79,7 +78,7 @@ def trigger_sync(plan: SyncPlanRequest, background_tasks: BackgroundTasks) -> di
     except sync.PlanValidationError as exc:
         raise HTTPException(status_code=400, detail=str(exc)) from exc
 
-    if not sync.try_begin_sync("Starting sync..."):
+    if not sync.try_begin_sync([stage.stage for stage in stages]):
         raise HTTPException(status_code=409, detail="Sync already in progress")
 
     try:

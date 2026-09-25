@@ -13,7 +13,7 @@
   width: 80%;
   margin: 0 auto;
   padding: 0 2rem;
-  height: 56px;
+  min-height: 56px;
   display: flex;
   align-items: center;
   gap: 2rem;
@@ -63,7 +63,9 @@
 
 .topnav-sync {
   margin-left: auto;
-  flex-shrink: 0;
+  flex-shrink: 1;
+  min-width: 0;
+  max-width: 42%;
 }
 
 .topnav-link {

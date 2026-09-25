@@ -15,6 +15,8 @@ import type {
 } from '@/types'
 import { useReplaceSearchParams } from '@/hooks/useReplaceSearchParams'
 import AsyncCard from '@/components/AsyncCard'
+import SyncStatusBanner from '@/components/SyncStatusBanner'
+import { stageLabel } from '@/lib/syncStages'
 import './Sync.css'
 
 const STATUS_POLL_MS = 5000
@@ -38,13 +40,13 @@ interface StageRow {
 const STAGE_ROWS: readonly StageRow[] = [
   { stage: 'playlists', label: 'Playlists', description: 'Playlists metadata and playlist items' },
   { stage: 'videos', label: 'Videos', description: 'Video and video metadata' },
-  { stage: 'comments', label: 'Comments', description: 'Top-level comments and commenters on stored videos' },
   { stage: 'pruning', label: 'Pruning', description: 'Removes videos no longer found during complete discovery' },
+  { stage: 'comments', label: 'Comments', description: 'Top-level comments and commenters on stored videos' },
+  { stage: 'fx_rates', label: 'FX Rates', description: 'USD to SGD conversion rates' },
   { stage: 'video_analytics', label: 'Video Analytics', description: 'Daily per-video metrics' },
   { stage: 'video_traffic_sources', label: 'Traffic Sources', description: 'Daily video traffic metrics' },
   { stage: 'search_insights', label: 'Search Insights', description: 'Per-video search term views' },
   { stage: 'related_video_insights', label: 'Related Video Insights', description: 'Per-video Related Video referrer views' },
-  { stage: 'fx_rates', label: 'FX Rates', description: 'USD to SGD conversion rates' },
 ]
 
 const PERIOD_AWARE_STAGES: readonly PeriodAwareSyncStage[] = [
@@ -155,24 +157,12 @@ function toPlanStage(stage: SyncStage, period: string): SyncPlanStage {
   return { stage, scope: 'year', year: Number(period) }
 }
 
-const STAGE_LABELS: Readonly<Record<string, string>> = {
-  // Retired stage id (renamed to 'search_insights') that may still appear in
-  // historical sync_runs rows; not migrated, just given a display label here.
-  search_related_insights: 'Search Insights',
-  ...Object.fromEntries(STAGE_ROWS.map(row => [row.stage, row.label])),
-}
-
 const STATUS_LABELS: Readonly<Record<SyncRunStatus, string>> = {
   running: 'Running',
   incomplete: 'Incomplete',
   success: 'Success',
   failed: 'Failed',
   cancelled: 'Cancelled',
-}
-
-/** Human stage name, falling back to the stored value for a stage the UI no longer offers. */
-function stageLabel(syncType: string): string {
-  return STAGE_LABELS[syncType] ?? syncType
 }
 
 /** A selected year takes precedence; otherwise describe the stored scope. */
@@ -310,16 +300,15 @@ export default function Sync() {
     ? Array.from({ length: currentYear - earliestYear + 1 }, (_, i) => currentYear - i)
     : []
 
-  const isSyncing = status?.state === 'running'
-  const isStopping = status?.state === 'stopping' || stopRequested
+  const isSyncing = status?.active === true && status.stop_requested !== true
+  const isStopping = (status?.active === true && status.stop_requested === true) || stopRequested
   const awaitingFirstStatus = status === null
   const locked = isSyncing || isStopping || submitting || awaitingFirstStatus || statusUnavailable
   const selectedCount = STAGE_ROWS.filter(row => included[row.stage]).length
 
-  // Once the active sync reaches a terminal state, drop the locally-held stop flags so
-  // the next sync starts from a clean slate rather than one still marked "stopping".
+  // Once the active plan ends, clear locally-held stop flags for the next plan.
   useEffect(() => {
-    if (status && status.state !== 'running' && status.state !== 'stopping') {
+    if (status && status.active === false) {
       setStopRequested(false)
     }
   }, [status])
@@ -368,6 +357,7 @@ export default function Sync() {
       .then(() => {
         setStopRequested(true)
         closeStopDialog()
+        refreshStatus()
       })
       .catch((err: unknown) => {
         setError(err instanceof Error ? err.message : 'Could not stop sync')
@@ -442,6 +432,8 @@ export default function Sync() {
       <div className="page-header">
         <h1>Sync</h1>
       </div>
+
+      <SyncStatusBanner status={status} unavailable={statusUnavailable} />
 
       <div className="tabs">
         <button

@@ -181,7 +181,7 @@ class StageCheckpointWiringTest(unittest.TestCase):
         mock.patch("sync.stages.database.upsert_playlist").start()
         mock.patch("sync.stages.database.delete_playlist_items", return_value=0).start()
 
-        status.try_begin_sync()
+        status.try_begin_sync(["playlists"])
         status.request_stop()
 
         with self.assertRaises(status.SyncCancelled):
@@ -193,7 +193,7 @@ class StageCheckpointWiringTest(unittest.TestCase):
         from sync import stages
 
         delete = mock.patch("sync.stages.database.delete_videos_not_in").start()
-        status.try_begin_sync()
+        status.try_begin_sync(["pruning"])
         status.request_stop()
 
         with self.assertRaises(status.SyncCancelled):
@@ -218,7 +218,7 @@ class StageCheckpointWiringTest(unittest.TestCase):
         import pandas as pd
         mock.patch("yfinance.download", return_value=pd.DataFrame()).start()
 
-        status.try_begin_sync()
+        status.try_begin_sync(["fx_rates"])
         status.request_stop()
 
         with self.assertRaises(status.SyncCancelled):
