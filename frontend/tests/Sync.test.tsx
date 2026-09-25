@@ -274,21 +274,21 @@ describe('the status banner reflects the poll', () => {
     await screen.findByText('Status unavailable')
   })
 
-  it('replaces the submit action with Stop sync and shows the running message while a sync is running', async () => {
+  it('replaces the submit action with Stop sync and shows the running card while a sync is running', async () => {
     mockGetSyncStatus.mockResolvedValue({ active: true, stop_requested: false, stages: [{ key: 'videos', state: 'running', message: 'Syncing videos' }] })
     renderSync('/sync')
 
     await waitFor(() => expect(screen.getByRole('button', { name: 'Stop sync' })).toBeDefined())
     expect(screen.queryByRole('button', { name: 'Sync selected' })).toBeNull()
-    await screen.findByText('Syncing videos')
+    await screen.findByTitle('Syncing videos')
   })
 
-  it('shows the terminal failure message in the banner', async () => {
+  it('shows the terminal failure card in the banner', async () => {
     mockGetSyncStatus.mockResolvedValue({ active: false, stop_requested: false, stages: [{ key: 'videos', state: 'failed', message: 'Sync failed: quota' }] })
     renderSync('/sync')
     await settled()
 
-    await screen.findByText('Sync failed: quota')
+    await screen.findByTitle('Sync failed: quota')
   })
 })
 
@@ -1019,9 +1019,9 @@ describe('stop sync workflow', () => {
     expect(mockStopSync).toHaveBeenCalledTimes(1)
   })
 
-  it('shows the Stopping… button while the post-stop status refresh is still pending, keeping the running row visible', async () => {
+  it('shows the Stopping… button while the post-stop status refresh is still pending, keeping the running card visible', async () => {
     await renderRunning()
-    await screen.findByText('Syncing videos')
+    await screen.findByTitle('Syncing videos')
     mockGetSyncStatus.mockReturnValue(new Promise(() => {}))
 
     fireEvent.click(screen.getByRole('button', { name: 'Stop sync' }))
@@ -1029,12 +1029,12 @@ describe('stop sync workflow', () => {
     fireEvent.click(within(screen.getByRole('dialog')).getByRole('button', { name: 'Stop sync' }))
 
     await waitFor(() => expect(screen.getByRole('button', { name: 'Stopping…' })).toBeDefined())
-    expect(screen.getByText('Syncing videos')).toBeDefined()
+    expect(screen.getByTitle('Syncing videos')).toBeDefined()
   })
 
   it('refreshes status immediately on a successful stop, so newer poll data does not wait for the next interval tick', async () => {
     await renderRunning()
-    await screen.findByText('Syncing videos')
+    await screen.findByTitle('Syncing videos')
     mockGetSyncStatus.mockResolvedValue({
       active: true,
       stop_requested: true,
@@ -1045,7 +1045,7 @@ describe('stop sync workflow', () => {
     await screen.findByRole('dialog')
     fireEvent.click(within(screen.getByRole('dialog')).getByRole('button', { name: 'Stop sync' }))
 
-    await screen.findByText('Syncing videos (finishing up)...')
+    await screen.findByTitle('Syncing videos (finishing up)...')
   })
 
   it('repeated confirm clicks issue only one request', async () => {
