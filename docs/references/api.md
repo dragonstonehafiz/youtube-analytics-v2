@@ -308,29 +308,29 @@ GET  /meta/date-range
 
 ```
 GET  /sync/status
-  → { state, message, stages }
-    state ∈ idle | running | stopping | success | failed | cancelled
-    message is a safe, operation-specific string; on failure it never contains raw
-    exception text, headers, credentials, tokens, or API response content. While more
-    than one stage is active at once (the two Analytics API workers), message joins
-    every active stage's own text together.
-    stages is [{ key, message }], one entry per currently active or just-failed stage,
-    each carrying its own untruncated text (the same text message folds together).
-    Populated only while state is running; [] in every other state.
-    A terminal result (success/failed/cancelled) is retained until the next reservation
-    replaces it with running; a fresh backend starts idle with no message.
+  → { active, stop_requested, stages }
+    active is true while a plan reservation is held; stop_requested reports an
+    accepted cooperative cancellation request.
+    stages is one entry per selected stage, in canonical plan order:
+      { key, state, message }
+    state ∈ pending | running | success | failed | cancelled.
+    pending means waiting while active is true and not run after an ordinary plan end; an
+    accepted stop changes stages that never started to cancelled;
+    running carries the stage's current safe progress text; success/cancelled have an
+    empty message; failed carries a fixed, safe stage-specific message.
+    A fresh backend starts inactive with no stages. The latest plan's per-stage results
+    remain visible until the next reservation replaces them.
 
 POST /sync/stop
   No body.
-  → { stopping: true }   # accepted: a running sync transitions to stopping, or one
-                         # was already stopping (idempotent — repeated calls are safe)
-  409 "No sync in progress"   # idle, or a terminal state (success/failed/cancelled)
-  Requests cooperative cancellation of the single active sync, manual or
-  startup-origin — there is no batch/run identifier to pass, since only one sync can
-  be active at a time. The worker stops at its next safe checkpoint (never mid-request
-  or mid-transaction; see sync.md), so completion can lag the response. While
-  `stopping`, POST /sync/trigger still returns 409 — a new sync cannot start until the
-  stopping worker has actually exited and released its reservation.
+  → { stopping: true }   # accepted: an active sync has stop_requested set (idempotent)
+  409 "No sync in progress"   # no active plan or no cancellable stage remains
+  Requests cooperative cancellation of the active sync, manual or startup-origin —
+  there is no batch/run identifier to pass, since only one sync can be active at a time.
+  The worker stops at its next safe checkpoint (never mid-request or mid-transaction;
+  see sync.md), so completion can lag the response. While the active reservation remains
+  held, POST /sync/trigger returns 409. A stop request is rejected once every selected
+  stage is terminal, even if the executor is still releasing the reservation.
 
 POST /sync/trigger
   Body (JSON): { stages: [ { stage, scope?, year? }, ... ] }

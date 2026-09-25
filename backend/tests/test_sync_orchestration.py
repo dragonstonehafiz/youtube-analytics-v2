@@ -217,11 +217,13 @@ class FailFastTest(OrchestrationTestCase):
     def test_failure_still_releases_active_state(self) -> None:
         self.stage_mocks["sync_videos"].side_effect = RuntimeError("boom")
 
-        self.assertTrue(status.try_begin_sync())
+        self.assertTrue(status.try_begin_sync(["videos"]))
         with self.assertRaises(RuntimeError):
             execute_plan([PlanStage("videos")])
 
-        self.assertEqual(status.get_sync_status()["state"], "failed")
+        result = status.get_sync_status()
+        self.assertFalse(result["active"])
+        self.assertEqual(result["stages"][0]["state"], "failed")
 
     def test_invalid_plan_releases_active_state_without_running_anything(self) -> None:
         self.assertTrue(status.try_begin_sync())
@@ -229,40 +231,42 @@ class FailFastTest(OrchestrationTestCase):
         with self.assertRaises(PlanValidationError):
             execute_plan([])
 
-        self.assertEqual(status.get_sync_status()["state"], "failed")
+        self.assertFalse(status.get_sync_status()["active"])
         self.db.create_sync_run.assert_not_called()
 
 
 class StatusTest(OrchestrationTestCase):
     def test_releases_active_state_on_success(self) -> None:
-        self.assertTrue(status.try_begin_sync())
+        self.assertTrue(status.try_begin_sync(["videos"]))
         execute_plan([PlanStage("videos")])
 
-        self.assertEqual(
-            status.get_sync_status(),
-            {"state": "success", "message": "Sync complete", "stages": []},
-        )
+        self.assertEqual(status.get_sync_status(), {
+            "active": False,
+            "stop_requested": False,
+            "stages": [{"key": "videos", "state": "success", "message": ""}],
+        })
 
-    def test_reports_a_safe_operation_specific_failure_message(self) -> None:
+    def test_reports_safe_stage_failure_message(self) -> None:
         self.stage_mocks["sync_videos"].side_effect = RuntimeError("boom")
+        status.try_begin_sync(["videos"])
 
         with self.assertRaises(RuntimeError):
             execute_plan([PlanStage("videos")])
 
         result = status.get_sync_status()
-        self.assertEqual(result["state"], "failed")
-        self.assertEqual(result["message"], "Sync failed while syncing videos")
-        self.assertNotIn("boom", result["message"])
+        self.assertFalse(result["active"])
+        self.assertEqual(result["stages"][0]["message"], "syncing videos failed")
+        self.assertNotIn("boom", result["stages"][0]["message"])
 
-    def test_pre_stage_validation_failure_reports_a_safe_message(self) -> None:
-        status.try_begin_sync()
+    def test_defensive_validation_leaves_selected_stages_pending(self) -> None:
+        status.try_begin_sync(["videos"])
 
         with self.assertRaises(PlanValidationError):
             execute_plan([])
 
         result = status.get_sync_status()
-        self.assertEqual(result["state"], "failed")
-        self.assertEqual(result["message"], "Sync failed during plan validation")
+        self.assertFalse(result["active"])
+        self.assertEqual(result["stages"][0]["state"], "pending")
 
 
 class RunPlanTest(OrchestrationTestCase):
@@ -270,21 +274,21 @@ class RunPlanTest(OrchestrationTestCase):
         self.assertTrue(run_plan([PlanStage("videos")]))
 
         self.assertEqual(self.calls, ["sync_videos"])
-        self.assertEqual(status.get_sync_status()["state"], "success")
+        self.assertEqual(status.get_sync_status()["stages"][0]["state"], "success")
 
     def test_declines_when_a_sync_is_already_active(self) -> None:
-        self.assertTrue(status.try_begin_sync("manual sync"))
+        self.assertTrue(status.try_begin_sync(["videos"]))
 
         self.assertFalse(run_plan(full_incremental_plan()))
 
         self.assertEqual(self.calls, [])
         self.db.create_sync_run.assert_not_called()
-        self.assertEqual(status.get_sync_status()["state"], "running")
+        self.assertTrue(status.get_sync_status()["active"])
 
     def test_two_concurrent_reservations_cannot_both_succeed(self) -> None:
-        self.assertTrue(status.try_begin_sync("first"))
-        self.assertFalse(status.try_begin_sync("second"))
-        self.assertEqual(status.get_sync_status()["message"], "first")
+        self.assertTrue(status.try_begin_sync(["videos"]))
+        self.assertFalse(status.try_begin_sync(["comments"]))
+        self.assertEqual(status.get_sync_status()["stages"][0]["key"], "videos")
 
 
 class PlanLevelLoggingTest(OrchestrationTestCase):
@@ -310,7 +314,7 @@ class PlanLevelLoggingTest(OrchestrationTestCase):
             self.assertEqual(record.levelname, "ERROR")
 
     def test_already_active_logs_warning_and_returns_false(self) -> None:
-        self.assertTrue(status.try_begin_sync("already running"))
+        self.assertTrue(status.try_begin_sync(["videos"]))
 
         with self.assertLogs("youtube_analytics.sync", level="WARNING") as captured:
             result = run_plan(full_incremental_plan())
@@ -384,6 +388,7 @@ class StageFailureLoggingTest(OrchestrationTestCase):
             raise RuntimeError('access_token=FAKE_OAUTH_TOKEN body={"quotaExceeded": true}')
 
         self.stage_mocks["sync_videos"].side_effect = fail
+        status.try_begin_sync(["videos"])
 
         with self.assertLogs("youtube_analytics.sync", level="ERROR") as captured:
             with self.assertRaises(RuntimeError):
@@ -404,12 +409,11 @@ class StageFailureLoggingTest(OrchestrationTestCase):
         )
 
         result = status.get_sync_status()
-        self.assertEqual(
-            result,
-            {"state": "failed", "message": "Sync failed while syncing videos", "stages": []},
-        )
-        self.assertNotIn("FAKE_OAUTH_TOKEN", result["message"])
-        self.assertNotIn("quotaExceeded", result["message"])
+        failed_stage = next(stage for stage in result["stages"] if stage["key"] == "videos")
+        self.assertEqual(failed_stage["state"], "failed")
+        self.assertEqual(failed_stage["message"], "syncing videos failed")
+        self.assertNotIn("FAKE_OAUTH_TOKEN", failed_stage["message"])
+        self.assertNotIn("quotaExceeded", failed_stage["message"])
 
 
 class CancellationTest(OrchestrationTestCase):
@@ -423,7 +427,7 @@ class CancellationTest(OrchestrationTestCase):
         self.stage_mocks["sync_playlists"].side_effect = lambda *args: self.calls.append("sync_playlists")
         self.stage_mocks["sync_videos"].side_effect = cancel_during
 
-        status.try_begin_sync()
+        status.try_begin_sync(["playlists", "videos", "fx_rates"])
 
         execute_plan([PlanStage("playlists"), PlanStage("videos"), PlanStage("fx_rates")])
 
@@ -432,9 +436,11 @@ class CancellationTest(OrchestrationTestCase):
         self.db.cancel_sync_run.assert_called_once()  # videos
         self.assertEqual(self.db.cancel_sync_run.call_args[0][1:], (0, 4, 0))
         self.db.fail_sync_run.assert_not_called()
+        states = {stage["key"]: stage["state"] for stage in status.get_sync_status()["stages"]}
+        self.assertEqual(states, {"playlists": "success", "videos": "cancelled", "fx_rates": "cancelled"})
 
     def test_cancellation_between_stages_prevents_the_next_stage_from_starting(self) -> None:
-        status.try_begin_sync()
+        status.try_begin_sync(["playlists", "videos"])
 
         def stop_after_playlists(*args: object) -> None:
             self.calls.append("sync_playlists")
@@ -447,17 +453,21 @@ class CancellationTest(OrchestrationTestCase):
         self.assertEqual(self.calls, ["sync_playlists"])
         self.stage_mocks["sync_videos"].assert_not_called()
         self.assertEqual(self.recorded_stages, ["playlists"])
+        states = {stage["key"]: stage["state"] for stage in status.get_sync_status()["stages"]}
+        # playlists itself requested the stop before returning, so its own completion —
+        # arriving after the stop was already accepted — resolves to cancelled, not
+        # success; videos never starts at all and is swept to cancelled too.
+        self.assertEqual(states, {"playlists": "cancelled", "videos": "cancelled"})
 
-    def test_cancellation_sets_terminal_cancelled_state_without_raising(self) -> None:
-        status.try_begin_sync()
+    def test_cancellation_before_work_marks_selected_stage_cancelled(self) -> None:
+        status.try_begin_sync(["videos"])
         status.request_stop()
 
         execute_plan([PlanStage("videos")])
 
-        self.assertEqual(
-            status.get_sync_status(),
-            {"state": "cancelled", "message": "Sync stopped", "stages": []},
-        )
+        result = status.get_sync_status()
+        self.assertFalse(result["active"])
+        self.assertEqual(result["stages"][0]["state"], "cancelled")
 
     def test_cancellation_is_not_logged_as_a_stage_failure(self) -> None:
         def cancel_during(*args: object) -> None:
@@ -466,7 +476,7 @@ class CancellationTest(OrchestrationTestCase):
             status.raise_if_stopping()
 
         self.stage_mocks["sync_videos"].side_effect = cancel_during
-        status.try_begin_sync()
+        status.try_begin_sync(["videos"])
 
         with self.assertLogs("youtube_analytics.sync", level="INFO") as captured:
             execute_plan([PlanStage("videos")])
@@ -484,7 +494,7 @@ class CancellationTest(OrchestrationTestCase):
         self.stage_mocks["sync_videos"].side_effect = cancel_during
 
         self.assertTrue(run_plan([PlanStage("videos")]))
-        self.assertEqual(status.get_sync_status()["state"], "cancelled")
+        self.assertEqual(status.get_sync_status()["stages"][0]["state"], "cancelled")
 
 
 class PersistenceFailureLoggingTest(OrchestrationTestCase):
@@ -585,6 +595,7 @@ class AnalyticsWorkerConcurrencyTest(OrchestrationTestCase):
 
     def test_worker_a_failure_does_not_stop_worker_bs_queue(self) -> None:
         self.stage_mocks["sync_video_analytics"].side_effect = RuntimeError("boom")
+        status.try_begin_sync(["video_analytics", "video_traffic_sources", "search_insights", "related_video_insights"])
 
         with self.assertRaises(RuntimeError):
             execute_plan([
@@ -602,14 +613,89 @@ class AnalyticsWorkerConcurrencyTest(OrchestrationTestCase):
         self.assertIn("sync_related_video_insights", self.calls)
 
         result = status.get_sync_status()
-        self.assertEqual(result["state"], "failed")
-        self.assertIn("syncing video analytics", result["message"])
+        self.assertFalse(result["active"])
+        states = {stage["key"]: stage["state"] for stage in result["stages"]}
+        self.assertEqual(states["video_analytics"], "failed")
+        self.assertEqual(states["video_traffic_sources"], "success")
+
+    def test_stage_carries_its_starting_message_before_its_first_progress_update(self) -> None:
+        entered = threading.Event()
+        release = threading.Event()
+        self.stage_mocks["sync_comments"].side_effect = lambda *args: (entered.set(), release.wait(timeout=5))
+        status.try_begin_sync(["comments"])
+        failures: list[Exception] = []
+
+        def execute() -> None:
+            try:
+                execute_plan([PlanStage("comments")])
+            except Exception as exc:
+                failures.append(exc)
+
+        thread = threading.Thread(target=execute)
+        thread.start()
+        try:
+            self.assertTrue(entered.wait(timeout=2))
+            stage = status.get_sync_status()["stages"][0]
+            self.assertEqual(stage["state"], "running")
+            # Never blank: a fixed starting message is published the instant the stage is
+            # dispatched, so a running stage is never shown with empty text before its own
+            # loop reports real progress.
+            self.assertEqual(stage["message"], "Syncing comments...")
+        finally:
+            release.set()
+            thread.join(timeout=5)
+        self.assertEqual(failures, [])
+
+    def test_failed_stage_stays_distinct_while_sibling_worker_is_running(self) -> None:
+        sibling_release = threading.Event()
+        self.stage_mocks["sync_video_analytics"].side_effect = RuntimeError("quota exceeded")
+
+        def hold_sibling(scope: object, year: object, counts: object) -> None:
+            status.update_sync_progress("video_traffic_sources", "Syncing traffic sources...")
+            sibling_release.wait(timeout=5)
+
+        self.stage_mocks["sync_video_traffic_sources"].side_effect = hold_sibling
+        selected = ["video_analytics", "video_traffic_sources"]
+        status.try_begin_sync(selected)
+        failures: list[Exception] = []
+
+        def execute() -> None:
+            try:
+                execute_plan([
+                    PlanStage("video_analytics", "incremental"),
+                    PlanStage("video_traffic_sources", "incremental"),
+                ])
+            except Exception as exc:
+                failures.append(exc)
+
+        thread = threading.Thread(target=execute)
+        thread.start()
+        try:
+            deadline = time.time() + 2
+            snapshot = status.get_sync_status()
+            states = {stage["key"]: stage["state"] for stage in snapshot["stages"]}
+            while states.get("video_analytics") != "failed" and time.time() < deadline:
+                time.sleep(0.01)
+                snapshot = status.get_sync_status()
+                states = {stage["key"]: stage["state"] for stage in snapshot["stages"]}
+
+            self.assertTrue(snapshot["active"])
+            self.assertEqual(states, {"video_analytics": "failed", "video_traffic_sources": "running"})
+            messages = {stage["key"]: stage["message"] for stage in snapshot["stages"]}
+            self.assertEqual(messages["video_analytics"], "syncing video analytics failed")
+            self.assertEqual(messages["video_traffic_sources"], "Syncing traffic sources...")
+        finally:
+            sibling_release.set()
+            thread.join(timeout=5)
+
+        self.assertEqual(len(failures), 1)
+        self.assertIsInstance(failures[0], RuntimeError)
 
     def test_status_stays_active_until_both_workers_exit(self) -> None:
         release = threading.Event()
         self.stage_mocks["sync_related_video_insights"].side_effect = lambda *a: release.wait(timeout=5)
 
-        status.try_begin_sync("Starting sync...")
+        status.try_begin_sync(["video_analytics", "related_video_insights"])
         thread = threading.Thread(
             target=execute_plan,
             args=([
@@ -626,13 +712,13 @@ class AnalyticsWorkerConcurrencyTest(OrchestrationTestCase):
 
             # Worker A (video_analytics alone) has already finished, but Worker B
             # (related_video_insights) is still blocked — the plan must still be active.
-            self.assertEqual(status.get_sync_status()["state"], "running")
-            self.assertFalse(status.try_begin_sync("second run"))
+            self.assertTrue(status.get_sync_status()["active"])
+            self.assertFalse(status.try_begin_sync(["comments"]))
         finally:
             release.set()
             thread.join(timeout=5)
 
-        self.assertEqual(status.get_sync_status()["state"], "success")
+        self.assertEqual(status.get_sync_status()["stages"][0]["state"], "success")
 
     def test_stop_cancels_both_workers_and_joins_them(self) -> None:
         stop_requested = threading.Event()
@@ -651,7 +737,7 @@ class AnalyticsWorkerConcurrencyTest(OrchestrationTestCase):
         self.stage_mocks["sync_video_traffic_sources"].side_effect = stop_after_traffic_sources
         self.stage_mocks["sync_video_analytics"].side_effect = wait_for_stop_then_run
 
-        status.try_begin_sync("Starting sync...")
+        status.try_begin_sync(["video_analytics", "video_traffic_sources", "search_insights", "related_video_insights"])
         execute_plan([
             PlanStage("video_analytics", "incremental"),
             PlanStage("video_traffic_sources", "incremental"),
@@ -659,9 +745,16 @@ class AnalyticsWorkerConcurrencyTest(OrchestrationTestCase):
             PlanStage("related_video_insights", "incremental"),
         ])
 
+        stopped = status.get_sync_status()
+        self.assertFalse(stopped["active"])
+        self.assertTrue(stopped["stop_requested"])
+        # video_analytics and video_traffic_sources both finish their own work after the
+        # stop was accepted (the second worker's request_stop() call lands before either
+        # returns), so both resolve to cancelled rather than success; the two queued
+        # second-round stages never start and are swept to cancelled as well.
         self.assertEqual(
-            status.get_sync_status(),
-            {"state": "cancelled", "message": "Sync stopped", "stages": []},
+            [stage["state"] for stage in stopped["stages"]],
+            ["cancelled", "cancelled", "cancelled", "cancelled"],
         )
         self.assertIn("sync_video_analytics", self.calls)
         self.assertIn("sync_video_traffic_sources", self.calls)

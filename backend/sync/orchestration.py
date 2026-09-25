@@ -46,18 +46,20 @@ def _format_stage_counts(sync_type: str, counts: SyncCounts) -> str:
     )
 
 
-# Progress message shown while each stage runs. None for stages that report their own
-# per-video progress from inside their loop; setting a message here would be
-# immediately overwritten.
-_STAGE_MESSAGES: dict[str, str | None] = {
+# Starting message published the instant each stage is dispatched, before it has done
+# any work of its own. Stages that report their own per-video progress from inside their
+# loop (comments, the four Analytics API stages) overwrite this with real counts on their
+# first iteration; every stage gets one immediately so a freshly-running stage is never
+# shown with a blank message before that first update lands.
+_STAGE_MESSAGES: dict[str, str] = {
     "playlists": "Syncing playlists...",
     "videos": "Syncing videos...",
-    "comments": None,
+    "comments": "Syncing comments...",
     "pruning": "Pruning videos...",
-    "video_analytics": None,
-    "video_traffic_sources": None,
-    "search_insights": None,
-    "related_video_insights": None,
+    "video_analytics": "Syncing video analytics...",
+    "video_traffic_sources": "Syncing traffic sources...",
+    "search_insights": "Syncing search insights...",
+    "related_video_insights": "Syncing related video insights...",
     "fx_rates": "Syncing FX rates...",
 }
 
@@ -74,13 +76,6 @@ _STAGE_FAILURE_LABELS: dict[str, str] = {
     "related_video_insights": "syncing related video insights",
     "fx_rates": "syncing FX rates",
 }
-
-
-def _failure_message(stage_name: str | None) -> str:
-    """Build safe, operation-specific failure text with no exception content."""
-    if stage_name is None:
-        return "Sync failed during plan validation"
-    return f"Sync failed while {_STAGE_FAILURE_LABELS[stage_name]}"
 
 
 def _run_stage(
@@ -159,28 +154,24 @@ def _run_stage(
 
 
 def _run_tracked_stage(batch_id: str, name: str, stage: PlanStage, run: Callable[[SyncCounts], None]) -> None:
-    """Run one stage via `_run_stage()`, keeping its entry in the public status message
-    (`sync.status`) in sync with its lifecycle: an initial fixed message is published for
-    a stage whose loop doesn't report its own progress, the entry is removed on success
-    or cancellation, and replaced with its fixed failure label — which stays visible
-    alongside any other stage still active — on a genuine exception. Always re-raises
-    `SyncCancelled` or the stage's own exception; the caller decides what that means at
-    its own level (fail-fast for the serial pre-analytics stages, worker-isolated for the
-    Analytics API stages).
+    """Run one stage and record its independent live outcome.
+
+    Fixed starting messages are published for stages without inner-loop progress.
+    Success, cooperative cancellation, and genuine failure each leave their own
+    explicit stage state. Always re-raises cancellation or the stage exception so the
+    caller can apply serial fail-fast or Analytics worker isolation.
     """
-    initial_message = _STAGE_MESSAGES[name]
-    if initial_message:
-        status.update_sync_progress(name, initial_message)
+    status.update_sync_progress(name, _STAGE_MESSAGES[name])
     try:
         _run_stage(batch_id, name, recorded_scope(stage), recorded_year(stage), run)
     except status.SyncCancelled:
-        status.end_stage(name)
+        status.cancel_stage(name)
         raise
     except Exception:
         status.fail_stage(name, _STAGE_FAILURE_LABELS[name])
         raise
     else:
-        status.end_stage(name)
+        status.complete_stage(name)
 
 
 def _pre_analytics_runner(
@@ -258,14 +249,6 @@ def _run_analytics_worker(
             return
 
 
-def _multi_failure_message(failed_stages: Sequence[str]) -> str:
-    """Build safe failure text naming every failed Analytics API stage, in canonical
-    stage order regardless of which worker or order they failed in."""
-    ordered = [name for name in ANALYTICS_STAGES if name in failed_stages]
-    labels = ", ".join(_STAGE_FAILURE_LABELS[name] for name in ordered)
-    return f"Sync failed while {labels}"
-
-
 def execute_plan(stages: Sequence[PlanStage]) -> None:
     """Run a validated plan whose active-state reservation the caller already holds.
 
@@ -287,7 +270,6 @@ def execute_plan(stages: Sequence[PlanStage]) -> None:
     """
     playlist_video_ids: set[str] = set()
     channel_owned_ids: set[str] = set()
-    current_stage: str | None = None
 
     def get_playlist_video_ids() -> set[str]:
         return playlist_video_ids
@@ -320,7 +302,6 @@ def execute_plan(stages: Sequence[PlanStage]) -> None:
             if stage is None:
                 continue
             status.raise_if_stopping()
-            current_stage = name
             run = _pre_analytics_runner(
                 name, stage, get_playlist_video_ids, set_playlist_video_ids,
                 set_channel_owned_ids, get_channel_owned_ids,
@@ -347,19 +328,15 @@ def execute_plan(stages: Sequence[PlanStage]) -> None:
 
             failed_stages = [name for outcome in outcomes for name in outcome.failed_stages]
             if failed_stages:
-                status.fail_sync(_multi_failure_message(failed_stages))
                 raise RuntimeError(f"Analytics API workers failed: {', '.join(failed_stages)}")
             if any(outcome.cancelled for outcome in outcomes):
                 raise status.SyncCancelled()
 
         status.raise_if_stopping()
-        status.complete_sync("Sync complete")
-
     except status.SyncCancelled:
-        status.cancel_sync("Sync stopped")
-    except Exception:
-        status.fail_sync(_failure_message(current_stage))
-        raise
+        return
+    finally:
+        status.finish_sync()
 
 
 def run_plan(stages: Sequence[PlanStage]) -> bool:
@@ -369,7 +346,7 @@ def run_plan(stages: Sequence[PlanStage]) -> bool:
     already reserved — the manual trigger route — must use execute_plan instead, which
     would otherwise be blocked by their own reservation.
     """
-    if not status.try_begin_sync("Starting sync..."):
+    if not status.try_begin_sync([stage.stage for stage in stages]):
         _logger.warning("Sync plan skipped reason=already_active")
         return False
     execute_plan(stages)

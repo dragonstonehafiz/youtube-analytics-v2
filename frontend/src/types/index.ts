@@ -79,16 +79,17 @@ export interface CommentsResponse {
   page_size: number
 }
 
-export type SyncLifecycleState = 'idle' | 'running' | 'stopping' | 'success' | 'failed' | 'cancelled'
+export type SyncStageState = 'pending' | 'running' | 'success' | 'failed' | 'cancelled'
 
 export interface SyncStageStatus {
   key: string
+  state: SyncStageState
   message: string
 }
 
 export interface SyncStatusResponse {
-  state: SyncLifecycleState
-  message: string
+  active: boolean
+  stop_requested: boolean
   stages: SyncStageStatus[]
 }
 

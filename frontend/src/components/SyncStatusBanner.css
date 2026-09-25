@@ -46,3 +46,13 @@
 .sync-status-banner-message {
   overflow-wrap: break-word;
 }
+
+.sync-status-banner-row.pending,
+.sync-status-banner-row.cancelled {
+  color: var(--text-secondary);
+}
+
+.sync-status-banner-row.success {
+  border-color: var(--green-mid);
+  color: var(--green);
+}

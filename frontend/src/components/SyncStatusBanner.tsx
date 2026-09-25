@@ -1,4 +1,5 @@
-import type { SyncStatusResponse } from '@/types'
+import type { SyncStageStatus, SyncStatusResponse } from '@/types'
+import { stageLabel } from '@/lib/syncStages'
 import './SyncStatusBanner.css'
 
 interface SyncStatusBannerProps {
@@ -7,13 +8,7 @@ interface SyncStatusBannerProps {
   stopRequested: boolean
 }
 
-/**
- * The Sync page's own large status readout, shown above the tab selector. Unlike the
- * navbar's `SyncStatus` — which only surfaces a sync that's running or has failed — this
- * shows every lifecycle state, since a visitor to this page is here specifically to check
- * on syncing. Concurrent stages stack vertically rather than side by side, so each one's
- * full text stays readable at this larger size.
- */
+/** Show each selected stage's own state and retain the stop-request advisory. */
 export default function SyncStatusBanner({ status, unavailable, stopRequested }: SyncStatusBannerProps) {
   if (unavailable) {
     return (
@@ -24,65 +19,54 @@ export default function SyncStatusBanner({ status, unavailable, stopRequested }:
   }
 
   if (!status) return null
-
-  if (status.state === 'stopping' || (status.state === 'running' && stopRequested)) {
+  if (status.stages.length === 0) {
     return (
       <div className="sync-status-banner">
-        <div className="sync-status-banner-row stopping">
-          <span className="sync-status-banner-dot" />
-          <span className="sync-status-banner-message">
-            {status.state === 'stopping' ? status.message || 'Stopping sync...' : 'Stopping sync...'}
-          </span>
-        </div>
+        <div className="sync-status-banner-row sync-status-banner-idle">Not syncing</div>
       </div>
     )
   }
 
-  if (status.state === 'running') {
-    const items = status.stages.length > 0
-      ? status.stages
-      : [{ key: 'running', message: status.message || 'Syncing...' }]
-    return (
-      <div className="sync-status-banner">
-        {items.map(item => (
-          <div key={item.key} className="sync-status-banner-row syncing">
-            <span className="sync-status-banner-dot" />
-            <span className="sync-status-banner-message">{item.message}</span>
-          </div>
-        ))}
-      </div>
-    )
-  }
-
-  if (status.state === 'failed') {
-    return (
-      <div className="sync-status-banner">
-        <div className="sync-status-banner-row failed">
-          <span className="sync-status-banner-message">{status.message || 'Sync failed'}</span>
-        </div>
-      </div>
-    )
-  }
-
-  if (status.state === 'cancelled') {
-    return (
-      <div className="sync-status-banner">
-        <div className="sync-status-banner-row sync-status-banner-idle">{status.message || 'Sync cancelled'}</div>
-      </div>
-    )
-  }
-
-  if (status.state === 'success') {
-    return (
-      <div className="sync-status-banner">
-        <div className="sync-status-banner-row sync-status-banner-idle">{status.message || 'Sync complete'}</div>
-      </div>
-    )
-  }
-
+  const showStopping = status.active && (status.stop_requested || stopRequested)
+  const showStopped = !status.active && status.stop_requested
   return (
     <div className="sync-status-banner">
-      <div className="sync-status-banner-row sync-status-banner-idle">Not syncing</div>
+      {showStopping && (
+        <div className="sync-status-banner-row stopping">
+          <span className="sync-status-banner-dot" />
+          <span className="sync-status-banner-message">Stopping sync...</span>
+        </div>
+      )}
+      {showStopped && (
+        <div className="sync-status-banner-row cancelled">Stop request received</div>
+      )}
+      {status.stages.map(stage => renderStage(stage, status.active))}
     </div>
   )
+}
+
+function renderStage(stage: SyncStageStatus, active: boolean) {
+  const label = stageLabel(stage.key)
+  if (stage.state === 'running') {
+    return (
+      <div key={stage.key} className="sync-status-banner-row syncing">
+        <span className="sync-status-banner-dot" />
+        <span className="sync-status-banner-message">{stage.message}</span>
+      </div>
+    )
+  }
+  if (stage.state === 'failed') {
+    return (
+      <div key={stage.key} className="sync-status-banner-row failed">
+        <span className="sync-status-banner-message">{stage.message || `${label} failed`}</span>
+      </div>
+    )
+  }
+  if (stage.state === 'pending') {
+    return <div key={stage.key} className="sync-status-banner-row pending">{active ? `Waiting to sync ${label}` : `${label} not run`}</div>
+  }
+  if (stage.state === 'success') {
+    return <div key={stage.key} className="sync-status-banner-row success">{label} synced</div>
+  }
+  return <div key={stage.key} className="sync-status-banner-row cancelled">{label} cancelled</div>
 }

@@ -1,24 +1,25 @@
 from __future__ import annotations
 
 import threading
+from collections.abc import Sequence
 from typing import Literal, TypedDict
 
-SyncLifecycleState = Literal["idle", "running", "stopping", "success", "failed", "cancelled"]
+SyncStageState = Literal["pending", "running", "success", "failed", "cancelled"]
 
 
 class SyncStageStatus(TypedDict):
-    """One active stage's own progress or failure text, for the navbar to render as a
-    separate item rather than folded into the combined `message` string."""
+    """One selected stage's independent lifecycle and safe progress message."""
 
     key: str
+    state: SyncStageState
     message: str
 
 
 class SyncStatus(TypedDict):
-    """The public sync status shape returned by `/sync/status`."""
+    """The public per-stage sync status shape returned by `/sync/status`."""
 
-    state: SyncLifecycleState
-    message: str
+    active: bool
+    stop_requested: bool
     stages: list[SyncStageStatus]
 
 
@@ -27,196 +28,119 @@ class SyncCancelled(Exception):
 
 
 _lock = threading.Lock()
-_state: SyncLifecycleState = "idle"
-_message: str = ""
-
-# Per-stage live progress and failure text, keyed by stage name. Populated while more
-# than one stage can be active at once (the two Analytics API workers), so one worker's
-# progress update can never clobber the other's. Insertion order is rendering order.
-_stage_progress: dict[str, str] = {}
-_stage_failures: dict[str, str] = {}
-
-
-def _combined_message() -> str:
-    """Render every active stage's progress plus every failed stage's label, in the
-    order each was registered."""
-    parts = list(_stage_progress.values())
-    parts.extend(f"{label} failed" for label in _stage_failures.values())
-    return "; ".join(parts)
-
-
-def _stage_entries() -> list[SyncStageStatus]:
-    """Render every active stage's progress plus every failed stage's label as separate
-    entries, in the same order `_combined_message()` joins them in."""
-    entries: list[SyncStageStatus] = [
-        {"key": key, "message": message} for key, message in _stage_progress.items()
-    ]
-    entries.extend(
-        {"key": key, "message": f"{label} failed"} for key, label in _stage_failures.items()
-    )
-    return entries
+_active = False
+_stop_requested = False
+_stages: dict[str, SyncStageStatus] = {}
 
 
 def get_sync_status() -> SyncStatus:
-    """Return the current sync lifecycle state and its safe message. Thread-safe.
-
-    `stages` is populated only while `running`: `_stage_progress`/`_stage_failures` are
-    not cleared on a terminal transition, so surfacing them outside `running` would leak
-    the previous run's stale per-stage entries.
-    """
+    """Return a thread-safe snapshot of reservation and per-stage status."""
     with _lock:
-        stages = _stage_entries() if _state == "running" else []
-        return {"state": _state, "message": _message, "stages": stages}
+        stages: list[SyncStageStatus] = []
+        for stage in _stages.values():
+            stages.append({
+                "key": stage["key"],
+                "state": stage["state"],
+                "message": stage["message"],
+            })
+        return {"active": _active, "stop_requested": _stop_requested, "stages": stages}
 
 
-def try_begin_sync(message: str = "") -> bool:
-    """Reserve the running state if no sync is already running or stopping. Returns
-    whether it was acquired.
-
-    Sets `message` under the same lock acquisition, so a status poll can never observe
-    the running state still carrying the previous run's terminal message. A successful
-    reservation replaces any retained terminal result.
-    """
-    global _state, _message
+def try_begin_sync(stage_keys: Sequence[str] = ()) -> bool:
+    """Reserve a sync and seed its selected stages as pending, if none is active."""
+    global _active, _stop_requested, _stages
     with _lock:
-        if _state in ("running", "stopping"):
+        if _active:
             return False
-        _state = "running"
-        _message = message
-        _stage_progress.clear()
-        _stage_failures.clear()
+        _active = True
+        _stop_requested = False
+        _stages = {
+            key: {"key": key, "state": "pending", "message": ""}
+            for key in stage_keys
+        }
         return True
 
 
 def update_sync_progress(stage_key: str, message: str) -> None:
-    """Update one stage's progress message while the sync is running.
-
-    No-op if no sync is running, so a stray call cannot fabricate a running state and
-    cannot overwrite the stopping or a terminal message. Safe to call concurrently from
-    more than one worker thread: each stage's text is tracked under its own key, so two
-    active stages' progress is combined rather than one overwriting the other.
-    """
-    global _message
+    """Mark a selected stage running and update its safe progress message."""
     with _lock:
-        if _state != "running":
+        if not _active or stage_key not in _stages:
             return
-        _stage_progress[stage_key] = message
-        _message = _combined_message()
+        _stages[stage_key]["state"] = "running"
+        _stages[stage_key]["message"] = message
 
 
-def end_stage(stage_key: str) -> None:
-    """Remove one stage's progress entry, e.g. once it finishes successfully or is
-    cancelled. Safe to call regardless of lifecycle state; only recomputes the public
-    message while running, so it can never overwrite a stopping or terminal message."""
-    global _message
+def complete_stage(stage_key: str) -> None:
+    """Record one selected stage's outcome once its own work finishes without error.
+
+    Records success, unless a stop was already requested by the time this runs: a stage
+    that finishes its last unit of work before its next cancellation checkpoint must
+    still resolve to the outcome the user was told was happening, not silently report
+    success.
+    """
     with _lock:
-        _stage_progress.pop(stage_key, None)
-        if _state == "running":
-            _message = _combined_message()
+        if not _active or stage_key not in _stages:
+            return
+        _stages[stage_key]["state"] = "cancelled" if _stop_requested else "success"
+        _stages[stage_key]["message"] = ""
+
+
+def cancel_stage(stage_key: str) -> None:
+    """Record cooperative cancellation for one selected stage."""
+    with _lock:
+        if not _active or stage_key not in _stages:
+            return
+        _stages[stage_key]["state"] = "cancelled"
+        _stages[stage_key]["message"] = ""
 
 
 def fail_stage(stage_key: str, label: str) -> None:
-    """Record one stage's failure, replacing its progress entry with a fixed label that
-    stays visible — alongside any other stage still active — until the plan's terminal
-    transition or the next reservation clears it."""
-    global _message
+    """Record one stage's fixed, safe failure message."""
     with _lock:
-        _stage_progress.pop(stage_key, None)
-        _stage_failures[stage_key] = label
-        if _state == "running":
-            _message = _combined_message()
+        if not _active or stage_key not in _stages:
+            return
+        _stages[stage_key]["state"] = "failed"
+        _stages[stage_key]["message"] = f"{label} failed"
 
 
 def request_stop() -> bool:
-    """Atomically request cancellation of the active sync. Returns whether a sync is
-    active (running or already stopping); False when idle or in a terminal state.
+    """Request cancellation of the active reservation. Idempotent; rejected while idle.
 
-    Idempotent: a second call while already `stopping` returns True without mutating
-    the message. Never overwrites a terminal result recorded before this call acquires
-    the lock.
+    Accepted for as long as the reservation is held (`_active`), even after every
+    selected stage has already reached a terminal state — the reservation itself is not
+    released until `finish_sync()` runs, and a stop request arriving in that window must
+    not be told no sync is in progress.
     """
-    global _state, _message
+    global _stop_requested
     with _lock:
-        if _state == "running":
-            _state = "stopping"
-            _message = "Stopping sync..."
-            return True
-        return _state == "stopping"
+        if not _active:
+            return False
+        _stop_requested = True
+        return True
 
 
 def raise_if_stopping() -> None:
-    """Raise `SyncCancelled` if cancellation has been requested for the active sync.
-
-    A no-op otherwise. Callers invoke this only between safe work units — never inside
-    an in-flight network request or database transaction.
-    """
+    """Raise `SyncCancelled` when cancellation was requested at a safe checkpoint."""
     with _lock:
-        if _state == "stopping":
+        if _stop_requested:
             raise SyncCancelled()
 
 
-_TERMINAL_STATES = ("success", "failed", "cancelled")
-
-
-def complete_sync(message: str) -> None:
-    """Mark the running sync as successfully finished with a safe terminal message.
-
-    No-op while already terminal, so a completing worker cannot overwrite another
-    terminal result recorded first. A caller that never reserved (state still `idle`,
-    as in stage-level unit tests) is still allowed through.
-
-    While `stopping`, settles to `cancelled` instead of `success`: a stop request was
-    already accepted and acknowledged to the caller, so a plan that finishes its last
-    unit of work before its next checkpoint must still resolve to the outcome the user
-    was told was happening, not silently report success. This is also what prevents the
-    sync from wedging in `stopping` forever when no further checkpoint lies ahead.
-    """
-    global _state, _message
+def finish_sync() -> None:
+    """Cancel any unstarted stages after an accepted stop and release the reservation."""
+    global _active
     with _lock:
-        if _state == "stopping":
-            _state = "cancelled"
-            _message = "Sync stopped"
-            return
-        if _state in _TERMINAL_STATES:
-            return
-        _state = "success"
-        _message = message
-
-
-def fail_sync(message: str) -> None:
-    """Mark the active sync as failed with a safe, operation-specific terminal message.
-
-    No-op only once a terminal result has already been recorded, preserving whichever
-    outcome was decided first. Still allowed while `stopping`, since a genuine error
-    during the stopping window is a real failure, not a cancellation.
-    """
-    global _state, _message
-    with _lock:
-        if _state in _TERMINAL_STATES:
-            return
-        _state = "failed"
-        _message = message
-
-
-def cancel_sync(message: str) -> None:
-    """Mark the active sync as cancelled with a safe terminal message.
-
-    No-op only once a terminal result has already been recorded, preserving whichever
-    outcome was decided first.
-    """
-    global _state, _message
-    with _lock:
-        if _state in _TERMINAL_STATES:
-            return
-        _state = "cancelled"
-        _message = message
+        if _stop_requested:
+            for stage in _stages.values():
+                if stage["state"] == "pending":
+                    stage["state"] = "cancelled"
+        _active = False
 
 
 def reset_sync_status() -> None:
-    """Reset to the initial idle state with no message. Intended for test cleanup."""
-    global _state, _message
+    """Reset reservation and stage data. Intended for test cleanup."""
+    global _active, _stop_requested, _stages
     with _lock:
-        _state = "idle"
-        _message = ""
-        _stage_progress.clear()
-        _stage_failures.clear()
+        _active = False
+        _stop_requested = False
+        _stages = {}
