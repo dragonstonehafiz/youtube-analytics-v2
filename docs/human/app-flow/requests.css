@@ -1,0 +1,27 @@
+/* Styles used only by requests.html. Shared styles live in human-docs.css. */
+
+/* ---------- Request chips and waves ---------- */
+
+.chips { display: flex; flex-wrap: wrap; gap: 6px; margin-top: 6px; }
+.chip {
+  font-family: var(--mono);
+  font-size: 0.76rem;
+  padding: 2px 8px;
+  border-radius: 6px;
+  background: var(--route-soft);
+  color: var(--route);
+  border: 1px solid transparent;
+  white-space: nowrap;
+}
+.chip.post { background: var(--sync-soft); color: var(--sync); }
+.chip.later { background: var(--surface); color: var(--text-muted); border-color: var(--border); border-style: dashed; }
+.chip.gated { background: var(--warn-soft); color: var(--warn); }
+.chip.poll { background: var(--fe-soft); color: var(--fe); }
+
+.waves .flow-step { flex: 1 1 260px; }
+.waves .flow-step .count { font-size: 1.4rem; font-weight: 700; font-variant-numeric: tabular-nums; }
+
+/* ---------- Legend ---------- */
+
+.legend { display: flex; flex-wrap: wrap; gap: 12px; font-size: 0.85rem; color: var(--text-muted); margin: 8px 0; }
+.legend span::before { content: ""; display: inline-block; width: 12px; height: 12px; border-radius: 3px; margin-right: 6px; vertical-align: -1px; border: 1px solid var(--border); }

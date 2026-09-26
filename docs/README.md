@@ -2,6 +2,20 @@
 
 Canonical home for this repository's rules, task procedures, and application references. `AGENTS.md` is a short entry point that links here.
 
+## Human-readable documentation
+
+Visual overviews of the current system in [`human/`](human/), as HTML pages that open directly in a browser with no build step. They share [`human/human-docs.css`](human/human-docs.css) and [`human/human-docs.js`](human/human-docs.js) (the nav dropdowns); a page with styles of its own has a `.css` file of the same name next to it.
+
+| Topic | Page |
+|---|---|
+| System data flow: user action → frontend → API route → database → response, and YouTube → sync → database, with the sync triggers actually wired | [`app-flow/overview.html`](human/app-flow/overview.html) |
+| What each backend part does, package dependencies, and call paths | [`architecture/backend-architecture.html`](human/architecture/backend-architecture.html) |
+| What every backend file does, and each route's call chain down to the database | [`architecture/backend-reference.html`](human/architecture/backend-reference.html) |
+| Frontend routes, pages, component reuse, and repeated UI patterns | [`architecture/frontend-components.html`](human/architecture/frontend-components.html) |
+| Requests per page and component: endpoint, trigger, dependencies, deferral, polling, concurrency | [`app-flow/requests.html`](human/app-flow/requests.html) |
+
+These pages summarize and visualize; the references below stay canonical for contracts and behavior detail. When a change affects what one of them shows, update that page in the same change — see [`documentation-maintenance.md`](documentation-workflow/documentation-maintenance.md#human-readable-views).
+
 ## Load project references
 
 | Task area | Reference |
@@ -30,11 +44,17 @@ Load only the references relevant to the current task; expand to another referen
 | Issue-drafting procedure | [`issue-authoring.md`](github-workflow/issue-authoring.md) |
 | PR-drafting procedure | [`pull-request-authoring.md`](github-workflow/pull-request-authoring.md) |
 | Documentation maintenance procedure | [`documentation-maintenance.md`](documentation-workflow/documentation-maintenance.md) |
+| Visual system data flow and wired sync triggers | [`human/app-flow/overview.html`](human/app-flow/overview.html) |
+| Backend part overview, package dependencies, call paths, and consolidation observations | [`human/architecture/backend-architecture.html`](human/architecture/backend-architecture.html) |
+| Per-file backend duties and route-to-database call chains | [`human/architecture/backend-reference.html`](human/architecture/backend-reference.html) |
+| Frontend component usage counts and repeated UI patterns | [`human/architecture/frontend-components.html`](human/architecture/frontend-components.html) |
+| Per-page request triggers, timing, and unnecessary-request observations | [`human/app-flow/requests.html`](human/app-flow/requests.html) |
+| Shared styling and nav script for the HTML views | [`human/human-docs.css`](human/human-docs.css), [`human/human-docs.js`](human/human-docs.js) |
 | Project discovery and documentation ownership map | This file |
 | User setup and usage | `../README.md` |
 | Contributor and PR conventions | `../CONTRIBUTING.md` and `.github/` templates |
 
-Every fact has exactly one canonical home from this table. A file not listed here doesn't own application knowledge — it either summarizes or links to the file that does.
+Every fact has exactly one canonical home from this table. A file not listed here doesn't own application knowledge — it either summarizes or links to the file that does. Each `human/` page owns only its own observations and maps (component usage, request maps, call chains, consolidation and unnecessary-request observations) and summarizes the references for everything else.
 
 ## Working rules
 
@@ -42,3 +62,4 @@ Every fact has exactly one canonical home from this table. A file not listed her
 - Inspect current code before asserting behavior; do not draft from a reference alone.
 - Treat code as authoritative over any reference.
 - For writing or correcting documentation, follow [`documentation-maintenance.md`](documentation-workflow/documentation-maintenance.md).
+- A code change that alters anything a `human/` page shows updates that page in the same change as the code and references.

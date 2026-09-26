@@ -1,0 +1,36 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="484" height="102" viewBox="0 0 484 102" role="img" aria-label="Components on the Videos page">
+<title>Components on the Videos page</title>
+
+<style>
+  .bg { fill: #ffffff; }
+  text { font-family: system-ui, -apple-system, "Segoe UI", Roboto, Arial, sans-serif; font-size: 13px; dominant-baseline: central; }
+  .edge { fill: none; stroke: #9aa3b2; stroke-width: 1.5; }
+  .page rect { fill: #fbe9e8; stroke: #c4302b; stroke-width: 1.5; }
+  .page text { fill: #c4302b; font-weight: 700; }
+  .tab rect { fill: #e6effa; stroke: #2f6fb3; stroke-width: 1.2; }
+  .tab text { fill: #1f4f85; font-weight: 600; }
+  .sub rect { fill: #f3f7fc; stroke: #7da3cf; stroke-width: 1; stroke-dasharray: 4 3; }
+  .sub text { fill: #1f4f85; }
+  .comp rect { fill: #efe9fa; stroke: #6a4bb3; stroke-width: 1.2; }
+  .comp text { fill: #3f2a80; }
+  .local rect { fill: #f0f2f5; stroke: #8a93a3; stroke-width: 1; stroke-dasharray: 4 3; }
+  .local text { fill: #1c2330; font-style: italic; }
+  @media (prefers-color-scheme: dark) {
+    .bg { fill: #1a1f27; }
+    .edge { stroke: #5b6475; }
+    .page rect { fill: #3a1e1d; stroke: #ff6b63; } .page text { fill: #ff8a80; }
+    .tab rect { fill: #1b2a3d; stroke: #7db3ef; } .tab text { fill: #a9cdf5; }
+    .sub rect { fill: #17212e; stroke: #4f79a8; } .sub text { fill: #a9cdf5; }
+    .comp rect { fill: #2a2340; stroke: #b9a2f5; } .comp text { fill: #d6c9fb; }
+    .local rect { fill: #222833; stroke: #6b7486; } .local text { fill: #e6e9ef; }
+  }
+</style>
+<rect class="bg" width="484" height="102" rx="10"/>
+<path class="edge" d="M290.5,71.0 H312.5 V71.0 H356.4"/>
+<path class="edge" d="M149.5,51.0 H171.5 V31.0 H193.5"/>
+<path class="edge" d="M149.5,51.0 H171.5 V71.0 H193.5"/>
+<g class="comp"><rect x="193.5" y="16.0" width="118.9" height="30" rx="6"/><text x="205.5" y="31.0">VideoStatsBar</text></g>
+<g class="comp"><rect x="356.4" y="56.0" width="111.6" height="30" rx="6"/><text x="368.4" y="71.0">PeriodSelect</text></g>
+<g class="comp"><rect x="193.5" y="56.0" width="97.0" height="30" rx="6"/><text x="205.5" y="71.0">VideoTable</text></g>
+<g class="page"><rect x="16.0" y="36.0" width="133.5" height="30" rx="6"/><text x="28.0" y="51.0">Videos  /videos</text></g>
+</svg>

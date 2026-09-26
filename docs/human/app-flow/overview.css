@@ -1,0 +1,25 @@
+/* Styles used only by overview.html. Shared styles live in human-docs.css. */
+
+/* ---------- Timeline (request phases) ---------- */
+
+.phases { list-style: none; padding: 0; margin: 12px 0; max-width: none; }
+.phases > li {
+  position: relative;
+  padding: 0 0 14px 28px;
+  border-left: 2px solid var(--border);
+  margin-left: 8px;
+}
+.phases > li:last-child { border-left-color: transparent; }
+.phases > li::before {
+  content: "";
+  position: absolute;
+  left: -8px;
+  top: 4px;
+  width: 14px;
+  height: 14px;
+  border-radius: 50%;
+  background: var(--surface);
+  border: 3px solid var(--accent);
+}
+.phases .phase-title { font-weight: 700; }
+.phases ul { margin: 4px 0 0; padding-left: 18px; }

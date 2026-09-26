@@ -1,0 +1,80 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1070" height="622" viewBox="0 0 1070 622" role="img" aria-label="Components on the Analytics page">
+<title>Components on the Analytics page</title>
+
+<style>
+  .bg { fill: #ffffff; }
+  text { font-family: system-ui, -apple-system, "Segoe UI", Roboto, Arial, sans-serif; font-size: 13px; dominant-baseline: central; }
+  .edge { fill: none; stroke: #9aa3b2; stroke-width: 1.5; }
+  .page rect { fill: #fbe9e8; stroke: #c4302b; stroke-width: 1.5; }
+  .page text { fill: #c4302b; font-weight: 700; }
+  .tab rect { fill: #e6effa; stroke: #2f6fb3; stroke-width: 1.2; }
+  .tab text { fill: #1f4f85; font-weight: 600; }
+  .sub rect { fill: #f3f7fc; stroke: #7da3cf; stroke-width: 1; stroke-dasharray: 4 3; }
+  .sub text { fill: #1f4f85; }
+  .comp rect { fill: #efe9fa; stroke: #6a4bb3; stroke-width: 1.2; }
+  .comp text { fill: #3f2a80; }
+  .local rect { fill: #f0f2f5; stroke: #8a93a3; stroke-width: 1; stroke-dasharray: 4 3; }
+  .local text { fill: #1c2330; font-style: italic; }
+  @media (prefers-color-scheme: dark) {
+    .bg { fill: #1a1f27; }
+    .edge { stroke: #5b6475; }
+    .page rect { fill: #3a1e1d; stroke: #ff6b63; } .page text { fill: #ff8a80; }
+    .tab rect { fill: #1b2a3d; stroke: #7db3ef; } .tab text { fill: #a9cdf5; }
+    .sub rect { fill: #17212e; stroke: #4f79a8; } .sub text { fill: #a9cdf5; }
+    .comp rect { fill: #2a2340; stroke: #b9a2f5; } .comp text { fill: #d6c9fb; }
+    .local rect { fill: #222833; stroke: #6b7486; } .local text { fill: #e6e9ef; }
+  }
+</style>
+<rect class="bg" width="1070" height="622" rx="10"/>
+<path class="edge" d="M509.5,31.0 H531.5 V31.0 H553.5"/>
+<path class="edge" d="M679.7,111.0 H701.7 V111.0 H767.5"/>
+<path class="edge" d="M356.2,151.0 H378.2 V71.0 H553.5"/>
+<path class="edge" d="M356.2,151.0 H378.2 V111.0 H553.5"/>
+<path class="edge" d="M356.2,151.0 H378.2 V151.0 H553.5"/>
+<path class="edge" d="M356.2,151.0 H378.2 V191.0 H553.5"/>
+<path class="edge" d="M356.2,151.0 H378.2 V231.0 H553.5"/>
+<path class="edge" d="M708.9,311.0 H730.9 V311.0 H767.5"/>
+<path class="edge" d="M628.6,351.0 H650.6 V351.0 H767.5"/>
+<path class="edge" d="M650.5,391.0 H672.5 V391.0 H767.5"/>
+<path class="edge" d="M621.3,451.0 H643.3 V431.0 H767.5"/>
+<path class="edge" d="M621.3,451.0 H643.3 V471.0 H767.5"/>
+<path class="edge" d="M628.6,531.0 H650.6 V511.0 H767.5"/>
+<path class="edge" d="M628.6,531.0 H650.6 V551.0 H767.5"/>
+<path class="edge" d="M400.0,401.0 H422.0 V271.0 H553.5"/>
+<path class="edge" d="M400.0,401.0 H422.0 V311.0 H553.5"/>
+<path class="edge" d="M400.0,401.0 H422.0 V351.0 H553.5"/>
+<path class="edge" d="M400.0,401.0 H422.0 V391.0 H553.5"/>
+<path class="edge" d="M400.0,401.0 H422.0 V451.0 H553.5"/>
+<path class="edge" d="M400.0,401.0 H422.0 V531.0 H553.5"/>
+<path class="edge" d="M348.9,591.0 H370.9 V591.0 H553.5"/>
+<path class="edge" d="M193.3,311.0 H215.3 V31.0 H237.3"/>
+<path class="edge" d="M193.3,311.0 H215.3 V151.0 H237.3"/>
+<path class="edge" d="M193.3,311.0 H215.3 V401.0 H237.3"/>
+<path class="edge" d="M193.3,311.0 H215.3 V591.0 H237.3"/>
+<g class="comp"><rect x="553.5" y="16.0" width="111.6" height="30" rx="6"/><text x="565.5" y="31.0">PeriodSelect</text></g>
+<g class="tab"><rect x="237.3" y="16.0" width="272.2" height="30" rx="6"/><text x="249.3" y="31.0">Analytics and Traffic Sources tabs</text></g>
+<g class="comp"><rect x="553.5" y="56.0" width="118.9" height="30" rx="6"/><text x="565.5" y="71.0">VideoStatsBar</text></g>
+<g class="comp"><rect x="767.5" y="96.0" width="104.3" height="30" rx="6"/><text x="779.5" y="111.0">UploadStrip</text></g>
+<g class="comp"><rect x="553.5" y="96.0" width="126.2" height="30" rx="6"/><text x="565.5" y="111.0">AnalyticsChart</text></g>
+<g class="comp"><rect x="553.5" y="136.0" width="118.9" height="30" rx="6"/><text x="565.5" y="151.0">TopVideosList</text></g>
+<g class="comp"><rect x="553.5" y="176.0" width="170.0" height="30" rx="6"/><text x="565.5" y="191.0">TopPerformersCard ×2</text></g>
+<g class="comp"><rect x="553.5" y="216.0" width="170.0" height="30" rx="6"/><text x="565.5" y="231.0">VideoCarouselCard ×2</text></g>
+<g class="tab"><rect x="237.3" y="136.0" width="118.9" height="30" rx="6"/><text x="249.3" y="151.0">Analytics tab</text></g>
+<g class="comp"><rect x="553.5" y="256.0" width="118.9" height="30" rx="6"/><text x="565.5" y="271.0">VideoStatsBar</text></g>
+<g class="comp"><rect x="767.5" y="296.0" width="104.3" height="30" rx="6"/><text x="779.5" y="311.0">UploadStrip</text></g>
+<g class="comp"><rect x="553.5" y="296.0" width="155.4" height="30" rx="6"/><text x="565.5" y="311.0">TrafficSourceChart</text></g>
+<g class="comp"><rect x="767.5" y="336.0" width="162.7" height="30" rx="6"/><text x="779.5" y="351.0">TrafficSourcesTable</text></g>
+<g class="sub"><rect x="553.5" y="336.0" width="75.1" height="30" rx="6"/><text x="565.5" y="351.0">Sources</text></g>
+<g class="comp"><rect x="767.5" y="376.0" width="221.1" height="30" rx="6"/><text x="779.5" y="391.0">TrafficSourceTopVideosPanel</text></g>
+<g class="sub"><rect x="553.5" y="376.0" width="97.0" height="30" rx="6"/><text x="565.5" y="391.0">Top videos</text></g>
+<g class="comp"><rect x="767.5" y="416.0" width="191.9" height="30" rx="6"/><text x="779.5" y="431.0">SearchTermsDonutCard ×3</text></g>
+<g class="comp"><rect x="767.5" y="456.0" width="228.4" height="30" rx="6"/><text x="779.5" y="471.0">SearchTermVideosDonutCard ×2</text></g>
+<g class="sub"><rect x="553.5" y="436.0" width="67.8" height="30" rx="6"/><text x="565.5" y="451.0">Search</text></g>
+<g class="comp"><rect x="767.5" y="496.0" width="250.3" height="30" rx="6"/><text x="779.5" y="511.0">RelatedReferrerBreakdownCard ×2</text></g>
+<g class="comp"><rect x="767.5" y="536.0" width="286.8" height="30" rx="6"/><text x="779.5" y="551.0">RelatedDestinationsByReferrerCard ×2</text></g>
+<g class="sub"><rect x="553.5" y="516.0" width="75.1" height="30" rx="6"/><text x="565.5" y="531.0">Related</text></g>
+<g class="tab"><rect x="237.3" y="386.0" width="162.7" height="30" rx="6"/><text x="249.3" y="401.0">Traffic Sources tab</text></g>
+<g class="comp"><rect x="553.5" y="576.0" width="118.9" height="30" rx="6"/><text x="565.5" y="591.0">CommentsPanel</text></g>
+<g class="tab"><rect x="237.3" y="576.0" width="111.6" height="30" rx="6"/><text x="249.3" y="591.0">Comments tab</text></g>
+<g class="page"><rect x="16.0" y="296.0" width="177.3" height="30" rx="6"/><text x="28.0" y="311.0">Analytics  /analytics</text></g>
+</svg>

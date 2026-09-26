@@ -96,6 +96,8 @@ Run from the repository root. This standard-library-only, read-only script check
 
 It prints sorted `file:line: message` diagnostics and exits nonzero on any broken link, fragment, path, or unsupported reference-style link; a clean tree prints a one-line count and exits zero. It does not check external URLs, content inside fenced code blocks, or whether prose is factually accurate — that remains manual review.
 
+It reads Markdown only. For a changed `docs/human/` page, open the file directly in a browser (no build or server) and check that every relative `href`/`src` resolves and the page reads correctly in light and dark color schemes — see [`documentation-maintenance.md`](../documentation-workflow/documentation-maintenance.md#human-readable-views).
+
 ```bash
 git diff --check                              # flag trailing whitespace / whitespace errors in unstaged changes
 git diff --cached --check                     # same, for already-staged changes

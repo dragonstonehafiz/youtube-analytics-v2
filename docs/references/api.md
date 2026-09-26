@@ -325,7 +325,7 @@ POST /sync/stop
   No body.
   → { stopping: true }   # accepted: an active sync has stop_requested set (idempotent)
   409 "No sync in progress"   # no active plan or no cancellable stage remains
-  Requests cooperative cancellation of the active sync, manual or startup-origin —
+  Requests cooperative cancellation of the active sync —
   there is no batch/run identifier to pass, since only one sync can be active at a time.
   The worker stops at its next safe checkpoint (never mid-request or mid-transaction;
   see sync.md), so completion can lag the response. While the active reservation remains

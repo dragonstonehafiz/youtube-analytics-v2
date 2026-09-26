@@ -1,0 +1,406 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Frontend Requests</title>
+<link rel="stylesheet" href="../human-docs.css">
+<link rel="stylesheet" href="requests.css">
+<script src="../human-docs.js" defer></script>
+</head>
+<body>
+<nav class="site-nav" aria-label="Human documentation">
+  <div class="site-nav-inner">
+    <span class="site-nav-brand">YouTube Analytics <span>docs</span></span>
+    <details class="nav-menu current">
+      <summary>App flow</summary>
+      <div class="nav-menu-list">
+        <a href="overview.html">Overview</a>
+        <a href="requests.html" aria-current="page">Requests</a>
+      </div>
+    </details>
+    <details class="nav-menu">
+      <summary>Architecture</summary>
+      <div class="nav-menu-list">
+        <a href="../architecture/backend-architecture.html">Backend architecture</a>
+        <a href="../architecture/backend-reference.html">Backend reference</a>
+        <a href="../architecture/frontend-components.html">Frontend components</a>
+      </div>
+    </details>
+  </div>
+</nav>
+
+<div class="page">
+  <aside class="toc" aria-label="On this page">
+    <h2>On this page</h2>
+    <ol>
+      <li><a href="#reading-this-map">Reading this map</a></li>
+      <li><a href="#every-page-top-navigation-status-poll">Every page: status poll</a></li>
+      <li><a href="#home">Home</a></li>
+      <li><a href="#videos">Videos</a></li>
+      <li><a href="#playlists">Playlists</a></li>
+      <li><a href="#analytics">Analytics</a></li>
+      <li><a href="#videoanalytics">VideoAnalytics</a></li>
+      <li><a href="#playlistanalytics">PlaylistAnalytics</a></li>
+      <li><a href="#sync">Sync</a></li>
+      <li><a href="#request-owning-shared-components">Request-owning components</a></li>
+      <li><a href="#first-load-bursts">First-load bursts</a></li>
+      <li><a href="#api-wrapper-index">API wrapper index</a></li>
+      <li><a href="#requests-that-may-run-unnecessarily">May run unnecessarily</a></li>
+    </ol>
+  </aside>
+
+  <main>
+    <header class="hero">
+      <h1>Frontend requests</h1>
+      <p>Every backend request the frontend can make, per page and per request-owning shared component: wrapper and endpoint, trigger, URL/state dependencies, what defers or skips it, and which requests start together. Parameters and response shapes: <code>docs/references/api.md</code>.</p>
+      <div class="meta-line">
+        <span>Source revision <code>8f69e1f</code></span>
+      </div>
+    </header>
+
+    <section id="reading-this-map">
+      <h2>Reading this map</h2>
+      <div class="note warn">
+        <p><strong>Source-defined triggers, not network counts.</strong> Each row is one call an effect or handler makes when it runs. <code>main.tsx</code> wraps the app in React <code>StrictMode</code>, so in development every mount effect runs, is cleaned up, and runs again — mount requests go out twice there. Responses from the discarded first run are dropped by the effect's <code>active</code> flag where one exists (<code>track()</code>, <code>CommentsPanel</code>, Sync history); the status polls and <code>PeriodSelect</code> have no such flag and set state twice.</p>
+      </div>
+      <div class="card-grid">
+        <div class="card"><h3>Trigger types</h3>
+          <ul>
+            <li><strong>Mount</strong> — runs when the page or component mounts</li>
+            <li><strong>URL</strong> — re-runs when a listed query value changes</li>
+            <li><strong>Response</strong> — depends on an earlier request's data</li>
+            <li><strong>Visibility</strong> — returns early unless a tab shows</li>
+            <li><strong>Poll</strong> — <code>setInterval</code></li>
+            <li><strong>Action</strong> — click or submit handler</li>
+          </ul></div>
+        <div class="card"><h3>Debounce</h3><p>Typed text fields commit to the URL after 300 ms idle (<code>SEARCH_DEBOUNCE_MS</code>); the request follows the URL change.</p></div>
+        <div class="card"><h3>Concurrency</h3><p>Requests in one effect start together; effects whose dependencies change in the same render also start together. Nothing waits unless marked <em>Response</em>.</p></div>
+        <div class="card"><h3>Default dates</h3><p>On the three Analytics pages a missing start/end date means the last 28 days (<code>last28Dates()</code>); the defaults are not written to the URL.</p></div>
+      </div>
+      <div class="legend"><span class="chip">GET</span><span class="chip post">POST</span><span class="chip poll">poll</span><span class="chip gated">visibility-gated</span><span class="chip later">waits for a response</span></div>
+    </section>
+
+    <section id="every-page-top-navigation-status-poll">
+      <h2>Every page: top navigation status poll</h2>
+      <p><code>TopNav</code> renders outside <code>Routes</code>, so its <code>SyncStatus</code> mounts once when the app loads and stays mounted across navigation.</p>
+      <div class="table-wrap"><table>
+        <thead><tr><th>Request</th><th>Endpoint</th><th>Trigger</th><th>Defers / skips</th></tr></thead>
+        <tbody>
+          <tr><td><code>getSyncStatus()</code></td><td><code>GET /sync/status</code></td><td>Mount, then Poll every 5 s (<code>STATUS_POLL_MS</code>)</td><td>Never stops while the app is open, whether or not a sync is running</td></tr>
+        </tbody>
+      </table></div>
+    </section>
+
+    <section id="home">
+      <h2>Home <small><code>/</code></small></h2>
+      <p><code>pages/Home.tsx</code> — no URL state; fixed last-28-days window, public videos only.</p>
+      <div class="flow waves">
+        <div class="flow-step fe"><strong>First wave</strong><span class="count">5</span><div class="chips"><span class="chip">H1 /analytics/videos/top</span><span class="chip">H2 /analytics/videos/top</span><span class="chip">H3 /videos</span><span class="chip">H4 /analytics/traffic-sources</span><span class="chip">H5 /analytics/search-insights</span></div></div>
+        <div class="flow-arrow" aria-hidden="true"></div>
+        <div class="flow-step"><strong>After H5</strong><span class="count">+1</span><div class="chips"><span class="chip later">H6 /analytics/search-insights/videos</span></div></div>
+      </div>
+      <div class="table-wrap"><table>
+        <thead><tr><th>#</th><th>Request</th><th>Endpoint</th><th>Trigger</th><th>Depends on</th><th>Defers / skips</th></tr></thead>
+        <tbody>
+          <tr><td>H1</td><td><code>getTopVideosByViews(&#x27;views&#x27;, …, &#x27;video&#x27;, &#x27;public&#x27;)</code></td><td><code>GET /analytics/videos/top</code></td><td>Mount</td><td>—</td><td>—</td></tr>
+          <tr><td>H2</td><td><code>getTopVideosByViews(&#x27;views&#x27;, …, &#x27;short&#x27;, &#x27;public&#x27;)</code></td><td><code>GET /analytics/videos/top</code></td><td>Mount</td><td>—</td><td>—</td></tr>
+          <tr><td>H3</td><td><code>getVideos(1, 10, &#x27;published_at&#x27;, &#x27;desc&#x27;, …, &#x27;public&#x27;)</code></td><td><code>GET /videos</code></td><td>Mount</td><td>—</td><td>—</td></tr>
+          <tr><td>H4</td><td><code>getChannelTrafficSources({…, privacy_status: &#x27;public&#x27;})</code></td><td><code>GET /analytics/traffic-sources</code></td><td>Mount</td><td>—</td><td>—</td></tr>
+          <tr><td>H5</td><td><code>getSearchTerms({…, privacyStatus: &#x27;public&#x27;})</code></td><td><code>GET /analytics/search-insights</code></td><td>Mount</td><td>—</td><td>—</td></tr>
+          <tr><td>H6</td><td><code>getVideosBySearchTerm(term, …, 1000)</code></td><td><code>GET /analytics/search-insights/videos</code></td><td>Response (H5), Action (term picked in <code>SearchTermVideosDonutCard</code>)</td><td>selected term, H5 data</td><td>Skipped (card resolves empty) when no term is selected and H5 returned no terms</td></tr>
+        </tbody>
+      </table></div>
+    </section>
+
+    <section id="videos">
+      <h2>Videos <small><code>/videos</code></small></h2>
+      <p><code>pages/Videos.tsx</code> and <code>VideoTable</code>.</p>
+      <div class="flow waves">
+        <div class="flow-step fe"><strong>First wave</strong><span class="count">3</span><div class="chips"><span class="chip">V1 /videos</span><span class="chip">V2 /videos/stats</span><span class="chip">V3 /meta/date-range</span></div></div>
+      </div>
+      <div class="table-wrap"><table>
+        <thead><tr><th>#</th><th>Request</th><th>Endpoint</th><th>Trigger</th><th>Depends on (URL)</th><th>Defers / skips</th></tr></thead>
+        <tbody>
+          <tr><td>V1</td><td><code>getVideos(page, 25, sort_by, sort_dir, title, start_date, end_date, content_type, privacy_status)</code></td><td><code>GET /videos</code></td><td>Mount, URL</td><td><code>page</code>, <code>sort_by</code>, <code>sort_dir</code>, <code>title</code>, <code>start_date</code>, <code>end_date</code>, <code>content_type</code>, <code>privacy_status</code></td><td>—</td></tr>
+          <tr><td>V2</td><td><code>getVideoStats(title, start_date, end_date, content_type, privacy_status)</code></td><td><code>GET /videos/stats</code></td><td>Mount, URL</td><td><code>title</code>, <code>start_date</code>, <code>end_date</code>, <code>content_type</code>, <code>privacy_status</code></td><td>Not re-run by page or sort changes</td></tr>
+          <tr><td>V3</td><td><code>PeriodSelect</code> → <code>getDateRange()</code></td><td><code>GET /meta/date-range</code></td><td>Mount of <code>VideoTable</code>'s <code>PeriodSelect</code></td><td>—</td><td>—</td></tr>
+        </tbody>
+      </table></div>
+      <div class="table-wrap"><table>
+        <thead><tr><th>User action</th><th>Requests</th></tr></thead>
+        <tbody>
+          <tr><td>Change page</td><td>V1</td></tr>
+          <tr><td>Click a sortable header (resets page to 1)</td><td>V1</td></tr>
+          <tr><td>Change title (debounced), dates, type, or privacy (resets page to 1)</td><td>V1 + V2 together</td></tr>
+        </tbody>
+      </table></div>
+    </section>
+
+    <section id="playlists">
+      <h2>Playlists <small><code>/playlists</code></small></h2>
+      <p><code>pages/Playlists.tsx</code>.</p>
+      <div class="table-wrap"><table>
+        <thead><tr><th>#</th><th>Request</th><th>Endpoint</th><th>Trigger</th><th>Depends on (URL)</th><th>Defers / skips</th></tr></thead>
+        <tbody>
+          <tr><td>P1</td><td><code>getPlaylists(page, 25, sort_by, sort_dir, title)</code></td><td><code>GET /playlists</code></td><td>Mount, URL</td><td><code>page</code>, <code>sort_by</code>, <code>sort_dir</code>, <code>title</code></td><td>—</td></tr>
+        </tbody>
+      </table></div>
+      <p>Page, sort, and title (debounced, resets page to 1) each re-run P1.</p>
+    </section>
+
+    <section id="analytics">
+      <h2>Analytics <small><code>/analytics</code></small></h2>
+      <p><code>pages/Analytics.tsx</code>. URL: <code>tab</code>, <code>ts_tab</code>, <code>start_date</code>, <code>end_date</code>, <code>title</code>, <code>content_type</code>, <code>privacy_status</code>, <code>top_videos_sort_by</code>, plus <code>comments_*</code>. A bare <code>/analytics</code> gets <code>tab=analytics</code> written back (no request).</p>
+      <div class="flow waves">
+        <div class="flow-step fe"><strong>First wave (default tab)</strong><span class="count">14</span><div class="chips">
+          <span class="chip">A1 /videos</span><span class="chip">A2 /analytics/videos/top</span><span class="chip">A3 /videos</span><span class="chip">A4 /analytics/videos/top</span>
+          <span class="chip">A5 /videos/stats</span><span class="chip">A6 /analytics/videos</span><span class="chip">A7 /videos/published</span><span class="chip">A8 /analytics/traffic-sources</span><span class="chip">A9 /analytics/traffic-sources/top</span>
+          <span class="chip">A10 /analytics/search-insights</span><span class="chip">A11 …?content_type=video</span><span class="chip">A12 …?content_type=short</span>
+          <span class="chip">A19 /analytics/videos/top</span><span class="chip">A20 /meta/date-range</span></div></div>
+        <div class="flow-arrow" aria-hidden="true"></div>
+        <div class="flow-step"><strong>After A11 / A12</strong><span class="count">+2</span><div class="chips"><span class="chip later">A13 /analytics/search-insights/videos</span><span class="chip later">A14 /analytics/search-insights/videos</span></div></div>
+        <div class="flow-arrow" aria-hidden="true"></div>
+        <div class="flow-step"><strong>Only on Traffic Sources → Related</strong><span class="count">2 + 2</span><div class="chips"><span class="chip gated">A15 /analytics/related-videos/referrers</span><span class="chip gated">A16 /analytics/related-videos/referrers</span><span class="chip later">A17 /analytics/related-videos/destinations</span><span class="chip later">A18 /analytics/related-videos/destinations</span></div></div>
+      </div>
+      <div class="table-wrap"><table>
+        <thead><tr><th>#</th><th>Request</th><th>Endpoint</th><th>Trigger</th><th>Depends on</th><th>Defers / skips</th></tr></thead>
+        <tbody>
+          <tr><td>A1</td><td><code>getVideos(1, 10, …, &#x27;video&#x27;, privacy, title)</code> — Latest Videos</td><td><code>GET /videos</code></td><td>Mount, URL</td><td><code>content_type</code>, <code>privacy_status</code>, <code>title</code></td><td>Skipped when <code>content_type=short</code></td></tr>
+          <tr><td>A2</td><td><code>getTopVideosByViews(&#x27;views&#x27;, last 7 days, &#x27;video&#x27;, …)</code> — Top Videos (7 d)</td><td><code>GET /analytics/videos/top</code></td><td>Mount, URL</td><td>same as A1</td><td>Skipped when <code>content_type=short</code></td></tr>
+          <tr><td>A3</td><td><code>getVideos(1, 10, …, &#x27;short&#x27;, …)</code> — Latest Shorts</td><td><code>GET /videos</code></td><td>Mount, URL</td><td>same as A1</td><td>Skipped when <code>content_type=video</code></td></tr>
+          <tr><td>A4</td><td><code>getTopVideosByViews(&#x27;views&#x27;, last 7 days, &#x27;short&#x27;, …)</code> — Top Shorts (7 d)</td><td><code>GET /analytics/videos/top</code></td><td>Mount, URL</td><td>same as A1</td><td>Skipped when <code>content_type=video</code></td></tr>
+          <tr><td>A5</td><td><code>getVideoStats(…)</code></td><td><code>GET /videos/stats</code></td><td>Mount, URL</td><td><code>start_date</code>, <code>end_date</code>, <code>content_type</code>, <code>privacy_status</code>, <code>title</code></td><td>—</td></tr>
+          <tr><td>A6</td><td><code>getChannelAnalytics(params)</code></td><td><code>GET /analytics/videos</code></td><td>Mount, URL</td><td>same as A5</td><td>—</td></tr>
+          <tr><td>A7</td><td><code>getVideosPublished(…)</code></td><td><code>GET /videos/published</code></td><td>Mount, URL</td><td>same as A5</td><td>—</td></tr>
+          <tr><td>A8</td><td><code>getChannelTrafficSources(params)</code></td><td><code>GET /analytics/traffic-sources</code></td><td>Mount, URL</td><td>same as A5</td><td>—</td></tr>
+          <tr><td>A9</td><td><code>getTopVideosByTrafficSource(params)</code></td><td><code>GET /analytics/traffic-sources/top</code></td><td>Mount, URL</td><td>same as A5</td><td>—</td></tr>
+          <tr><td>A10</td><td><code>getSearchTerms(query)</code> — all</td><td><code>GET /analytics/search-insights</code></td><td>Mount, URL</td><td><code>start_date</code>, <code>end_date</code>, <code>title</code>, <code>privacy_status</code> (not <code>content_type</code>)</td><td>—</td></tr>
+          <tr><td>A11</td><td><code>getSearchTerms({…, contentType: &#x27;video&#x27;})</code></td><td><code>GET /analytics/search-insights</code></td><td>Mount, URL</td><td>same as A10</td><td>—</td></tr>
+          <tr><td>A12</td><td><code>getSearchTerms({…, contentType: &#x27;short&#x27;})</code></td><td><code>GET /analytics/search-insights</code></td><td>Mount, URL</td><td>same as A10</td><td>—</td></tr>
+          <tr><td>A13</td><td><code>getVideosBySearchTerm(term, {…, contentType: &#x27;video&#x27;}, 1000)</code></td><td><code>GET /analytics/search-insights/videos</code></td><td>URL, Response (A11), Action (term picked)</td><td>selected video term, A11 data, <code>start_date</code>, <code>end_date</code>, <code>title</code>, <code>privacy_status</code></td><td>Skipped when no term</td></tr>
+          <tr><td>A14</td><td><code>getVideosBySearchTerm(term, {…, contentType: &#x27;short&#x27;}, 1000)</code></td><td><code>GET /analytics/search-insights/videos</code></td><td>URL, Response (A12), Action (term picked)</td><td>selected short term, A12 data, same filters as A13</td><td>Skipped when no term</td></tr>
+          <tr><td>A15</td><td><code>getRelatedVideoReferrers(true, query, 1000)</code> — My Channel</td><td><code>GET /analytics/related-videos/referrers</code></td><td>Visibility, URL</td><td><code>tab</code>, <code>ts_tab</code>, <code>start_date</code>, <code>end_date</code>, <code>content_type</code>, <code>privacy_status</code>, <code>title</code></td><td>Only while <code>tab=traffic-sources</code> and <code>ts_tab=related</code></td></tr>
+          <tr><td>A16</td><td><code>getRelatedVideoReferrers(false, query, 1000)</code> — Other Channels</td><td><code>GET /analytics/related-videos/referrers</code></td><td>Visibility, URL</td><td>same as A15</td><td>same as A15</td></tr>
+          <tr><td>A17</td><td><code>getRelatedVideoDestinations(mineReferrerId, …, 1000)</code></td><td><code>GET /analytics/related-videos/destinations</code></td><td>Visibility, URL, Response (A15), Action (referrer picked)</td><td>selected or top My Channel referrer, <code>start_date</code>, <code>end_date</code></td><td>Only while the Related sub-tab shows; skipped when no referrer</td></tr>
+          <tr><td>A18</td><td><code>getRelatedVideoDestinations(otherReferrerId, …, 1000)</code></td><td><code>GET /analytics/related-videos/destinations</code></td><td>Visibility, URL, Response (A16), Action</td><td>selected or top Other Channels referrer, <code>start_date</code>, <code>end_date</code></td><td>same as A17</td></tr>
+          <tr><td>A19</td><td><code>getTopVideosByViews(top_videos_sort_by, …)</code> — sortable table</td><td><code>GET /analytics/videos/top</code></td><td>Mount, URL</td><td><code>start_date</code>, <code>end_date</code>, <code>content_type</code>, <code>privacy_status</code>, <code>top_videos_sort_by</code>, <code>title</code></td><td>—</td></tr>
+          <tr><td>A20</td><td><code>PeriodSelect</code> → <code>getDateRange()</code></td><td><code>GET /meta/date-range</code></td><td>Mount of <code>PeriodSelect</code></td><td>—</td><td>Not rendered on the Comments tab, so it re-mounts (and re-requests) when leaving Comments</td></tr>
+          <tr><td>A21</td><td><code>CommentsPanel</code> → <code>getComments(query)</code></td><td><code>GET /comments</code></td><td>see <a href="#commentspanel">CommentsPanel</a></td><td><code>comments_*</code> params</td><td>Only on the Comments tab</td></tr>
+        </tbody>
+      </table></div>
+      <h3>User actions</h3>
+      <div class="table-wrap"><table>
+        <thead><tr><th>User action</th><th>Requests</th></tr></thead>
+        <tbody>
+          <tr><td>Change dates</td><td>A5–A12, A13–A14 (immediately, then again when A11/A12 land), A19; A15–A18 if the Related sub-tab is showing</td></tr>
+          <tr><td>Change title (debounced) or privacy</td><td>A1–A4, A5–A12, A13–A14 (twice, as above), A19; A15–A16 if Related is showing</td></tr>
+          <tr><td>Change type</td><td>A1–A4, A5–A9, A19; A15–A16 if Related is showing</td></tr>
+          <tr><td>Toggle top-videos sort</td><td>A19</td></tr>
+          <tr><td>Pick a search term</td><td>A13 or A14</td></tr>
+          <tr><td>Switch to the Related sub-tab</td><td>A15–A16, plus A17–A18 with the currently held referrer IDs, then again if the top referrer changes</td></tr>
+          <tr><td>Switch tabs otherwise</td><td>No request, except A20 when leaving Comments and A21 when entering it</td></tr>
+          <tr><td>Pick a referrer</td><td>A17 or A18</td></tr>
+        </tbody>
+      </table></div>
+    </section>
+
+    <section id="videoanalytics">
+      <h2>VideoAnalytics <small><code>/analytics/videos/:id</code></small></h2>
+      <p><code>pages/VideoAnalytics.tsx</code>. URL: <code>tab</code>, <code>ts_tab</code>, <code>start_date</code>, <code>end_date</code>, plus <code>comments_*</code>. Route param <code>:id</code>.</p>
+      <div class="flow waves">
+        <div class="flow-step fe"><strong>First wave</strong><span class="count">5</span><div class="chips"><span class="chip">VA1 /videos/{id}</span><span class="chip">VA2 /videos/{id}/analytics</span><span class="chip">VA3 /videos/{id}/traffic-sources</span><span class="chip">VA4 /analytics/videos/{id}/search-insights</span><span class="chip">VA8 /meta/date-range</span></div></div>
+        <div class="flow-arrow" aria-hidden="true"></div>
+        <div class="flow-step"><strong>Only on Traffic Sources → Related</strong><span class="count">3</span><div class="chips"><span class="chip gated">VA5 …/related-videos/referrers</span><span class="chip gated">VA6 …/related-videos/referrers</span><span class="chip gated">VA7 /analytics/related-videos/destinations</span></div></div>
+      </div>
+      <div class="table-wrap"><table>
+        <thead><tr><th>#</th><th>Request</th><th>Endpoint</th><th>Trigger</th><th>Depends on</th><th>Defers / skips</th></tr></thead>
+        <tbody>
+          <tr><td>VA1</td><td><code>getVideo(id)</code></td><td><code>GET /videos/{id}</code></td><td>Mount</td><td><code>id</code></td><td>—</td></tr>
+          <tr><td>VA2</td><td><code>getVideoAnalytics(id, …)</code></td><td><code>GET /videos/{id}/analytics</code></td><td>Mount, URL</td><td><code>id</code>, <code>start_date</code>, <code>end_date</code></td><td>Does not wait for VA1</td></tr>
+          <tr><td>VA3</td><td><code>getVideoTrafficSources(id, …)</code></td><td><code>GET /videos/{id}/traffic-sources</code></td><td>Mount, URL</td><td>same as VA2</td><td>Does not wait for VA1</td></tr>
+          <tr><td>VA4</td><td><code>getVideoSearchTerms(id, …)</code></td><td><code>GET /analytics/videos/{id}/search-insights</code></td><td>Mount, URL</td><td>same as VA2</td><td>Does not wait for VA1</td></tr>
+          <tr><td>VA5</td><td><code>getVideoRelatedVideoReferrers(id, true, …, 1000)</code></td><td><code>GET /analytics/videos/{id}/related-videos/referrers</code></td><td>Visibility, URL</td><td><code>id</code>, <code>tab</code>, <code>ts_tab</code>, <code>start_date</code>, <code>end_date</code></td><td>Only while <code>tab=traffic-sources</code> and <code>ts_tab=related</code></td></tr>
+          <tr><td>VA6</td><td><code>getVideoRelatedVideoReferrers(id, false, …, 1000)</code></td><td>same</td><td>Visibility, URL</td><td>same as VA5</td><td>same as VA5</td></tr>
+          <tr><td>VA7</td><td><code>getRelatedVideoDestinations(id, …, 1000)</code></td><td><code>GET /analytics/related-videos/destinations</code></td><td>Visibility, URL</td><td>same as VA5</td><td>same as VA5; this video is always the referrer</td></tr>
+          <tr><td>VA8</td><td><code>PeriodSelect</code> → <code>getDateRange()</code></td><td><code>GET /meta/date-range</code></td><td>Mount of <code>PeriodSelect</code></td><td>—</td><td>Not rendered on the Comments tab</td></tr>
+          <tr><td>VA9</td><td><code>CommentsPanel</code> → <code>getVideoComments(id, query)</code></td><td><code>GET /comments/videos/{id}</code></td><td>see <a href="#commentspanel">CommentsPanel</a></td><td><code>id</code>, <code>comments_*</code></td><td>Only on the Comments tab, while the video is loading or found</td></tr>
+        </tbody>
+      </table></div>
+      <p>Changing dates re-runs VA2–VA4, plus VA5–VA7 if the Related sub-tab is showing. Entering the Related sub-tab runs VA5–VA7 together.</p>
+    </section>
+
+    <section id="playlistanalytics">
+      <h2>PlaylistAnalytics <small><code>/analytics/playlists/:id</code></small></h2>
+      <p><code>pages/PlaylistAnalytics.tsx</code>. Analytics and Traffic Sources tabs use <code>analytics_start_date</code>, <code>analytics_end_date</code>, <code>analytics_title</code>, <code>analytics_content_type</code>, <code>analytics_privacy_status</code>; the Videos tab uses unprefixed <code>page</code>, <code>sort_by</code>, <code>sort_dir</code>, <code>title</code>, <code>start_date</code>, <code>end_date</code>, <code>content_type</code>, <code>privacy_status</code>. Also <code>tab</code>, <code>ts_tab</code>, <code>top_videos_sort_by</code>, <code>comments_*</code>. Nothing writes a default <code>tab</code> back to the URL.</p>
+      <p>Every row is skipped while <code>id</code> is absent, and none waits for PL1.</p>
+      <div class="flow waves">
+        <div class="flow-step fe"><strong>First wave</strong><span class="count">16</span><div class="chips">
+          <span class="chip">PL1 /playlists/{id}</span><span class="chip">PL2–5 sidebar ×4</span><span class="chip">PL6 /playlists/{id}/videos</span>
+          <span class="chip">PL7 …/videos/stats</span><span class="chip">PL8 /analytics/playlists/{id}</span><span class="chip">PL9 /videos/published</span><span class="chip">PL10 …/traffic-sources</span><span class="chip">PL11 …/traffic-sources/top</span>
+          <span class="chip">PL12–14 …/search-insights ×3</span><span class="chip">PL21 /analytics/playlists/{id}/top</span><span class="chip">PL22 /meta/date-range</span></div></div>
+        <div class="flow-arrow" aria-hidden="true"></div>
+        <div class="flow-step"><strong>After PL13 / PL14</strong><span class="count">+2</span><div class="chips"><span class="chip later">PL15–16 …/search-insights/videos</span></div></div>
+        <div class="flow-arrow" aria-hidden="true"></div>
+        <div class="flow-step"><strong>Only on Traffic Sources → Related</strong><span class="count">2 + 2</span><div class="chips"><span class="chip gated">PL17–18 …/related-videos/referrers</span><span class="chip later">PL19–20 …/related-videos/destinations</span></div></div>
+      </div>
+      <div class="table-wrap"><table>
+        <thead><tr><th>#</th><th>Request</th><th>Endpoint</th><th>Trigger</th><th>Depends on</th><th>Defers / skips</th></tr></thead>
+        <tbody>
+          <tr><td>PL1</td><td><code>getPlaylist(id)</code></td><td><code>GET /playlists/{id}</code></td><td>Mount</td><td><code>id</code></td><td>—</td></tr>
+          <tr><td>PL2–PL5</td><td><code>getPlaylistVideos(id, 1, 10, …, &#x27;video&#x27;/&#x27;short&#x27;)</code> ×2, <code>getPlaylistTopVideosByViews(id, &#x27;views&#x27;, last 7 days, &#x27;video&#x27;/&#x27;short&#x27;)</code> ×2</td><td><code>GET /playlists/{id}/videos</code>, <code>GET /analytics/playlists/{id}/top</code></td><td>Mount, URL</td><td><code>id</code>, <code>analytics_content_type</code>, <code>analytics_privacy_status</code>, <code>analytics_title</code></td><td>Video pair skipped for <code>short</code>, Short pair skipped for <code>video</code></td></tr>
+          <tr><td>PL6</td><td><code>getPlaylistVideos(id, page, 25, …)</code> — Videos tab listing</td><td><code>GET /playlists/{id}/videos</code></td><td>Mount, URL</td><td><code>id</code>, <code>page</code>, <code>sort_by</code>, <code>sort_dir</code>, <code>title</code>, <code>start_date</code>, <code>end_date</code>, <code>content_type</code>, <code>privacy_status</code></td><td>Runs on every tab (its total labels the Videos tab)</td></tr>
+          <tr><td>PL7</td><td><code>getPlaylistVideoStats(id, …)</code></td><td><code>GET /playlists/{id}/videos/stats</code></td><td>Mount, URL</td><td><code>id</code> + all five <code>analytics_*</code> filters</td><td>—</td></tr>
+          <tr><td>PL8</td><td><code>getPlaylistAnalytics(id, params)</code></td><td><code>GET /analytics/playlists/{id}</code></td><td>Mount, URL</td><td>same as PL7</td><td>—</td></tr>
+          <tr><td>PL9</td><td><code>getVideosPublished(…, playlist_id=id, …)</code></td><td><code>GET /videos/published</code></td><td>Mount, URL</td><td>same as PL7</td><td>—</td></tr>
+          <tr><td>PL10</td><td><code>getPlaylistTrafficSources(id, params)</code></td><td><code>GET /analytics/playlists/{id}/traffic-sources</code></td><td>Mount, URL</td><td>same as PL7</td><td>—</td></tr>
+          <tr><td>PL11</td><td><code>getPlaylistTopVideosByTrafficSource(id, params)</code></td><td><code>GET /analytics/playlists/{id}/traffic-sources/top</code></td><td>Mount, URL</td><td>same as PL7</td><td>—</td></tr>
+          <tr><td>PL12–PL14</td><td><code>getPlaylistSearchTerms(id, query)</code> — all, <code>video</code>, <code>short</code></td><td><code>GET /analytics/playlists/{id}/search-insights</code></td><td>Mount, URL</td><td><code>id</code>, <code>analytics_start_date</code>, <code>analytics_end_date</code>, <code>analytics_title</code>, <code>analytics_privacy_status</code></td><td>—</td></tr>
+          <tr><td>PL15–PL16</td><td><code>getPlaylistVideosBySearchTerm(id, term, {…, &#x27;video&#x27;/&#x27;short&#x27;}, 1000)</code></td><td><code>GET /analytics/playlists/{id}/search-insights/videos</code></td><td>URL, Response (PL13/PL14), Action</td><td>selected term, term list, same filters as PL12</td><td>Skipped when no term</td></tr>
+          <tr><td>PL17–PL18</td><td><code>getPlaylistRelatedVideoReferrers(id, true/false, query, 1000)</code></td><td><code>GET /analytics/playlists/{id}/related-videos/referrers</code></td><td>Visibility, URL</td><td><code>tab</code>, <code>ts_tab</code>, all five <code>analytics_*</code> filters</td><td>Only while <code>tab=traffic-sources</code> and <code>ts_tab=related</code></td></tr>
+          <tr><td>PL19–PL20</td><td><code>getPlaylistRelatedVideoDestinations(id, referrerId, …, 1000)</code></td><td><code>GET /analytics/playlists/{id}/related-videos/destinations</code></td><td>Visibility, URL, Response (PL17/PL18), Action</td><td>selected or top referrer, <code>analytics_start_date</code>, <code>analytics_end_date</code></td><td>Only while Related shows; skipped when no referrer</td></tr>
+          <tr><td>PL21</td><td><code>getPlaylistTopVideosByViews(id, top_videos_sort_by, …)</code></td><td><code>GET /analytics/playlists/{id}/top</code></td><td>Mount, URL</td><td>all five <code>analytics_*</code> filters, <code>top_videos_sort_by</code></td><td>—</td></tr>
+          <tr><td>PL22</td><td><code>PeriodSelect</code> → <code>getDateRange()</code></td><td><code>GET /meta/date-range</code></td><td>Mount of either <code>PeriodSelect</code> (analytics filter bar, or <code>VideoTable</code> on the Videos tab)</td><td>—</td><td>Re-requested on every switch between the Videos tab and the Analytics/Traffic Sources tabs, and when leaving Comments</td></tr>
+          <tr><td>PL23</td><td><code>CommentsPanel</code> → <code>getPlaylistComments(id, query)</code></td><td><code>GET /comments/playlists/{id}</code></td><td>see <a href="#commentspanel">CommentsPanel</a></td><td><code>id</code>, <code>comments_*</code></td><td>Only on the Comments tab</td></tr>
+        </tbody>
+      </table></div>
+      <p>User actions mirror <a href="#analytics">Analytics</a> using the <code>analytics_*</code> params. Videos-tab page, sort, and filter changes re-run PL6 only.</p>
+    </section>
+
+    <section id="sync">
+      <h2>Sync <small><code>/sync</code></small></h2>
+      <p><code>pages/Sync.tsx</code>. URL: <code>tab</code> (<code>sync</code> written back when missing), <code>history_page</code>.</p>
+      <div class="flow waves">
+        <div class="flow-step fe"><strong>First wave</strong><span class="count">2</span><div class="chips"><span class="chip poll">S1 /sync/status</span><span class="chip">S2 /meta/date-range</span><span class="chip gated">S3 /sync/runs (History tab)</span></div></div>
+        <div class="flow-arrow" aria-hidden="true"></div>
+        <div class="flow-step"><strong>Every 5 s</strong><span class="count">∞</span><div class="chips"><span class="chip poll">S1 /sync/status</span></div></div>
+        <div class="flow-arrow" aria-hidden="true"></div>
+        <div class="flow-step"><strong>Actions</strong><div class="chips"><span class="chip post">S4 POST /sync/trigger</span><span class="chip later">S5 /sync/status</span><span class="chip post">S6 POST /sync/stop</span><span class="chip later">S7 /sync/status</span></div></div>
+      </div>
+      <div class="table-wrap"><table>
+        <thead><tr><th>#</th><th>Request</th><th>Endpoint</th><th>Trigger</th><th>Depends on</th><th>Defers / skips</th></tr></thead>
+        <tbody>
+          <tr><td>S1</td><td><code>getSyncStatus()</code></td><td><code>GET /sync/status</code></td><td>Mount, then Poll every 5 s</td><td>—</td><td>Runs on both tabs while the page is open</td></tr>
+          <tr><td>S2</td><td><code>getDateRange()</code></td><td><code>GET /meta/date-range</code></td><td>Mount</td><td>—</td><td>Errors ignored; builds the year options</td></tr>
+          <tr><td>S3</td><td><code>getSyncRuns(history_page, 25)</code></td><td><code>GET /sync/runs</code></td><td>Visibility, URL</td><td><code>tab</code>, <code>history_page</code></td><td>Only while <code>tab=history</code>; re-requested on every switch back to History</td></tr>
+          <tr><td>S4</td><td><code>triggerSync(plan)</code></td><td><code>POST /sync/trigger</code></td><td>Action: <strong>Sync selected</strong></td><td>checked stages and their period/scope selectors (component state)</td><td>Button disabled while a sync is active or stopping, before the first status, when status is unavailable, while submitting, or with no stage checked</td></tr>
+          <tr><td>S5</td><td><code>getSyncStatus()</code></td><td><code>GET /sync/status</code></td><td>Response (S4 success)</td><td>—</td><td>—</td></tr>
+          <tr><td>S6</td><td><code>stopSync()</code></td><td><code>POST /sync/stop</code></td><td>Action: <strong>Stop sync</strong> in the confirm dialog</td><td>—</td><td>Shown only while a sync is running</td></tr>
+          <tr><td>S7</td><td><code>getSyncStatus()</code></td><td><code>GET /sync/status</code></td><td>Response (S6 success or failure)</td><td>—</td><td>—</td></tr>
+        </tbody>
+      </table></div>
+      <p>Checking stages or changing periods sends nothing until <strong>Sync selected</strong>.</p>
+    </section>
+
+    <section id="request-owning-shared-components">
+      <h2>Request-owning shared components</h2>
+      <div class="card-grid">
+        <div class="card"><h3 id="syncstatus">SyncStatus</h3><p>See <a href="#every-page-top-navigation-status-poll">Every page: status poll</a>.</p></div>
+        <div class="card"><h3 id="periodselect">PeriodSelect</h3><p><code>components/PeriodSelect.tsx</code> calls <code>getDateRange()</code> → <code>GET /meta/date-range</code> once per mount, with no caching and no error handler. Rendered by <code>Analytics</code>, <code>VideoAnalytics</code>, <code>PlaylistAnalytics</code>, and <code>VideoTable</code> (so also <code>Videos</code> and the playlist Videos tab).</p></div>
+      </div>
+      <h3 id="commentspanel">CommentsPanel</h3>
+      <p><code>components/CommentsPanel.tsx</code>, mounted on the Comments tab of the three Analytics pages.</p>
+      <div class="table-wrap"><table>
+        <thead><tr><th>Scope</th><th>Request</th><th>Endpoint</th></tr></thead>
+        <tbody>
+          <tr><td><code>channel</code> (<code>Analytics</code>)</td><td><code>getComments(query)</code></td><td><code>GET /comments</code></td></tr>
+          <tr><td><code>video</code> (<code>VideoAnalytics</code>)</td><td><code>getVideoComments(videoId, query)</code></td><td><code>GET /comments/videos/{id}</code></td></tr>
+          <tr><td><code>playlist</code> (<code>PlaylistAnalytics</code>)</td><td><code>getPlaylistComments(playlistId, query)</code></td><td><code>GET /comments/playlists/{id}</code></td></tr>
+        </tbody>
+      </table></div>
+      <ul>
+        <li><strong>Trigger:</strong> Mount, URL.</li>
+        <li><strong>Depends on:</strong> scope and its ID, <code>comments_page</code>, <code>comments_sort_by</code>, <code>comments_text</code>, <code>comments_video_title</code>, <code>comments_author</code>, <code>comments_start_date</code>, <code>comments_end_date</code>, <code>comments_content_type</code>. Video scope sends neither video title nor type.</li>
+        <li><strong>Actions:</strong> dates, type, and sort re-request immediately (resetting the page); comment text, commenter, and video title commit together after 300 ms idle (<code>useDebouncedFields</code>); paging re-requests.</li>
+        <li><strong>Stale responses</strong> are dropped by an <code>active</code> flag.</li>
+      </ul>
+    </section>
+
+    <section id="first-load-bursts">
+      <h2>First-load bursts</h2>
+      <p>Requests started by the first render of each page on a URL with no query string (default tab), excluding the app-wide status poll. <em>Then</em> lists requests that wait for a first-wave response.</p>
+      <div class="table-wrap"><table>
+        <thead><tr><th>Page</th><th class="num">First wave</th><th>Then</th></tr></thead>
+        <tbody>
+          <tr><td><code>Home</code></td><td class="num">5 (H1–H5)</td><td>+1 H6 after H5</td></tr>
+          <tr><td><code>Videos</code></td><td class="num">3 (V1, V2, V3)</td><td>—</td></tr>
+          <tr><td><code>Playlists</code></td><td class="num">1 (P1)</td><td>—</td></tr>
+          <tr><td><code>Analytics</code></td><td class="num">14 (A1–A12, A19, A20)</td><td>+2 A13, A14 after A11, A12</td></tr>
+          <tr><td><code>Analytics?tab=traffic-sources&amp;ts_tab=related</code></td><td class="num">16 (adds A15, A16)</td><td>+2 A13, A14; +2 A17, A18 after A15, A16</td></tr>
+          <tr><td><code>Analytics?tab=comments</code></td><td class="num">14 (A20 replaced by A21)</td><td>+2 A13, A14</td></tr>
+          <tr><td><code>VideoAnalytics</code></td><td class="num">5 (VA1–VA4, VA8)</td><td>—</td></tr>
+          <tr><td><code>PlaylistAnalytics</code></td><td class="num">16 (PL1–PL14, PL21, PL22)</td><td>+2 PL15, PL16</td></tr>
+          <tr><td><code>Sync</code></td><td class="num">2 (S1, S2)</td><td>S1 every 5 s</td></tr>
+          <tr><td><code>Sync?tab=history</code></td><td class="num">3 (S1–S3)</td><td>S1 every 5 s</td></tr>
+        </tbody>
+      </table></div>
+      <p><code>content_type=video</code> or <code>short</code> on <code>Analytics</code>/<code>PlaylistAnalytics</code> removes two of the four sidebar requests.</p>
+    </section>
+
+    <section id="api-wrapper-index">
+      <h2>API wrapper index</h2>
+      <p>Every export in <code>frontend/src/api.ts</code>.</p>
+      <div class="table-wrap"><table>
+        <thead><tr><th>Wrapper</th><th>Endpoint</th><th>Called from</th></tr></thead>
+        <tbody>
+          <tr><td><code>getVideoStats</code></td><td><code>GET /videos/stats</code></td><td>Videos, Analytics</td></tr>
+          <tr><td><code>getPlaylistVideoStats</code></td><td><code>GET /playlists/{id}/videos/stats</code></td><td>PlaylistAnalytics</td></tr>
+          <tr><td><code>getVideos</code></td><td><code>GET /videos</code></td><td>Home, Videos, Analytics</td></tr>
+          <tr><td><code>getVideo</code></td><td><code>GET /videos/{id}</code></td><td>VideoAnalytics</td></tr>
+          <tr><td><code>getVideoAnalytics</code></td><td><code>GET /videos/{id}/analytics</code></td><td>VideoAnalytics</td></tr>
+          <tr><td><code>getVideoTrafficSources</code></td><td><code>GET /videos/{id}/traffic-sources</code></td><td>VideoAnalytics</td></tr>
+          <tr><td><code>getPlaylists</code></td><td><code>GET /playlists</code></td><td>Playlists</td></tr>
+          <tr><td><code>getPlaylist</code></td><td><code>GET /playlists/{id}</code></td><td>PlaylistAnalytics</td></tr>
+          <tr><td><code>getPlaylistVideos</code></td><td><code>GET /playlists/{id}/videos</code></td><td>PlaylistAnalytics</td></tr>
+          <tr><td><code>getChannelAnalytics</code></td><td><code>GET /analytics/videos</code></td><td>Analytics</td></tr>
+          <tr><td><code>getTopVideosByViews</code></td><td><code>GET /analytics/videos/top</code></td><td>Home, Analytics</td></tr>
+          <tr><td><code>getPlaylistTopVideosByViews</code></td><td><code>GET /analytics/playlists/{id}/top</code></td><td>PlaylistAnalytics</td></tr>
+          <tr><td><code>getPlaylistAnalytics</code></td><td><code>GET /analytics/playlists/{id}</code></td><td>PlaylistAnalytics</td></tr>
+          <tr><td><code>getPlaylistAggregatedAnalytics</code></td><td><code>GET /analytics/playlists/{id}</code></td><td>none</td></tr>
+          <tr><td><code>getChannelTrafficSources</code></td><td><code>GET /analytics/traffic-sources</code></td><td>Home, Analytics</td></tr>
+          <tr><td><code>getPlaylistTrafficSources</code></td><td><code>GET /analytics/playlists/{id}/traffic-sources</code></td><td>PlaylistAnalytics</td></tr>
+          <tr><td><code>getTopVideosByTrafficSource</code></td><td><code>GET /analytics/traffic-sources/top</code></td><td>Analytics</td></tr>
+          <tr><td><code>getPlaylistTopVideosByTrafficSource</code></td><td><code>GET /analytics/playlists/{id}/traffic-sources/top</code></td><td>PlaylistAnalytics</td></tr>
+          <tr><td><code>getSearchTerms</code></td><td><code>GET /analytics/search-insights</code></td><td>Home, Analytics</td></tr>
+          <tr><td><code>getTopSearchTerms</code></td><td><code>GET /analytics/search-insights/top</code></td><td>none</td></tr>
+          <tr><td><code>getVideosBySearchTerm</code></td><td><code>GET /analytics/search-insights/videos</code></td><td>Home, Analytics</td></tr>
+          <tr><td><code>getPlaylistSearchTerms</code></td><td><code>GET /analytics/playlists/{id}/search-insights</code></td><td>PlaylistAnalytics</td></tr>
+          <tr><td><code>getPlaylistTopSearchTerms</code></td><td><code>GET /analytics/playlists/{id}/search-insights/top</code></td><td>none</td></tr>
+          <tr><td><code>getPlaylistVideosBySearchTerm</code></td><td><code>GET /analytics/playlists/{id}/search-insights/videos</code></td><td>PlaylistAnalytics</td></tr>
+          <tr><td><code>getVideoSearchTerms</code></td><td><code>GET /analytics/videos/{id}/search-insights</code></td><td>VideoAnalytics</td></tr>
+          <tr><td><code>getRelatedVideoReferrers</code></td><td><code>GET /analytics/related-videos/referrers</code></td><td>Analytics</td></tr>
+          <tr><td><code>getRelatedVideoDestinations</code></td><td><code>GET /analytics/related-videos/destinations</code></td><td>Analytics, VideoAnalytics</td></tr>
+          <tr><td><code>getPlaylistRelatedVideoReferrers</code></td><td><code>GET /analytics/playlists/{id}/related-videos/referrers</code></td><td>PlaylistAnalytics</td></tr>
+          <tr><td><code>getPlaylistRelatedVideoDestinations</code></td><td><code>GET /analytics/playlists/{id}/related-videos/destinations</code></td><td>PlaylistAnalytics</td></tr>
+          <tr><td><code>getVideoRelatedVideoReferrers</code></td><td><code>GET /analytics/videos/{id}/related-videos/referrers</code></td><td>VideoAnalytics</td></tr>
+          <tr><td><code>getVideosPublished</code></td><td><code>GET /videos/published</code></td><td>Analytics, PlaylistAnalytics</td></tr>
+          <tr><td><code>getComments</code></td><td><code>GET /comments</code></td><td>CommentsPanel</td></tr>
+          <tr><td><code>getVideoComments</code></td><td><code>GET /comments/videos/{id}</code></td><td>CommentsPanel</td></tr>
+          <tr><td><code>getPlaylistComments</code></td><td><code>GET /comments/playlists/{id}</code></td><td>CommentsPanel</td></tr>
+          <tr><td><code>getDateRange</code></td><td><code>GET /meta/date-range</code></td><td>PeriodSelect, Sync</td></tr>
+          <tr><td><code>getSyncStatus</code></td><td><code>GET /sync/status</code></td><td>SyncStatus, Sync</td></tr>
+          <tr><td><code>triggerSync</code></td><td><code>POST /sync/trigger</code></td><td>Sync</td></tr>
+          <tr><td><code>stopSync</code></td><td><code>POST /sync/stop</code></td><td>Sync</td></tr>
+          <tr><td><code>getSyncRuns</code></td><td><code>GET /sync/runs</code></td><td>Sync</td></tr>
+        </tbody>
+      </table></div>
+    </section>
+
+    <section id="requests-that-may-run-unnecessarily">
+      <h2>Requests that may run unnecessarily</h2>
+      <p>Observations from the source, not measured browser traffic.</p>
+      <div class="card-grid">
+        <div class="card"><h3>Hidden-tab requests</h3><p>On <code>Analytics</code> and <code>PlaylistAnalytics</code>, every effect except the Related Videos ones ignores <code>tab</code> and <code>ts_tab</code>. <code>?tab=comments</code> still sends the 13 analytics requests next to the comments request; search-insights requests run while any other sub-tab shows; top-by-source (A9/PL11) runs on the Analytics tab; the sidebar and sortable top-videos requests run on Traffic Sources. <code>VideoAnalytics</code> sends VA2–VA4 on every tab, including Comments.</p></div>
+        <div class="card"><h3>Term videos fire twice</h3><p>A13/A14 (and PL15/PL16) depend on the filters and the term-list data. A date, title, or privacy change runs them immediately with the previous top term, then again when the new term list lands, even if the top term is unchanged. Home's H6 depends only on the term list and selection, so it runs once per term-list response.</p></div>
+        <div class="card"><h3>Two status pollers on /sync</h3><p><code>SyncStatus</code> and the Sync page each request <code>GET /sync/status</code> every 5 s, so that page sends two per interval. The top-navigation poll runs on every page whether or not a sync is active.</p></div>
+        <div class="card"><h3>Date range per mount</h3><p>Every <code>PeriodSelect</code> mount requests <code>GET /meta/date-range</code>; tab switches remount it; <code>PlaylistAnalytics</code> has two instances on different tabs; the Sync page fetches it separately.</p></div>
+        <div class="card"><h3>No parent-record gating</h3><p><code>VideoAnalytics</code> and <code>PlaylistAnalytics</code> start data requests in the same render as the video/playlist lookup, so an unknown ID produces a burst of 404s. <code>VideoAnalytics</code> hides its tabs then, but the requests are already sent.</p></div>
+        <div class="card"><h3>History reload</h3><p>The Sync page drops history state when leaving the History tab and re-requests <code>GET /sync/runs</code> on return.</p></div>
+        <div class="card"><h3>Unused wrappers</h3><p><code>getPlaylistAggregatedAnalytics</code> duplicates <code>getPlaylistAnalytics</code> and has no caller. <code>getTopSearchTerms</code> and <code>getPlaylistTopSearchTerms</code> have no caller, so the two <code>…/search-insights/top</code> endpoints are never requested by the frontend.</p></div>
+      </div>
+    </section>
+
+  </main>
+</div>
+</body>
+</html>

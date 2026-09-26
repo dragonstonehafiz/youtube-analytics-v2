@@ -1,0 +1,24 @@
+/* Styles used only by frontend-components.html. Shared styles live in human-docs.css. */
+
+/* ---------- Component cards ---------- */
+
+.group-note { color: var(--text-muted); margin: 0 0 8px; }
+.component-card h4 { margin: 0 0 6px; font-size: 1rem; }
+.component-card p { margin: 0 0 8px; }
+.component-card p.meta { font-size: 0.86rem; color: var(--text-muted); margin: 0 0 2px; }
+.component-card p.meta strong { color: var(--text); font-weight: 600; }
+
+/* ---------- Summary numbers ---------- */
+
+.stat-row { display: grid; grid-template-columns: repeat(auto-fill, minmax(150px, 1fr)); gap: 12px; margin: 16px 0; }
+.stat { background: var(--surface); border: 1px solid var(--border); border-radius: var(--radius); padding: 12px 14px; box-shadow: var(--shadow); }
+.stat b { display: block; font-size: 1.6rem; line-height: 1.1; font-variant-numeric: tabular-nums; }
+.stat span { color: var(--text-muted); font-size: 0.85rem; }
+
+/* ---------- Page component figures ---------- */
+
+.page-figure { margin: 16px 0 24px; background: var(--surface); border: 1px solid var(--border); border-radius: var(--radius); box-shadow: var(--shadow); padding: 14px 16px; overflow-x: auto; }
+.page-figure figcaption { font-size: 1.05rem; margin-bottom: 10px; }
+.page-figure figcaption code { font-size: 0.85rem; margin-left: 6px; }
+.page-figure img { display: block; max-width: 100%; height: auto; }
+.pf-note { color: var(--text-muted); font-size: 0.9rem; margin: -4px 0 10px; }

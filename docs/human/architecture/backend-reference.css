@@ -1,0 +1,34 @@
+/* Styles used only by backend-reference.html. Shared styles live in human-docs.css. */
+
+/* ---------- File lists ---------- */
+
+dl.file-list {
+  display: grid;
+  grid-template-columns: max-content 1fr;
+  gap: 6px 20px;
+  margin: 8px 0 20px;
+  max-width: 80ch;
+}
+dl.file-list dt { font-weight: 600; }
+dl.file-list dd { margin: 0; color: var(--text); }
+
+dl.returns-list {
+  display: grid;
+  grid-template-columns: max-content minmax(0, 1.4fr) minmax(0, 1fr);
+  gap: 10px 20px;
+  margin: 8px 0 0;
+}
+dl.returns-list dt, dl.returns-list dd { margin: 0; }
+dl.returns-list dt { font-weight: 600; }
+dl.returns-list .col-head { font-size: 0.78rem; font-weight: 600; text-transform: uppercase; letter-spacing: 0.04em; color: var(--text-muted); border-bottom: 1px solid var(--border); padding-bottom: 4px; }
+dl.returns-list dd.used-by { color: var(--text-muted); font-size: 0.88rem; line-height: 1.7; }
+
+.file-group { margin: 0 0 16px; padding: 16px 20px; }
+.file-group > p { color: var(--text-muted); margin: 4px 0 12px; }
+.file-group dl.file-list { margin-bottom: 0; }
+
+/* ---------- Route call lines ---------- */
+
+ul.route-lines { list-style: none; padding: 0; margin: 8px 0 0; max-width: none; }
+ul.route-lines li { padding: 5px 0; border-bottom: 1px solid var(--border); }
+ul.route-lines li:last-child { border-bottom: none; }
