@@ -11,7 +11,8 @@ Visual overviews of the current system in [`human/`](human/), as HTML pages that
 | System data flow: user action → frontend → API route → database → response, and YouTube → sync → database, with the sync triggers actually wired | [`app-flow/overview.html`](human/app-flow/overview.html) |
 | What each backend part does, package dependencies, and call paths | [`architecture/backend-architecture.html`](human/architecture/backend-architecture.html) |
 | What every backend file does, and each route's call chain down to the database | [`architecture/backend-reference.html`](human/architecture/backend-reference.html) |
-| Frontend routes, pages, component reuse, and repeated UI patterns | [`architecture/frontend-components.html`](human/architecture/frontend-components.html) |
+| Frontend routes, pages, component reuse, and unused components | [`architecture/frontend-components.html`](human/architecture/frontend-components.html) |
+| Code, markup, and CSS repeated across backend and frontend files, ranked by copy count | [`suggestions/repeated-code.html`](human/suggestions/repeated-code.html) |
 | Requests per page and component: endpoint, trigger, dependencies, deferral, polling, concurrency | [`app-flow/requests.html`](human/app-flow/requests.html) |
 
 These pages summarize and visualize; the references below stay canonical for contracts and behavior detail. When a change affects what one of them shows, update that page in the same change — see [`documentation-maintenance.md`](documentation-workflow/documentation-maintenance.md#human-readable-views).
@@ -47,14 +48,15 @@ Load only the references relevant to the current task; expand to another referen
 | Visual system data flow and wired sync triggers | [`human/app-flow/overview.html`](human/app-flow/overview.html) |
 | Backend part overview, package dependencies, call paths, and consolidation observations | [`human/architecture/backend-architecture.html`](human/architecture/backend-architecture.html) |
 | Per-file backend duties and route-to-database call chains | [`human/architecture/backend-reference.html`](human/architecture/backend-reference.html) |
-| Frontend component usage counts and repeated UI patterns | [`human/architecture/frontend-components.html`](human/architecture/frontend-components.html) |
+| Frontend component usage counts and unused components | [`human/architecture/frontend-components.html`](human/architecture/frontend-components.html) |
+| Repeated backend code, frontend code, and CSS | [`human/suggestions/repeated-code.html`](human/suggestions/repeated-code.html) |
 | Per-page request triggers, timing, and unnecessary-request observations | [`human/app-flow/requests.html`](human/app-flow/requests.html) |
 | Shared styling and nav script for the HTML views | [`human/human-docs.css`](human/human-docs.css), [`human/human-docs.js`](human/human-docs.js) |
 | Project discovery and documentation ownership map | This file |
 | User setup and usage | `../README.md` |
 | Contributor and PR conventions | `../CONTRIBUTING.md` and `.github/` templates |
 
-Every fact has exactly one canonical home from this table. A file not listed here doesn't own application knowledge — it either summarizes or links to the file that does. Each `human/` page owns only its own observations and maps (component usage, request maps, call chains, consolidation and unnecessary-request observations) and summarizes the references for everything else.
+Every fact has exactly one canonical home from this table. A file not listed here doesn't own application knowledge — it either summarizes or links to the file that does. Each `human/` page owns only its own observations and maps (component usage, request maps, call chains, repeated code, consolidation and unnecessary-request observations) and summarizes the references for everything else.
 
 ## Working rules
 

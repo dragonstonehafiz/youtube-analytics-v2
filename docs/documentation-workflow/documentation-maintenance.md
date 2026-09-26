@@ -54,7 +54,7 @@ Every fact should have exactly one canonical home. A file not in the ownership m
 
 ## Human-readable views
 
-`docs/human/` holds five HTML pages — `overview.html` and `requests.html` in `docs/human/app-flow/`, the backend and frontend-components ones in `docs/human/architecture/` — sharing `docs/human/human-docs.css` and the nav-dropdown script `docs/human/human-docs.js`. Styles used by only one page go in a `.css` file of the same name next to that page, not in the shared file. Adding or renaming a page means updating the nav menu on every page. The per-page component diagrams on `frontend-components.html` are SVG files in `docs/human/architecture/figures/`.
+`docs/human/` holds six HTML pages — `overview.html` and `requests.html` in `docs/human/app-flow/`, the backend and frontend-components ones in `docs/human/architecture/`, and `repeated-code.html` in `docs/human/suggestions/` — sharing `docs/human/human-docs.css` and the nav-dropdown script `docs/human/human-docs.js`. Styles used by only one page go in a `.css` file of the same name next to that page, not in the shared file. Adding or renaming a page means updating the nav menu on every page. The per-page component diagrams on `frontend-components.html` are SVG files in `docs/human/architecture/figures/`.
 
 | Page | Update when a change… |
 |---|---|
@@ -62,6 +62,7 @@ Every fact should have exactly one canonical home. A file not in the ownership m
 | [`architecture/backend-architecture.html`](../human/architecture/backend-architecture.html) | adds, removes, or renames a backend package; changes a package's role; changes an import between backend packages; or changes a main request or sync call path |
 | [`architecture/backend-reference.html`](../human/architecture/backend-reference.html) | adds, removes, renames, or moves a backend module; changes a module's responsibility; adds or removes an endpoint; or changes which functions a route handler or a `database` function calls |
 | [`architecture/frontend-components.html`](../human/architecture/frontend-components.html) | adds, removes, or renames a route, page, tab, or component; adds or removes a JSX render site; or changes which shared hooks/helpers a file uses |
+| [`suggestions/repeated-code.html`](../human/suggestions/repeated-code.html) | adds, removes, or changes a copy of code, markup, or a CSS rule that the page lists, or introduces new code or CSS duplicated across files |
 | [`app-flow/requests.html`](../human/app-flow/requests.html) | adds, removes, or renames an `api.ts` wrapper or the endpoint it calls; changes an effect's dependencies, skip/defer condition, poll interval, or debounce; or moves a request between pages/components |
 
 When updating a page:

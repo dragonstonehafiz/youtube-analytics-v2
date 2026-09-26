@@ -26,6 +26,12 @@
         <a href="frontend-components.html">Frontend components</a>
       </div>
     </details>
+    <details class="nav-menu">
+      <summary>Suggestions</summary>
+      <div class="nav-menu-list">
+        <a href="../suggestions/repeated-code.html">Repeated code</a>
+      </div>
+    </details>
   </div>
 </nav>
 
@@ -132,12 +138,9 @@
 
     <section id="observations">
       <h2>Observations</h2>
-      <p>Evidence for evaluating consolidation. None of these is a requested change.</p>
+      <p>Evidence for evaluating consolidation. None of these is a requested change. Repeated code: <a href="../suggestions/repeated-code.html">Repeated code</a>.</p>
       <div class="card-grid">
         <div class="card"><h3>Broad modules</h3><p><code>sync/stages.py</code> holds all nine stage implementations plus their shared helpers. <code>database/videos.py</code> mixes catalog writes, listing, ID lists, both stats helpers, and the pruning delete.</p></div>
-        <div class="card"><h3>Channel/playlist twins</h3><p><code>routes/analytics.py</code>: 9 channel-wide endpoints, 9 playlist twins differing only by <code>_resolve_playlist_video_ids()</code>, 2 single-video routes. Stats and listings repeat the pattern across <code>videos.py</code>/<code>playlists.py</code>.</p></div>
-        <div class="card"><h3>Parallel insight modules</h3><p><code>search_terms.py</code> and <code>related_videos.py</code> each define an identical <code>_MONTH_RE</code>, a monthly <code>upsert_*</code>, and a <code>get_last_*_month</code>; <code>connection.py</code> holds a related <code>_MONTH_PREFIX_RE</code>.</p></div>
-        <div class="card"><h3>Duplicated client helpers</h3><p><code>data_api.py</code> and <code>analytics_api.py</code> each define <code>_noop_checkpoint()</code> and <code>_log_page()</code>.</p></div>
         <div class="card"><h3>Unused at runtime</h3><p>Database functions <code>get_last_analytics_date()</code>, <code>get_last_traffic_source_date()</code>, <code>get_last_search_terms_month()</code>, <code>get_last_related_videos_month()</code>, <code>get_fx_rates()</code> (the last two used only by tests); and <code>start_background_scheduler()</code>, <code>synced_today()</code>, <code>run_plan()</code>, <code>get_last_successful_run_completed_at()</code>.</p></div>
         <div class="card"><h3>Re-export files</h3><p>Three package <code>__init__.py</code> files re-export every public name (<code>database</code> 59, <code>sync</code> 31, <code>youtube</code> 15); <code>routes/__init__.py</code> combines the six routers.</p></div>
       </div>
