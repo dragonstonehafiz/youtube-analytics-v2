@@ -1,0 +1,53 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="860" height="180" viewBox="0 0 860 180" role="img" aria-label="What reloads when you change something on the Sync page">
+<title>What reloads when you change something on the Sync page</title>
+<style>
+  .bg { fill: #ffffff; }
+  text { font-family: system-ui, -apple-system, "Segoe UI", Roboto, Arial, sans-serif; font-size: 13px; fill: #1c2330; dominant-baseline: central; }
+  .band-title { font-size: 12px; font-weight: 700; letter-spacing: 0.06em; fill: #5b6475; }
+  .band-line { stroke: #d9dee6; stroke-width: 1; }
+  .group rect.box { fill: #f6f7f9; stroke: #c9cfd9; stroke-width: 1.2; }
+  .group.gated rect.box { fill: #fffaf0; stroke: #c9a24a; stroke-dasharray: 5 4; }
+  .group .gtitle { font-weight: 700; }
+  .group .gnote { font-size: 12px; fill: #5b6475; }
+  .ep { font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace; font-size: 12.5px; fill: #2f6fb3; }
+  .purpose { fill: #5b6475; font-size: 12.5px; }
+  .dep { fill: none; stroke: #2f6fb3; stroke-width: 1.8; }
+  .dep-head { fill: #2f6fb3; }
+  .dep-label { font-size: 12px; fill: #2f6fb3; font-style: italic; }
+  .action rect { fill: #fbe9e8; stroke: #c4302b; stroke-width: 1.2; }
+  .action text { fill: #9b1f1a; font-weight: 600; }
+  .cause { fill: none; stroke: #c4302b; stroke-width: 1.4; }
+  .cause-head { fill: #c4302b; }
+  .reloads { fill: #1c2330; }
+  @media (prefers-color-scheme: dark) {
+    .bg { fill: #1a1f27; }
+    text { fill: #e6e9ef; }
+    .band-title, .group .gnote, .purpose { fill: #9aa3b2; }
+    .band-line { stroke: #2f3744; }
+    .group rect.box { fill: #222833; stroke: #3a4352; }
+    .group.gated rect.box { fill: #2b2616; stroke: #b08b3a; }
+    .ep, .dep-label { fill: #7db3ef; }
+    .dep { stroke: #7db3ef; } .dep-head { fill: #7db3ef; }
+    .action rect { fill: #3a1e1d; stroke: #ff6b63; } .action text { fill: #ffb3ad; }
+    .cause { stroke: #ff6b63; } .cause-head { fill: #ff6b63; }
+    .reloads { fill: #e6e9ef; }
+  }
+</style>
+<defs>
+  <marker id="dep" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="8" markerHeight="8" orient="auto"><path class="dep-head" d="M0,0 L10,5 L0,10 z"/></marker>
+  <marker id="cause" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto"><path class="cause-head" d="M0,0 L10,5 L0,10 z"/></marker>
+</defs>
+<rect class="bg" width="860" height="180" rx="10"/>
+<g class="action"><rect x="20" y="16" width="179.4" height="26" rx="13"/><text x="32" y="29">Sync selected</text></g>
+<path class="cause" d="M203.4,29 H233.4" marker-end="url(#cause)"/>
+<text class="reloads" x="243.4" y="29">POST /sync/trigger, then /sync/status</text>
+<g class="action"><rect x="20" y="52" width="179.4" height="26" rx="13"/><text x="32" y="65">Stop sync (confirmed)</text></g>
+<path class="cause" d="M203.4,65 H233.4" marker-end="url(#cause)"/>
+<text class="reloads" x="243.4" y="65">POST /sync/stop, then /sync/status</text>
+<g class="action"><rect x="20" y="88" width="179.4" height="26" rx="13"/><text x="32" y="101">Change History page</text></g>
+<path class="cause" d="M203.4,101 H233.4" marker-end="url(#cause)"/>
+<text class="reloads" x="243.4" y="101">history table</text>
+<g class="action"><rect x="20" y="124" width="179.4" height="26" rx="13"/><text x="32" y="137">Open the History tab</text></g>
+<path class="cause" d="M203.4,137 H233.4" marker-end="url(#cause)"/>
+<text class="reloads" x="243.4" y="137">history table (reloaded every time)</text>
+</svg>

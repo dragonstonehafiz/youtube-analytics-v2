@@ -1,27 +1,23 @@
 /* Styles used only by requests.html. Shared styles live in human-docs.css. */
 
-/* ---------- Request chips and waves ---------- */
+/* ---------- Request figures ---------- */
 
-.chips { display: flex; flex-wrap: wrap; gap: 6px; margin-top: 6px; }
-.chip {
-  font-family: var(--mono);
-  font-size: 0.76rem;
-  padding: 2px 8px;
-  border-radius: 6px;
-  background: var(--route-soft);
-  color: var(--route);
-  border: 1px solid transparent;
-  white-space: nowrap;
+.request-figure { margin: 12px 0 16px; background: var(--surface); border: 1px solid var(--border); border-radius: var(--radius); box-shadow: var(--shadow); padding: 14px 16px; overflow-x: auto; }
+.request-figure img { display: block; max-width: 100%; height: auto; }
+.request-figure + h3 { margin-top: 20px; }
+.request-notes { color: var(--text-muted); font-size: 0.92rem; padding-left: 18px; }
+.request-notes li { margin: 4px 0; }
+
+/* ---------- API wrapper lists ---------- */
+
+.file-group { margin: 0 0 16px; padding: 16px 20px; }
+
+dl.returns-list {
+  display: grid;
+  grid-template-columns: max-content max-content minmax(0, 1fr);
+  gap: 8px 24px;
+  margin: 8px 0 0;
 }
-.chip.post { background: var(--sync-soft); color: var(--sync); }
-.chip.later { background: var(--surface); color: var(--text-muted); border-color: var(--border); border-style: dashed; }
-.chip.gated { background: var(--warn-soft); color: var(--warn); }
-.chip.poll { background: var(--fe-soft); color: var(--fe); }
-
-.waves .flow-step { flex: 1 1 260px; }
-.waves .flow-step .count { font-size: 1.4rem; font-weight: 700; font-variant-numeric: tabular-nums; }
-
-/* ---------- Legend ---------- */
-
-.legend { display: flex; flex-wrap: wrap; gap: 12px; font-size: 0.85rem; color: var(--text-muted); margin: 8px 0; }
-.legend span::before { content: ""; display: inline-block; width: 12px; height: 12px; border-radius: 3px; margin-right: 6px; vertical-align: -1px; border: 1px solid var(--border); }
+dl.returns-list dt, dl.returns-list dd { margin: 0; }
+dl.returns-list .col-head { font-size: 0.78rem; font-weight: 600; text-transform: uppercase; letter-spacing: 0.04em; color: var(--text-muted); border-bottom: 1px solid var(--border); padding-bottom: 4px; }
+dl.returns-list dd.used-by { color: var(--text-muted); font-size: 0.9rem; }

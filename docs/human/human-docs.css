@@ -94,7 +94,7 @@ code {
 }
 
 .site-nav-inner {
-  max-width: 1160px;
+  max-width: 1440px;
   margin: 0 auto;
   padding: 10px 16px;
   display: flex;
@@ -163,7 +163,7 @@ code {
 /* ---------- Layout ---------- */
 
 .page {
-  max-width: 1160px;
+  max-width: 1440px;
   margin: 0 auto;
   padding: 28px 16px 64px;
   display: grid;

@@ -1,0 +1,48 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="697" height="222" viewBox="0 0 697 222" role="img" aria-label="Requests sent when the VideoAnalytics page opens">
+<title>Requests sent when the VideoAnalytics page opens</title>
+
+<style>
+  .bg { fill: #ffffff; }
+  text { font-family: system-ui, -apple-system, "Segoe UI", Roboto, Arial, sans-serif; font-size: 13px; dominant-baseline: central; }
+  .mono { font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace; font-size: 12px; }
+  .edge { fill: none; stroke: #9aa3b2; stroke-width: 1.5; }
+  .edge-label { font-size: 11.5px; font-style: italic; fill: #5b6475; }
+  .root rect { fill: #fbe9e8; stroke: #c4302b; stroke-width: 1.5; } .root text { fill: #c4302b; font-weight: 700; }
+  .card rect { fill: #e6effa; stroke: #2f6fb3; stroke-width: 1.2; } .card text { fill: #1f4f85; font-weight: 600; }
+  .sub rect { fill: #f3f7fc; stroke: #7da3cf; stroke-width: 1; stroke-dasharray: 4 3; } .sub text { fill: #1f4f85; }
+  .ep rect { fill: #efe9fa; stroke: #6a4bb3; stroke-width: 1.2; } .ep text { fill: #3f2a80; }
+  .ep-tab rect { fill: #fff4d6; stroke: #b08b3a; stroke-width: 1.2; stroke-dasharray: 5 3; } .ep-tab text { fill: #6b4f00; }
+  .ep-after rect { fill: #ffffff; stroke: #6a4bb3; stroke-width: 1.2; stroke-dasharray: 5 3; } .ep-after text { fill: #3f2a80; }
+  @media (prefers-color-scheme: dark) {
+    .bg { fill: #1a1f27; } .edge { stroke: #5b6475; } .edge-label { fill: #9aa3b2; }
+    .root rect { fill: #3a1e1d; stroke: #ff6b63; } .root text { fill: #ff8a80; }
+    .card rect { fill: #1b2a3d; stroke: #7db3ef; } .card text { fill: #a9cdf5; }
+    .sub rect { fill: #17212e; stroke: #4f79a8; } .sub text { fill: #a9cdf5; }
+    .ep rect { fill: #2a2340; stroke: #b9a2f5; } .ep text { fill: #d6c9fb; }
+    .ep-tab rect { fill: #362d12; stroke: #c9a24a; } .ep-tab text { fill: #f2d98a; }
+    .ep-after rect { fill: #1a1f27; stroke: #b9a2f5; } .ep-after text { fill: #d6c9fb; }
+  }
+</style>
+<rect class="bg" width="697" height="222" rx="10"/>
+<path class="edge" d="M320.0,31.0 H338.0 V31.0 H381.6"/>
+<path class="edge" d="M248.0,71.0 H266.0 V71.0 H381.6"/>
+<path class="edge" d="M341.6,111.0 H359.6 V111.0 H381.6"/>
+<path class="edge" d="M262.4,151.0 H280.4 V151.0 H381.6"/>
+<path class="edge" d="M284.0,191.0 H302.0 V191.0 H381.6"/>
+<path class="edge" d="M112.0,111.0 H130.0 V31.0 H152.0"/>
+<path class="edge" d="M112.0,111.0 H130.0 V71.0 H152.0"/>
+<path class="edge" d="M112.0,111.0 H130.0 V111.0 H152.0"/>
+<path class="edge" d="M112.0,111.0 H130.0 V151.0 H152.0"/>
+<path class="edge" d="M112.0,111.0 H130.0 V191.0 H152.0"/>
+<g class="ep"><rect x="381.6" y="16.0" width="111.0" height="30" rx="6"/><text class="mono" x="393.6" y="31.0">/videos/{id}</text></g>
+<g class="card"><rect x="152.0" y="16.0" width="168.0" height="30" rx="6"/><text x="164.0" y="31.0">Video details header</text></g>
+<g class="ep"><rect x="381.6" y="56.0" width="183.5" height="30" rx="6"/><text class="mono" x="393.6" y="71.0">/videos/{id}/analytics</text></g>
+<g class="card"><rect x="152.0" y="56.0" width="96.0" height="30" rx="6"/><text x="164.0" y="71.0">Main chart</text></g>
+<g class="ep"><rect x="381.6" y="96.0" width="227.0" height="30" rx="6"/><text class="mono" x="393.6" y="111.0">/videos/{id}/traffic-sources</text></g>
+<g class="card"><rect x="152.0" y="96.0" width="189.6" height="30" rx="6"/><text x="164.0" y="111.0">Traffic chart and table</text></g>
+<g class="ep"><rect x="381.6" y="136.0" width="299.5" height="30" rx="6"/><text class="mono" x="393.6" y="151.0">/analytics/videos/{id}/search-insights</text></g>
+<g class="card"><rect x="152.0" y="136.0" width="110.4" height="30" rx="6"/><text x="164.0" y="151.0">Search terms</text></g>
+<g class="ep"><rect x="381.6" y="176.0" width="140.0" height="30" rx="6"/><text class="mono" x="393.6" y="191.0">/meta/date-range</text></g>
+<g class="card"><rect x="152.0" y="176.0" width="132.0" height="30" rx="6"/><text x="164.0" y="191.0">Period dropdown</text></g>
+<g class="root"><rect x="16.0" y="96.0" width="96.0" height="30" rx="6"/><text x="28.0" y="111.0">Page opens</text></g>
+</svg>
