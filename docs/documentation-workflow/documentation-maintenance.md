@@ -54,7 +54,7 @@ Every fact should have exactly one canonical home. A file not in the ownership m
 
 ## Human-readable views
 
-`docs/human/` holds seven HTML pages — `overview.html` and `requests.html` in `docs/human/app-flow/`, the backend and frontend-components ones in `docs/human/architecture/`, and `repeated-code.html` and `efficiency.html` in `docs/human/suggestions/` — sharing `docs/human/human-docs.css` and the nav-dropdown script `docs/human/human-docs.js`. Styles used by only one page go in a `.css` file of the same name next to that page, not in the shared file. Adding or renaming a page means updating the nav menu on every page. The per-page component diagrams on `frontend-components.html` are SVG files in `docs/human/architecture/figures/`.
+`docs/human/` holds eight HTML pages — `overview.html` and `requests.html` in `docs/human/app-flow/`, the backend and frontend-components ones in `docs/human/architecture/`, and `repeated-code.html`, `efficiency.html`, and `dead-code.html` in `docs/human/suggestions/` — sharing `docs/human/human-docs.css` and the nav-dropdown script `docs/human/human-docs.js`. Styles used by only one page go in a `.css` file of the same name next to that page, not in the shared file. Adding or renaming a page means updating the nav menu on every page. The per-page component diagrams on `frontend-components.html` are SVG files in `docs/human/architecture/figures/`.
 
 | Page | Update when a change… |
 |---|---|
@@ -64,6 +64,7 @@ Every fact should have exactly one canonical home. A file not in the ownership m
 | [`architecture/frontend-components.html`](../human/architecture/frontend-components.html) | adds, removes, or renames a route, page, tab, or component; adds or removes a JSX render site; or changes which shared hooks/helpers a file uses |
 | [`suggestions/repeated-code.html`](../human/suggestions/repeated-code.html) | adds, removes, or changes a copy of code, markup, or a CSS rule that the page lists, or introduces new code or CSS duplicated across files |
 | [`suggestions/efficiency.html`](../human/suggestions/efficiency.html) | changes how often a listed query, connection, upsert, poll, or request runs; changes a listed query's shape; or adds a per-row, per-video, or per-request cost of the same kind |
+| [`suggestions/dead-code.html`](../human/suggestions/dead-code.html) | adds a caller to, removes, or renames a listed function, route, component, export, CSS rule, or dependency; or leaves code, CSS, or a dependency with no remaining caller |
 | [`app-flow/requests.html`](../human/app-flow/requests.html) | adds, removes, or renames an `api.ts` wrapper or the endpoint it calls; changes an effect's dependencies, skip/defer condition, poll interval, or debounce; or moves a request between pages/components |
 
 When updating a page:
