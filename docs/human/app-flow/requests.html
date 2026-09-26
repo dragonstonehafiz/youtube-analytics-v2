@@ -59,7 +59,7 @@
   <main>
     <header class="hero">
       <h1>Frontend requests</h1>
-      <p>Every backend request the frontend can make, per page and per request-owning shared component: wrapper and endpoint, trigger, URL/state dependencies, what defers or skips it, and which requests start together. Parameters and response shapes: <code>docs/references/api.md</code>.</p>
+      <p>This page shows every backend request the frontend makes, and when each one is sent.</p>
       <div class="meta-line">
         <span>Source revision <code>8f69e1f</code></span>
       </div>
@@ -343,7 +343,6 @@
 
     <section id="requests-that-may-run-unnecessarily">
       <h2>Requests that may run unnecessarily</h2>
-      <p>Observations from the source, not measured browser traffic.</p>
       <div class="card-grid">
         <div class="card"><h3>Hidden-tab requests</h3><p>On Analytics and PlaylistAnalytics, everything except the Related Videos requests loads whichever tab is open. Opening the page on the Comments tab still sends 13 analytics requests. Search-term requests load while other sub-tabs are showing, top videos per traffic source loads on the Analytics tab, and the sidebar and top videos table load on Traffic Sources. VideoAnalytics loads its chart, traffic and search requests on every tab, including Comments.</p></div>
         <div class="card"><h3>Term videos load twice</h3><p>On Analytics and PlaylistAnalytics, a date, title or privacy change sends the "videos for the top search term" requests straight away with the old top term, then again when the new term lists arrive, even if the top term hasn't changed.</p></div>

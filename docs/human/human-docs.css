@@ -209,7 +209,7 @@ main { min-width: 0; }
 
 .hero { margin-bottom: 24px; }
 .hero h1 { font-size: clamp(1.6rem, 3.5vw, 2.2rem); line-height: 1.2; margin: 0 0 8px; }
-.hero p { color: var(--text-muted); margin: 0; max-width: 72ch; }
+.hero p { color: var(--text-muted); margin: 0; max-width: none; }
 
 .meta-line {
   display: flex;

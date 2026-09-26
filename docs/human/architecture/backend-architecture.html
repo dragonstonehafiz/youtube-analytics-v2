@@ -51,7 +51,7 @@
   <main>
     <header class="hero">
       <h1>Backend architecture</h1>
-      <p>What each part of the backend does, how the parts depend on each other, and the main call paths. Every file's duty: <a href="backend-reference.html">Backend reference</a>. System-wide flow: <a href="../app-flow/overview.html">Overview</a>.</p>
+      <p>This page shows what each part of the backend does and how the parts connect.</p>
       <div class="meta-line">
         <span>Source revision <code>8f69e1f</code></span>
       </div>
@@ -140,7 +140,6 @@
 
     <section id="observations">
       <h2>Observations</h2>
-      <p>Evidence for evaluating consolidation. None of these is a requested change. Repeated code: <a href="../suggestions/repeated-code.html">Repeated code</a>.</p>
       <div class="card-grid">
         <div class="card"><h3>Broad modules</h3><p><code>sync/stages.py</code> holds all nine stage implementations plus their shared helpers. <code>database/videos.py</code> mixes catalog writes, listing, ID lists, both stats helpers, and the pruning delete.</p></div>
         <div class="card"><h3>Unused at runtime</h3><p>Database functions <code>get_last_analytics_date()</code>, <code>get_last_traffic_source_date()</code>, <code>get_last_search_terms_month()</code>, <code>get_last_related_videos_month()</code>, <code>get_fx_rates()</code> (the last two used only by tests); and <code>start_background_scheduler()</code>, <code>synced_today()</code>, <code>run_plan()</code>, <code>get_last_successful_run_completed_at()</code>.</p></div>
