@@ -37,12 +37,7 @@ MAX_RANGE_MONTHS = 12
 
 
 def coalesce_missing_windows(windows: list[MonthlyWindow]) -> list[CoverageRange]:
-    """Group consecutive-calendar-month windows (oldest first, as returned by
-    monthly_windows_for_range()) into the fewest contiguous date ranges of at most
-    MAX_RANGE_MONTHS months each, so a multi-year historical gap costs one request per
-    contiguous run of missing months (up to the cap) instead of one per month. A gap in
-    the input (a month that's already covered) or reaching the cap both start a new range.
-    """
+    """Coalesce consecutive monthly windows into capped contiguous ranges."""
     ranges: list[CoverageRange] = []
     for window in windows:
         if (

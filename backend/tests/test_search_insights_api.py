@@ -16,8 +16,7 @@ class SearchInsightsApiTestCase(IsolatedDatabaseTestCase):
         self._seed()
 
     def _seed(self) -> None:
-        """Two videos in a playlist (one duplicate, one dangling member) plus a third,
-        unrelated video, each with search-term rows across two months."""
+        """Seed playlist and channel videos for Search Insights tests."""
         database.upsert_own_video(make_video("v-in", "My SERIES Episode 1", content_type="video", privacy_status="public"))
         database.upsert_own_video(make_video("v-out", "Unrelated Vlog", content_type="short", privacy_status="private"))
 

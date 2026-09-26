@@ -6,25 +6,14 @@ from .connection import _now, get_connection
 
 
 def _coerce_own(row: dict) -> dict:
-    """Convert SQLite's integer `own` column to a real Python bool before a row is
-    handed to a JSON response. A no-op for a query that didn't select `own`."""
+    """Convert a selected SQLite ownership value to a Python bool."""
     if "own" in row:
         row["own"] = bool(row["own"])
     return row
 
 
 def _upsert_video_row(video: dict, *, own: bool) -> None:
-    """Shared insert/conflict logic for both upsert_own_video and upsert_related_video.
-
-    `content_type` may be None when the caller could not safely classify the video
-    (e.g. Shorts pagination was truncated, or this is unclassified Related referrer
-    metadata); on conflict this preserves the row's existing classification instead of
-    overwriting it with NULL.
-
-    On conflict, an existing own=1 is never downgraded — `own = MAX(own, excluded.own)`
-    means only a True from either writer can ever raise it, and no write from either
-    can lower it back to False.
-    """
+    """Upsert a video while preserving known content type and owned status."""
     row = {**video, "own": int(own), "updated_at": _now()}
     with get_connection() as conn:
         conn.execute(
@@ -55,23 +44,12 @@ def _upsert_video_row(video: dict, *, own: bool) -> None:
 
 
 def upsert_own_video(video: dict) -> None:
-    """Insert or replace a channel-owned video row. Always writes own=1 — this is the
-    only writer for confirmed-owned videos (uploads-playlist membership or an exact
-    authenticated-channel match, decided by the caller before this is invoked). An
-    external video encountered as a Related referrer is written by upsert_related_video
-    instead, which decides True/False per referrer.
-    """
+    """Upsert a confirmed channel-owned video."""
     _upsert_video_row(video, own=True)
 
 
 def upsert_related_video(video: dict, *, own: bool) -> None:
-    """Insert or replace a Related Video referrer's metadata row. `own` classifies
-    whether the referrer's channel_id matched the authenticated channel at resolution
-    time — True only for an exact match, False otherwise. Shares upsert_own_video's
-    no-downgrade ON CONFLICT rule, so a referrer already confirmed owned elsewhere
-    (e.g. by sync_videos) is never downgraded by this call, and a later confirmed-owned
-    upsert can still promote a row this call wrote as own=False.
-    """
+    """Upsert a Related Video referrer's metadata without downgrading ownership."""
     _upsert_video_row(video, own=own)
 
 
@@ -133,13 +111,7 @@ def get_all_videos(
 
 
 def get_owned_video(video_id: str) -> dict | None:
-    """Return a single owned video by ID, including total lifetime revenue in SGD.
-
-    Returns None for an external (own=0) video, exactly like a nonexistent ID — this
-    is the owner-only boundary between local channel content and Related referrer
-    metadata, so a route built on this can 404 an external ID the same way it 404s a
-    made-up one.
-    """
+    """Return an owned video with lifetime SGD revenue, or None."""
     with get_connection() as conn:
         row = conn.execute(
             """
@@ -204,28 +176,7 @@ def get_earliest_published_year() -> int | None:
 
 
 def get_owned_video_ids(published_through: str | None = None) -> list[str]:
-    """Return every owned (own=1) video ID — the privileged target worklist for
-    Comments, Video Analytics, Video Traffic Sources, and Search/Related Insights.
-
-    `published_through`, when given, is an inclusive date-only (`YYYY-MM-DD`) upper
-    bound on `published_at`: a video published anywhere on that date or earlier is
-    included. The comparison uses a strictly-less-than bound against the *next*
-    calendar day's midnight rather than `<= published_through + "T23:59:59"` — the
-    latter would wrongly exclude a same-day timestamp carrying a trailing `Z` (e.g.
-    `"...T23:59:59Z"` sorts lexically after the literal string `"...T23:59:59"`), and
-    real `published_at` values from the YouTube API always carry that suffix. A video
-    with no known `published_at` is always included regardless of this bound — a
-    missing publish date is not evidence the video was uploaded after the range, so it
-    keeps its existing downstream (skip/fallback) handling instead of being silently
-    excluded here. Omitting the argument (the default) returns the complete owned
-    worklist, unchanged — this is what Comments continues to use.
-
-    Both bounded and unbounded calls return the same deterministic order: videos with a
-    known `published_at` first (oldest to newest), tied timestamps broken by ascending
-    `id`, then videos with a null `published_at` last, also ordered by ascending `id`.
-    Every per-video sync stage built on this worklist therefore processes videos
-    oldest-first without needing to sort the result itself.
-    """
+    """Return owned video IDs oldest first, optionally published through a date."""
     conditions = ["own = 1"]
     params: list[str] = []
     if published_through is not None:
@@ -245,10 +196,7 @@ def get_owned_video_ids(published_through: str | None = None) -> list[str]:
 
 
 def get_all_video_ids() -> list[str]:
-    """Return every video ID regardless of ownership. Unfiltered on purpose: this is
-    for checking which referrer IDs are already known at all (owned or external), not
-    for selecting a privileged sync target worklist — use get_owned_video_ids() for
-    that instead."""
+    """Return every known video ID regardless of ownership."""
     with get_connection() as conn:
         rows = conn.execute("SELECT id FROM videos").fetchall()
     return [r["id"] for r in rows]
@@ -273,16 +221,7 @@ def get_video_stats(
     content_type: str | None = None,
     privacy_status: str | None = None,
 ) -> dict:
-    """Return Legacy/New publication-classified counts with period views/earnings, plus lifetime comments and
-    current privacy status, for all videos optionally filtered by title/content type/privacy status.
-
-    Legacy content was published strictly before the effective start date; New content was published between the
-    effective start and end dates inclusive. Period views/earnings are aggregated from video_analytics rows within
-    the effective date range. When start_date/end_date are omitted, the effective range is derived from the
-    available video_analytics date range, falling back to the matching videos' published_at range when no
-    analytics rows exist at all. Comments and privacy status counts are always current lifetime totals and are
-    not restricted by date.
-    """
+    """Return filtered channel video statistics split into Legacy and New groups."""
     conditions: list[str] = ["v.own = 1"]
     params: list[object] = []
     if title:
@@ -378,13 +317,7 @@ def get_playlist_video_stats(
     content_type: str | None = None,
     privacy_status: str | None = None,
 ) -> dict:
-    """Return Legacy/New publication-classified counts with period views/earnings, plus lifetime comments and
-    current privacy status, for videos in a playlist optionally filtered by title/content type/privacy status.
-
-    Semantics match get_video_stats(), scoped to the playlist's member videos. Playlist membership is
-    deduplicated by video ID before any counting or aggregation, so duplicate playlist_items rows for the same
-    video cannot inflate results.
-    """
+    """Return filtered playlist video statistics split into Legacy and New groups."""
     conditions: list[str] = [
         "v.own = 1",
         "v.id IN (SELECT DISTINCT pi.video_id FROM playlist_items pi WHERE pi.playlist_id = ?)",
@@ -479,14 +412,7 @@ def get_playlist_video_stats(
 
 
 def delete_videos_not_in(ids: list[str]) -> int:
-    """Delete owned videos (and their analytics via cascade) whose IDs are not in the
-    given list. Returns the number of videos deleted. External (own=0) rows are never
-    touched by this, regardless of whether their ID appears in `ids`.
-
-    An empty list deletes every owned video — the only caller, the pruning sync stage,
-    gates this call on proven-complete discovery first, so an empty list here means the
-    channel genuinely has zero owned videos, not that discovery came back short.
-    """
+    """Delete owned videos absent from the given IDs and return the number deleted."""
     with get_connection() as conn:
         if not ids:
             cursor = conn.execute("DELETE FROM videos WHERE own = 1")

@@ -9,14 +9,7 @@ _MONTH_RE = re.compile(r"^\d{4}-(0[1-9]|1[0-2])$")
 
 
 def upsert_related_videos(target_video_id: str, month: str, referrers: list[dict]) -> int:
-    """Upsert one target video/month's Related Video referrers. `referrers` are shaped
-    {"referrer_video_id": str, "views": int}. A referrer omitted or zeroed here is left
-    untouched, not deleted. Returns the number of referrers upserted.
-
-    Raises ValueError if `target_video_id` is not currently an owned video — Related
-    rows only ever describe traffic *into* an owned target; a video can appear here as
-    a referrer regardless of ownership, but never as an unowned target.
-    """
+    """Upsert monthly referrers for an owned target video and return the number written."""
     if not _MONTH_RE.match(month):
         raise ValueError(f"invalid month {month!r}; expected YYYY-MM")
 
@@ -56,11 +49,7 @@ def upsert_related_videos(target_video_id: str, month: str, referrers: list[dict
 
 
 def get_last_related_videos_month(target_video_id: str) -> str | None:
-    """Return the most recent YYYY-MM month we have Related Video referrers for a
-    target video, or None. This is the Related collector's own checkpoint — never
-    inferred from Search rows, aggregate Traffic Sources, a sync run, or the mere
-    existence of a video.
-    """
+    """Return the latest stored Related Video month for a target, if any."""
     with get_connection() as conn:
         row = conn.execute(
             "SELECT MAX(month) AS last_month FROM related_videos WHERE target_video_id = ?",
@@ -70,9 +59,7 @@ def get_last_related_videos_month(target_video_id: str) -> str | None:
 
 
 def _coerce_referrer_own(row: dict) -> dict:
-    """Convert the SQLite-integer-or-NULL referrer_own column into a real Python
-    True/False/None, so an unresolved referrer serializes as JSON null rather than the
-    `bool(None) == False` a naive conversion would produce."""
+    """Convert a nullable SQLite ownership value to bool or None."""
     value = row.get("referrer_own")
     row["referrer_own"] = None if value is None else bool(value)
     return row
@@ -88,27 +75,7 @@ def get_related_video_referrers(
     own: bool | None = None,
     limit: int | None = None,
 ) -> dict:
-    """Return Related Video referrers aggregated across owned target videos, summed
-    across the months overlapping start_date/end_date (a missing bound is unbounded on
-    that side), ordered by views descending then referrer ID ascending.
-
-    `video_ids` scopes the destination (target) side exactly like every other
-    aggregation helper: None covers every owned video, a populated collection covers
-    only those videos, and an empty collection returns no rows. `content_type`,
-    `privacy_status`, and `title` filter the target side the same way.
-
-    `own` filters the *referrer* side: True matches only a referrer confirmed as this
-    channel's own video; False matches everything else, including a referrer with no
-    resolved metadata at all (`COALESCE(referrer_own, 0) = 0`) — an unresolved referrer
-    is not confirmed ours, so it belongs in the "Other Channels" bucket, never in
-    neither bucket. None (the default) returns every referrer regardless of ownership.
-    `limit=None` returns every referrer.
-
-    Returns {"items": [...], "total_named_views": int}. `total_named_views` is the same
-    scope's SUM(views) across every real referrer regardless of the own/limit filters —
-    an independent unfiltered total, computed alongside `items` in this same call, so
-    the frontend never has to fetch an unranked/uncapped row set just to total it.
-    """
+    """Return filtered Related Video referrers and total named views for owned targets."""
     scoped_ids = None if video_ids is None else list(video_ids)
     if scoped_ids is not None and not scoped_ids:
         return {"items": [], "total_named_views": 0}
@@ -182,15 +149,7 @@ def get_related_video_destinations(
     video_ids: Collection[str] | None = None,
     limit: int | None = None,
 ) -> list[dict]:
-    """Return the top destination (target) videos for one given referrer, summed
-    across the months overlapping start_date/end_date, ordered by views descending
-    then target ID ascending. limit=None returns every destination.
-
-    The referrer's own ownership is irrelevant to this query — any video, owned or
-    external, can be a referrer. `video_ids` scopes the destination set exactly like
-    get_related_video_referrers and every other aggregation helper (None = every owned
-    video, populated = playlist members, empty = nothing).
-    """
+    """Return filtered destination videos for a referrer, ranked by views."""
     scoped_ids = None if video_ids is None else list(video_ids)
     if scoped_ids is not None and not scoped_ids:
         return []

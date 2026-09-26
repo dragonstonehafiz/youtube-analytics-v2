@@ -65,12 +65,7 @@ def _blocked_get_credentials() -> Any:
 
 @pytest.fixture(autouse=True)
 def _block_external_access(monkeypatch: pytest.MonkeyPatch) -> Iterator[None]:
-    """Fail closed on any non-loopback socket connection or OAuth credential fetch.
-
-    A test that legitimately needs to exercise one of these boundaries should mock it
-    locally (e.g. patch the specific client/function under test) rather than disabling
-    this fixture, so an unmocked path still fails loudly instead of reaching the network.
-    """
+    """Block unmocked non-loopback network and OAuth access during tests."""
     monkeypatch.setattr(socket.socket, "connect", _guarded_connect)
     monkeypatch.setattr(socket.socket, "connect_ex", _guarded_connect_ex)
     monkeypatch.setattr(socket, "create_connection", _guarded_create_connection)

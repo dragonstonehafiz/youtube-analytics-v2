@@ -36,13 +36,7 @@ def get_all_playlists(
     start_date: str | None = None,
     end_date: str | None = None,
 ) -> tuple[list[dict], int]:
-    """Return a page of playlists with server-side sort and optional filters, plus total count.
-
-    Each row is augmented with:
-    - last_item_added: MAX published_at of videos in the playlist
-    - total_views: SUM of view_count of videos in the playlist
-    - total_earnings_sgd: SUM of estimated_revenue * usd_to_sgd for videos in the playlist
-    """
+    """Return a filtered playlist page with aggregate statistics and the total count."""
     col = sort_by if sort_by in _PLAYLIST_SORT_COLUMNS else "last_item_added"
     direction = "ASC" if sort_dir == "asc" else "DESC"
     offset = (page - 1) * page_size
@@ -118,14 +112,7 @@ def get_playlist(playlist_id: str) -> dict | None:
 
 
 def get_playlist_video_ids(playlist_id: str) -> list[str]:
-    """Return the distinct owned video IDs in a playlist that have a matching videos row.
-
-    Duplicate playlist_items rows for the same video collapse to one ID, and null,
-    dangling, or external (own=0) memberships are dropped. Returns an empty list when
-    the playlist has no valid owned members. Used to scope playlist-wide analytics
-    endpoints, so an external video can never surface through a playlist's traffic
-    sources, search insights, or top-videos results.
-    """
+    """Return the distinct valid owned-video IDs in a playlist."""
     with get_connection() as conn:
         rows = conn.execute(
             """
@@ -223,7 +210,7 @@ def get_playlist_videos(
 
 
 def delete_playlists_not_in(ids: list[str]) -> int:
-    """Delete playlists (and their items via cascade) whose IDs are not in the given list. Returns the number of playlists deleted."""
+    """Delete playlists absent from the given IDs and return the number deleted."""
     if not ids:
         return 0
     placeholders = ",".join("?" * len(ids))

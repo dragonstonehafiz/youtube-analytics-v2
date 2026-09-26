@@ -117,8 +117,7 @@ class ConfigureLoggingTest(_TempLoggingMixin, unittest.TestCase):
         self.assertTrue(sync_path.exists())
 
     def test_identical_application_and_sync_paths_are_rejected(self) -> None:
-        """The sync logger holds both handlers, so a shared file would double every
-        sync INFO+ record. Configuration must fail loudly rather than duplicate."""
+        """Verify shared log paths are rejected to prevent duplicate records."""
         tmp = TemporaryDirectory()
         self.addCleanup(tmp.cleanup)
         same = Path(tmp.name) / "combined.log"
@@ -175,11 +174,7 @@ class RoutingTest(_TempLoggingMixin, unittest.TestCase):
 
     @staticmethod
     def _content(path: Path) -> str:
-        """Return the file's text, or "" if it was never opened.
-
-        Handlers use delay=True, so a destination that received no record has no file on
-        disk. For these routing assertions that is the same as empty content.
-        """
+        """Return file text, or an empty string before the file exists."""
         return path.read_text(encoding="utf-8") if path.exists() else ""
 
     def _app_content(self) -> str:
@@ -345,11 +340,7 @@ class LifespanTest(_TempLoggingMixin, unittest.IsolatedAsyncioTestCase):
         self.assertIn("count=3", captured.records[1].getMessage())
 
     async def test_startup_failure_is_logged_as_an_error_before_shutdown(self) -> None:
-        """A failed startup must not look identical to a clean run.
-
-        Shutdown is still emitted (teardown after a failed startup stays visible), but an
-        ERROR record between the two identifies the failure.
-        """
+        """Verify startup failures are logged before shutdown."""
         # init_db raises before the sweep is reached, but it is stubbed anyway so that
         # reordering the startup steps can never turn this test into a real UPDATE.
         with mock.patch("server.database.init_db", side_effect=RuntimeError("boom")), \

@@ -17,14 +17,7 @@ class MonthlyWindow:
 
 
 def monthly_search_windows(today: date) -> list[MonthlyWindow]:
-    """Return the previous-month and current-month windows for Search & Related Insights,
-    as of `today`. Pure calendar arithmetic — no clock reads, no I/O.
-
-    The previous-month window always spans that month's full run (1st through last day).
-    The current-month window runs from its 1st through yesterday, and is omitted
-    entirely when `today` is the first day of the month (that window would otherwise be
-    empty). Previous month is always returned first.
-    """
+    """Return previous- and current-month insight windows as of a date."""
     first_of_current = today.replace(day=1)
     last_of_previous = first_of_current - timedelta(days=1)
     first_of_previous = last_of_previous.replace(day=1)
@@ -51,13 +44,7 @@ def monthly_search_windows(today: date) -> list[MonthlyWindow]:
 
 
 def monthly_windows_for_range(start: date, end: date) -> list[MonthlyWindow]:
-    """Return one MonthlyWindow per calendar month from `start` through `end`, inclusive,
-    oldest first. Each window's dates are clamped to `start`/`end` within its month, so
-    the first and last months may be partial. Empty when `start` is after `end`.
-
-    Pure date arithmetic; makes no API calls itself. The caller fetches one API request
-    per returned window, exactly like `monthly_search_windows`'s two windows already do.
-    """
+    """Return oldest-first monthly windows clamped to a date range."""
     if start > end:
         return []
 

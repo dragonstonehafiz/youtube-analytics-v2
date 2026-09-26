@@ -9,10 +9,7 @@ _MONTH_RE = re.compile(r"^\d{4}-(0[1-9]|1[0-2])$")
 
 
 def upsert_search_terms(video_id: str, month: str, terms: list[dict]) -> int:
-    """Upsert one video/month's search terms. `terms` are shaped {"search_term": str,
-    "views": int}. A term omitted or zeroed here is left untouched, not deleted. Returns
-    the number of terms upserted.
-    """
+    """Upsert monthly search terms for a video and return the number written."""
     if not _MONTH_RE.match(month):
         raise ValueError(f"invalid month {month!r}; expected YYYY-MM")
 
@@ -92,9 +89,7 @@ def get_video_search_terms(
     end_date: str | None = None,
     limit: int | None = None,
 ) -> list[dict]:
-    """Return search terms for one owned video, summed across the months overlapping
-    start_date/end_date (a missing bound is unbounded on that side), ordered by views
-    descending. limit=None returns every term. Returns no rows for an external video."""
+    """Return filtered search terms for an owned video, ranked by views."""
     month_conditions, month_params = _month_bound_conditions("st", start_date, end_date)
     conditions = ["st.video_id = ?", "v.own = 1", *month_conditions]
     where = " AND ".join(conditions)
@@ -124,14 +119,7 @@ def get_search_terms(
     video_ids: Collection[str] | None = None,
     limit: int | None = None,
 ) -> list[dict]:
-    """Return search terms aggregated across videos, summed across the months overlapping
-    start_date/end_date (a missing bound is unbounded on that side), ordered by views
-    descending. limit=None returns every term.
-
-    video_ids scopes the aggregation the same way as the other aggregation helpers: None
-    covers every video in the channel, a populated collection covers only those videos,
-    and an empty collection returns no rows.
-    """
+    """Return filtered search terms aggregated across videos and ranked by views."""
     scoped_ids = None if video_ids is None else list(video_ids)
     if scoped_ids is not None and not scoped_ids:
         return []
@@ -165,8 +153,7 @@ def get_videos_by_search_term(
     video_ids: Collection[str] | None = None,
     limit: int = 10,
 ) -> list[dict]:
-    """Return the top N videos by views for one specific search term, filtered the same
-    way as get_search_terms."""
+    """Return the top videos by views for a filtered search term."""
     scoped_ids = None if video_ids is None else list(video_ids)
     if scoped_ids is not None and not scoped_ids:
         return []

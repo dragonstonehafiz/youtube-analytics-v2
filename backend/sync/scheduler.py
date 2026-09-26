@@ -10,13 +10,7 @@ from .plans import full_incremental_plan
 
 
 def synced_today() -> bool:
-    """Return whether any sync stage already succeeded today (local date).
-
-    The checkpoint is derived from sync_runs alone: the most recent successful run of any
-    sync_type. A single-stage manual plan counts, so a manual sync of one type suppresses
-    that day's startup sync. Failed and still-running rows are ignored, and missing or
-    unparseable timestamps count as not-synced.
-    """
+    """Return whether any sync stage succeeded on the current local date."""
     completed_at = database.get_last_successful_run_completed_at()
     if not completed_at:
         return False
@@ -28,12 +22,7 @@ def synced_today() -> bool:
 
 
 def start_background_scheduler() -> None:
-    """Run one complete incremental sync on startup unless any sync already succeeded today.
-
-    Called once from the app lifespan. There is no recurring timer: the app is not
-    expected to stay running long enough for one to fire, so freshness is decided per
-    launch. Restarting after any successful sync on the same local date does nothing.
-    """
+    """Run an incremental startup sync unless one already succeeded today."""
     if synced_today():
         return
 

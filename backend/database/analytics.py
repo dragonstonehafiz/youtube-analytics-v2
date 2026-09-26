@@ -60,8 +60,7 @@ def get_video_analytics(
     start_date: str | None = None,
     end_date: str | None = None,
 ) -> list[dict]:
-    """Return daily analytics rows for an owned video, ordered by date, with optional
-    date filters. Returns no rows for an external video."""
+    """Return filtered daily analytics for an owned video, or none for an external video."""
     conditions = ["va.video_id = ?", "v.own = 1"]
     params: list = [video_id]
     if start_date:
@@ -107,11 +106,7 @@ def get_aggregated_analytics(
     title: str | None = None,
     video_ids: Collection[str] | None = None,
 ) -> list[dict]:
-    """Return daily analytics aggregated by date and content_type, filtered by date range, content_type, privacy_status, and title.
-
-    video_ids scopes the aggregation: None covers every video in the channel, a populated collection
-    covers only those videos, and an empty collection returns no rows.
-    """
+    """Return filtered daily analytics aggregated by date and content type."""
     scoped_ids = None if video_ids is None else list(video_ids)
     if scoped_ids is not None and not scoped_ids:
         return []
@@ -184,11 +179,7 @@ def get_top_videos_by_views(
     title: str | None = None,
     video_ids: Collection[str] | None = None,
 ) -> list[dict]:
-    """Return top videos within the given filters, ranked by views or period watch time, with earnings in SGD
-    for the same period. Unsupported sort_by values fall back to views.
-
-    video_ids scopes the ranking: None covers every video in the channel, a populated collection covers
-    only those videos, and an empty collection returns no rows."""
+    """Return filtered top videos ranked by views or watch time, with period earnings in SGD."""
     scoped_ids = None if video_ids is None else list(video_ids)
     if scoped_ids is not None and not scoped_ids:
         return []

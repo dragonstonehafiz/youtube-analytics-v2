@@ -71,13 +71,7 @@ def update_sync_progress(stage_key: str, message: str) -> None:
 
 
 def complete_stage(stage_key: str) -> None:
-    """Record one selected stage's outcome once its own work finishes without error.
-
-    Records success, unless a stop was already requested by the time this runs: a stage
-    that finishes its last unit of work before its next cancellation checkpoint must
-    still resolve to the outcome the user was told was happening, not silently report
-    success.
-    """
+    """Record a completed stage as successful or cancelled when stopping."""
     with _lock:
         if not _active or stage_key not in _stages:
             return
@@ -104,13 +98,7 @@ def fail_stage(stage_key: str, label: str) -> None:
 
 
 def request_stop() -> bool:
-    """Request cancellation of the active reservation. Idempotent; rejected while idle.
-
-    Accepted for as long as the reservation is held (`_active`), even after every
-    selected stage has already reached a terminal state — the reservation itself is not
-    released until `finish_sync()` runs, and a stop request arriving in that window must
-    not be told no sync is in progress.
-    """
+    """Request idempotent cancellation of the active sync reservation."""
     global _stop_requested
     with _lock:
         if not _active:

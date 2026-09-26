@@ -50,12 +50,7 @@ def sync_status() -> sync.SyncStatus:
 
 @router.post("/sync/stop")
 def stop_sync() -> dict:
-    """Request cooperative cancellation of the active sync, manual or startup-origin.
-
-    Returns {"stopping": true} when a plan is active, including repeated requests.
-    Returns 409 with a fixed safe detail when no plan is active or all selected stages
-    are already terminal; it never mutates the retained per-stage results.
-    """
+    """Request cooperative cancellation of the active sync."""
     if not sync.request_stop():
         raise HTTPException(status_code=409, detail="No sync in progress")
     return {"stopping": True}
@@ -63,14 +58,7 @@ def stop_sync() -> dict:
 
 @router.post("/sync/trigger")
 def trigger_sync(plan: SyncPlanRequest, background_tasks: BackgroundTasks) -> dict:
-    """Queue a manual sync of the selected stages if no sync is already running.
-
-    Unknown stages or scopes are rejected as 422 by request parsing; semantic problems
-    (empty selection, duplicate stage, missing or misapplied period, unavailable year,
-    pruning submitted without both playlists and videos) are rejected as 400; an
-    in-flight sync is rejected as 409. Active state is reserved before the response so a
-    second request cannot also be told it was queued.
-    """
+    """Queue a validated manual sync when no sync is active."""
     try:
         stages = sync.validate_plan(
             [sync.PlanStage(s.stage, s.scope, s.year) for s in plan.stages]
@@ -95,11 +83,6 @@ def sync_runs(
     page: int = Query(default=1, ge=1),
     page_size: int = Query(default=25, ge=1, le=200),
 ) -> dict:
-    """Return one page of sync batches, newest first, with the total distinct batch count.
-
-    Each item groups one batch_id's stages, carrying the batch's earliest start time, its
-    stage count, rolled-up counters, and every stage record in `runs`. `total` counts
-    distinct batches, not stage rows, so `page_size` is a number of batches.
-    """
+    """Return a page of newest-first sync batches and the total batch count."""
     items, total = database.get_sync_runs(page, page_size)
     return {"items": items, "total": total, "page": page, "page_size": page_size}

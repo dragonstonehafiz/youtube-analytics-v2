@@ -6,8 +6,7 @@ from .connection import _now, get_connection
 
 
 def get_covered_periods(collector: str, video_id: str, start_key: str, end_key: str) -> set[str]:
-    """Return the YYYY-MM period_keys already marked complete for one video/collector
-    within an inclusive [start_key, end_key] range."""
+    """Return completed monthly periods for a video and collector within a range."""
     with get_connection() as conn:
         rows = conn.execute(
             """
@@ -22,10 +21,7 @@ def get_covered_periods(collector: str, video_id: str, start_key: str, end_key: 
 
 
 def upsert_coverage(collector: str, video_id: str, period_keys: Collection[str]) -> int:
-    """Mark one or many YYYY-MM periods complete for one video/collector, refreshing
-    completed_at on an already-complete period. Returns the number of periods upserted.
-    Callers must only pass periods whose request/response fully succeeded.
-    """
+    """Mark monthly periods complete and return the number upserted."""
     keys = list(period_keys)
     if not keys:
         return 0

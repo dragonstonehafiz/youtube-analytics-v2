@@ -64,15 +64,7 @@ def cancel_sync_run(sync_run_id: int, rows_fetched: int, rows_written: int, rows
 
 
 def mark_incomplete_sync_runs() -> int:
-    """Mark stages stranded by a previous process as incomplete; return how many changed.
-
-    A row is created just before its stage starts and only leaves 'running' when the stage
-    completes or fails, so a process killed mid-sync strands one indefinitely. Call this at
-    startup, where the in-memory reservation guarding a real sync is necessarily gone and
-    no stage can legitimately still be running — which is what makes the sweep safe. It
-    would misclassify live work at any other time. completed_at stays NULL because the
-    stage genuinely never completed.
-    """
+    """Mark stranded running stages incomplete and return the number changed."""
     with get_connection() as conn:
         cursor = conn.execute(
             "UPDATE sync_runs SET status = 'incomplete' WHERE status = 'running'"
@@ -95,17 +87,7 @@ def _batch_status(runs: list[dict]) -> str:
 
 
 def get_sync_runs(page: int = 1, page_size: int = 25) -> tuple[list[dict], int]:
-    """Return one page of sync batches newest first, plus the total distinct batch count.
-
-    A batch is one batch_id — the ID execute_plan() generates once per submitted plan and
-    shares across every stage that starts. Paging happens over distinct batch IDs rather
-    than stage rows, so a batch is never split across two pages and a group's rolled-up
-    counters always cover all of its stages. Each group is
-    {batch_id, started_at, status, run_count, rows_fetched, rows_written, rows_deleted,
-    runs}, where started_at is the batch's earliest stage start, status is the worst stage
-    status in the batch, and the three counters are summed from exactly the child rows in
-    `runs`.
-    """
+    """Return a page of newest-first sync batches and the total batch count."""
     offset = (page - 1) * page_size
     with get_connection() as conn:
         total = conn.execute("SELECT COUNT(DISTINCT sr.batch_id) FROM sync_runs sr").fetchone()[0]
@@ -164,13 +146,7 @@ def get_sync_runs(page: int = 1, page_size: int = 25) -> tuple[list[dict], int]:
 
 
 def get_last_successful_run_completed_at() -> str | None:
-    """Return the completion time of the most recent successful sync run of any type.
-
-    A single succeeded stage qualifies — the run's sync_type, scope, and batch_id do not
-    matter, and other stages in the same batch may have failed or never run. Only
-    status = 'success' is considered, so failed, still-running, and incomplete rows are all
-    ignored. Returns None when no run has ever succeeded.
-    """
+    """Return the latest successful stage completion time, if any."""
     with get_connection() as conn:
         row = conn.execute(
             """

@@ -18,20 +18,7 @@ def _now() -> str:
 
 
 def _month_bound_conditions(alias: str, start_date: str | None, end_date: str | None) -> tuple[list[str], list]:
-    """Build `{alias}.month >=/<=` conditions from date-string bounds. A missing bound
-    is unbounded on that side, matching how every other date-filtered query in this
-    codebase (e.g. traffic_sources, analytics) treats a missing start/end date.
-
-    A *supplied* bound that doesn't start with a valid `YYYY-MM` prefix is malformed —
-    e.g. `"2026"` would otherwise slice to the literal string `"2026"`, which sorts
-    lexically **before** every real `"2026-MM"` month and so would match everything
-    from 2026 onward instead of matching nothing. A malformed bound therefore forces an
-    always-false condition (`0`) so the query returns no rows rather than an
-    unintended broad match, without rejecting the request outright.
-
-    Shared by every monthly-storage table (search_terms, related_videos) since each
-    query's own table alias differs; callers own their alias.
-    """
+    """Build month-bound SQL conditions, rejecting malformed bounds with a false condition."""
     conditions = []
     params: list = []
     if start_date:

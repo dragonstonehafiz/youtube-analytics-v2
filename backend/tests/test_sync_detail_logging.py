@@ -41,11 +41,7 @@ def tearDownModule() -> None:
 
 
 def _http_error(status: int, body: bytes) -> HttpError:
-    """Build an HttpError carrying only the attributes `_analytics_query` reads.
-
-    `resp.reason` is required by `HttpError.__init__` itself (unrelated to anything
-    `_analytics_query` inspects), so a placeholder value is supplied here.
-    """
+    """Build an HTTP error with the fields used by analytics logging."""
     return HttpError(resp=SimpleNamespace(status=status, reason="error"), content=body)
 
 
@@ -150,9 +146,7 @@ class DataApiPaginationLoggingTest(unittest.TestCase):
         )
 
     def test_empty_page_carrying_a_token_ends_pagination_as_a_warning(self) -> None:
-        """An empty page that still supplies a token would otherwise spin pagination
-        until quota is gone. It ends the loop, is logged at WARNING, and reports the
-        result as truncated."""
+        """Verify an empty token-bearing page stops pagination with a warning."""
         client = mock.Mock()
         execute = client.playlistItems.return_value.list.return_value.execute
         execute.side_effect = [
@@ -175,9 +169,7 @@ class DataApiPaginationLoggingTest(unittest.TestCase):
         )
 
     def test_observed_incident_repeated_cursor_stops_after_two_requests(self) -> None:
-        """The production incident: page 1 returns items with TOKEN_A, page 2 returns the
-        same TOKEN_A. Following it again re-requests the same page forever, so pagination
-        ends at the repeat and reports truncation."""
+        """Verify a repeated cursor stops pagination after two requests."""
         client = mock.Mock()
         execute = client.playlistItems.return_value.list.return_value.execute
         execute.side_effect = [
@@ -221,8 +213,7 @@ class DataApiPaginationLoggingTest(unittest.TestCase):
         self.assertIn("repeated_page_token=true", captured.records[2].getMessage())
 
     def test_token_history_does_not_leak_between_playlists(self) -> None:
-        """Cursor history is per invocation. Two playlists may legitimately hand back the
-        same token string, and the second must still follow it normally."""
+        """Verify pagination token history is isolated per playlist."""
         client = mock.Mock()
         execute = client.playlistItems.return_value.list.return_value.execute
         page_with_token = {
@@ -259,9 +250,7 @@ class DataApiPaginationLoggingTest(unittest.TestCase):
         self.assertEqual([r.levelname for r in captured.records], ["DEBUG", "DEBUG"])
 
     def test_owner_name_is_quoted_so_it_cannot_corrupt_earlier_fields(self) -> None:
-        """Titles are arbitrary YouTube-authored text. Rendering the name last and
-        `repr`-quoted keeps a newline or `=` inside it from breaking the key=value
-        fields ahead of it."""
+        """Verify owner names cannot corrupt structured log fields."""
         client = mock.Mock()
         client.playlistItems.return_value.list.return_value.execute.side_effect = [
             {"items": [{"id": "i1", "snippet": {"resourceId": {"videoId": "v1"}, "position": 0}}]},
@@ -341,9 +330,7 @@ class VideoAnalyticsStageDetailLoggingTest(unittest.TestCase):
         self.assertEqual(counts.rows_fetched, 0)
 
     def test_a_video_published_after_the_effective_end_is_prefiltered_out(self) -> None:
-        """A future-published video is now excluded by the bounded worklist query
-        itself, before any per-video processing — sync_video_analytics() never sees
-        it, so it never reaches the defensive empty-range skip branch at all."""
+        """Verify future videos are excluded before analytics processing."""
         worklist = mock.patch("sync.stages.database.get_owned_video_ids", return_value=[]).start()
         get_video = mock.patch("sync.stages.database.get_owned_video").start()
         fetch = mock.patch("sync.stages.youtube.iter_video_analytics").start()
@@ -396,10 +383,7 @@ class VideoAnalyticsStageDetailLoggingTest(unittest.TestCase):
         self.assertEqual((counts.rows_fetched, counts.rows_written), (0, 0))
 
     def test_progress_ordinals_and_logging_cover_only_the_prefiltered_worklist(self) -> None:
-        """A mixed two-video worklist (the excluded future video already removed by the
-        real database query, simulated here by the mock only ever returning the
-        eligible ID) numbers progress 1/1, never 1/2 — the excluded video was never
-        part of `total` to begin with."""
+        """Verify progress and logs use only the eligible video worklist."""
         mock.patch("sync.stages.database.get_owned_video_ids", return_value=["v1"]).start()
         mock.patch(
             "sync.stages.database.get_owned_video", return_value={"published_at": "2020-01-01T00:00:00Z", "title": "Eligible Video"}

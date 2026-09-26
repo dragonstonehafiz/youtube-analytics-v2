@@ -27,13 +27,7 @@ FIXED_NOW = "2024-06-01T00:00:00+00:00"
 
 @contextmanager
 def freeze_now(iso_timestamp: str = FIXED_NOW) -> Generator[None]:
-    """Freeze database.connection._now() to a fixed timestamp for the duration of the block.
-
-    Every database write module did `from .connection import _now`, binding its own
-    reference to the same function object, so patching that object's __globals__ entry
-    for `datetime` (rather than patching `_now` on each importing module individually)
-    is what makes every caller observe the frozen clock.
-    """
+    """Freeze database timestamps for the duration of the context."""
     class _FrozenDatetime(datetime):
         @classmethod
         def now(cls, tz: timezone | None = None) -> "datetime":  # type: ignore[override]
@@ -180,8 +174,7 @@ def make_search_term(search_term: str = "term", *, views: int = 1) -> dict:
 
 
 def make_related_referrer(referrer_video_id: str = "ref-1", *, views: int = 1) -> dict:
-    """Return a Related Video referrer response row dict, shaped for
-    database.upsert_related_videos."""
+    """Return a Related Video referrer row for database tests."""
     return {"referrer_video_id": referrer_video_id, "views": views}
 
 
@@ -225,13 +218,7 @@ def make_comment(
 
 
 def seed_dataset() -> None:
-    """Seed a fixed, deterministic dataset covering every issue-required table.
-
-    Videos and Shorts across publication/privacy/content-type boundaries; a populated
-    playlist (with a duplicate and a dangling membership) and an empty playlist; daily
-    analytics and traffic sources with a date that has no FX rate; FX rates for the
-    other analytics dates; and one successful and one failed sync run.
-    """
+    """Seed a deterministic dataset spanning all required tables."""
     with freeze_now():
         videos = [
             make_video("v-1", "Alpha Video", published_at="2024-01-01T00:00:00Z",

@@ -28,17 +28,7 @@ class SyncCounts:
 def _incremental_monthly_windows(
     collector: str, video_id: str, publish_date: date, yesterday: date, forced: list[monthly_insights.MonthlyWindow],
 ) -> list[monthly_insights.MonthlyWindow]:
-    """Return one video's incremental Analytics-API windows: every uncovered calendar
-    month from publish_date through yesterday, plus the video-eligible months among
-    `forced` (previous/current, from monthly_search_windows()) that aren't already in
-    that missing set — so the pair is always re-checked even when coverage already
-    marks it complete, without fetching it twice when it's also a genuine gap.
-
-    Shared by all four Analytics API stages' incremental selection. Video
-    Analytics/Traffic Sources additionally coalesce the result into date ranges
-    (`coverage.coalesce_missing_windows()`) since one API call can span many months;
-    Search/Related use it as-is, one API call per month.
-    """
+    """Return uncovered months plus eligible forced refresh windows for one video."""
     windows_all = monthly_insights.monthly_windows_for_range(publish_date, yesterday)
     if not windows_all:
         return []
@@ -56,21 +46,7 @@ def _incremental_monthly_windows(
 def _video_period_requests(
     collector: str, video_id: str, scope: str, year: int | None, today: date, end_date: str, publish_date: str,
 ) -> list[tuple[str, str, list[str]]]:
-    """Return one video's (start_date, end_date, months_to_mark) requests for a
-    monthly-coverage-tracked Analytics collector (video_analytics/video_traffic_sources).
-    Shared between sync_video_analytics() and sync_video_traffic_sources(), which differ
-    only in which collector/generator/reporting-upsert they use.
-
-    scope="year"/"all" request the single existing scoped range, marking every month it
-    actually spans as complete — including a still-open trailing month, which is
-    harmless: the previous/current pair below is always re-fetched regardless of
-    coverage, and by the time a later Incremental's historical sweep would ever consult
-    that same month again, it has genuinely finished.
-
-    scope="incremental" coalesces `_incremental_monthly_windows()`'s result (every
-    uncovered month through yesterday, plus the always-refreshed previous/current pair)
-    into as few date ranges as possible.
-    """
+    """Return request ranges and coverage months for one video and collector."""
     if scope in ("year", "all"):
         if scope == "year":
             assert year is not None, "scope=year requires a year"
@@ -95,15 +71,7 @@ def _video_period_requests(
 
 
 def _effective_range_end(scope: str, year: int | None, yesterday: date) -> date:
-    """Return a period-aware stage's inclusive request-range upper bound: the given
-    year's December 31 clamped to yesterday for scope="year" (a future year has no
-    data yet to request), otherwise yesterday itself for "incremental"/"all".
-
-    Used both to compute each video's actual fetch range and, before that, to
-    prefilter the owned-video worklist via `database.get_owned_video_ids()` — a video
-    published after this date makes no API calls, updates no progress, and emits no
-    per-video log record for this stage.
-    """
+    """Return the inclusive request end date for a scoped analytics stage."""
     if scope == "year":
         assert year is not None, "scope=year requires a year"
         return min(yesterday, date(year, 12, 31))
@@ -111,28 +79,7 @@ def _effective_range_end(scope: str, year: int | None, yesterday: date) -> date:
 
 
 def sync_videos(counts: SyncCounts, playlist_video_ids: set[str]) -> set[str]:
-    """Fetch and upsert details for every channel-owned video; never deletes.
-
-    Fetches details for the union of the uploads-playlist IDs and `playlist_video_ids`
-    (candidates discovered by `sync_playlists()`, empty when that stage didn't run).
-    Uploads-playlist membership is treated as proof of ownership on its own; a
-    playlist-only candidate is upserted only when its returned `snippet.channelId`
-    matches the authenticated channel, so a video from someone else's playlist is never
-    imported as if it were this channel's.
-
-    Returns every ID confirmed to belong to the channel — every uploads ID (even one
-    `videos.list` didn't return details for) plus every ownership-confirmed
-    playlist-only ID — for the pruning stage to retain.
-
-    Classification is skipped when the Shorts playlist enumeration is truncated: an
-    incomplete `shorts_ids` set can't tell a real Short that was missed from a genuine
-    long-form video, so guessing "video" would silently reclassify already-known
-    Shorts. `upsert_own_video` leaves `content_type` untouched on conflict when it's None.
-
-    `fetch_videos()` silently omits any id the videos().list detail call doesn't return
-    an item for (e.g. region-restricted or transiently unavailable). That gap is logged
-    here rather than left to show up only as an unexplained DB shortfall.
-    """
+    """Sync channel-owned video details and return confirmed owned IDs."""
     channel_id, uploads_id = youtube.fetch_channel_identity()
     shorts_ids, shorts_truncated = youtube.fetch_shorts_video_ids(
         uploads_id, checkpoint=status.raise_if_stopping
@@ -181,16 +128,7 @@ def sync_videos(counts: SyncCounts, playlist_video_ids: set[str]) -> set[str]:
 
 
 def sync_playlists(counts: SyncCounts) -> set[str]:
-    """Fetch all playlists and their items, upsert, then delete any DB playlists not returned by the API.
-
-    Both deletes are gated on complete pagination. A playlist whose items were truncated
-    keeps its stored items untouched — the replace is delete-then-reinsert, so running it
-    against a partial page set would silently shrink that playlist. A truncated playlist
-    listing likewise suppresses the listing-level reconcile.
-
-    Returns every non-null playlist-item video ID seen, for `sync_videos()` to combine
-    with the uploads-playlist IDs.
-    """
+    """Sync playlists and complete item sets, then reconcile deleted playlists."""
     playlists, playlists_truncated = youtube.fetch_playlists(checkpoint=status.raise_if_stopping)
     all_items: dict[str, list[dict]] = {}
     truncated_playlists: set[str] = set()
@@ -240,36 +178,12 @@ def sync_playlists(counts: SyncCounts) -> set[str]:
 
 
 def _comment_bootstrap_cutoff(today: date) -> str:
-    """Return the inclusive lower bound for a video that has no stored comments yet:
-    January 1 of the current year, minus one calendar month.
-
-    Recomputed per run from the local date, so the window rolls forward with the year
-    rather than being pinned to whenever the feature was installed.
-    """
+    """Return the rolling lower date bound for a video without stored comments."""
     return date(today.year - 1, 12, 1).isoformat()
 
 
 def sync_comments(scope: str, counts: SyncCounts) -> None:
-    """Fetch and upsert top-level comments for every video already stored locally.
-
-    The worklist is `database.get_owned_video_ids()` and nothing else: this stage never
-    discovers, refreshes, or looks up videos through YouTube, so a video absent from
-    SQLite simply has no comments imported until the videos stage adds it. That helper
-    returns videos oldest-published-first (ID-tied, undated last), so this stage
-    processes them in that same order.
-
-    scope="incremental" bounds each video independently. A video with stored comments is
-    read newest-first only until the first comment already held locally, plus
-    COMMENT_INCREMENTAL_OVERLAP further items; a video with none is read back to
-    `_comment_bootstrap_cutoff()`. Because the boundary is per video, a first run that
-    failed part-way resumes correctly — populated videos use their boundary, untouched
-    ones use the cutoff — and neither case escalates itself to a full history scan.
-    scope="all" re-reads and refreshes every page of every video.
-
-    This stage only ever inserts and updates. Comments removed on YouTube keep their
-    stored rows; the only deletions are commenter rows left unreferenced once a pruned
-    video's comments have cascaded away.
-    """
+    """Sync top-level comments for every stored owned video."""
     cutoff = _comment_bootstrap_cutoff(date.today())
     video_ids = database.get_owned_video_ids()
     total = len(video_ids)
@@ -328,31 +242,13 @@ def sync_comments(scope: str, counts: SyncCounts) -> None:
 
 
 def sync_pruning(counts: SyncCounts, channel_owned_ids: set[str]) -> None:
-    """Delete every DB video not in `channel_owned_ids`, the channel-owned set built by
-    `sync_playlists()` and `sync_videos()` in this same plan."""
+    """Delete database videos absent from the confirmed channel-owned IDs."""
     status.raise_if_stopping()
     counts.rows_deleted += database.delete_videos_not_in(sorted(channel_owned_ids))
 
 
 def sync_video_analytics(scope: str, year: int | None, counts: SyncCounts) -> None:
-    """Fetch daily analytics for every video.
-
-    scope="incremental" uses `sync_coverage` (collector "video_analytics") to find every
-    uncovered calendar month from publication through two months ago, coalesced into as
-    few date-range requests as possible, plus an unconditional previous/current-month
-    refresh (metrics for a just-finished or in-progress month are not fully settled by
-    the API yet) — see `_video_period_requests()`. scope="year" refetches the given
-    year; scope="all" refetches each video's entire history; both mark every month they
-    span as complete regardless of whether it has fully elapsed, which is safe since the
-    previous/current pair above is always re-fetched independent of coverage.
-
-    The owned-video worklist is prefiltered to videos published on or before this
-    stage's effective range end (see `_effective_range_end()`) before progress or
-    per-video processing begins — a video uploaded after that date can have no data in
-    range and so makes no API call, updates no progress, and emits no per-video log
-    record. That worklist is oldest-published-first (ID-tied, undated last), so this
-    stage processes videos in that same order.
-    """
+    """Sync daily analytics for every eligible owned video."""
     today = date.today()
     effective_end = _effective_range_end(scope, year, today - timedelta(days=1))
     end_date = effective_end.isoformat()
@@ -405,25 +301,7 @@ def sync_video_analytics(scope: str, year: int | None, counts: SyncCounts) -> No
 
 
 def sync_video_traffic_sources(scope: str, year: int | None, counts: SyncCounts) -> None:
-    """Fetch daily traffic-source breakdowns for every video.
-
-    scope="incremental" uses `sync_coverage` (collector "video_traffic_sources") to find
-    every uncovered calendar month from publication through two months ago, coalesced
-    into as few date-range requests as possible, plus an unconditional previous/current-
-    month refresh (traffic-source data for a just-finished or in-progress month is not
-    fully settled by the API yet) — see `_video_period_requests()`. scope="year"
-    refetches the given year; scope="all" refetches each video's entire history; both
-    mark every month they span as complete regardless of whether it has fully elapsed,
-    which is safe since the previous/current pair above is always re-fetched
-    independent of coverage.
-
-    The owned-video worklist is prefiltered to videos published on or before this
-    stage's effective range end (see `_effective_range_end()`) before progress or
-    per-video processing begins — a video uploaded after that date can have no data in
-    range and so makes no API call, updates no progress, and emits no per-video log
-    record. That worklist is oldest-published-first (ID-tied, undated last), so this
-    stage processes videos in that same order.
-    """
+    """Sync daily traffic-source breakdowns for every eligible owned video."""
     today = date.today()
     effective_end = _effective_range_end(scope, year, today - timedelta(days=1))
     end_date = effective_end.isoformat()
@@ -476,39 +354,7 @@ def sync_video_traffic_sources(scope: str, year: int | None, counts: SyncCounts)
 
 
 def sync_search_insights(scope: str, year: int | None, counts: SyncCounts) -> None:
-    """Fetch and upsert monthly Search-source terms for every video.
-
-    scope="incremental" ("New data only") uses `sync_coverage` (collector
-    "search_insights") via `_incremental_monthly_windows()`: every uncovered calendar
-    month from publication through yesterday, plus an unconditional previous/current-
-    month refresh (search-term data for a just-finished or in-progress month is not
-    fully settled by the API yet). A video whose history is fully covered collapses to
-    exactly that pair, same as before; a video whose backfill was interrupted partway
-    resumes filling the remaining gap instead of being treated as fully caught up just
-    because it has *some* coverage. A video with no publish date falls back to the fixed
-    current+previous refresh, since there is no date to compute a range from.
-    scope="year" refreshes every calendar month of the given year that falls within the
-    video's published-to-yesterday range; a video with no publish date is skipped.
-    scope="all" refreshes every calendar month from the video's publish date through
-    yesterday; a video with no publish date is skipped. Each (video, month) upsert
-    commits independently, and every scope marks each successfully upserted month
-    complete — including a still-open trailing month for scope="all", which is
-    harmless since the previous/current pair is always re-fetched regardless of
-    coverage.
-
-    Each month is fetched as a single request spanning the whole calendar month. The
-    Search Analytics detail report hard-caps each request at 25 rows with no pagination
-    past that (verified live, not a bug in this codebase — see
-    search-insights-api-findings.md), so a video whose real search traffic spans more
-    than 25 distinct terms in a month loses everything past the cap.
-
-    The owned-video worklist is prefiltered to videos published on or before this
-    stage's effective range end (see `_effective_range_end()`) before progress or
-    per-video processing begins — a video uploaded after that date can have no data in
-    range and so makes no API call, updates no progress, and emits no per-video log
-    record. That worklist is oldest-published-first (ID-tied, undated last), so this
-    stage processes videos in that same order.
-    """
+    """Sync monthly Search-source terms for every eligible owned video."""
     today = date.today()
     yesterday = today - timedelta(days=1)
     effective_end = _effective_range_end(scope, year, yesterday)
@@ -564,48 +410,7 @@ def sync_search_insights(scope: str, year: int | None, counts: SyncCounts) -> No
 
 
 def sync_related_video_insights(scope: str, year: int | None, counts: SyncCounts) -> None:
-    """Fetch and upsert monthly Related Video referrers for every owned video, then
-    resolve metadata for newly encountered referrer IDs.
-
-    scope="incremental" ("New data only") uses `sync_coverage` (collector
-    "related_video_insights") via `_incremental_monthly_windows()`: every uncovered
-    calendar month from publication through yesterday, plus an unconditional
-    previous/current-month refresh (Related-video data for a just-finished or
-    in-progress month is not fully settled by the API yet). A video whose backfill was
-    interrupted partway resumes filling the remaining gap instead of being treated as
-    fully caught up just because it has *some* coverage. A video with no publish date
-    falls back to the fixed current+previous refresh, since there is no date to compute
-    a range from. scope="year" refreshes every calendar month of the given year that
-    falls within the video's published-to-yesterday range; a video with no publish date
-    is skipped. scope="all" refreshes every calendar month from the video's publish date
-    through yesterday; a video with no publish date is skipped. Each (video, month)
-    upsert commits independently, and every scope marks each successfully upserted month
-    complete — including a still-open trailing month for scope="all", which is harmless
-    since the previous/current pair is always re-fetched regardless of coverage.
-
-    Each month is fetched as a single request spanning the whole calendar month — same
-    25-row-per-request cap and reasoning as search_insights (see
-    search-insights-api-findings.md).
-
-    The owned-video worklist is captured once at stage start, so a referrer resolved
-    into `videos` during this run can never become a target within the same run. This
-    stage never reads or writes Video Traffic Sources, and this metadata-resolution
-    logic lives only here, not in sync_search_insights.
-
-    Once every video/month has been fetched, newly encountered referrer IDs not
-    already present in `videos` (owned or external) are resolved in deterministic
-    batches of at most 50 via `youtube.fetch_videos()` and classified against the
-    authenticated channel ID. A batch's metadata lookup failure is logged and skipped;
-    it never fails the stage or discards the Related rows already stored. An ID
-    omitted from its batch's response is left without a video row.
-
-    The owned-video worklist is also prefiltered to videos published on or before this
-    stage's effective range end (see `_effective_range_end()`) before progress or
-    per-video processing begins — a video uploaded after that date can have no data in
-    range and so makes no API call, updates no progress, and emits no per-video log
-    record. That worklist is oldest-published-first (ID-tied, undated last), so this
-    stage processes videos in that same order.
-    """
+    """Sync monthly Related Video referrers and resolve new referrer metadata."""
     today = date.today()
     yesterday = today - timedelta(days=1)
     effective_end = _effective_range_end(scope, year, yesterday)
@@ -667,12 +472,7 @@ def sync_related_video_insights(scope: str, year: int | None, counts: SyncCounts
 
 
 def _resolve_related_video_metadata(newly_encountered_ids: set[str], counts: SyncCounts) -> None:
-    """Resolve metadata for referrer IDs not already known in `videos` (owned or
-    external), batching requests deterministically and classifying ownership against
-    the authenticated channel. A batch's lookup failure — including the channel-identity
-    lookup itself — is logged and skipped, without failing the stage or discarding
-    Related rows already stored.
-    """
+    """Resolve and classify metadata for previously unknown referrer videos."""
     unknown_ids = sorted(newly_encountered_ids - set(database.get_all_video_ids()))
     if not unknown_ids:
         return

@@ -18,8 +18,7 @@ class TitleFilterTestCase(IsolatedDatabaseTestCase):
         self._seed()
 
     def _seed(self) -> None:
-        """Seed two matching-title videos (in and out of the playlist) plus a third,
-        differently-titled video, each with analytics and traffic-source rows."""
+        """Seed videos that exercise title filtering inside and outside a playlist."""
         database.upsert_own_video({
             "id": "v-in", "channel_id": "c1", "title": "My SERIES Episode 1",
             "description": "", "published_at": "2024-01-01T00:00:00Z", "duration_seconds": 100,
@@ -112,9 +111,7 @@ class ChannelRouteTitleFilterTest(TitleFilterTestCase):
         self.assertEqual(ids, {"v-in", "v-out", "v-other"})
 
     def test_sql_injection_looking_input_is_bound_not_interpolated(self) -> None:
-        """A value crafted to look like SQL must be treated as an ordinary substring with no
-        matches, and must not break the query or delete data — proving it is bound, not
-        string-concatenated into the query."""
+        """Verify SQL-like filter text is bound as an ordinary value."""
         body = self._get(
             "/analytics/videos/top", title="'; DROP TABLE videos; --",
             start_date="2024-01-01", end_date="2024-01-31",

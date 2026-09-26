@@ -90,8 +90,7 @@ class StartBackgroundSchedulerTest(unittest.TestCase):
         self.assertEqual(by_stage["video_traffic_sources"].scope, "incremental")
 
     def test_startup_plan_never_includes_pruning(self) -> None:
-        """Pruning deletes videos and must never run unattended, even if the startup
-        plan is later extended with more stages."""
+        """Verify unattended startup plans never prune videos."""
         with mock.patch("sync.scheduler.synced_today", return_value=False):
             scheduler.start_background_scheduler()
 

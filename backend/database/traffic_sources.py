@@ -62,8 +62,7 @@ def get_video_traffic_sources(
     start_date: str | None = None,
     end_date: str | None = None,
 ) -> list[dict]:
-    """Return daily traffic source rows for an owned video, ordered by date, with
-    optional date filters. Returns no rows for an external video."""
+    """Return filtered daily traffic sources for an owned video."""
     conditions = ["vts.video_id = ?", "v.own = 1"]
     params: list = [video_id]
     if start_date:
@@ -95,11 +94,7 @@ def get_aggregated_traffic_sources(
     title: str | None = None,
     video_ids: Collection[str] | None = None,
 ) -> list[dict]:
-    """Return daily traffic sources aggregated across videos, filtered by date range, content_type, privacy_status, and title.
-
-    video_ids scopes the aggregation: None covers every video in the channel, a populated collection
-    covers only those videos, and an empty collection returns no rows.
-    """
+    """Return filtered daily traffic sources aggregated across videos."""
     scoped_ids = None if video_ids is None else list(video_ids)
     if scoped_ids is not None and not scoped_ids:
         return []
@@ -156,11 +151,7 @@ def get_top_videos_by_traffic_source(
     title: str | None = None,
     video_ids: Collection[str] | None = None,
 ) -> dict[str, list[dict]]:
-    """Return the top N videos by views for each traffic source type, filtered by date range, content_type, privacy_status, and title.
-
-    video_ids scopes the ranking: None covers every video in the channel, a populated collection covers
-    only those videos, and an empty collection returns no source groups.
-    """
+    """Return filtered top videos by views for each traffic-source type."""
     scoped_ids = None if video_ids is None else list(video_ids)
     if scoped_ids is not None and not scoped_ids:
         return {}
@@ -209,7 +200,7 @@ def get_top_videos_by_traffic_source(
 
 
 def _top_n_per_source(rows: list[sqlite3.Row], limit: int) -> dict[str, list[dict]]:
-    """Group video rows by traffic_source_type, keeping only the first N per group (rows must already be sorted by views desc within each type)."""
+    """Keep the first N presorted video rows for each traffic-source type."""
     grouped: dict[str, list[dict]] = {}
     for row in rows:
         d = dict(row)
