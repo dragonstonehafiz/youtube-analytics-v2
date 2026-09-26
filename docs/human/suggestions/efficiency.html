@@ -1,0 +1,190 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Efficiency</title>
+<link rel="stylesheet" href="../human-docs.css">
+<script src="../human-docs.js" defer></script>
+</head>
+<body>
+<nav class="site-nav" aria-label="Human documentation">
+  <div class="site-nav-inner">
+    <span class="site-nav-brand">YouTube Analytics <span>docs</span></span>
+    <details class="nav-menu">
+      <summary>App flow</summary>
+      <div class="nav-menu-list">
+        <a href="../app-flow/overview.html">Overview</a>
+        <a href="../app-flow/requests.html">Requests</a>
+      </div>
+    </details>
+    <details class="nav-menu">
+      <summary>Architecture</summary>
+      <div class="nav-menu-list">
+        <a href="../architecture/backend-architecture.html">Backend architecture</a>
+        <a href="../architecture/backend-reference.html">Backend reference</a>
+        <a href="../architecture/frontend-components.html">Frontend components</a>
+      </div>
+    </details>
+    <details class="nav-menu current">
+      <summary>Suggestions</summary>
+      <div class="nav-menu-list">
+        <a href="repeated-code.html">Repeated code</a>
+        <a href="efficiency.html" aria-current="page">Efficiency</a>
+      </div>
+    </details>
+  </div>
+</nav>
+
+<div class="page">
+  <aside class="toc" aria-label="On this page">
+    <h2>On this page</h2>
+    <ol>
+      <li><a href="#sync">Backend: sync</a></li>
+      <li><a href="#reads">Backend: API reads</a></li>
+      <li><a href="#frontend">Frontend</a></li>
+    </ol>
+  </aside>
+
+  <main>
+    <header class="hero">
+      <h1>Efficiency</h1>
+      <p>Code that does more work than its result needs. Each section is ordered by how often the code runs; the badge says when. Observations from the source, not measured timings; none prescribes a fix.</p>
+      <div class="meta-line">
+        <span>Source revision <code>8c18975</code></span>
+      </div>
+    </header>
+
+    <section id="sync">
+      <h2>Backend: sync</h2>
+      <div class="dup-list">
+
+        <article class="dup">
+          <div class="dup-head"><h3>One connection and commit per row</h3><span class="dup-count">per row</span></div>
+          <p>Each upsert opens a new SQLite connection, runs three <code>PRAGMA</code> statements, writes one row, and commits.</p>
+          <dl>
+            <dt>Where</dt><dd><code>upsert_video_analytics</code>, <code>upsert_video_traffic_source</code>, <code>upsert_playlist_item</code>, <code>upsert_own_video</code>, <code>upsert_comment_author</code> + <code>upsert_comment</code> (two per comment), called in loops from <code>sync/stages.py</code></dd>
+            <dt>Cost</dt><dd>A commit per row instead of per batch. The analytics stages run on concurrent workers, so each commit also waits for SQLite's single write lock.</dd>
+          </dl>
+        </article>
+
+        <article class="dup">
+          <div class="dup-head"><h3>Full video lookup inside every per-video loop</h3><span class="dup-count">per video × 5 stages</span></div>
+          <p>Stages fetch the owned ID list, then call <code>get_owned_video(id)</code> once per video just to read its title and publish date (<code>sync_comments</code> reads only the title).</p>
+          <dl>
+            <dt>Where</dt><dd><code>sync_video_analytics</code>, <code>sync_video_traffic_sources</code>, <code>sync_search_insights</code>, <code>sync_related_video_insights</code>, <code>sync_comments</code></dd>
+            <dt>Cost</dt><dd>One query per video, and <code>get_owned_video</code> also sums lifetime revenue and watch time over all of that video's analytics rows, which the stages never use. Each sum is an indexed scan of one video's rows, so the time is likely small next to the YouTube API calls made for the same video.</dd>
+          </dl>
+        </article>
+
+        <article class="dup">
+          <div class="dup-head"><h3>Connections closed by garbage collection</h3><span class="dup-count">every DB call</span></div>
+          <p><code>with get_connection() as conn</code> commits or rolls back on exit but does not close the connection.</p>
+          <dl>
+            <dt>Where</dt><dd>Every function in <code>backend/database/</code>; nothing calls <code>close()</code></dd>
+            <dt>Cost</dt><dd>Closing depends on the connection object being freed, not on the <code>with</code> block ending.</dd>
+          </dl>
+        </article>
+
+      </div>
+    </section>
+
+    <section id="reads">
+      <h2>Backend: API reads</h2>
+      <div class="dup-list">
+
+        <article class="dup">
+          <div class="dup-head"><h3>Lifetime earnings recomputed on every read</h3><span class="dup-count">per request</span></div>
+          <p>Lifetime SGD earnings are not stored. Each list, detail and existence check sums every daily analytics row × that day's FX rate again.</p>
+          <dl>
+            <dt>Where</dt><dd><code>get_all_videos</code> and <code>get_owned_video</code> in <code>database/videos.py</code>; <code>get_all_playlists</code>, <code>get_playlist</code> and <code>get_playlist_videos</code> in <code>database/playlists.py</code>. <code>get_owned_video</code> and <code>get_playlist</code> are also the 404 checks in <code>routes/</code>.</dd>
+            <dt>Cost</dt><dd>Work proportional to all analytics rows of the videos involved, on every request, for totals that change only after a sync. <code>get_all_videos</code> does it for every matching video before applying <code>LIMIT</code>, even when sorting by publish date.</dd>
+          </dl>
+        </article>
+
+        <article class="dup">
+          <div class="dup-head"><h3>Playlist list runs its aggregate twice</h3><span class="dup-count">per request</span></div>
+          <p><code>get_all_playlists</code> runs the full grouped query once inside <code>COUNT(*)</code> and again for the page.</p>
+          <dl>
+            <dt>Where</dt><dd><code>database/playlists.py</code>, behind <code>GET /playlists</code></dd>
+            <dt>Cost</dt><dd>Every join and subquery in that query runs twice per request.</dd>
+          </dl>
+        </article>
+
+        <article class="dup">
+          <div class="dup-head"><h3>Playlist lookup repeated per endpoint</h3><span class="dup-count">per request</span></div>
+          <p>Each playlist analytics route checks the playlist exists and loads its video IDs before its own query.</p>
+          <dl>
+            <dt>Where</dt><dd><code>_resolve_playlist_video_ids</code> in the 9 playlist routes of <code>routes/analytics.py</code></dd>
+            <dt>Cost</dt><dd>Two extra queries per request, and the existence check (<code>get_playlist</code>) also recomputes the playlist's lifetime earnings. <code>PlaylistAnalytics</code> sends many of these requests together, each repeating the same work.</dd>
+          </dl>
+        </article>
+
+        <article class="dup">
+          <div class="dup-head"><h3>Substring title search</h3><span class="dup-count">per filtered request</span></div>
+          <p>The title filter is <code>v.title LIKE '%…%' OR v.id LIKE '%…%'</code>.</p>
+          <dl>
+            <dt>Where</dt><dd>12 query functions in <code>backend/database/</code></dd>
+            <dt>Cost</dt><dd>A leading <code>%</code> cannot use an index, so every video row is scanned. Small at the current table size.</dd>
+          </dl>
+        </article>
+
+      </div>
+    </section>
+
+    <section id="frontend">
+      <h2>Frontend</h2>
+      <div class="dup-list">
+
+        <article class="dup">
+          <div class="dup-head"><h3>Two status pollers on the Sync page</h3><span class="dup-count">every 5 s</span></div>
+          <p>The top navigation and the Sync page each request <code>/sync/status</code> every 5 seconds.</p>
+          <dl>
+            <dt>Where</dt><dd><code>components/SyncStatus.tsx</code>, <code>pages/Sync.tsx</code></dd>
+            <dt>Cost</dt><dd>Two requests per interval on Sync; the top navigation's poll runs on every page whether or not a sync is running.</dd>
+          </dl>
+        </article>
+
+        <article class="dup">
+          <div class="dup-head"><h3>Superseded requests are not cancelled</h3><span class="dup-count">per filter change</span></div>
+          <p>Old responses are ignored through an <code>active</code> flag, but no request is aborted.</p>
+          <dl>
+            <dt>Where</dt><dd>Every data effect; there is no <code>AbortController</code> in <code>frontend/src</code></dd>
+            <dt>Cost</dt><dd>Each filter, date or tab change leaves the previous requests running to completion on the backend.</dd>
+          </dl>
+        </article>
+
+        <article class="dup">
+          <div class="dup-head"><h3>Term videos load twice</h3><span class="dup-count">per filter change</span></div>
+          <p>A date, title or privacy change sends the “videos for the top search term” requests straight away with the old top term, then again when the new term lists arrive.</p>
+          <dl>
+            <dt>Where</dt><dd><code>Analytics</code>, <code>PlaylistAnalytics</code></dd>
+            <dt>Cost</dt><dd>Two extra requests per change, even when the top term hasn't changed.</dd>
+          </dl>
+        </article>
+
+        <article class="dup">
+          <div class="dup-head"><h3>Hidden-tab requests</h3><span class="dup-count">per page open</span></div>
+          <p>Everything except the Related Videos requests loads whichever tab is open.</p>
+          <dl>
+            <dt>Where</dt><dd><code>Analytics</code> and <code>PlaylistAnalytics</code> (opening on Comments still sends 13 analytics requests); <code>VideoAnalytics</code> loads its chart, traffic and search requests on every tab</dd>
+            <dt>Cost</dt><dd>Requests for data that is not on screen.</dd>
+          </dl>
+        </article>
+
+        <article class="dup">
+          <div class="dup-head"><h3>Date range on every appearance</h3><span class="dup-count">per appearance</span></div>
+          <p>The period dropdown requests <code>/meta/date-range</code> each time it mounts.</p>
+          <dl>
+            <dt>Where</dt><dd><code>PeriodSelect</code> (switching tabs brings it back; <code>PlaylistAnalytics</code> has two), plus a separate request in <code>Sync</code></dd>
+            <dt>Cost</dt><dd>The same value fetched repeatedly.</dd>
+          </dl>
+        </article>
+
+      </div>
+    </section>
+
+  </main>
+</div>
+</body>
+</html>

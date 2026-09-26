@@ -373,3 +373,24 @@ tr:last-child td { border-bottom: none; }
 tbody tr:hover td { background: var(--surface-alt); }
 td.num, th.num { text-align: right; font-variant-numeric: tabular-nums; white-space: nowrap; }
 tr.total td { font-weight: 700; background: var(--surface-alt); }
+
+/* ---------- Suggestion cards ---------- */
+
+.dup-list { display: grid; gap: 12px; margin: 16px 0 8px; }
+.dup { background: var(--surface); border: 1px solid var(--border); border-radius: var(--radius); box-shadow: var(--shadow); padding: 14px 16px; }
+.dup-head { display: flex; align-items: baseline; gap: 10px; margin-bottom: 6px; }
+.dup-head h3 { margin: 0; font-size: 1.02rem; flex: 1; }
+.dup-count { font-family: var(--mono); font-size: 0.85rem; font-weight: 700; padding: 2px 8px; border-radius: 999px; background: var(--accent-soft); color: var(--accent); white-space: nowrap; }
+.dup > p { margin: 0 0 8px; }
+.dup dl { display: grid; grid-template-columns: 64px 1fr; gap: 4px 12px; margin: 0; font-size: 0.9rem; }
+.dup dt { color: var(--text-muted); font-weight: 600; }
+.dup dd { margin: 0; }
+.dup pre { margin: 10px 0 0; padding: 10px 12px; background: var(--code-bg); border-radius: 6px; overflow-x: auto; font-family: var(--mono); font-size: 0.8rem; line-height: 1.45; }
+.dup pre code { background: none; padding: 0; }
+
+.section-note { color: var(--text-muted); margin: 0 0 4px; }
+
+@media (max-width: 600px) {
+  .dup dl { grid-template-columns: 1fr; }
+  .dup dt { margin-top: 4px; }
+}

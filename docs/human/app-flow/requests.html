@@ -31,6 +31,7 @@
       <summary>Suggestions</summary>
       <div class="nav-menu-list">
         <a href="../suggestions/repeated-code.html">Repeated code</a>
+        <a href="../suggestions/efficiency.html">Efficiency</a>
       </div>
     </details>
   </div>
@@ -347,8 +348,6 @@
         <div class="card"><h3>Term videos load twice</h3><p>On Analytics and PlaylistAnalytics, a date, title or privacy change sends the "videos for the top search term" requests straight away with the old top term, then again when the new term lists arrive, even if the top term hasn't changed.</p></div>
         <div class="card"><h3>Two status pollers on the Sync page</h3><p>The top navigation and the Sync page each request <code>/sync/status</code> every 5 seconds, so that page sends two per interval. The top navigation's poll runs on every page whether or not a sync is running.</p></div>
         <div class="card"><h3>Date range on every appearance</h3><p>The period dropdown requests <code>/meta/date-range</code> every time it appears. Switching tabs brings it back and requests it again, PlaylistAnalytics has two of them on different tabs, and the Sync page requests the same thing separately.</p></div>
-        <div class="card"><h3>No wait for the video or playlist</h3><p>VideoAnalytics and PlaylistAnalytics send all their requests at the same time as the video or playlist lookup, so an unknown ID produces a burst of 404s. VideoAnalytics hides its tabs then, but the requests have already gone.</p></div>
-        <div class="card"><h3>History reload</h3><p>The Sync page forgets the history when you leave the History tab and requests it again when you come back.</p></div>
         <div class="card"><h3>Unused API functions</h3><p><code>getPlaylistAggregatedAnalytics</code> duplicates <code>getPlaylistAnalytics</code> and has no caller. <code>getTopSearchTerms</code> and <code>getPlaylistTopSearchTerms</code> have no caller, so the two <code>…/search-insights/top</code> routes are never requested by the frontend.</p></div>
       </div>
     </section>
