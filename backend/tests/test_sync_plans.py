@@ -17,17 +17,17 @@ from sync.plans import (
 
 class AvailableYearsTest(unittest.TestCase):
     def test_spans_earliest_to_current_newest_first(self) -> None:
-        with mock.patch("sync.plans.database.get_earliest_published_year", return_value=2023), \
+        with mock.patch("sync.plans.reader.scalar", return_value="2023-05-01T00:00:00Z"), \
                 mock.patch("sync.plans.date") as fake_date:
             fake_date.today.return_value.year = 2025
             self.assertEqual(available_years(), (2025, 2024, 2023))
 
     def test_empty_when_no_videos_synced(self) -> None:
-        with mock.patch("sync.plans.database.get_earliest_published_year", return_value=None):
+        with mock.patch("sync.plans.reader.scalar", return_value=None):
             self.assertEqual(available_years(), ())
 
     def test_empty_when_earliest_year_is_in_the_future(self) -> None:
-        with mock.patch("sync.plans.database.get_earliest_published_year", return_value=2099), \
+        with mock.patch("sync.plans.reader.scalar", return_value="2099-01-01T00:00:00Z"), \
                 mock.patch("sync.plans.date") as fake_date:
             fake_date.today.return_value.year = 2025
             self.assertEqual(available_years(), ())

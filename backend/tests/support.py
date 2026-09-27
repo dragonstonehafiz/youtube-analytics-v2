@@ -15,7 +15,7 @@ from fastapi import FastAPI
 from fastapi.testclient import TestClient
 
 import database
-from database import connection
+from database import Comment, FxRate, SyncCoverage, Video, connection, reader
 
 # Captured once at import time, before any test patches connection._DB_PATH, so later
 # comparisons are always against the real application database path rather than
@@ -59,6 +59,61 @@ class IsolatedDatabaseTestCase(unittest.TestCase):
         patcher.start()
 
         database.init_db()
+
+
+def covered_periods(collector: str, video_id: str, start_key: str, end_key: str) -> set[str]:
+    """Return stored completed period keys for a video and collector within an inclusive range."""
+    rows = reader.select(SyncCoverage, ("period_key",), where=[
+        ("collector", "=", collector),
+        ("video_id", "=", video_id),
+        ("period_key", ">=", start_key),
+        ("period_key", "<=", end_key),
+    ])
+    return {row.period_key for row in rows if row.period_key is not None}
+
+
+class StageReads:
+    """In-memory stand-in for the reader calls sync stages make; install with patch_stage_reads()."""
+
+    def __init__(self) -> None:
+        self.videos: list[Video] = []
+        self.covered: set[str] = set()
+        self.stored_video_ids: list[str] = []
+        self.comment_ids: set[str] = set()
+        self.last_fx_rate: FxRate | None = None
+
+    def fetch(self, model: type, query: reader.Query, **kwargs: object) -> list[Video]:
+        """Return the owned-video worklist."""
+        assert model is Video, model
+        return list(self.videos)
+
+    def select(self, model: type, fields: object = None, **kwargs: object) -> list:
+        """Return covered periods, stored video IDs, or stored comment IDs by row class."""
+        if model is SyncCoverage:
+            return [SyncCoverage(period_key=key) for key in sorted(self.covered)]
+        if model is Video:
+            return [Video(id=video_id) for video_id in self.stored_video_ids]
+        if model is Comment:
+            return [Comment(id=comment_id) for comment_id in sorted(self.comment_ids)]
+        raise AssertionError(f"unexpected select of {model.__name__}")
+
+    def select_one(self, model: type, fields: object = None, **kwargs: object) -> FxRate | None:
+        """Return the latest stored FX rate."""
+        assert model is FxRate, model
+        return self.last_fx_rate
+
+
+def patch_stage_reads() -> StageReads:
+    """Route sync.stages reader calls to a fresh StageReads until mock.patch.stopall()."""
+    reads = StageReads()
+    for name in ("fetch", "select", "select_one"):
+        mock.patch(f"sync.stages.reader.{name}", side_effect=getattr(reads, name)).start()
+    return reads
+
+
+def owned_videos(*video_ids: str, title: str | None = "T", published_at: str | None = None) -> list[Video]:
+    """Return worklist rows for owned videos sharing a title and publish time."""
+    return [Video(id=video_id, title=title, published_at=published_at) for video_id in video_ids]
 
 
 def create_test_app(*routers) -> FastAPI:

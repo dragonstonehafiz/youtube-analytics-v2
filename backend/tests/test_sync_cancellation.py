@@ -204,14 +204,15 @@ class StageCheckpointWiringTest(unittest.TestCase):
     def test_sync_fx_rates_stops_between_days(self) -> None:
         from datetime import date, timedelta
 
+        from database import FxRate
         from sync import stages
 
         # A last-synced date three days ago gives exactly two days of work (yesterday
         # inclusive), regardless of when this test runs.
         last_synced = (date.today() - timedelta(days=3)).isoformat()
         mock.patch(
-            "sync.stages.database.get_last_fx_rate",
-            return_value={"date": last_synced, "usd_to_sgd": 1.35},
+            "sync.stages.reader.select_one",
+            return_value=FxRate(date=last_synced, usd_to_sgd=1.35),
         ).start()
         upsert = mock.patch("sync.stages.database.upsert_fx_rate").start()
 

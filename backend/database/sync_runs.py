@@ -143,16 +143,3 @@ def get_sync_runs(page: int = 1, page_size: int = 25) -> tuple[list[dict], int]:
     for group in groups.values():
         group["status"] = _batch_status(group["runs"])
     return list(groups.values()), total
-
-
-def get_last_successful_run_completed_at() -> str | None:
-    """Return the latest successful stage completion time, if any."""
-    with get_connection() as conn:
-        row = conn.execute(
-            """
-            SELECT MAX(sr.completed_at) AS completed_at
-            FROM sync_runs sr
-            WHERE sr.status = 'success'
-            """
-        ).fetchone()
-    return row["completed_at"] if row else None

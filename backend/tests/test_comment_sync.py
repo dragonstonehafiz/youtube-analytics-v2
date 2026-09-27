@@ -12,6 +12,7 @@ from googleapiclient.errors import HttpError
 from logging_config import configure_logging, reset_logging
 from sync import stages
 from sync.stages import COMMENT_INCREMENTAL_OVERLAP, SyncCounts
+from tests.support import owned_videos, patch_stage_reads
 from youtube import data_api
 
 # These tests drive the comments stage and fetcher, both of which log through the real
@@ -76,11 +77,8 @@ class CommentStageTestCase(unittest.TestCase):
 
     def setUp(self) -> None:
         self.addCleanup(mock.patch.stopall)
-        mock.patch("sync.stages.database.get_owned_video_ids", return_value=["v1"]).start()
-        mock.patch("sync.stages.database.get_owned_video", return_value={"title": "A video"}).start()
-        self.known = mock.patch(
-            "sync.stages.database.get_comment_ids_for_video", return_value=set()
-        ).start()
+        self.reads = patch_stage_reads()
+        self.reads.videos = owned_videos("v1", title="A video")
         self.upsert_author = mock.patch("sync.stages.database.upsert_comment_author").start()
         self.upsert_comment = mock.patch("sync.stages.database.upsert_comment").start()
         self.cleanup = mock.patch(
@@ -95,7 +93,7 @@ class CommentStageTestCase(unittest.TestCase):
 
 class IncrementalBoundaryTest(CommentStageTestCase):
     def test_stops_one_overlap_past_the_first_known_comment(self) -> None:
-        self.known.return_value = {"c50"}
+        self.reads.comment_ids = {"c50"}
         self.iter_threads.return_value = iter(
             [_normalized(f"c{n}") for n in range(1, 301)]
         )
@@ -109,7 +107,7 @@ class IncrementalBoundaryTest(CommentStageTestCase):
         self.assertEqual(self.written_ids[-1], f"c{50 + COMMENT_INCREMENTAL_OVERLAP}")
 
     def test_counts_the_boundary_item_it_stopped_on_as_fetched(self) -> None:
-        self.known.return_value = {"c1"}
+        self.reads.comment_ids = {"c1"}
         self.iter_threads.return_value = iter(
             [_normalized(f"c{n}") for n in range(1, 301)]
         )
@@ -139,7 +137,7 @@ class IncrementalBoundaryTest(CommentStageTestCase):
         self.assertEqual(self.written_ids, ["recent-1", "recent-2"])
 
     def test_never_deletes_comments(self) -> None:
-        self.known.return_value = {"c1"}
+        self.reads.comment_ids = {"c1"}
         self.iter_threads.return_value = iter([_normalized("c1")])
         counts = SyncCounts()
 
@@ -150,7 +148,7 @@ class IncrementalBoundaryTest(CommentStageTestCase):
 
 class FullDataScanTest(CommentStageTestCase):
     def test_reads_past_known_comments_and_the_cutoff(self) -> None:
-        self.known.return_value = {"c1"}
+        self.reads.comment_ids = {"c1"}
         self.iter_threads.return_value = iter([
             _normalized("c1"),
             _normalized("c2"),

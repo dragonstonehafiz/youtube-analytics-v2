@@ -7,7 +7,7 @@ Public FastAPI contracts: every route, its parameters, defaults, and response sh
 ## Authoritative source files
 
 - `backend/routes/videos.py`, `backend/routes/playlists.py`, `backend/routes/analytics.py`, `backend/routes/comments.py`, `backend/routes/synchronization.py`, `backend/routes/metadata.py` (`backend/routes/__init__.py` aggregates these into one `router`, in that order)
-- `backend/database/` (response-producing helpers only — see `database.md` for their internals)
+- `backend/database/` (the reader, `queries.py` specifications, and report functions that produce responses — see `database.md` for their internals)
 
 ## Contents
 
@@ -56,8 +56,10 @@ GET  /videos/stats
 
 GET  /videos/published
   ?start_date, end_date, content_type, privacy_status, playlist_id, title
-  → { items: PublishedVideo[] }   # id, title, published_at, thumbnail_url, content_type only
-  Filters on published_at, not analytics date. No pagination.
+  → { items: PublishedVideo[] } | 404 if playlist_id is given and not found
+  # items carry id, title, published_at, thumbnail_url, content_type only
+  Filters on published_at, not analytics date. No pagination. With playlist_id, scoped to the
+  members from resolve_playlist_video_ids() (see Analytics below).
   MUST be declared before /videos/{id} in routes/videos.py (path-matching order) — see below.
 
 GET  /videos/{video_id}
@@ -100,6 +102,8 @@ GET  /playlists/{playlist_id}/videos
    title, start_date, end_date, content_type, privacy_status
   sort_by ∈ published_at | view_count | comment_count | total_revenue_sgd
   → { items: Video[], total, page, page_size } | 404 if playlist not found
+  Same query and fields as GET /videos, scoped to the members from resolve_playlist_video_ids()
+  (see Analytics below). A video listed more than once in the playlist appears and counts once.
 ```
 
 ## Channel analytics
@@ -153,15 +157,15 @@ GET  /analytics/playlists/{playlist_id}/traffic-sources/top
   Same explicit limit=10 note as the channel-wide equivalent above.
 ```
 
-Each of these four routes is a thin wrapper over the *same* database helper its channel-wide
-counterpart calls — there are no playlist-specific query helpers. Every playlist analytics handler,
+Each of these four routes runs the *same* report function or `queries.py` specification as its
+channel-wide counterpart — there are no playlist-specific queries. Every playlist analytics handler,
 and `GET /playlists/{playlist_id}/videos/stats`, follows one flow, factored into
 `resolve_playlist_video_ids()` in `routes/video_scope.py`:
 
-1. `database.playlist_exists(playlist_id)` — the sole 404 boundary, raising `404 {"detail": "Playlist not found"}`.
-   It is a bare existence lookup; no playlist aggregate statistics are computed.
-2. `database.get_playlist_video_ids(playlist_id)` — the playlist's distinct, catalog-backed member IDs.
-3. the shared helper, called with `video_ids=` those IDs.
+1. `require_playlist(playlist_id)` — the sole 404 boundary, raising `404 {"detail": "Playlist not found"}`.
+   It is a bare `reader.select_one(Playlist, ("id",), ...)` existence lookup; no playlist aggregate statistics are computed.
+2. `reader.fetch(Video, queries.playlist_owned_video_ids(playlist_id))` — the playlist's distinct, catalog-backed member IDs.
+3. the shared report or specification, called with `video_ids=` those IDs.
 
 The shared analytics queries themselves never join `playlist_items`; the route resolves membership
 first (that lookup is the only thing that reads `playlist_items`) and passes the resulting IDs down.
@@ -221,7 +225,7 @@ GET  /analytics/videos/{video_id}/search-insights
   → { items: SearchTermRow[] } | 404 if video not found   # that video's own terms, no cap
 ```
 
-`get_search_terms()`/`get_video_search_terms()` (`database.md`) are the only backing queries — `/search-insights` and `/search-insights/top` are the *same* database call with `limit=None` vs `limit=10`; there is no separate "top" function. `/search-insights/videos` calls `get_videos_by_search_term()`, a single-term lookup, not a per-term-grouped query — the frontend requests it once per selected term, not once for every term that exists.
+`queries.search_term_totals()` (`database.md`) backs every term list — `/search-insights` and `/search-insights/top` are the *same* query with `limit=None` vs `limit=10`, and the video route passes `video_ids=[video_id]` after a 404 check; there is no separate "top" query. Each route serializes `SearchTerm.to_dict(("search_term", "views"))`. `/search-insights/videos` runs `queries.videos_by_search_term()`, a single-term lookup, not a per-term-grouped query — the frontend requests it once per selected term, not once for every term that exists.
 
 No endpoint here returns a chart-shaped envelope (no `donuts`, no `unattributed_views`, no coverage/residual fields) — these are plain aggregate rows, the same shape as every other aggregation endpoint above. A frontend chart that wants a read-time residual against traffic totals computes it itself from `/analytics/traffic-sources` (requesting the full calendar-month range) — the backend does not compute or store one.
 
@@ -269,7 +273,7 @@ GET  /analytics/videos/{video_id}/related-videos/referrers
   destinations route with referrer_video_id fixed to this video's own ID.
 ```
 
-Backed by `database.get_related_video_referrers()`/`get_related_video_destinations()` (`database.md`) — no separate query function per route. Like Search insights, no endpoint here returns a chart-shaped envelope: no coverage table, no persisted or read-time residual, no `period_start`/`period_end`. The only cross-bucket total is `total_named_views`, and it is a real stored-row sum, not a computed gap against aggregate Traffic Sources.
+Backed by the report `database.get_related_video_referrers()` and the specification `queries.related_video_destinations()` (`database.md`) — no separate query per route. Like Search insights, no endpoint here returns a chart-shaped envelope: no coverage table, no persisted or read-time residual, no `period_start`/`period_end`. The only cross-bucket total is `total_named_views`, and it is a real stored-row sum, not a computed gap against aggregate Traffic Sources.
 
 ## Comments
 
@@ -403,8 +407,8 @@ GET  /sync/runs
 
 ## Route-order and compatibility constraints
 
-- **`/videos/published` must be declared before `/videos/{video_id}`** in `routes/videos.py` — FastAPI matches routes in declaration order, and a literal path segment (`published`) would otherwise be captured by the `{video_id}` path parameter on an earlier-declared dynamic route. Confirmed current order in `routes/videos.py` has `/videos/published` (line 47) before `/videos/{video_id}` (line 60). `routes/__init__.py` includes the six sub-routers in a fixed order (videos, playlists, analytics, comments, synchronization, metadata), but that inter-file order carries no matching-order risk here since no two files declare overlapping path prefixes with the same ambiguity — only the intra-file `/videos/published` vs `/videos/{video_id}` ordering matters. The comments routes are likewise unambiguous: `/comments` has no dynamic sibling, and `/comments/videos/{id}` and `/comments/playlists/{id}` are distinguished by a literal second segment.
+- **`/videos/published` must be declared before `/videos/{video_id}`** in `routes/videos.py` — FastAPI matches routes in declaration order, and a literal path segment (`published`) would otherwise be captured by the `{video_id}` path parameter on an earlier-declared dynamic route. Confirmed current order in `routes/videos.py` has `/videos/published` (line 48) before `/videos/{video_id}` (line 65). `routes/__init__.py` includes the six sub-routers in a fixed order (videos, playlists, analytics, comments, synchronization, metadata), but that inter-file order carries no matching-order risk here since no two files declare overlapping path prefixes with the same ambiguity — only the intra-file `/videos/published` vs `/videos/{video_id}` ordering matters. The comments routes are likewise unambiguous: `/comments` has no dynamic sibling, and `/comments/videos/{id}` and `/comments/playlists/{id}` are distinguished by a literal second segment.
 - Frontend's `api.ts` exposes two identically-implemented functions for the same endpoint — `getPlaylistAnalytics(id, params)` and `getPlaylistAggregatedAnalytics(id, params)` both call `GET /analytics/playlists/{id}` with no difference in behavior. Only `getPlaylistAnalytics` is actually used by `PlaylistAnalytics.tsx`; treat the other as a redundant alias, not a second endpoint.
-- Adding a new sortable column to any `sort_by` requires updating the backend's allow-list (`database/videos.py`'s `VIDEO_SORT_COLUMNS` / `database/playlists.py`'s `_PLAYLIST_SORT_COLUMNS`, see `database.md`) — an unrecognized value is silently ignored (falls back to the default sort) rather than rejected with an error.
-- The Top Videos routes' `sort_by` is different: it's typed `Literal["views", "watch_time"]` in `routes/analytics.py`, so FastAPI rejects an invalid value with 422 instead of silently falling back. The DB helper (`get_top_videos_by_views()`, in `database/analytics.py`) still falls back to `"views"` defensively if called directly with an unrecognized value — see `database.md`.
+- Adding a new sortable column to any `sort_by` requires updating the backend's sort mapping (`database/queries.py`'s `_VIDEO_SORT_COLUMNS` / `_PLAYLIST_SORT_COLUMNS`, see `database.md`) — an unrecognized value is silently ignored (falls back to the default sort) rather than rejected with an error.
+- The Top Videos routes' `sort_by` is different: it's typed `Literal["views", "watch_time"]` in `routes/analytics.py`, so FastAPI rejects an invalid value with 422 instead of silently falling back. The query specification (`queries.top_videos_by_views()`) still falls back to `"views"` if called directly with an unrecognized value — see `database.md`.
 - Frontend repository call sites (`api.ts`'s `getTopVideosByViews()` / `getPlaylistTopVideosByViews()`) require an explicit `TopVideoSortBy` argument with no default, so a missed call site fails `tsc` rather than silently sending the wrong sort. The backend route still defaults to `views` for external API consumers that omit `sort_by`.

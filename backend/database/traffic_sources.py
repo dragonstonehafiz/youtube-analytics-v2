@@ -25,16 +25,6 @@ def upsert_video_traffic_source(row: dict) -> None:
         )
 
 
-def get_last_traffic_source_date(video_id: str) -> str | None:
-    """Return the most recent date we have traffic sources for a video, or None."""
-    with get_connection() as conn:
-        row = conn.execute(
-            "SELECT MAX(date) AS last_date FROM video_traffic_sources WHERE video_id = ?",
-            (video_id,),
-        ).fetchone()
-    return row["last_date"] if row else None
-
-
 def _zero_fill_traffic_sources(rows: list[dict], start_date: str | None, end_date: str | None) -> list[dict]:
     """Fill missing (date, traffic_source_type) combinations in the traffic source rows with zero values."""
     if not rows:

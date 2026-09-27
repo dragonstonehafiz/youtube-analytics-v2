@@ -5,8 +5,12 @@ import sqlite3
 from pathlib import Path
 
 import database
+from database import SearchTerm, Video, queries, reader
+from routes import router
+from routes.video_scope import resolve_playlist_video_ids
 from tests.support import (
     IsolatedDatabaseTestCase,
+    create_test_client,
     make_comment,
     make_comment_author,
     make_playlist,
@@ -23,6 +27,20 @@ assert _spec is not None and _spec.loader is not None
 _migration_module = importlib.util.module_from_spec(_spec)
 _spec.loader.exec_module(_migration_module)
 migrate_videos_own = _migration_module.migrate
+
+_client = create_test_client(router)
+
+
+def _get(path: str, **params: str) -> dict:
+    """Return a successful endpoint response body."""
+    response = _client.get(path, params=params)
+    assert response.status_code == 200, (path, response.status_code)
+    return response.json()
+
+
+def _worklist_ids(published_through: str | None = None) -> list[str | None]:
+    """Return the sync stages' owned-video worklist IDs in processing order."""
+    return [video.id for video in reader.fetch(Video, queries.owned_video_worklist(published_through))]
 
 
 class VideosOwnSchemaTest(IsolatedDatabaseTestCase):
@@ -162,7 +180,7 @@ class UpsertRelatedVideoTest(IsolatedDatabaseTestCase):
 
     def test_new_row_written_as_external_is_queryable_without_being_owned(self) -> None:
         database.upsert_related_video(make_video("ref-1", "Other"), own=False)
-        self.assertIsNone(database.get_owned_video("ref-1"))
+        self.assertEqual(_client.get("/videos/ref-1").status_code, 404)
         with database.get_connection() as conn:
             row = conn.execute("SELECT title FROM videos WHERE id = 'ref-1'").fetchone()
         self.assertEqual(row["title"], "Other")
@@ -195,29 +213,30 @@ class OwnershipQueryBoundaryTest(IsolatedDatabaseTestCase):
         with database.get_connection() as conn:
             conn.execute("UPDATE videos SET own = 0 WHERE id = 'v-external'")
 
-    def test_get_owned_video_id_worklist_excludes_external(self) -> None:
-        self.assertEqual(database.get_owned_video_ids(), ["v-owned"])
+    def test_owned_video_worklist_excludes_external(self) -> None:
+        self.assertEqual(_worklist_ids(), ["v-owned"])
 
-    def test_get_all_video_ids_still_includes_external(self) -> None:
-        self.assertEqual(set(database.get_all_video_ids()), {"v-owned", "v-external"})
+    def test_stored_video_ids_still_include_external(self) -> None:
+        self.assertEqual({video.id for video in reader.select(Video, ("id",))}, {"v-owned", "v-external"})
 
-    def test_get_owned_video_returns_none_for_external_id(self) -> None:
-        self.assertIsNone(database.get_owned_video("v-external"))
+    def test_video_detail_404s_for_external_id(self) -> None:
+        self.assertEqual(_client.get("/videos/v-external").status_code, 404)
 
-    def test_get_all_videos_catalog_excludes_external(self) -> None:
-        items, total = database.get_all_videos()
+    def test_video_catalog_excludes_external(self) -> None:
+        body = _get("/videos")
+        items, total = body["items"], body["total"]
         self.assertEqual(total, 1)
         self.assertEqual([v["id"] for v in items], ["v-owned"])
         self.assertIs(items[0]["own"], True)
 
-    def test_get_videos_published_excludes_external(self) -> None:
-        items = database.get_videos_published()
+    def test_published_videos_exclude_external(self) -> None:
+        items = _get("/videos/published")["items"]
         self.assertEqual([v["id"] for v in items], ["v-owned"])
 
-    def test_get_earliest_published_year_ignores_external(self) -> None:
+    def test_earliest_published_year_ignores_external(self) -> None:
         with database.get_connection() as conn:
             conn.execute("UPDATE videos SET own = 0 WHERE id = 'v-owned'")
-        self.assertIsNone(database.get_earliest_published_year())
+        self.assertIsNone(_get("/meta/date-range")["earliest_year"])
 
     def test_get_video_stats_excludes_external(self) -> None:
         stats = database.get_video_stats()
@@ -242,14 +261,14 @@ class OwnershipQueryBoundaryTest(IsolatedDatabaseTestCase):
         database.upsert_playlist_item(make_playlist_item("pi-1", "p-1", "v-owned"))
         database.upsert_playlist_item(make_playlist_item("pi-2", "p-1", "v-external"))
 
-        playlist = database.get_playlist("p-1")
-        assert playlist is not None
+        playlist = _get("/playlists/p-1")["item"]
         self.assertEqual(playlist["total_views"], 100)
 
-        video_ids = database.get_playlist_video_ids("p-1")
+        video_ids = resolve_playlist_video_ids("p-1")
         self.assertEqual(video_ids, ["v-owned"])
 
-        items, total = database.get_playlist_videos("p-1")
+        body = _get("/playlists/p-1/videos")
+        items, total = body["items"], body["total"]
         self.assertEqual(total, 1)
         self.assertEqual([v["id"] for v in items], ["v-owned"])
 
@@ -258,7 +277,7 @@ class OwnershipQueryBoundaryTest(IsolatedDatabaseTestCase):
         database.upsert_playlist_item(make_playlist_item("pi-1", "p-1", "v-owned"))
         database.upsert_playlist_item(make_playlist_item("pi-2", "p-1", "v-external"))
 
-        stats = database.get_video_stats(video_ids=database.get_playlist_video_ids("p-1"))
+        stats = database.get_video_stats(video_ids=resolve_playlist_video_ids("p-1"))
         self.assertEqual(stats["total_public"], 1)
 
     def test_video_analytics_excludes_external_video(self) -> None:
@@ -271,7 +290,7 @@ class OwnershipQueryBoundaryTest(IsolatedDatabaseTestCase):
         aggregated = database.get_aggregated_analytics()
         self.assertEqual(sum(r["views"] for r in aggregated), 10)
 
-        top = database.get_top_videos_by_views()
+        top = _get("/analytics/videos/top")["items"]
         self.assertEqual([v["id"] for v in top], ["v-owned"])
 
     def test_traffic_sources_exclude_external_video(self) -> None:
@@ -292,13 +311,14 @@ class OwnershipQueryBoundaryTest(IsolatedDatabaseTestCase):
         database.upsert_search_terms("v-owned", "2024-01", [make_search_term("cats", views=5)])
         database.upsert_search_terms("v-external", "2024-01", [make_search_term("dogs", views=7)])
 
-        self.assertEqual(database.get_video_search_terms("v-external"), [])
-        self.assertNotEqual(database.get_video_search_terms("v-owned"), [])
+        self.assertEqual(reader.fetch(SearchTerm, queries.search_term_totals(video_ids=["v-external"])), [])
+        self.assertNotEqual(reader.fetch(SearchTerm, queries.search_term_totals(video_ids=["v-owned"])), [])
+        self.assertEqual(_client.get("/analytics/videos/v-external/search-insights").status_code, 404)
 
-        terms = database.get_search_terms()
+        terms = _get("/analytics/search-insights")["items"]
         self.assertEqual([t["search_term"] for t in terms], ["cats"])
 
-        videos = database.get_videos_by_search_term("dogs")
+        videos = _get("/analytics/search-insights/videos", search_term="dogs")["items"]
         self.assertEqual(videos, [])
 
     def test_comments_exclude_external_video(self) -> None:
@@ -306,13 +326,14 @@ class OwnershipQueryBoundaryTest(IsolatedDatabaseTestCase):
         database.upsert_comment(make_comment("c-owned", "v-owned", "author-1"))
         database.upsert_comment(make_comment("c-external", "v-external", "author-1"))
 
-        items, total = database.get_comments()
+        body = _get("/comments")
+        items, total = body["items"], body["total"]
         self.assertEqual(total, 1)
         self.assertEqual([c["id"] for c in items], ["c-owned"])
 
 
 class PublishedThroughWorklistBoundaryTest(IsolatedDatabaseTestCase):
-    """get_owned_video_ids(published_through=...) is the period-aware sync stages'
+    """owned_video_worklist(published_through=...) is the period-aware sync stages'
     pre-loop eligibility filter: a video published after the bound must never reach
     per-video processing, while a video published on the bound (any time of day),
     an older video, or one with no known publish date remains eligible."""
@@ -331,24 +352,24 @@ class PublishedThroughWorklistBoundaryTest(IsolatedDatabaseTestCase):
             conn.execute("UPDATE videos SET own = 0 WHERE id = 'v-external'")
 
     def test_bounded_call_includes_before_on_bound_and_unknown_only(self) -> None:
-        ids = set(database.get_owned_video_ids(published_through="2024-01-15"))
+        ids = set(_worklist_ids("2024-01-15"))
         self.assertEqual(ids, {"v-before", "v-on-bound-early", "v-on-bound-late", "v-unknown"})
 
     def test_bounded_call_excludes_a_video_published_after_the_bound(self) -> None:
-        ids = database.get_owned_video_ids(published_through="2024-01-15")
+        ids = _worklist_ids("2024-01-15")
         self.assertNotIn("v-after", ids)
 
     def test_bounded_call_still_excludes_external_rows(self) -> None:
-        ids = database.get_owned_video_ids(published_through="2024-01-15")
+        ids = _worklist_ids("2024-01-15")
         self.assertNotIn("v-external", ids)
 
     def test_unbounded_call_still_returns_every_owned_video(self) -> None:
-        ids = set(database.get_owned_video_ids())
+        ids = set(_worklist_ids())
         self.assertEqual(ids, {"v-before", "v-on-bound-early", "v-on-bound-late", "v-after", "v-unknown"})
 
 
 class WorklistOrderTest(IsolatedDatabaseTestCase):
-    """get_owned_video_ids() must return a deterministic oldest-first order regardless
+    """owned_video_worklist() must return a deterministic oldest-first order regardless
     of insertion order: dated rows ascending by published_at, ties broken by ascending
     id, then undated rows last ordered by ascending id. Every SQL-backed per-video sync
     stage relies on this single worklist for its processing order."""
@@ -371,9 +392,9 @@ class WorklistOrderTest(IsolatedDatabaseTestCase):
             conn.execute("UPDATE videos SET published_at = NULL WHERE id IN ('v-x', 'v-y')")
 
     def test_unbounded_worklist_is_dated_oldest_first_then_id_tied_then_undated_by_id(self) -> None:
-        ids = database.get_owned_video_ids()
+        ids = _worklist_ids()
         self.assertEqual(ids, ["v-z", "v-m", "v-n", "v-a", "v-x", "v-y"])
 
     def test_bounded_worklist_keeps_the_same_relative_order_excluding_only_dated_rows_after_the_bound(self) -> None:
-        ids = database.get_owned_video_ids(published_through="2024-02-01")
+        ids = _worklist_ids("2024-02-01")
         self.assertEqual(ids, ["v-z", "v-m", "v-n", "v-x", "v-y"])

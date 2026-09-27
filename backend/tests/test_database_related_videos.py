@@ -1,9 +1,32 @@
 from __future__ import annotations
 
 import sqlite3
+from typing import Any
 
 import database
+from database import RelatedVideo, Video, queries, reader
+from routes.video_scope import resolve_playlist_video_ids
 from tests.support import IsolatedDatabaseTestCase, make_playlist, make_playlist_item, make_related_referrer, make_video
+
+
+def _destinations(referrer_video_id: str, **filters: Any) -> list[dict]:
+    """Run the Related Video destinations spec and serialize rows as the API does."""
+    rows = reader.fetch_joined(
+        queries.related_video_destinations(referrer_video_id, **filters), (RelatedVideo, Video)
+    )
+    return [
+        {
+            **row[RelatedVideo].to_dict(("target_video_id",)),
+            **row[Video].to_dict(queries.DESTINATION_VIDEO_FIELDS),
+            **row[RelatedVideo].to_dict(("views",)),
+        }
+        for row in rows
+    ]
+
+
+def _last_month(target_video_id: str) -> str | None:
+    """Return the latest stored Related Video month for a target."""
+    return reader.scalar(RelatedVideo, "MAX", "month", where=[("target_video_id", "=", target_video_id)])
 
 
 class RelatedVideosSchemaTest(IsolatedDatabaseTestCase):
@@ -166,13 +189,13 @@ class GetLastRelatedVideosMonthTest(IsolatedDatabaseTestCase):
         database.upsert_own_video(make_video("v-1", "Alpha"))
 
     def test_returns_none_when_no_rows(self) -> None:
-        self.assertIsNone(database.get_last_related_videos_month("v-1"))
+        self.assertIsNone(_last_month("v-1"))
 
     def test_returns_the_latest_stored_month(self) -> None:
         database.upsert_related_videos("v-1", "2024-01", [make_related_referrer("ref-1", views=5)])
         database.upsert_related_videos("v-1", "2024-03", [make_related_referrer("ref-2", views=5)])
         database.upsert_related_videos("v-1", "2024-02", [make_related_referrer("ref-3", views=5)])
-        self.assertEqual(database.get_last_related_videos_month("v-1"), "2024-03")
+        self.assertEqual(_last_month("v-1"), "2024-03")
 
 
 class GetRelatedVideoReferrersTest(IsolatedDatabaseTestCase):
@@ -340,36 +363,36 @@ class GetRelatedVideoDestinationsTest(IsolatedDatabaseTestCase):
     def test_scopes_to_a_single_referrer(self) -> None:
         database.upsert_related_videos("v-1", "2024-01", [make_related_referrer("ref-mine", views=5)])
         database.upsert_related_videos("v-2", "2024-01", [make_related_referrer("ref-external", views=9)])
-        result = database.get_related_video_destinations("ref-mine")
+        result = _destinations("ref-mine")
         self.assertEqual([r["target_video_id"] for r in result], ["v-1"])
 
     def test_works_identically_for_an_external_referrer(self) -> None:
         database.upsert_related_videos("v-1", "2024-01", [make_related_referrer("ref-external", views=9)])
-        result = database.get_related_video_destinations("ref-external")
+        result = _destinations("ref-external")
         self.assertEqual([r["target_video_id"] for r in result], ["v-1"])
 
     def test_limit_caps_results(self) -> None:
         database.upsert_related_videos("v-1", "2024-01", [make_related_referrer("ref-mine", views=5)])
         database.upsert_related_videos("v-2", "2024-01", [make_related_referrer("ref-mine", views=9)])
-        result = database.get_related_video_destinations("ref-mine", limit=1)
+        result = _destinations("ref-mine", limit=1)
         self.assertEqual(len(result), 1)
         self.assertEqual(result[0]["target_video_id"], "v-2")
 
     def test_ordering_is_views_desc_then_target_id_asc(self) -> None:
         database.upsert_related_videos("v-1", "2024-01", [make_related_referrer("ref-mine", views=5)])
         database.upsert_related_videos("v-2", "2024-01", [make_related_referrer("ref-mine", views=5)])
-        result = database.get_related_video_destinations("ref-mine")
+        result = _destinations("ref-mine")
         self.assertEqual([r["target_video_id"] for r in result], ["v-1", "v-2"])
 
     def test_video_ids_scopes_the_destination_set(self) -> None:
         database.upsert_related_videos("v-1", "2024-01", [make_related_referrer("ref-mine", views=5)])
         database.upsert_related_videos("v-2", "2024-01", [make_related_referrer("ref-mine", views=9)])
-        result = database.get_related_video_destinations("ref-mine", video_ids=["v-1"])
+        result = _destinations("ref-mine", video_ids=["v-1"])
         self.assertEqual([r["target_video_id"] for r in result], ["v-1"])
 
     def test_video_ids_empty_returns_nothing(self) -> None:
         database.upsert_related_videos("v-1", "2024-01", [make_related_referrer("ref-mine", views=5)])
-        result = database.get_related_video_destinations("ref-mine", video_ids=[])
+        result = _destinations("ref-mine", video_ids=[])
         self.assertEqual(result, [])
 
     def test_playlist_membership_deduplicates_destinations(self) -> None:
@@ -377,10 +400,10 @@ class GetRelatedVideoDestinationsTest(IsolatedDatabaseTestCase):
         database.upsert_playlist_item(make_playlist_item("pi-1", "p-1", "v-1", 0))
         database.upsert_playlist_item(make_playlist_item("pi-2", "p-1", "v-1", 1))
         database.upsert_related_videos("v-1", "2024-01", [make_related_referrer("ref-mine", views=5)])
-        playlist_video_ids = database.get_playlist_video_ids("p-1")
-        result = database.get_related_video_destinations("ref-mine", video_ids=playlist_video_ids)
+        playlist_video_ids = resolve_playlist_video_ids("p-1")
+        result = _destinations("ref-mine", video_ids=playlist_video_ids)
         self.assertEqual(len(result), 1)
 
     def test_no_rows_for_unknown_referrer(self) -> None:
         database.upsert_related_videos("v-1", "2024-01", [make_related_referrer("ref-mine", views=5)])
-        self.assertEqual(database.get_related_video_destinations("does-not-exist"), [])
+        self.assertEqual(_destinations("does-not-exist"), [])

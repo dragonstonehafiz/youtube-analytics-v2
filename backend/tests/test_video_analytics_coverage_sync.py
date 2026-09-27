@@ -6,7 +6,7 @@ from unittest import mock
 import database
 from sync import stages
 from sync.stages import SyncCounts
-from tests.support import IsolatedDatabaseTestCase, make_video
+from tests.support import IsolatedDatabaseTestCase, covered_periods, make_video
 
 
 class VideoAnalyticsCoverageTestCase(IsolatedDatabaseTestCase):
@@ -39,7 +39,7 @@ class FirstSyncTest(VideoAnalyticsCoverageTestCase):
 
         calls = [(c.args[1], c.args[2]) for c in fetch.call_args_list]
         self.assertEqual(calls, [("2023-10-01", "2024-03-14")])
-        covered = database.get_covered_periods("video_analytics", "v1", "2023-01", "2024-12")
+        covered = covered_periods("video_analytics", "v1", "2023-01", "2024-12")
         self.assertEqual(covered, {"2023-10", "2023-11", "2023-12", "2024-01", "2024-02", "2024-03"})
 
 
@@ -67,7 +67,7 @@ class SteadyStateTest(VideoAnalyticsCoverageTestCase):
 
         calls = [(c.args[1], c.args[2]) for c in fetch.call_args_list]
         self.assertEqual(calls, [("2024-02-01", "2024-03-14")])
-        covered = database.get_covered_periods("video_analytics", "v1", "2024-02", "2024-03")
+        covered = covered_periods("video_analytics", "v1", "2024-02", "2024-03")
         self.assertEqual(covered, {"2024-02", "2024-03"})
 
 
@@ -87,7 +87,7 @@ class InternalGapTest(VideoAnalyticsCoverageTestCase):
             ("2023-11-01", "2023-11-30"),
             ("2024-01-01", "2024-03-14"),
         ])
-        covered = database.get_covered_periods("video_analytics", "v1", "2023-01", "2024-12")
+        covered = covered_periods("video_analytics", "v1", "2023-01", "2024-12")
         self.assertEqual(covered, {"2023-10", "2023-11", "2023-12", "2024-01", "2024-02", "2024-03"})
 
 
@@ -100,7 +100,7 @@ class FailureLeavesRangeUncoveredTest(VideoAnalyticsCoverageTestCase):
         with self.assertRaises(RuntimeError):
             stages.sync_video_analytics("incremental", None, SyncCounts())
 
-        covered = database.get_covered_periods("video_analytics", "v1", "2023-01", "2024-12")
+        covered = covered_periods("video_analytics", "v1", "2023-01", "2024-12")
         self.assertEqual(covered, {"2023-10", "2023-11", "2023-12"})
         self.assertNotIn("2024-01", covered)
         self.assertNotIn("2024-02", covered)
@@ -132,7 +132,7 @@ class MultiYearBacklogTest(VideoAnalyticsCoverageTestCase):
 
         with self.assertRaises(RuntimeError):
             stages.sync_video_analytics("incremental", None, SyncCounts())
-        first_attempt = database.get_covered_periods("video_analytics", "v-old", "2015-01", "2015-12")
+        first_attempt = covered_periods("video_analytics", "v-old", "2015-01", "2015-12")
         self.assertEqual(first_attempt, {f"2015-{m:02d}" for m in range(1, 13)})
 
         # Retrying (e.g. next Incremental run) must not re-request 2015 at all, since
@@ -152,7 +152,7 @@ class YearScopeTest(VideoAnalyticsCoverageTestCase):
 
         stages.sync_video_analytics("year", 2019, SyncCounts())
 
-        covered = database.get_covered_periods("video_analytics", "v2", "2019-01", "2019-12")
+        covered = covered_periods("video_analytics", "v2", "2019-01", "2019-12")
         self.assertEqual(len(covered), 12)
 
     def test_all_scope_marks_the_still_open_current_month_too(self) -> None:
@@ -161,7 +161,7 @@ class YearScopeTest(VideoAnalyticsCoverageTestCase):
 
         stages.sync_video_analytics("all", None, SyncCounts())
 
-        covered = database.get_covered_periods("video_analytics", "v1", "2023-01", "2024-12")
+        covered = covered_periods("video_analytics", "v1", "2023-01", "2024-12")
         self.assertEqual(covered, {"2023-10", "2023-11", "2023-12", "2024-01", "2024-02", "2024-03"})
 
 
@@ -175,7 +175,7 @@ class TrafficSourcesParityTest(VideoAnalyticsCoverageTestCase):
         stages.sync_video_traffic_sources("incremental", None, SyncCounts())
 
         self.assertEqual(fetch.call_count, 1)
-        covered = database.get_covered_periods("video_traffic_sources", "v1", "2023-01", "2024-12")
+        covered = covered_periods("video_traffic_sources", "v1", "2023-01", "2024-12")
         self.assertEqual(covered, {"2023-10", "2023-11", "2023-12", "2024-01", "2024-02", "2024-03"})
         # video_analytics coverage is untouched by the traffic-sources sync.
-        self.assertEqual(database.get_covered_periods("video_analytics", "v1", "2023-01", "2024-12"), set())
+        self.assertEqual(covered_periods("video_analytics", "v1", "2023-01", "2024-12"), set())

@@ -2,7 +2,7 @@
 
 /* ---------- Timeline (request phases) ---------- */
 
-.phases { list-style: none; padding: 0; margin: 12px 0; max-width: none; }
+.phases { list-style: none; padding: 0; margin: 12px 0; }
 .phases > li {
   position: relative;
   padding: 0 0 14px 28px;

@@ -4,6 +4,7 @@ import unittest
 from datetime import datetime, timedelta, timezone
 from unittest import mock
 
+from database import SyncRun
 from sync import scheduler
 
 
@@ -14,11 +15,7 @@ def _iso(moment: datetime) -> str:
 
 class SyncedTodayTest(unittest.TestCase):
     def _with_checkpoint(self, completed_at: str | None) -> mock.Mock:
-        patcher = mock.patch.object(
-            scheduler.database,
-            "get_last_successful_run_completed_at",
-            return_value=completed_at,
-        )
+        patcher = mock.patch.object(scheduler.reader, "scalar", return_value=completed_at)
         self.addCleanup(patcher.stop)
         return patcher.start()
 
@@ -42,7 +39,7 @@ class SyncedTodayTest(unittest.TestCase):
         """The check no longer depends on the five-stage pipeline being complete."""
         query = self._with_checkpoint(None)
         scheduler.synced_today()
-        query.assert_called_once_with()
+        query.assert_called_once_with(SyncRun, "MAX", "completed_at", where=[("status", "=", "success")])
 
 
 class StartBackgroundSchedulerTest(unittest.TestCase):

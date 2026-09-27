@@ -5,7 +5,7 @@ from datetime import date
 from pathlib import Path
 
 import database
-from tests.support import IsolatedDatabaseTestCase, make_video, make_video_analytics
+from tests.support import IsolatedDatabaseTestCase, covered_periods, make_video, make_video_analytics
 
 _MIGRATION_SCRIPT = Path(__file__).resolve().parents[1] / "scripts" / "issue-62-migration.py"
 _spec = importlib.util.spec_from_file_location("issue_62_migration", _MIGRATION_SCRIPT)
@@ -25,7 +25,7 @@ class MigrateTest(IsolatedDatabaseTestCase):
         expected = {"2023-11", "2023-12", "2024-01", "2024-02", "2024-03"}
         for collector in COLLECTORS:
             with self.subTest(collector=collector):
-                covered = database.get_covered_periods(collector, "v1", "2023-01", "2024-12")
+                covered = covered_periods(collector, "v1", "2023-01", "2024-12")
                 self.assertEqual(covered, expected)
 
     def test_two_videos_with_different_publish_dates_get_independent_ranges(self) -> None:
@@ -35,11 +35,11 @@ class MigrateTest(IsolatedDatabaseTestCase):
         migrate(today=date(2024, 3, 1))
 
         self.assertEqual(
-            database.get_covered_periods("video_analytics", "v1", "2024-01", "2024-03"),
+            covered_periods("video_analytics", "v1", "2024-01", "2024-03"),
             {"2024-01", "2024-02", "2024-03"},
         )
         self.assertEqual(
-            database.get_covered_periods("video_analytics", "v2", "2024-01", "2024-03"),
+            covered_periods("video_analytics", "v2", "2024-01", "2024-03"),
             {"2024-02", "2024-03"},
         )
 
@@ -51,15 +51,15 @@ class MigrateTest(IsolatedDatabaseTestCase):
         migrate(today=date(2024, 3, 1))
 
         for collector in COLLECTORS:
-            self.assertEqual(database.get_covered_periods(collector, "v-ext", "2000-01", "2100-01"), set())
+            self.assertEqual(covered_periods(collector, "v-ext", "2000-01", "2100-01"), set())
 
     def test_rerun_produces_the_identical_key_set(self) -> None:
         database.upsert_own_video(make_video("v1", "Alpha", published_at="2023-11-15T00:00:00Z"))
 
         migrate(today=date(2024, 3, 10))
-        first = database.get_covered_periods("video_analytics", "v1", "2023-01", "2024-12")
+        first = covered_periods("video_analytics", "v1", "2023-01", "2024-12")
         migrate(today=date(2024, 3, 10))
-        second = database.get_covered_periods("video_analytics", "v1", "2023-01", "2024-12")
+        second = covered_periods("video_analytics", "v1", "2023-01", "2024-12")
 
         self.assertEqual(first, second)
 
@@ -74,7 +74,7 @@ class MigrateTest(IsolatedDatabaseTestCase):
 
         self.assertIn("v-bad", str(ctx.exception))
         for collector in COLLECTORS:
-            self.assertEqual(database.get_covered_periods(collector, "v-good", "2000-01", "2100-01"), set())
+            self.assertEqual(covered_periods(collector, "v-good", "2000-01", "2100-01"), set())
 
     def test_return_value_reports_owned_video_count_and_per_collector_totals(self) -> None:
         database.upsert_own_video(make_video("v1", "Alpha", published_at="2024-01-01T00:00:00Z"))
@@ -103,6 +103,6 @@ class MigrateTest(IsolatedDatabaseTestCase):
         migrate(today=date(2024, 3, 1))
 
         self.assertEqual(
-            database.get_covered_periods("video_analytics", "v1", "2024-01", "2024-03"),
+            covered_periods("video_analytics", "v1", "2024-01", "2024-03"),
             {"2024-01", "2024-02", "2024-03"},
         )

@@ -23,6 +23,7 @@
       <div class="nav-menu-list">
         <a href="../architecture/backend-architecture.html">Backend architecture</a>
         <a href="../architecture/backend-reference.html">Backend reference</a>
+        <a href="../architecture/data-storage.html">Data storage and access</a>
         <a href="../architecture/frontend-components.html">Frontend components</a>
       </div>
     </details>
@@ -53,7 +54,7 @@
       <h1>Dead code</h1>
       <p>This page shows code, styles and dependencies that nothing in the app uses.</p>
       <div class="meta-line">
-        <span>Source revision <code>f03f410</code></span>
+        <span>Source revision <code>926f014</code></span>
       </div>
     </header>
 
@@ -62,35 +63,24 @@
       <div class="dup-list">
 
         <article class="dup">
-          <div class="dup-head"><h3>“Last stored date” getters</h3><span class="dup-count">4 functions</span></div>
-          <p>Find the newest period already saved for one video in one dataset.</p>
-          <dl>
-            <dt>Where</dt><dd><code>get_last_analytics_date</code> (<code>database/analytics.py</code>), <code>get_last_traffic_source_date</code> (<code>traffic_sources.py</code>), <code>get_last_search_terms_month</code> (<code>search_terms.py</code>), <code>get_last_related_videos_month</code> (<code>related_videos.py</code>); all re-exported from <code>database/__init__.py</code></dd>
-            <dt>Does</dt><dd>Runs <code>SELECT MAX(date)</code> or <code>MAX(month)</code> for the video and returns that date or month, or <code>None</code> if nothing is stored.</dd>
-            <dt>Meant for</dt><dd>Incremental sync: start fetching from the last stored day or month instead of from the publish date, so history already synced is not fetched again.</dd>
-            <dt>Why dead</dt><dd>The sync stages read <code>sync_coverage</code> (<code>get_covered_periods</code>) to find missing months instead. Only tests call <code>get_last_related_videos_month</code>; the other three have no callers.</dd>
-          </dl>
-        </article>
-
-        <article class="dup">
           <div class="dup-head"><h3>“Top 10 search terms” routes</h3><span class="dup-count">2 routes</span></div>
           <p>Serve only the ten biggest search terms instead of the whole list.</p>
           <dl>
             <dt>Where</dt><dd><code>GET /analytics/search-insights/top</code> (<code>get_top_search_terms</code>) and <code>GET /analytics/playlists/{playlist_id}/search-insights/top</code> (<code>get_playlist_top_search_terms</code>) in <code>routes/analytics.py</code></dd>
-            <dt>Does</dt><dd>Calls <code>database.get_search_terms(…, limit=10)</code> with the usual date, type, privacy and title filters, channel-wide or for one playlist, and returns <code>{"items": [{search_term, views}, …]}</code>.</dd>
+            <dt>Does</dt><dd>Runs <code>queries.search_term_totals(…, limit=10)</code> through the reader with the usual date, type, privacy and title filters, channel-wide or for one playlist, and returns <code>{"items": [{search_term, views}, …]}</code>.</dd>
             <dt>Meant for</dt><dd>A “top search terms” view that needs only the leaders, without downloading every term.</dd>
             <dt>Why dead</dt><dd>The pages call <code>…/search-insights</code> for the full list, because the donut's “Other” total and the term dropdown need every term. The frontend wrappers for these routes exist but are never called. The <code>/top</code> routes are the main routes with <code>limit=10</code> hard-coded; the main routes take no <code>limit</code> parameter, unlike <code>…/search-insights/videos</code>.</dd>
           </dl>
         </article>
 
         <article class="dup">
-          <div class="dup-head"><h3><code>get_fx_rates</code></h3><span class="dup-count">1 function</span></div>
-          <p>Read the stored USD→SGD exchange-rate history.</p>
+          <div class="dup-head"><h3>Row classes no read uses</h3><span class="dup-count">2 classes</span></div>
+          <p>Data classes for two tables that the app reads without them.</p>
           <dl>
-            <dt>Where</dt><dd><code>database/fx_rates.py</code>; re-exported from <code>database/__init__.py</code></dd>
-            <dt>Does</dt><dd>Selects <code>date, usd_to_sgd</code> from <code>fx_rates</code>, optionally between two dates, and returns the rows ordered by date.</dd>
-            <dt>Meant for</dt><dd>Code that needs the rates themselves, such as converting USD earnings to SGD in Python or showing the rate over time.</dd>
-            <dt>Why dead</dt><dd>Every earnings query converts in SQL by joining <code>fx_rates</code>, and the FX sync stage only needs the newest rate (<code>get_last_fx_rate</code>). Only tests call it.</dd>
+            <dt>Where</dt><dd><code>VideoAnalytics</code> and <code>VideoTrafficSource</code> in <code>database/dataclasses/</code>; registered in <code>reader.TABLES</code> and re-exported from <code>database/__init__.py</code></dd>
+            <dt>Does</dt><dd>Hold one <code>video_analytics</code> or <code>video_traffic_sources</code> row, with every field defaulting to <code>None</code>.</dd>
+            <dt>Meant for</dt><dd>Reading those tables through the reader, like every other table.</dd>
+            <dt>Why dead</dt><dd>Both tables are read only by the zero-fill and per-source top-video reports, which run their own SQL and return dictionaries. Only the reader's tests use the classes.</dd>
           </dl>
         </article>
 

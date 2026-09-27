@@ -3,7 +3,7 @@ from __future__ import annotations
 import unittest
 
 import database
-from tests.support import IsolatedDatabaseTestCase, freeze_now, make_video
+from tests.support import IsolatedDatabaseTestCase, covered_periods, freeze_now, make_video
 
 
 class SyncCoverageSchemaTest(IsolatedDatabaseTestCase):
@@ -37,20 +37,20 @@ class UpsertCoverageTest(IsolatedDatabaseTestCase):
     def test_empty_period_keys_is_a_no_op(self) -> None:
         rows_written = database.upsert_coverage("video_analytics", "v-1", [])
         self.assertEqual(rows_written, 0)
-        self.assertEqual(database.get_covered_periods("video_analytics", "v-1", "2024-01", "2024-12"), set())
+        self.assertEqual(covered_periods("video_analytics", "v-1", "2024-01", "2024-12"), set())
 
     def test_two_collectors_on_the_same_video_and_month_are_independent(self) -> None:
         database.upsert_coverage("video_analytics", "v-1", ["2024-01"])
-        self.assertEqual(database.get_covered_periods("video_traffic_sources", "v-1", "2024-01", "2024-01"), set())
+        self.assertEqual(covered_periods("video_traffic_sources", "v-1", "2024-01", "2024-01"), set())
 
     def test_two_videos_on_the_same_collector_and_month_are_independent(self) -> None:
         database.upsert_coverage("video_analytics", "v-1", ["2024-01"])
-        self.assertEqual(database.get_covered_periods("video_analytics", "v-2", "2024-01", "2024-01"), set())
+        self.assertEqual(covered_periods("video_analytics", "v-2", "2024-01", "2024-01"), set())
 
     def test_repeated_upsert_of_the_same_period_is_idempotent(self) -> None:
         database.upsert_coverage("video_analytics", "v-1", ["2024-01"])
         database.upsert_coverage("video_analytics", "v-1", ["2024-01"])
-        self.assertEqual(database.get_covered_periods("video_analytics", "v-1", "2024-01", "2024-01"), {"2024-01"})
+        self.assertEqual(covered_periods("video_analytics", "v-1", "2024-01", "2024-01"), {"2024-01"})
 
     def test_repeated_upsert_refreshes_completed_at(self) -> None:
         with freeze_now("2024-06-01T00:00:00+00:00"):
@@ -71,20 +71,20 @@ class GetCoveredPeriodsTest(IsolatedDatabaseTestCase):
         database.upsert_coverage("video_analytics", "v-1", ["2023-11", "2023-12", "2024-01", "2024-06"])
 
     def test_range_is_inclusive_of_both_bounds(self) -> None:
-        covered = database.get_covered_periods("video_analytics", "v-1", "2023-12", "2024-01")
+        covered = covered_periods("video_analytics", "v-1", "2023-12", "2024-01")
         self.assertEqual(covered, {"2023-12", "2024-01"})
 
     def test_periods_outside_the_range_are_excluded(self) -> None:
-        covered = database.get_covered_periods("video_analytics", "v-1", "2023-12", "2024-01")
+        covered = covered_periods("video_analytics", "v-1", "2023-12", "2024-01")
         self.assertNotIn("2023-11", covered)
         self.assertNotIn("2024-06", covered)
 
     def test_no_coverage_in_range_returns_empty_set(self) -> None:
-        covered = database.get_covered_periods("video_analytics", "v-1", "2024-02", "2024-05")
+        covered = covered_periods("video_analytics", "v-1", "2024-02", "2024-05")
         self.assertEqual(covered, set())
 
     def test_unknown_video_returns_empty_set(self) -> None:
-        covered = database.get_covered_periods("video_analytics", "missing-video", "2024-01", "2024-12")
+        covered = covered_periods("video_analytics", "missing-video", "2024-01", "2024-12")
         self.assertEqual(covered, set())
 
 

@@ -3,6 +3,7 @@ from __future__ import annotations
 import unittest
 
 import database
+from database import Video, reader
 from routes.playlists import router as playlists_router
 from routes.videos import router as videos_router
 from tests.support import (
@@ -229,7 +230,8 @@ class ChannelStatisticsRouteTest(VideoStatisticsTestCase):
         ))
 
     def test_playlist_of_every_owned_video_matches_channel(self) -> None:
-        for position, video_id in enumerate(database.get_owned_video_ids()):
+        owned = reader.select(Video, ("id",), where=[("own", "=", True)], order_by=("id",))
+        for position, video_id in enumerate(video.id for video in owned):
             database.upsert_playlist_item(make_playlist_item(f"all-{position}", "p-empty", video_id, position))
         for params in ({}, {"start_date": "2024-01-10", "end_date": "2024-01-20"}, {"content_type": "short"}):
             with self.subTest(params=params):

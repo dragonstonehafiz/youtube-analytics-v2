@@ -3,7 +3,31 @@ from __future__ import annotations
 import unittest
 
 import database
-from tests.support import IsolatedDatabaseTestCase, make_playlist, make_playlist_item, make_video
+from routes.playlists import router as playlists_router
+from routes.videos import router as videos_router
+from tests.support import (
+    IsolatedDatabaseTestCase,
+    create_test_client,
+    make_fx_rate,
+    make_playlist,
+    make_playlist_item,
+    make_video,
+    make_video_analytics,
+)
+
+_client = create_test_client(videos_router, playlists_router)
+
+
+def _page(path: str, **params: str | int) -> tuple[list[dict], int]:
+    """Return a paged endpoint's items and total."""
+    body = _client.get(path, params=params).json()
+    return body["items"], body["total"]
+
+
+def _item(path: str) -> dict | None:
+    """Return a detail endpoint's item, or None on 404."""
+    response = _client.get(path)
+    return None if response.status_code == 404 else response.json()["item"]
 
 
 class VideoCatalogTestCase(IsolatedDatabaseTestCase):
@@ -29,32 +53,32 @@ class VideoCatalogTestCase(IsolatedDatabaseTestCase):
 
 class GetAllVideosPaginationTest(VideoCatalogTestCase):
     def test_empty_catalog_returns_empty_page_and_zero_total(self) -> None:
-        items, total = database.get_all_videos()
+        items, total = _page("/videos")
         self.assertEqual(items, [])
         self.assertEqual(total, 0)
 
     def test_first_page_returns_page_size_items(self) -> None:
         self._seed_sortable_videos()
-        items, total = database.get_all_videos(page=1, page_size=2)
+        items, total = _page("/videos", page=1, page_size=2)
         self.assertEqual(len(items), 2)
         self.assertEqual(total, 4)
 
     def test_second_page_continues_without_overlap(self) -> None:
         self._seed_sortable_videos()
-        first, _ = database.get_all_videos(page=1, page_size=2)
-        second, _ = database.get_all_videos(page=2, page_size=2)
+        first, _ = _page("/videos", page=1, page_size=2)
+        second, _ = _page("/videos", page=2, page_size=2)
         self.assertFalse({i["id"] for i in first} & {i["id"] for i in second})
 
     def test_page_past_the_end_is_empty_but_total_is_stable(self) -> None:
         self._seed_sortable_videos()
-        items, total = database.get_all_videos(page=5, page_size=2)
+        items, total = _page("/videos", page=5, page_size=2)
         self.assertEqual(items, [])
         self.assertEqual(total, 4)
 
     def test_total_is_independent_of_page_size(self) -> None:
         self._seed_sortable_videos()
-        _, total_small = database.get_all_videos(page=1, page_size=1)
-        _, total_large = database.get_all_videos(page=1, page_size=100)
+        _, total_small = _page("/videos", page=1, page_size=1)
+        _, total_large = _page("/videos", page=1, page_size=100)
         self.assertEqual(total_small, total_large)
 
 
@@ -71,8 +95,8 @@ class GetAllVideosSortTest(VideoCatalogTestCase):
         }
         for sort_by, (asc_order, desc_order) in expectations.items():
             with self.subTest(sort_by=sort_by):
-                asc_items, _ = database.get_all_videos(page_size=10, sort_by=sort_by, sort_dir="asc")
-                desc_items, _ = database.get_all_videos(page_size=10, sort_by=sort_by, sort_dir="desc")
+                asc_items, _ = _page("/videos", page_size=10, sort_by=sort_by, sort_dir="asc")
+                desc_items, _ = _page("/videos", page_size=10, sort_by=sort_by, sort_dir="desc")
                 self.assertEqual([i["id"] for i in asc_items], asc_order)
                 self.assertEqual([i["id"] for i in desc_items], desc_order)
 
@@ -86,13 +110,13 @@ class GetAllVideosSortTest(VideoCatalogTestCase):
                 "estimated_revenue": revenue, "average_view_duration_seconds": 1, "average_view_percentage": 1.0,
                 "likes": 0, "subscribers_gained": 0, "subscribers_lost": 0,
             })
-        asc_items, _ = database.get_all_videos(page_size=10, sort_by="total_revenue_sgd", sort_dir="asc")
-        desc_items, _ = database.get_all_videos(page_size=10, sort_by="total_revenue_sgd", sort_dir="desc")
+        asc_items, _ = _page("/videos", page_size=10, sort_by="total_revenue_sgd", sort_dir="asc")
+        desc_items, _ = _page("/videos", page_size=10, sort_by="total_revenue_sgd", sort_dir="desc")
         self.assertEqual([i["id"] for i in asc_items], ["v-4", "v-1", "v-3", "v-2"])
         self.assertEqual([i["id"] for i in desc_items], ["v-2", "v-3", "v-1", "v-4"])
 
     def test_invalid_sort_falls_back_to_published_at(self) -> None:
-        items, _ = database.get_all_videos(page_size=10, sort_by="not_a_column", sort_dir="asc")
+        items, _ = _page("/videos", page_size=10, sort_by="not_a_column", sort_dir="asc")
         self.assertEqual([i["id"] for i in items], ["v-1", "v-2", "v-3", "v-4"])
 
 
@@ -102,24 +126,25 @@ class GetAllVideosFilterTest(VideoCatalogTestCase):
         self._seed_sortable_videos()
 
     def test_title_filter_is_case_insensitive_substring(self) -> None:
-        items, total = database.get_all_videos(title="amm")
+        items, total = _page("/videos", title="amm")
         self.assertEqual({i["id"] for i in items}, {"v-3"})
         self.assertEqual(total, 1)
 
     def test_publication_date_bounds_are_inclusive(self) -> None:
-        items, _ = database.get_all_videos(start_date="2024-01-02", end_date="2024-01-03")
+        items, _ = _page("/videos", start_date="2024-01-02", end_date="2024-01-03")
         self.assertEqual({i["id"] for i in items}, {"v-2", "v-3"})
 
     def test_content_type_filter(self) -> None:
-        items, _ = database.get_all_videos(content_type="short")
+        items, _ = _page("/videos", content_type="short")
         self.assertEqual({i["id"] for i in items}, {"v-3", "v-4"})
 
     def test_privacy_status_filter(self) -> None:
-        items, _ = database.get_all_videos(privacy_status="public")
+        items, _ = _page("/videos", privacy_status="public")
         self.assertEqual({i["id"] for i in items}, {"v-1", "v-3"})
 
     def test_combined_filters_and_pagination(self) -> None:
-        items, total = database.get_all_videos(
+        items, total = _page(
+            "/videos",
             content_type="short", privacy_status="unlisted", start_date="2024-01-01", end_date="2024-01-31",
             page=1, page_size=10,
         )
@@ -127,31 +152,31 @@ class GetAllVideosFilterTest(VideoCatalogTestCase):
         self.assertEqual(total, 1)
 
     def test_no_matches_returns_empty_page_with_zero_total(self) -> None:
-        items, total = database.get_all_videos(title="does-not-exist")
+        items, total = _page("/videos", title="does-not-exist")
         self.assertEqual(items, [])
         self.assertEqual(total, 0)
 
     def test_title_filter_matches_video_id(self) -> None:
-        items, total = database.get_all_videos(title="v-3")
+        items, total = _page("/videos", title="v-3")
         self.assertEqual({i["id"] for i in items}, {"v-3"})
         self.assertEqual(total, 1)
 
     def test_id_match_combines_with_other_filters_and_pagination(self) -> None:
-        items, total = database.get_all_videos(title="v-3", content_type="short", page=1, page_size=10)
+        items, total = _page("/videos", title="v-3", content_type="short", page=1, page_size=10)
         self.assertEqual([i["id"] for i in items], ["v-3"])
         self.assertEqual(total, 1)
-        items, total = database.get_all_videos(title="v-3", content_type="video", page=1, page_size=10)
+        items, total = _page("/videos", title="v-3", content_type="video", page=1, page_size=10)
         self.assertEqual(items, [])
         self.assertEqual(total, 0)
 
 
 class GetVideoTest(VideoCatalogTestCase):
     def test_unknown_video_returns_none(self) -> None:
-        self.assertIsNone(database.get_owned_video("nope"))
+        self.assertIsNone(_item("/videos/nope"))
 
     def test_known_video_returns_a_dict(self) -> None:
         self._seed_sortable_videos()
-        video = database.get_owned_video("v-1")
+        video = _item("/videos/v-1")
         assert video is not None
         self.assertEqual(video["id"], "v-1")
 
@@ -165,39 +190,39 @@ class PlaylistCatalogTestCase(IsolatedDatabaseTestCase):
 
 class GetAllPlaylistsTest(PlaylistCatalogTestCase):
     def test_empty_catalog_returns_empty_page_and_zero_total(self) -> None:
-        items, total = database.get_all_playlists()
+        items, total = _page("/playlists")
         self.assertEqual(items, [])
         self.assertEqual(total, 0)
 
     def test_pagination_boundaries(self) -> None:
         self._seed_sortable_playlists()
-        first, total = database.get_all_playlists(page=1, page_size=2, sort_by="published_at", sort_dir="asc")
-        second, _ = database.get_all_playlists(page=2, page_size=2, sort_by="published_at", sort_dir="asc")
+        first, total = _page("/playlists", page=1, page_size=2, sort_by="published_at", sort_dir="asc")
+        second, _ = _page("/playlists", page=2, page_size=2, sort_by="published_at", sort_dir="asc")
         self.assertEqual(total, 3)
         self.assertEqual([p["id"] for p in first], ["p-1", "p-2"])
         self.assertEqual([p["id"] for p in second], ["p-3"])
 
     def test_item_count_sort_both_directions(self) -> None:
         self._seed_sortable_playlists()
-        asc, _ = database.get_all_playlists(sort_by="item_count", sort_dir="asc")
-        desc, _ = database.get_all_playlists(sort_by="item_count", sort_dir="desc")
+        asc, _ = _page("/playlists", sort_by="item_count", sort_dir="asc")
+        desc, _ = _page("/playlists", sort_by="item_count", sort_dir="desc")
         self.assertEqual([p["id"] for p in asc], ["p-1", "p-3", "p-2"])
         self.assertEqual([p["id"] for p in desc], ["p-2", "p-3", "p-1"])
 
     def test_title_filter(self) -> None:
         self._seed_sortable_playlists()
-        items, _ = database.get_all_playlists(title="beta")
+        items, _ = _page("/playlists", title="beta")
         self.assertEqual({p["id"] for p in items}, {"p-2"})
 
     def test_title_filter_matches_playlist_id_when_title_does_not_contain_term(self) -> None:
         self._seed_sortable_playlists()
-        items, total = database.get_all_playlists(title="p-2")
+        items, total = _page("/playlists", title="p-2")
         self.assertEqual({p["id"] for p in items}, {"p-2"})
         self.assertEqual(total, 1)
 
     def test_publication_date_bounds_are_inclusive(self) -> None:
         self._seed_sortable_playlists()
-        items, _ = database.get_all_playlists(start_date="2024-01-02", end_date="2024-01-02")
+        items, _ = _page("/playlists", start_date="2024-01-02", end_date="2024-01-02")
         self.assertEqual({p["id"] for p in items}, {"p-2"})
 
 
@@ -228,31 +253,31 @@ class PlaylistAggregateSortTest(IsolatedDatabaseTestCase):
             })
 
     def test_last_item_added_sorts_both_directions(self) -> None:
-        asc, _ = database.get_all_playlists(sort_by="last_item_added", sort_dir="asc")
-        desc, _ = database.get_all_playlists(sort_by="last_item_added", sort_dir="desc")
+        asc, _ = _page("/playlists", sort_by="last_item_added", sort_dir="asc")
+        desc, _ = _page("/playlists", sort_by="last_item_added", sort_dir="desc")
         self.assertEqual([p["id"] for p in asc], ["p-1", "p-3", "p-2"])
         self.assertEqual([p["id"] for p in desc], ["p-2", "p-3", "p-1"])
 
     def test_total_views_sorts_both_directions(self) -> None:
-        asc, _ = database.get_all_playlists(sort_by="total_views", sort_dir="asc")
-        desc, _ = database.get_all_playlists(sort_by="total_views", sort_dir="desc")
+        asc, _ = _page("/playlists", sort_by="total_views", sort_dir="asc")
+        desc, _ = _page("/playlists", sort_by="total_views", sort_dir="desc")
         self.assertEqual([p["id"] for p in asc], ["p-2", "p-3", "p-1"])
         self.assertEqual([p["id"] for p in desc], ["p-1", "p-3", "p-2"])
 
     def test_total_earnings_sgd_sorts_both_directions(self) -> None:
-        asc, _ = database.get_all_playlists(sort_by="total_earnings_sgd", sort_dir="asc")
-        desc, _ = database.get_all_playlists(sort_by="total_earnings_sgd", sort_dir="desc")
+        asc, _ = _page("/playlists", sort_by="total_earnings_sgd", sort_dir="asc")
+        desc, _ = _page("/playlists", sort_by="total_earnings_sgd", sort_dir="desc")
         self.assertEqual([p["id"] for p in asc], ["p-1", "p-3", "p-2"])
         self.assertEqual([p["id"] for p in desc], ["p-2", "p-3", "p-1"])
 
 
 class GetPlaylistTest(PlaylistCatalogTestCase):
     def test_unknown_playlist_returns_none(self) -> None:
-        self.assertIsNone(database.get_playlist("nope"))
+        self.assertIsNone(_item("/playlists/nope"))
 
     def test_known_playlist_returns_a_dict(self) -> None:
         self._seed_sortable_playlists()
-        playlist = database.get_playlist("p-1")
+        playlist = _item("/playlists/p-1")
         assert playlist is not None
         self.assertEqual(playlist["id"], "p-1")
 
@@ -268,29 +293,51 @@ class GetPlaylistVideosTest(PlaylistCatalogTestCase):
         database.upsert_playlist_item(make_playlist_item("pi-2", "p-1", "v-2", 1))
 
     def test_scoped_to_playlist_membership(self) -> None:
-        items, total = database.get_playlist_videos("p-1")
+        items, total = _page("/playlists/p-1/videos")
         self.assertEqual({i["id"] for i in items}, {"v-1", "v-2"})
         self.assertEqual(total, 2)
 
     def test_empty_playlist_returns_empty_page(self) -> None:
         database.upsert_playlist(make_playlist("p-empty", "Empty", item_count=0))
-        items, total = database.get_playlist_videos("p-empty")
+        items, total = _page("/playlists/p-empty/videos")
         self.assertEqual(items, [])
         self.assertEqual(total, 0)
 
     def test_view_count_sort_within_playlist(self) -> None:
-        items, _ = database.get_playlist_videos("p-1", sort_by="view_count", sort_dir="desc")
+        items, _ = _page("/playlists/p-1/videos", sort_by="view_count", sort_dir="desc")
         self.assertEqual([i["id"] for i in items], ["v-2", "v-1"])
 
     def test_combined_filters_scoped_to_playlist(self) -> None:
-        items, _ = database.get_playlist_videos("p-1", title="alpha")
+        items, _ = _page("/playlists/p-1/videos", title="alpha")
         self.assertEqual([i["id"] for i in items], ["v-1"])
 
+    def test_duplicate_membership_counts_once_and_does_not_inflate_totals(self) -> None:
+        database.upsert_playlist_item(make_playlist_item("pi-dup", "p-1", "v-1", 2))
+        database.upsert_fx_rate(make_fx_rate("2024-01-05", 1.5))
+        database.upsert_video_analytics(make_video_analytics("v-1", "2024-01-05", watch_time_minutes=60, estimated_revenue=2.0))
+        items, total = _page("/playlists/p-1/videos")
+        self.assertEqual(total, 2)
+        self.assertEqual(sorted(i["id"] for i in items), ["v-1", "v-2"])
+        playlist_v1 = next(i for i in items if i["id"] == "v-1")
+        channel_v1 = _item("/videos/v-1")
+        assert channel_v1 is not None
+        self.assertEqual(playlist_v1["total_revenue_sgd"], 3.0)
+        self.assertEqual(playlist_v1["total_watch_time_hours"], 1.0)
+        self.assertEqual(playlist_v1, channel_v1)
+
+    def test_unknown_playlist_is_404(self) -> None:
+        self.assertEqual(_client.get("/playlists/nope/videos").status_code, 404)
+
+    def test_published_videos_scope_to_the_playlist_and_404_when_it_is_missing(self) -> None:
+        body = _client.get("/videos/published", params={"playlist_id": "p-1"}).json()
+        self.assertEqual([v["id"] for v in body["items"]], ["v-1", "v-2"])
+        self.assertEqual(_client.get("/videos/published", params={"playlist_id": "nope"}).status_code, 404)
+
     def test_title_filter_matches_video_id_scoped_to_playlist(self) -> None:
-        items, total = database.get_playlist_videos("p-1", title="v-1")
+        items, total = _page("/playlists/p-1/videos", title="v-1")
         self.assertEqual([i["id"] for i in items], ["v-1"])
         self.assertEqual(total, 1)
-        items, total = database.get_playlist_videos("p-1", title="v-3")
+        items, total = _page("/playlists/p-1/videos", title="v-3")
         self.assertEqual(items, [])
         self.assertEqual(total, 0)
 

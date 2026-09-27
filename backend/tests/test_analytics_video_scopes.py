@@ -1,14 +1,27 @@
 ﻿from __future__ import annotations
 
 import unittest
+from typing import Any
 from unittest import mock
 
 from fastapi import HTTPException
 
 import database
+from database import Video, queries, reader
 from routes.analytics import router as analytics_router
-from routes.video_scope import resolve_playlist_video_ids
+from routes.video_scope import require_playlist, resolve_playlist_video_ids
 from tests.support import IsolatedDatabaseTestCase, create_test_client
+
+
+def _top_videos(**filters: Any) -> list[dict]:
+    """Run the top-videos spec and serialize rows as the API does."""
+    rows = reader.fetch_joined(queries.top_videos_by_views(**filters), (Video,), queries.TOP_VIDEO_VALUES)
+    return [{**row[Video].to_dict(queries.TOP_VIDEO_FIELDS), **row.values} for row in rows]
+
+
+def _member_ids(playlist_id: str) -> list[str | None]:
+    """Return the playlist membership query's video IDs."""
+    return [video.id for video in reader.fetch(Video, queries.playlist_owned_video_ids(playlist_id))]
 
 START_DATE = "2024-01-01"
 END_DATE = "2024-01-31"
@@ -93,18 +106,18 @@ class VideoScopeTestCase(IsolatedDatabaseTestCase):
 
 class PlaylistVideoIdsTest(VideoScopeTestCase):
     def test_returns_each_valid_member_once(self) -> None:
-        self.assertEqual(sorted(database.get_playlist_video_ids("p-full")), ["v-a", "v-b"])
+        self.assertEqual(sorted(_member_ids("p-full")), ["v-a", "v-b"])
 
     def test_excludes_dangling_and_null_membership(self) -> None:
-        ids = database.get_playlist_video_ids("p-full")
+        ids = _member_ids("p-full")
         self.assertNotIn("missing-video", ids)
         self.assertNotIn(None, ids)
 
     def test_empty_playlist_returns_empty_list(self) -> None:
-        self.assertEqual(database.get_playlist_video_ids("p-empty"), [])
+        self.assertEqual(_member_ids("p-empty"), [])
 
     def test_unknown_playlist_returns_empty_list(self) -> None:
-        self.assertEqual(database.get_playlist_video_ids("nope"), [])
+        self.assertEqual(_member_ids("nope"), [])
 
 
 class AggregatedAnalyticsScopeTest(VideoScopeTestCase):
@@ -146,26 +159,26 @@ class AggregatedAnalyticsScopeTest(VideoScopeTestCase):
 
 class TopVideosByViewsScopeTest(VideoScopeTestCase):
     def test_omitted_scope_ranks_every_video(self) -> None:
-        rows = database.get_top_videos_by_views(start_date=START_DATE, end_date=END_DATE)
+        rows = _top_videos(start_date=START_DATE, end_date=END_DATE)
         self.assertEqual([row["id"] for row in rows], ["v-a", "v-b", "v-c", "v-d"])
 
     def test_populated_scope_limits_ranking(self) -> None:
-        rows = database.get_top_videos_by_views(start_date=START_DATE, end_date=END_DATE, video_ids=["v-b", "v-c"])
+        rows = _top_videos(start_date=START_DATE, end_date=END_DATE, video_ids=["v-b", "v-c"])
         self.assertEqual([row["id"] for row in rows], ["v-b", "v-c"])
 
     def test_empty_scope_returns_empty_list(self) -> None:
-        self.assertEqual(database.get_top_videos_by_views(start_date=START_DATE, end_date=END_DATE, video_ids=[]), [])
+        self.assertEqual(_top_videos(start_date=START_DATE, end_date=END_DATE, video_ids=[]), [])
 
     def test_watch_time_sort_applies_within_scope(self) -> None:
-        rows = database.get_top_videos_by_views(start_date=START_DATE, end_date=END_DATE, sort_by="watch_time", video_ids=["v-a", "v-b"])
+        rows = _top_videos(start_date=START_DATE, end_date=END_DATE, sort_by="watch_time", video_ids=["v-a", "v-b"])
         self.assertEqual([row["id"] for row in rows], ["v-b", "v-a"])
 
     def test_limit_applies_within_scope(self) -> None:
-        rows = database.get_top_videos_by_views(start_date=START_DATE, end_date=END_DATE, limit=1, video_ids=["v-a", "v-b"])
+        rows = _top_videos(start_date=START_DATE, end_date=END_DATE, limit=1, video_ids=["v-a", "v-b"])
         self.assertEqual([row["id"] for row in rows], ["v-a"])
 
     def test_scope_composes_with_filters(self) -> None:
-        rows = database.get_top_videos_by_views(
+        rows = _top_videos(
             start_date=START_DATE, end_date=END_DATE, content_type="video", privacy_status="private",
             title="Episode", video_ids=["v-a", "v-b"],
         )
@@ -242,7 +255,7 @@ class PlaylistRouteScopeTest(VideoScopeTestCase):
 
     def test_top_videos_matches_scoped_helper(self) -> None:
         body = self._get("/analytics/playlists/p-full/top", **DATE_RANGE)
-        expected = database.get_top_videos_by_views(start_date=START_DATE, end_date=END_DATE, video_ids=["v-a", "v-b"])
+        expected = _top_videos(start_date=START_DATE, end_date=END_DATE, video_ids=["v-a", "v-b"])
         self.assertEqual(body["items"], expected)
         self.assertEqual([row["id"] for row in body["items"]], ["v-a", "v-b"])
 
@@ -298,7 +311,7 @@ class FilteredPlaylistParityTest(VideoScopeTestCase):
 
     def test_top_videos_matches_scoped_helper_under_all_filters(self) -> None:
         body = self._get("/analytics/playlists/p-full/top", **DATE_RANGE, **self.FILTERS)
-        expected = database.get_top_videos_by_views(
+        expected = _top_videos(
             start_date=START_DATE, end_date=END_DATE, content_type=self.CONTENT_TYPE,
             privacy_status=self.PRIVACY_STATUS, title=self.TITLE, video_ids=self.MEMBERS,
         )
@@ -399,12 +412,13 @@ class PlaylistScopeResolverTest(VideoScopeTestCase):
         self.assertEqual(raised.exception.status_code, 404)
         self.assertEqual(raised.exception.detail, "Playlist not found")
 
-    def test_playlist_exists_distinguishes_empty_from_missing(self) -> None:
-        self.assertTrue(database.playlist_exists("p-empty"))
-        self.assertFalse(database.playlist_exists("nope"))
+    def test_playlist_existence_distinguishes_empty_from_missing(self) -> None:
+        require_playlist("p-empty")
+        with self.assertRaises(HTTPException):
+            require_playlist("nope")
 
     def test_playlist_routes_never_compute_playlist_aggregates(self) -> None:
-        with mock.patch.object(database, "get_playlist", side_effect=AssertionError("aggregate lookup")):
+        with mock.patch.object(queries, "playlist_catalog", side_effect=AssertionError("aggregate lookup")):
             for suffix, params in PLAYLIST_ROUTE_PARAMS:
                 for playlist_id in ("p-full", "p-empty"):
                     with self.subTest(suffix=suffix, playlist_id=playlist_id):

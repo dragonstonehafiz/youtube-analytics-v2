@@ -1,8 +1,10 @@
 from __future__ import annotations
 
 import unittest
+from typing import Any
 
 import database
+from database import FxRate, Video, queries, reader
 from tests.support import (
     IsolatedDatabaseTestCase,
     make_fx_rate,
@@ -10,6 +12,12 @@ from tests.support import (
     make_video,
     make_video_analytics,
 )
+
+
+def _top_video_ids(**filters: Any) -> list[str | None]:
+    """Return the top-videos spec's ranked video IDs."""
+    rows = reader.fetch_joined(queries.top_videos_by_views(**filters), (Video,), queries.TOP_VIDEO_VALUES)
+    return [row[Video].id for row in rows]
 
 
 class AnalyticsFixtureTestCase(IsolatedDatabaseTestCase):
@@ -119,18 +127,21 @@ class FxRatesTest(IsolatedDatabaseTestCase):
         database.upsert_fx_rate(make_fx_rate("2024-02-01", 1.40))
 
     def test_range_filter_is_inclusive(self) -> None:
-        rows = database.get_fx_rates(start_date="2024-01-01", end_date="2024-01-15")
-        self.assertEqual([r["date"] for r in rows], ["2024-01-01", "2024-01-15"])
+        rows = reader.select(
+            FxRate, ("date", "usd_to_sgd"),
+            where=[("date", ">=", "2024-01-01"), ("date", "<=", "2024-01-15")], order_by=("date",),
+        )
+        self.assertEqual([r.date for r in rows], ["2024-01-01", "2024-01-15"])
 
     def test_last_fx_rate_is_the_latest_date(self) -> None:
-        latest = database.get_last_fx_rate()
+        latest = reader.select_one(FxRate, ("date", "usd_to_sgd"), order_by=("-date",))
         assert latest is not None
-        self.assertEqual(latest["date"], "2024-02-01")
+        self.assertEqual(latest.date, "2024-02-01")
 
     def test_empty_table_returns_none(self) -> None:
         with database.get_connection() as conn:
             conn.execute("DELETE FROM fx_rates")
-        self.assertIsNone(database.get_last_fx_rate())
+        self.assertIsNone(reader.select_one(FxRate, ("date", "usd_to_sgd"), order_by=("-date",)))
 
 
 class TopVideosOrderingTest(IsolatedDatabaseTestCase):
@@ -145,22 +156,22 @@ class TopVideosOrderingTest(IsolatedDatabaseTestCase):
         database.upsert_video_analytics(make_video_analytics("v-3", "2024-01-01", views=50, watch_time_minutes=10))
 
     def test_orders_by_views_descending_by_default(self) -> None:
-        rows = database.get_top_videos_by_views(start_date="2024-01-01", end_date="2024-01-01")
-        self.assertEqual([r["id"] for r in rows][:2], ["v-1", "v-2"])
-        self.assertEqual(rows[-1]["id"], "v-3")
+        ids = _top_video_ids(start_date="2024-01-01", end_date="2024-01-01")
+        self.assertEqual(ids[:2], ["v-1", "v-2"])
+        self.assertEqual(ids[-1], "v-3")
 
     def test_tied_views_break_ties_by_ascending_id(self) -> None:
-        rows = database.get_top_videos_by_views(start_date="2024-01-01", end_date="2024-01-01")
-        tied = [r["id"] for r in rows if r["id"] in ("v-1", "v-2")]
+        ids = _top_video_ids(start_date="2024-01-01", end_date="2024-01-01")
+        tied = [video_id for video_id in ids if video_id in ("v-1", "v-2")]
         self.assertEqual(tied, ["v-1", "v-2"])
 
     def test_watch_time_sort_reorders_by_watch_time(self) -> None:
-        rows = database.get_top_videos_by_views(start_date="2024-01-01", end_date="2024-01-01", sort_by="watch_time")
-        self.assertEqual(rows[0]["id"], "v-2")
+        ids = _top_video_ids(start_date="2024-01-01", end_date="2024-01-01", sort_by="watch_time")
+        self.assertEqual(ids[0], "v-2")
 
     def test_limit_truncates_results(self) -> None:
-        rows = database.get_top_videos_by_views(start_date="2024-01-01", end_date="2024-01-01", limit=1)
-        self.assertEqual(len(rows), 1)
+        ids = _top_video_ids(start_date="2024-01-01", end_date="2024-01-01", limit=1)
+        self.assertEqual(len(ids), 1)
 
 
 if __name__ == "__main__":

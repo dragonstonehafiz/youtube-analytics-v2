@@ -24,6 +24,7 @@
       <div class="nav-menu-list">
         <a href="../architecture/backend-architecture.html">Backend architecture</a>
         <a href="../architecture/backend-reference.html">Backend reference</a>
+        <a href="../architecture/data-storage.html">Data storage and access</a>
         <a href="../architecture/frontend-components.html">Frontend components</a>
       </div>
     </details>
@@ -57,7 +58,7 @@
       <h1>Overview</h1>
       <p>This page shows how data moves from the browser to the database, and from YouTube into the database.</p>
       <div class="meta-line">
-        <span>Source revision <code>8f69e1f</code></span>
+        <span>Source revision <code>926f014</code></span>
       </div>
     </header>
 
@@ -70,7 +71,7 @@
             <tr><td><span class="tag fe">Browser UI</span></td><td>React + TypeScript single-page app served by Vite on <code>http://localhost:5173</code></td><td><code>frontend/src/</code></td></tr>
             <tr><td><span class="tag fe">API client</span></td><td>Plain <code>fetch</code> wrappers calling <code>http://localhost:8000</code></td><td><code>frontend/src/api.ts</code></td></tr>
             <tr><td><span class="tag route">HTTP API</span></td><td>FastAPI app; CORS allows only <code>http://localhost:5173</code></td><td><code>backend/server.py</code>, <code>backend/routes/</code></td></tr>
-            <tr><td><span class="tag db">Query layer</span></td><td>One module per data domain; every helper opens its own SQLite connection</td><td><code>backend/database/</code></td></tr>
+            <tr><td><span class="tag db">Query layer</span></td><td>One data class per table, a shared reader that runs every read, shared SQL definitions, and per-domain writes and reports. A read opens its own SQLite connection unless the caller passes one in.</td><td><code>backend/database/</code></td></tr>
             <tr><td><span class="tag db">Storage</span></td><td>SQLite file <code>backend/data/youtube.db</code>, 12 tables</td><td><code>backend/schema.sql</code></td></tr>
             <tr><td><span class="tag sync">Sync engine</span></td><td>Stage plans on background threads inside the API process</td><td><code>backend/sync/</code></td></tr>
             <tr><td><span class="tag yt">External clients</span></td><td>YouTube Data API v3, YouTube Analytics API v2 (OAuth), Yahoo Finance via <code>yfinance</code></td><td><code>backend/youtube/</code>, <code>backend/sync/stages.py</code></td></tr>
@@ -95,7 +96,7 @@
           <g class="node fe"><rect x="215" y="30" width="160" height="60" rx="8"/><text class="title" x="295" y="56" text-anchor="middle">Page effect</text><text class="sub" x="295" y="74" text-anchor="middle">useEffect + track()</text></g>
           <g class="node fe"><rect x="410" y="30" width="160" height="60" rx="8"/><text class="title" x="490" y="56" text-anchor="middle">api.ts</text><text class="sub" x="490" y="74" text-anchor="middle">fetch :8000</text></g>
           <g class="node route"><rect x="605" y="30" width="160" height="60" rx="8"/><text class="title" x="685" y="56" text-anchor="middle">routes/*.py</text><text class="sub" x="685" y="74" text-anchor="middle">38 endpoints</text></g>
-          <g class="node db"><rect x="800" y="30" width="160" height="60" rx="8"/><text class="title" x="880" y="56" text-anchor="middle">database/*.py</text><text class="sub" x="880" y="74" text-anchor="middle">parameterized SQL</text></g>
+          <g class="node db"><rect x="800" y="30" width="160" height="60" rx="8"/><text class="title" x="880" y="56" text-anchor="middle">database/*.py</text><text class="sub" x="880" y="74" text-anchor="middle">reader · data classes</text></g>
           <path class="edge" d="M180,60 L213,60" marker-end="url(#arrow)"/>
           <path class="edge" d="M375,60 L408,60" marker-end="url(#arrow)"/>
           <path class="edge" d="M570,60 L603,60" marker-end="url(#arrow)"/>
@@ -134,13 +135,13 @@
         <div class="flow-arrow" aria-hidden="true"></div>
         <div class="flow-step fe"><strong>3 · api.ts</strong><small>Builds <code>http://localhost:8000&lt;path&gt;?&lt;params&gt;</code>, omitting empty params.</small></div>
         <div class="flow-arrow" aria-hidden="true"></div>
-        <div class="flow-step route"><strong>4 · Route</strong><small>Thin handler: checks a parent video/playlist exists (404), then calls one helper.</small></div>
+        <div class="flow-step route"><strong>4 · Route</strong><small>Checks a parent video/playlist exists (404), then reads through <code>database.reader</code> or calls a report function.</small></div>
         <div class="flow-arrow" aria-hidden="true"></div>
-        <div class="flow-step db"><strong>5 · Query</strong><small>Helper opens its own connection, runs parameterized SQL, returns dicts.</small></div>
+        <div class="flow-step db"><strong>5 · Query</strong><small>The reader runs parameterized SQL that selects only the needed columns and returns data classes; the route turns them into JSON with <code>to_dict()</code>. Reports return finished dicts.</small></div>
         <div class="flow-arrow" aria-hidden="true"></div>
         <div class="flow-step fe"><strong>6 · Render</strong><small>JSON lands in the card's <code>RequestState</code>; the card re-renders.</small></div>
       </div>
-      <p>Playlist-scoped analytics routes first resolve the playlist's member video IDs, then pass them to the same helper the channel-wide route uses. Every trigger per page is in <a href="requests.html">Requests</a>.</p>
+      <p>Playlist-scoped analytics routes first resolve the playlist's member video IDs, then pass them to the same read the channel-wide route uses. Every trigger per page is in <a href="requests.html">Requests</a>.</p>
 
       <h3 id="example">Worked example: changing the date range on <code>/analytics</code></h3>
       <div class="table-wrap">

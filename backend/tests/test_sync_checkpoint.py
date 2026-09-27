@@ -3,7 +3,7 @@ from __future__ import annotations
 import unittest
 
 import database
-from database import connection
+from database import SyncRun, connection, reader
 from sync.plans import FULL_SYNC_TYPES
 from tests.support import IsolatedDatabaseTestCase
 
@@ -28,7 +28,7 @@ class CheckpointTestCase(IsolatedDatabaseTestCase):
 
     @property
     def checkpoint(self) -> str | None:
-        return database.get_last_successful_run_completed_at()
+        return reader.scalar(SyncRun, "MAX", "completed_at", where=[("status", "=", "success")])
 
 
 class QualifyingRunTest(CheckpointTestCase):

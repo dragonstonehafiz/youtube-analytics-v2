@@ -48,16 +48,6 @@ def upsert_related_videos(target_video_id: str, month: str, referrers: list[dict
     return rows_written
 
 
-def get_last_related_videos_month(target_video_id: str) -> str | None:
-    """Return the latest stored Related Video month for a target, if any."""
-    with get_connection() as conn:
-        row = conn.execute(
-            "SELECT MAX(month) AS last_month FROM related_videos WHERE target_video_id = ?",
-            (target_video_id,),
-        ).fetchone()
-    return row["last_month"] if row else None
-
-
 def _coerce_referrer_own(row: dict) -> dict:
     """Convert a nullable SQLite ownership value to bool or None."""
     value = row.get("referrer_own")
@@ -140,41 +130,3 @@ def get_related_video_referrers(
         "items": [_coerce_referrer_own(dict(row)) for row in rows],
         "total_named_views": total_row["total_named_views"],
     }
-
-
-def get_related_video_destinations(
-    referrer_video_id: str,
-    start_date: str | None = None,
-    end_date: str | None = None,
-    video_ids: Collection[str] | None = None,
-    limit: int | None = None,
-) -> list[dict]:
-    """Return filtered destination videos for a referrer, ranked by views."""
-    scoped_ids = None if video_ids is None else list(video_ids)
-    if scoped_ids is not None and not scoped_ids:
-        return []
-
-    month_conditions, month_params = _month_bound_conditions("rv", start_date, end_date)
-    conditions = ["rv.referrer_video_id = ?", "v.own = 1", *month_conditions]
-    params: list = [referrer_video_id, *month_params]
-    if scoped_ids:
-        conditions.append(f"v.id IN ({','.join('?' * len(scoped_ids))})")
-        params.extend(scoped_ids)
-    where = " AND ".join(conditions)
-    limit_clause = "LIMIT ?" if limit is not None else ""
-
-    with get_connection() as conn:
-        rows = conn.execute(
-            f"""
-            SELECT v.id AS target_video_id, v.title AS title, v.thumbnail_url AS thumbnail_url,
-                v.content_type AS content_type, SUM(rv.views) AS views
-            FROM related_videos rv
-            JOIN videos v ON v.id = rv.target_video_id
-            WHERE {where}
-            GROUP BY v.id
-            ORDER BY views DESC, v.id ASC
-            {limit_clause}
-            """,
-            [*params, *([limit] if limit is not None else [])],
-        ).fetchall()
-    return [dict(row) for row in rows]

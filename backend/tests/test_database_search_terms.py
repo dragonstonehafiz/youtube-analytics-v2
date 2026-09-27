@@ -1,9 +1,25 @@
 from __future__ import annotations
 
 import unittest
+from typing import Any
 
 import database
+from database import SearchTerm, Video, queries, reader
 from tests.support import IsolatedDatabaseTestCase, make_video
+
+
+def _search_terms(**filters: Any) -> list[dict]:
+    """Run the search-term totals spec and serialize rows as the API does."""
+    terms = reader.fetch(SearchTerm, queries.search_term_totals(**filters))
+    return [term.to_dict(("search_term", "views")) for term in terms]
+
+
+def _videos_by_search_term(search_term: str, **filters: Any) -> list[dict]:
+    """Run the videos-by-search-term spec and serialize rows as the API does."""
+    rows = reader.fetch_joined(
+        queries.videos_by_search_term(search_term, **filters), (Video,), ("views",)
+    )
+    return [{**row[Video].to_dict(queries.SEARCH_TERM_VIDEO_FIELDS), **row.values} for row in rows]
 
 
 class SearchTermsSchemaTest(IsolatedDatabaseTestCase):
@@ -141,145 +157,145 @@ class SearchInsightsReportingTestCase(IsolatedDatabaseTestCase):
 
 class GetSearchTermsTest(SearchInsightsReportingTestCase):
     def test_sums_views_for_one_term_across_videos_and_months(self) -> None:
-        rows = database.get_search_terms(start_date="2024-01-01", end_date="2024-02-29")
+        rows = _search_terms(start_date="2024-01-01", end_date="2024-02-29")
         by_term = {r["search_term"]: r["views"] for r in rows}
         self.assertEqual(by_term["cats"], 17)
 
     def test_orders_by_views_descending_then_term_ascending(self) -> None:
-        rows = database.get_search_terms(start_date="2024-01-01", end_date="2024-02-29")
+        rows = _search_terms(start_date="2024-01-01", end_date="2024-02-29")
         self.assertEqual([r["search_term"] for r in rows], ["cats", "birds", "dogs"])
 
     def test_ties_break_by_term_text(self) -> None:
         database.upsert_search_terms("v-2", "2024-01", [{"search_term": "ants", "views": 7}])
-        rows = database.get_search_terms(start_date="2024-01-01", end_date="2024-01-31")
+        rows = _search_terms(start_date="2024-01-01", end_date="2024-01-31")
         tied = [r["search_term"] for r in rows if r["views"] == 7]
         self.assertEqual(tied, ["ants", "birds"])
 
     def test_no_limit_returns_every_term(self) -> None:
-        rows = database.get_search_terms(start_date="2024-01-01", end_date="2024-02-29")
+        rows = _search_terms(start_date="2024-01-01", end_date="2024-02-29")
         self.assertEqual(len(rows), 3)
 
     def test_limit_truncates_results(self) -> None:
-        rows = database.get_search_terms(start_date="2024-01-01", end_date="2024-02-29", limit=1)
+        rows = _search_terms(start_date="2024-01-01", end_date="2024-02-29", limit=1)
         self.assertEqual(len(rows), 1)
         self.assertEqual(rows[0]["search_term"], "cats")
 
     def test_content_type_filter_scopes_to_matching_videos(self) -> None:
-        rows = database.get_search_terms(start_date="2024-01-01", end_date="2024-01-31", content_type="short")
+        rows = _search_terms(start_date="2024-01-01", end_date="2024-01-31", content_type="short")
         self.assertEqual([(r["search_term"], r["views"]) for r in rows], [("cats", 3)])
 
     def test_privacy_status_filter_scopes_to_matching_videos(self) -> None:
-        rows = database.get_search_terms(start_date="2024-01-01", end_date="2024-01-31", privacy_status="private")
+        rows = _search_terms(start_date="2024-01-01", end_date="2024-01-31", privacy_status="private")
         self.assertEqual([(r["search_term"], r["views"]) for r in rows], [("cats", 3)])
 
     def test_title_filter_matches_substring_case_insensitively_on_video_title_not_term(self) -> None:
-        rows = database.get_search_terms(start_date="2024-01-01", end_date="2024-01-31", title="alpha")
+        rows = _search_terms(start_date="2024-01-01", end_date="2024-01-31", title="alpha")
         self.assertEqual({r["search_term"] for r in rows}, {"cats", "dogs"})
 
     def test_title_filter_matches_video_id(self) -> None:
-        rows = database.get_search_terms(start_date="2024-01-01", end_date="2024-01-31", title="v-1")
+        rows = _search_terms(start_date="2024-01-01", end_date="2024-01-31", title="v-1")
         self.assertEqual({r["search_term"] for r in rows}, {"cats", "dogs"})
 
     def test_title_filter_id_match_combines_with_content_type(self) -> None:
-        rows = database.get_search_terms(
+        rows = _search_terms(
             start_date="2024-01-01", end_date="2024-01-31", title="v-1", content_type="short",
         )
         self.assertEqual(rows, [])
 
     def test_video_ids_scope_limits_to_those_videos(self) -> None:
-        rows = database.get_search_terms(start_date="2024-01-01", end_date="2024-01-31", video_ids=["v-2"])
+        rows = _search_terms(start_date="2024-01-01", end_date="2024-01-31", video_ids=["v-2"])
         self.assertEqual([(r["search_term"], r["views"]) for r in rows], [("cats", 3)])
 
     def test_empty_video_ids_scope_returns_no_rows(self) -> None:
-        rows = database.get_search_terms(start_date="2024-01-01", end_date="2024-01-31", video_ids=[])
+        rows = _search_terms(start_date="2024-01-01", end_date="2024-01-31", video_ids=[])
         self.assertEqual(rows, [])
 
     def test_missing_end_date_is_unbounded_on_that_side(self) -> None:
-        rows = database.get_search_terms(start_date="2024-01-01")
+        rows = _search_terms(start_date="2024-01-01")
         by_term = {r["search_term"]: r["views"] for r in rows}
         self.assertEqual(by_term, {"cats": 17, "dogs": 5, "birds": 7})
 
     def test_missing_start_date_is_unbounded_on_that_side(self) -> None:
-        rows = database.get_search_terms(end_date="2024-01-31")
+        rows = _search_terms(end_date="2024-01-31")
         by_term = {r["search_term"]: r["views"] for r in rows}
         self.assertEqual(by_term, {"cats": 13, "dogs": 5, "birds": 7})
 
     def test_start_date_after_end_date_returns_no_rows(self) -> None:
-        rows = database.get_search_terms(start_date="2024-02-01", end_date="2024-01-01")
+        rows = _search_terms(start_date="2024-02-01", end_date="2024-01-01")
         self.assertEqual(rows, [])
 
     def test_month_outside_range_is_excluded(self) -> None:
-        rows = database.get_search_terms(start_date="2024-01-01", end_date="2024-01-31")
+        rows = _search_terms(start_date="2024-01-01", end_date="2024-01-31")
         by_term = {r["search_term"]: r["views"] for r in rows}
         self.assertEqual(by_term["cats"], 13)
 
     def test_boundary_dates_within_a_month_still_include_the_whole_month(self) -> None:
-        rows = database.get_search_terms(start_date="2024-01-15", end_date="2024-01-20")
+        rows = _search_terms(start_date="2024-01-15", end_date="2024-01-20")
         by_term = {r["search_term"]: r["views"] for r in rows}
         self.assertEqual(by_term["cats"], 13)
 
     def test_malformed_start_date_returns_no_rows_instead_of_a_broad_lexical_match(self) -> None:
-        rows = database.get_search_terms(start_date="2024", end_date="2024-12-31")
+        rows = _search_terms(start_date="2024", end_date="2024-12-31")
         self.assertEqual(rows, [])
 
     def test_malformed_end_date_returns_no_rows(self) -> None:
-        rows = database.get_search_terms(start_date="2024-01-01", end_date="not-a-date")
+        rows = _search_terms(start_date="2024-01-01", end_date="not-a-date")
         self.assertEqual(rows, [])
 
 
 class GetVideoSearchTermsTest(SearchInsightsReportingTestCase):
     def test_returns_only_that_videos_terms_summed_across_months(self) -> None:
-        rows = database.get_video_search_terms("v-1", start_date="2024-01-01", end_date="2024-02-29")
+        rows = _search_terms(video_ids=["v-1"], start_date="2024-01-01", end_date="2024-02-29")
         by_term = {r["search_term"]: r["views"] for r in rows}
         self.assertEqual(by_term, {"cats": 14, "dogs": 5})
 
     def test_orders_by_views_descending(self) -> None:
-        rows = database.get_video_search_terms("v-1", start_date="2024-01-01", end_date="2024-02-29")
+        rows = _search_terms(video_ids=["v-1"], start_date="2024-01-01", end_date="2024-02-29")
         self.assertEqual([r["search_term"] for r in rows], ["cats", "dogs"])
 
     def test_limit_truncates_results(self) -> None:
-        rows = database.get_video_search_terms("v-1", start_date="2024-01-01", end_date="2024-02-29", limit=1)
+        rows = _search_terms(video_ids=["v-1"], start_date="2024-01-01", end_date="2024-02-29", limit=1)
         self.assertEqual(len(rows), 1)
         self.assertEqual(rows[0]["search_term"], "cats")
 
     def test_missing_dates_return_every_month(self) -> None:
-        rows = database.get_video_search_terms("v-1")
+        rows = _search_terms(video_ids=["v-1"])
         by_term = {r["search_term"]: r["views"] for r in rows}
         self.assertEqual(by_term, {"cats": 14, "dogs": 5})
 
     def test_other_videos_terms_are_excluded(self) -> None:
-        rows = database.get_video_search_terms("v-2", start_date="2024-01-01", end_date="2024-01-31")
+        rows = _search_terms(video_ids=["v-2"], start_date="2024-01-01", end_date="2024-01-31")
         self.assertEqual([(r["search_term"], r["views"]) for r in rows], [("cats", 3)])
 
 
 class GetVideosBySearchTermTest(SearchInsightsReportingTestCase):
     def test_returns_only_videos_matching_the_given_term(self) -> None:
-        videos = database.get_videos_by_search_term("cats", start_date="2024-01-01", end_date="2024-02-29")
+        videos = _videos_by_search_term("cats", start_date="2024-01-01", end_date="2024-02-29")
         self.assertEqual({v["id"] for v in videos}, {"v-1", "v-2"})
 
     def test_orders_by_views_descending(self) -> None:
-        videos = database.get_videos_by_search_term("cats", start_date="2024-01-01", end_date="2024-02-29")
+        videos = _videos_by_search_term("cats", start_date="2024-01-01", end_date="2024-02-29")
         self.assertEqual([v["id"] for v in videos], ["v-1", "v-2"])
 
     def test_limit_truncates_results(self) -> None:
-        videos = database.get_videos_by_search_term("cats", start_date="2024-01-01", end_date="2024-02-29", limit=1)
+        videos = _videos_by_search_term("cats", start_date="2024-01-01", end_date="2024-02-29", limit=1)
         self.assertEqual(len(videos), 1)
         self.assertEqual(videos[0]["id"], "v-1")
 
     def test_unknown_term_returns_no_videos(self) -> None:
-        videos = database.get_videos_by_search_term("nonexistent", start_date="2024-01-01", end_date="2024-01-31")
+        videos = _videos_by_search_term("nonexistent", start_date="2024-01-01", end_date="2024-01-31")
         self.assertEqual(videos, [])
 
     def test_empty_video_ids_scope_returns_no_videos(self) -> None:
-        videos = database.get_videos_by_search_term("cats", start_date="2024-01-01", end_date="2024-01-31", video_ids=[])
+        videos = _videos_by_search_term("cats", start_date="2024-01-01", end_date="2024-01-31", video_ids=[])
         self.assertEqual(videos, [])
 
     def test_missing_dates_return_every_month(self) -> None:
-        videos = database.get_videos_by_search_term("cats")
+        videos = _videos_by_search_term("cats")
         self.assertEqual([v["id"] for v in videos], ["v-1", "v-2"])
 
     def test_title_filter_matches_video_id(self) -> None:
-        videos = database.get_videos_by_search_term("cats", start_date="2024-01-01", end_date="2024-01-31", title="v-2")
+        videos = _videos_by_search_term("cats", start_date="2024-01-01", end_date="2024-01-31", title="v-2")
         self.assertEqual([v["id"] for v in videos], ["v-2"])
 
 

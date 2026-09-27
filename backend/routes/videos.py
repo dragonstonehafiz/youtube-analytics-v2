@@ -3,6 +3,8 @@ from __future__ import annotations
 from fastapi import APIRouter, HTTPException, Query
 
 import database
+from database import Video, queries, reader
+from .video_scope import require_owned_video, resolve_playlist_video_ids
 
 router = APIRouter()
 
@@ -20,7 +22,14 @@ def list_videos(
     privacy_status: str | None = Query(default=None),
 ) -> dict:
     """Return a page of videos with server-side sort and optional filters."""
-    items, total = database.get_all_videos(page, page_size, sort_by, sort_dir, title, start_date, end_date, content_type, privacy_status)
+    count_query, page_query = queries.video_catalog(
+        page=page, page_size=page_size, sort_by=sort_by, sort_dir=sort_dir, title=title,
+        start_date=start_date, end_date=end_date, content_type=content_type, privacy_status=privacy_status,
+    )
+    with reader.connect() as conn:
+        total = reader.fetch_scalar(count_query, conn=conn)
+        rows = reader.fetch_joined(page_query, (Video,), queries.VIDEO_TOTAL_VALUES, conn=conn)
+    items = [{**row[Video].to_dict(), **row.values} for row in rows]
     return {"items": items, "total": total, "page": page, "page_size": page_size}
 
 
@@ -46,17 +55,22 @@ def get_videos_published(
     title: str | None = Query(default=None),
 ) -> dict:
     """Return id, title, published_at, thumbnail_url for all videos matching the filters."""
-    items = database.get_videos_published(start_date, end_date, content_type, privacy_status, playlist_id, title)
-    return {"items": items}
+    video_ids = resolve_playlist_video_ids(playlist_id) if playlist_id else None
+    videos = reader.fetch(Video, queries.videos_published(
+        start_date=start_date, end_date=end_date, content_type=content_type,
+        privacy_status=privacy_status, title=title, video_ids=video_ids,
+    ))
+    return {"items": [video.to_dict(queries.PUBLISHED_VIDEO_FIELDS) for video in videos]}
 
 
 @router.get("/videos/{video_id}")
 def get_video(video_id: str) -> dict:
     """Return a single video by ID."""
-    video = database.get_owned_video(video_id)
-    if not video:
+    _, page_query = queries.video_catalog(video_ids=[video_id], page_size=1)
+    rows = reader.fetch_joined(page_query, (Video,), queries.VIDEO_TOTAL_VALUES)
+    if not rows:
         raise HTTPException(status_code=404, detail="Video not found")
-    return {"item": video}
+    return {"item": {**rows[0][Video].to_dict(), **rows[0].values}}
 
 
 @router.get("/videos/{video_id}/analytics")
@@ -66,9 +80,7 @@ def get_video_analytics(
     end_date: str | None = Query(default=None),
 ) -> dict:
     """Return daily analytics rows for a video, each tagged with content_type, with optional date filters."""
-    video = database.get_owned_video(video_id)
-    if not video:
-        raise HTTPException(status_code=404, detail="Video not found")
+    require_owned_video(video_id)
     return {"items": database.get_video_analytics(video_id, start_date, end_date)}
 
 
@@ -79,7 +91,5 @@ def get_video_traffic_sources(
     end_date: str | None = Query(default=None),
 ) -> dict:
     """Return daily traffic source rows for a video with optional date filters."""
-    video = database.get_owned_video(video_id)
-    if not video:
-        raise HTTPException(status_code=404, detail="Video not found")
+    require_owned_video(video_id)
     return {"items": database.get_video_traffic_sources(video_id, start_date, end_date)}

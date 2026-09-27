@@ -29,6 +29,6 @@ dl.returns-list dd.used-by { color: var(--text-muted); font-size: 0.88rem; line-
 
 /* ---------- Route call lines ---------- */
 
-ul.route-lines { list-style: none; padding: 0; margin: 8px 0 0; max-width: none; }
+ul.route-lines { list-style: none; padding: 0; margin: 8px 0 0; }
 ul.route-lines li { padding: 5px 0; border-bottom: 1px solid var(--border); }
 ul.route-lines li:last-child { border-bottom: none; }

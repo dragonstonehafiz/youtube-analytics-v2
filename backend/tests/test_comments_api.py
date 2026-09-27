@@ -4,7 +4,7 @@ import sqlite3
 import unittest
 
 import database
-from database import connection
+from database import Comment, connection, reader
 from routes.comments import router as comments_router
 from tests.support import IsolatedDatabaseTestCase, create_test_client
 
@@ -48,6 +48,11 @@ class CommentsTestCase(IsolatedDatabaseTestCase):
         super().setUp()
         self.client = create_test_client(comments_router)
 
+    def _comments(self) -> tuple[list[dict], int]:
+        """Return the channel-wide comment feed's items and total."""
+        body = self.client.get("/comments").json()
+        return body["items"], body["total"]
+
 
 class SchemaTest(CommentsTestCase):
     def test_repeated_init_db_is_idempotent(self) -> None:
@@ -56,7 +61,7 @@ class SchemaTest(CommentsTestCase):
         database.upsert_comment_author(_author("channel:UC1", "Ann", "UC1"))
         database.upsert_comment(_comment("c1", "v1", "channel:UC1"))
 
-        items, total = database.get_comments()
+        items, total = self._comments()
         self.assertEqual(total, 1)
         self.assertEqual(items[0]["id"], "c1")
 
@@ -81,7 +86,7 @@ class SchemaTest(CommentsTestCase):
 
         database.delete_videos_not_in(["v2"])
 
-        items, total = database.get_comments()
+        items, total = self._comments()
         self.assertEqual(total, 1)
         self.assertEqual(items[0]["id"], "c2")
 
@@ -123,7 +128,7 @@ class AuthorIdentityTest(CommentsTestCase):
         database.upsert_comment_author(_author("channel:UC1", "New Name", "UC1"))
         database.upsert_comment(_comment("c2", "v1", "channel:UC1"))
 
-        items, total = database.get_comments()
+        items, total = self._comments()
         self.assertEqual(total, 2)
         self.assertEqual({item["author_display_name"] for item in items}, {"New Name"})
         with connection.get_connection() as conn:
@@ -148,7 +153,7 @@ class AuthorIdentityTest(CommentsTestCase):
         deleted = database.delete_orphan_comment_authors()
 
         self.assertEqual(deleted, 1)
-        items, _total = database.get_comments()
+        items, _total = self._comments()
         self.assertEqual(items[0]["author_display_name"], "Kept")
 
     def test_known_comment_ids_are_scoped_to_one_video(self) -> None:
@@ -157,8 +162,11 @@ class AuthorIdentityTest(CommentsTestCase):
         database.upsert_comment(_comment("c1", "v1", "channel:UC1"))
         database.upsert_comment(_comment("c2", "v2", "channel:UC1"))
 
-        self.assertEqual(database.get_comment_ids_for_video("v1"), {"c1"})
-        self.assertEqual(database.get_comment_ids_for_video("v-none"), set())
+        def known_ids(video_id: str) -> set[str | None]:
+            return {c.id for c in reader.select(Comment, ("id",), where=[("video_id", "=", video_id)])}
+
+        self.assertEqual(known_ids("v1"), {"c1"})
+        self.assertEqual(known_ids("v-none"), set())
 
 
 class SeededCommentsTestCase(CommentsTestCase):

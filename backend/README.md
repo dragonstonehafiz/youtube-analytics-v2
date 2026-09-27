@@ -64,8 +64,12 @@ backend/
     synchronization.py
     metadata.py
 
-  database/            # DB connection and helpers, grouped by domain
+  database/            # DB connection, row dataclasses, the reader, query specifications, writes, and reports
     connection.py
+    dataclasses/         # one data-only row dataclass per table
+    reader.py            # class-to-table registry and all read execution
+    queries.py           # non-executing SQL specifications for joins and aggregates
+    video_statistics.py  # Legacy/New video statistics report
     videos.py
     playlists.py
     analytics.py
@@ -233,7 +237,11 @@ path ever matches the real application database — so no test can touch
 (`make_video`, `make_playlist`, `make_video_analytics`, etc.), a `freeze_now()` context
 manager that pins every generated `updated_at`/`started_at`/`completed_at` timestamp so
 seeded fixtures stay reproducible, and a `seed_dataset()` convenience (built on
-`freeze_now()`) that populates every table with a small, fixed dataset.
+`freeze_now()`) that populates every table with a small, fixed dataset. Sync-stage tests
+that should not touch a database install `patch_stage_reads()`, which routes
+`sync.stages`' reader calls to an in-memory `StageReads` holding typed rows (worklist
+videos, covered months, stored video and comment IDs, the latest FX rate), and
+`covered_periods()` reads stored `sync_coverage` months for database-backed assertions.
 `create_test_app()`/`create_test_client()` build a lifespan-free FastAPI app from one or
 more routers for API contract tests, so — unlike a real request through `server.app` —
 `mark_incomplete_sync_runs()` never runs; only the

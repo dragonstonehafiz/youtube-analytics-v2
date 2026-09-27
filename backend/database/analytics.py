@@ -88,16 +88,6 @@ def get_video_analytics(
     return _zero_fill_analytics(dict_rows, start_date, end_date, content_types)
 
 
-def get_last_analytics_date(video_id: str) -> str | None:
-    """Return the most recent date we have analytics for a video, or None."""
-    with get_connection() as conn:
-        row = conn.execute(
-            "SELECT MAX(date) AS last_date FROM video_analytics WHERE video_id = ?",
-            (video_id,),
-        ).fetchone()
-    return row["last_date"] if row else None
-
-
 def get_aggregated_analytics(
     start_date: str | None = None,
     end_date: str | None = None,
@@ -161,70 +151,3 @@ def get_aggregated_analytics(
         ).fetchall()
     content_types = [content_type] if content_type else ["video", "short"]
     return _zero_fill_analytics([dict(r) for r in rows], start_date, end_date, content_types)
-
-
-_TOP_VIDEO_SORT_ORDER_BY = {
-    "views": "period_views DESC, v.id ASC",
-    "watch_time": "period_watch_time_hours DESC, period_views DESC, v.id ASC",
-}
-
-
-def get_top_videos_by_views(
-    start_date: str | None = None,
-    end_date: str | None = None,
-    content_type: str | None = None,
-    privacy_status: str | None = None,
-    limit: int = 10,
-    sort_by: str = "views",
-    title: str | None = None,
-    video_ids: Collection[str] | None = None,
-) -> list[dict]:
-    """Return filtered top videos ranked by views or watch time, with period earnings in SGD."""
-    scoped_ids = None if video_ids is None else list(video_ids)
-    if scoped_ids is not None and not scoped_ids:
-        return []
-
-    order_by = _TOP_VIDEO_SORT_ORDER_BY.get(sort_by, _TOP_VIDEO_SORT_ORDER_BY["views"])
-    conditions = ["v.own = 1"]
-    params: list = []
-
-    if scoped_ids:
-        conditions.append(f"v.id IN ({','.join('?' * len(scoped_ids))})")
-        params.extend(scoped_ids)
-    if content_type:
-        conditions.append("v.content_type = ?")
-        params.append(content_type)
-    if privacy_status:
-        conditions.append("v.privacy_status = ?")
-        params.append(privacy_status)
-    if start_date:
-        conditions.append("va.date >= ?")
-        params.append(start_date)
-    if end_date:
-        conditions.append("va.date <= ?")
-        params.append(end_date)
-    if title:
-        conditions.append("(v.title LIKE ? OR v.id LIKE ?)")
-        params.append(f"%{title}%")
-        params.append(f"%{title}%")
-
-    where = " AND ".join(conditions)
-    with get_connection() as conn:
-        rows = conn.execute(
-            f"""
-            SELECT
-                v.id, v.title, v.published_at, v.thumbnail_url, v.content_type,
-                SUM(va.views) AS period_views,
-                COALESCE(SUM(va.estimated_revenue * fx.usd_to_sgd), 0) AS period_earnings_sgd,
-                COALESCE(SUM(va.watch_time_minutes), 0) / 60.0 AS period_watch_time_hours
-            FROM video_analytics va
-            JOIN videos v ON v.id = va.video_id
-            LEFT JOIN fx_rates fx ON fx.date = va.date
-            WHERE {where}
-            GROUP BY v.id
-            ORDER BY {order_by}
-            LIMIT ?
-            """,
-            [*params, limit],
-        ).fetchall()
-    return [dict(r) for r in rows]

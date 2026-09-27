@@ -23,6 +23,7 @@
       <div class="nav-menu-list">
         <a href="../architecture/backend-architecture.html">Backend architecture</a>
         <a href="../architecture/backend-reference.html">Backend reference</a>
+        <a href="../architecture/data-storage.html">Data storage and access</a>
         <a href="../architecture/frontend-components.html">Frontend components</a>
       </div>
     </details>
@@ -52,7 +53,7 @@
       <h1>Repeated code</h1>
       <p>This page shows code written more than once in the backend and frontend.</p>
       <div class="meta-line">
-        <span>Source revision <code>7c617f2</code></span>
+        <span>Source revision <code>926f014</code></span>
       </div>
     </header>
 
@@ -61,11 +62,11 @@
       <div class="dup-list">
 
         <article class="dup">
-          <div class="dup-head"><h3>Video filter conditions</h3><span class="dup-count">×11</span></div>
-          <p>Each query function builds its own <code>WHERE</code> list for the same video filters, one <code>if</code> per filter.</p>
+          <div class="dup-head"><h3>Video filter conditions</h3><span class="dup-count">×6</span></div>
+          <p>Functions that build their own <code>WHERE</code> list for the same video filters, one <code>if</code> per filter. The 10 shared SQL definitions in <code>database/queries.py</code> all use one copy, <code>_video_conditions()</code>; the reports that calculate results in Python still build their own.</p>
           <dl>
-            <dt>Where</dt><dd><code>database/</code>: <code>analytics.py</code> (2), <code>traffic_sources.py</code> (2), <code>videos.py</code> (3), <code>playlists.py</code>, <code>search_terms.py</code>, <code>related_videos.py</code>, <code>comments.py</code></dd>
-            <dt>Differs</dt><dd>Only the date column (<code>va.date</code>, <code>c.published_at</code>, month bounds). <code>comments.py</code> has no privacy filter.</dd>
+            <dt>Where</dt><dd><code>database/</code>: <code>queries.py</code> (<code>_video_conditions</code>), <code>analytics.py</code>, <code>traffic_sources.py</code> (2), <code>related_videos.py</code>, <code>video_statistics.py</code></dd>
+            <dt>Differs</dt><dd>Only the date column (<code>va.date</code>, <code>vts.date</code>, month bounds); <code>video_statistics.py</code> keeps its video scope separate from the other filters.</dd>
           </dl>
 <pre><code>if content_type:
     conditions.append("v.content_type = ?")
@@ -80,28 +81,28 @@ if title:
         </article>
 
         <article class="dup">
-          <div class="dup-head"><h3>Look up, then 404</h3><span class="dup-count">×10</span></div>
-          <p>Route handlers fetch a video or playlist and raise <code>HTTPException(404, "… not found")</code> when it is missing.</p>
+          <div class="dup-head"><h3>Look up, then 404</h3><span class="dup-count">×4</span></div>
+          <p>Code that looks up a video or playlist and raises <code>HTTPException(404, "… not found")</code> when it is missing.</p>
           <dl>
-            <dt>Where</dt><dd><code>routes/videos.py</code> (3), <code>routes/playlists.py</code> (2), <code>routes/analytics.py</code> (2), <code>routes/comments.py</code> (2), <code>routes/video_scope.py</code> (1, inside <code>resolve_playlist_video_ids</code>, shared by the playlist statistics endpoint and all 9 playlist analytics endpoints)</dd>
-            <dt>Differs</dt><dd>Video or playlist lookup (<code>get_owned_video</code>, <code>get_playlist</code>, or <code>playlist_exists</code>), and the message text.</dd>
+            <dt>Where</dt><dd><code>routes/video_scope.py</code> (2: <code>require_owned_video</code>, used by 5 endpoints, and <code>require_playlist</code>, used by 1 endpoint plus <code>resolve_playlist_video_ids</code>'s 12), <code>routes/videos.py</code> (<code>GET /videos/{id}</code>), <code>routes/playlists.py</code> (<code>GET /playlists/{id}</code>)</dd>
+            <dt>Differs</dt><dd>The two detail endpoints check their own result query instead of a separate ID lookup; the message text.</dd>
           </dl>
         </article>
 
         <article class="dup">
-          <div class="dup-head"><h3>Channel / playlist route twins</h3><span class="dup-count">×10 pairs</span></div>
-          <p>Every playlist analytics endpoint, and the playlist statistics endpoint, copies its channel-wide endpoint: same <code>Query</code> parameters, same database call, plus <code>video_ids=</code> the result of <code>resolve_playlist_video_ids(playlist_id)</code>.</p>
+          <div class="dup-head"><h3>Channel / playlist route twins</h3><span class="dup-count">×11 pairs</span></div>
+          <p>Every playlist analytics endpoint, and the playlist statistics and videos endpoints, copies its channel-wide endpoint: same <code>Query</code> parameters, same read, plus <code>video_ids=</code> the result of <code>resolve_playlist_video_ids(playlist_id)</code>.</p>
           <dl>
-            <dt>Where</dt><dd><code>routes/analytics.py</code>: top videos, aggregated analytics, traffic sources, traffic-source top, search terms, top search terms, videos by search term, related referrers, related destinations. <code>routes/videos.py</code> / <code>routes/playlists.py</code>: video statistics (<code>get_video_stats</code>)</dd>
+            <dt>Where</dt><dd><code>routes/analytics.py</code>: top videos, aggregated analytics, traffic sources, traffic-source top, search terms, top search terms, videos by search term, related referrers, related destinations. <code>routes/videos.py</code> / <code>routes/playlists.py</code>: video statistics (<code>get_video_stats</code>), video list (<code>queries.video_catalog</code>)</dd>
             <dt>Differs</dt><dd>The <code>playlist_id</code> path parameter and the <code>video_ids</code> argument.</dd>
           </dl>
         </article>
 
         <article class="dup">
-          <div class="dup-head"><h3>Empty video-scope guard</h3><span class="dup-count">×9</span></div>
-          <p>Functions taking <code>video_ids</code> copy the same opening: turn it into a list, return an empty result if it is empty, and later add <code>v.id IN (?, ?, …)</code>.</p>
+          <div class="dup-head"><h3>Empty video-scope guard</h3><span class="dup-count">×5</span></div>
+          <p>Report functions taking <code>video_ids</code> copy the same opening: turn it into a list, return an empty result if it is empty, and later add <code>v.id IN (?, ?, …)</code>. The <code>database/queries.py</code> definitions handle an empty list once, inside <code>_video_conditions()</code>.</p>
           <dl>
-            <dt>Where</dt><dd><code>database/</code>: <code>analytics.py</code> (2), <code>traffic_sources.py</code> (2), <code>search_terms.py</code> (2), <code>related_videos.py</code> (2), <code>videos.py</code> (<code>get_video_stats</code>)</dd>
+            <dt>Where</dt><dd><code>database/</code>: <code>analytics.py</code>, <code>traffic_sources.py</code> (2), <code>related_videos.py</code>, <code>video_statistics.py</code></dd>
             <dt>Differs</dt><dd>The empty value each returns; <code>get_video_stats</code> returns zeroed statistics and also drops duplicate IDs.</dd>
           </dl>
         </article>
@@ -135,7 +136,7 @@ if title:
 
         <article class="dup">
           <div class="dup-head"><h3>Monthly insight storage</h3><span class="dup-count">×2</span></div>
-          <p>Both modules define the same <code>_MONTH_RE</code>, validate rows, sum views per key, drop zero-view rows, upsert, and have a <code>get_last_*_month</code>.</p>
+          <p>Both modules define the same <code>_MONTH_RE</code>, validate rows, sum views per key, drop zero-view rows, and upsert.</p>
           <dl>
             <dt>Where</dt><dd><code>database/search_terms.py</code>, <code>database/related_videos.py</code> (<code>connection.py</code> has a related <code>_MONTH_PREFIX_RE</code>)</dd>
             <dt>Differs</dt><dd>Key column (<code>search_term</code> vs <code>referrer_video_id</code>); related videos also checks the target is owned.</dd>
@@ -164,8 +165,8 @@ if title:
           <div class="dup-head"><h3>Ownership bool coercion</h3><span class="dup-count">×2</span></div>
           <p>Convert SQLite's 0/1 ownership column to a Python bool on each returned row.</p>
           <dl>
-            <dt>Where</dt><dd><code>_coerce_own</code> in <code>database/videos.py</code>, <code>_coerce_referrer_own</code> in <code>database/related_videos.py</code></dd>
-            <dt>Differs</dt><dd>Column name; the referrer version keeps <code>NULL</code> as <code>None</code>.</dd>
+            <dt>Where</dt><dd>The <code>Video.own</code> converter in <code>database/reader.py</code>, <code>_coerce_referrer_own</code> in <code>database/related_videos.py</code></dd>
+            <dt>Differs</dt><dd>The reader's converter covers every <code>Video</code> it builds; the referrer version works on report dicts under the key <code>referrer_own</code>. Both keep <code>NULL</code> as <code>None</code>.</dd>
           </dl>
         </article>
 

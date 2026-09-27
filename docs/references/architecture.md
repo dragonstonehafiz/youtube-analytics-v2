@@ -90,8 +90,8 @@ indefinitely and are safe to delete between runs.
 | Path | Responsibility |
 |---|---|
 | `server.py` | FastAPI app construction, CORS, lifespan (`init_db` → `mark_incomplete_sync_runs`) |
-| `routes/videos.py`, `routes/playlists.py`, `routes/analytics.py`, `routes/comments.py`, `routes/synchronization.py`, `routes/metadata.py` | API route handlers, grouped by resource — thin wrappers around `database` helpers; `routes/__init__.py` aggregates them in a fixed order into one `router` |
-| `routes/video_scope.py` | Shared route helper `resolve_playlist_video_ids()`: playlist existence 404 plus member-ID resolution for playlist statistics and playlist analytics handlers; registers no routes |
+| `routes/videos.py`, `routes/playlists.py`, `routes/analytics.py`, `routes/comments.py`, `routes/synchronization.py`, `routes/metadata.py` | API route handlers, grouped by resource. They read through `database.reader` (directly, or with a `database.queries` specification) and serialize row dataclasses with `to_dict(fields=...)`, or call a `database` report function; `routes/__init__.py` aggregates them in a fixed order into one `router` |
+| `routes/video_scope.py` | Shared route helpers `require_owned_video()`, `require_playlist()` (404 existence checks through the reader), and `resolve_playlist_video_ids()` (playlist 404, then member IDs, for every playlist-scoped handler); registers no routes |
 | `sync/status.py` | Global sync-status lifecycle (`idle \| running \| stopping \| success \| failed \| cancelled`, plus message) behind one lock, with `try_begin_sync()`/`request_stop()` reservation primitives and the `raise_if_stopping()` cooperative-cancellation checkpoint |
 | `sync/plans.py` | Plan types, canonical `STAGE_ORDER`, derived `FULL_SYNC_TYPES`, available years, `validate_plan()` |
 | `sync/orchestration.py` | `execute_plan()`/`run_plan()`, stage registry, selected-stage sequencing, `sync_runs` tracking |
@@ -104,7 +104,11 @@ indefinitely and are safe to delete between runs.
 | `youtube/analytics_api.py` | YouTube Analytics API v2 client, retry/backoff, date chunking, daily analytics/traffic-source generators |
 | `logging_config.py` | Shared logging configuration: `TimezoneAwareFormatter`, `configure_logging()`, `get_logger(area)`, `exception_context()` |
 | `database/connection.py` | Connection setup, `init_db()`, `_now()`, shared `_month_bound_conditions()` |
-| `database/videos.py`, `database/playlists.py`, `database/analytics.py`, `database/traffic_sources.py`, `database/comments.py`, `database/fx_rates.py`, `database/sync_runs.py`, `database/sync_coverage.py`, `database/search_terms.py`, `database/related_videos.py` | DB helpers grouped by domain (upserts, queries, aggregation, zero-filling) |
+| `database/dataclasses/` | One data-only row dataclass per table (`Video`, `Playlist`, …), every field defaulting to `None`, with shared `to_dict(fields=...)` serialization |
+| `database/reader.py` | Explicit row-class → table registry and all read execution: `select`/`select_one`/`scalar` for one table, `fetch`/`fetch_joined`/`fetch_scalar` for code-owned SQL, and connection borrowing |
+| `database/queries.py` | Non-executing `Query` specifications for joins, grouping, and ranking shared by routes and sync |
+| `database/video_statistics.py` | `get_video_stats()` Legacy/New report |
+| `database/videos.py`, `database/playlists.py`, `database/analytics.py`, `database/traffic_sources.py`, `database/comments.py`, `database/fx_rates.py`, `database/sync_runs.py`, `database/sync_coverage.py`, `database/search_terms.py`, `database/related_videos.py` | Writes (upserts, deletes) grouped by domain, plus the reports that do real calculation work: zero-filling, per-source top-N, referrer totals, sync-batch assembly |
 | `schema.sql` | SQLite schema definition (12 tables) — see `database.md` |
 | `scripts/issue-48-migration.py` | Standalone, one-time migration adding `videos.own` to a pre-existing database — not run by `init_db()` (see `database.md`) |
 | `scripts/issue-62-migration.py` | Standalone, one-time `sync_coverage` backfill for a pre-existing database — not run by `init_db()` (see `database.md`) |
@@ -159,7 +163,7 @@ backend/
     test_application_logging.py, test_sync_detail_logging.py,
     test_pagination_safety.py, test_comment_sync.py, test_comments_api.py,
     test_database_search_terms.py, test_search_insights_sync.py, test_search_insights_api.py,
-    test_database_video_ownership.py, test_database_related_videos.py,
+    test_database_video_ownership.py, test_database_related_videos.py, test_database_reader.py,
     test_related_video_insights_sync.py, test_related_videos_api.py
   schema.sql
 
@@ -171,7 +175,7 @@ backend/
     comments.py
     synchronization.py
     metadata.py
-    video_scope.py         # resolve_playlist_video_ids(), shared by playlists.py and analytics.py
+    video_scope.py         # require_owned_video(), require_playlist(), resolve_playlist_video_ids()
 
   sync/
     __init__.py            # re-exports the plan types/validation, status primitives,
@@ -191,8 +195,12 @@ backend/
     analytics_api.py
 
   database/
-    __init__.py              # re-exports every public helper below
+    __init__.py              # re-exports row classes, reader, queries, writes, and report functions
     connection.py
+    reader.py                # registry + read execution
+    queries.py               # non-executing query specifications
+    video_statistics.py      # get_video_stats()
+    dataclasses/             # one row dataclass per table, plus base.py (to_dict)
     videos.py
     playlists.py
     analytics.py

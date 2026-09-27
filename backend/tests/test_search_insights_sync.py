@@ -7,9 +7,11 @@ from unittest import mock
 
 from googleapiclient.errors import HttpError
 
+from database import queries
 from sync import stages
 from sync.monthly_insights import MonthlyWindow, monthly_search_windows, monthly_windows_for_range
 from sync.stages import SyncCounts
+from tests.support import owned_videos, patch_stage_reads
 from youtube import analytics_api
 
 
@@ -228,12 +230,12 @@ class SyncSearchRelatedInsightsStageTest(unittest.TestCase):
         # No published_at: these tests exercise the no-publish-date fallback (the fixed
         # previous+current windows), independent of coverage — the coverage-driven
         # incremental path has its own test class below.
-        mock.patch("sync.stages.database.get_owned_video", return_value={"title": "T"}).start()
+        self.reads = patch_stage_reads()
         mock.patch("sync.stages.status.update_sync_progress").start()
         mock.patch("sync.stages.database.upsert_coverage").start()
 
     def test_windows_are_captured_once_for_the_whole_stage(self) -> None:
-        mock.patch("sync.stages.database.get_owned_video_ids", return_value=["v1", "v2"]).start()
+        self.reads.videos = owned_videos("v1", "v2")
         mock.patch(
             "sync.stages.youtube.fetch_video_search_terms",
             return_value=analytics_api.SearchTermsResult(raw_row_count=0, terms=[]),
@@ -244,7 +246,7 @@ class SyncSearchRelatedInsightsStageTest(unittest.TestCase):
         self.windows_mock.assert_called_once()
 
     def test_no_targets_makes_no_fetch_calls(self) -> None:
-        mock.patch("sync.stages.database.get_owned_video_ids", return_value=[]).start()
+        self.reads.videos = []
         fetch = mock.patch("sync.stages.youtube.fetch_video_search_terms").start()
         counts = SyncCounts()
 
@@ -255,7 +257,7 @@ class SyncSearchRelatedInsightsStageTest(unittest.TestCase):
         self.assertEqual(counts.rows_written, 0)
 
     def test_every_video_window_combination_is_requested(self) -> None:
-        mock.patch("sync.stages.database.get_owned_video_ids", return_value=["v1", "v2"]).start()
+        self.reads.videos = owned_videos("v1", "v2")
         fetch = mock.patch(
             "sync.stages.youtube.fetch_video_search_terms",
             return_value=analytics_api.SearchTermsResult(raw_row_count=0, terms=[]),
@@ -270,7 +272,7 @@ class SyncSearchRelatedInsightsStageTest(unittest.TestCase):
         )
 
     def test_never_reads_traffic_source_data(self) -> None:
-        mock.patch("sync.stages.database.get_owned_video_ids", return_value=["v1"]).start()
+        self.reads.videos = owned_videos("v1")
         mock.patch(
             "sync.stages.youtube.fetch_video_search_terms",
             return_value=analytics_api.SearchTermsResult(raw_row_count=0, terms=[]),
@@ -282,7 +284,7 @@ class SyncSearchRelatedInsightsStageTest(unittest.TestCase):
         traffic.assert_not_called()
 
     def test_counts_accumulate_across_videos_and_windows(self) -> None:
-        mock.patch("sync.stages.database.get_owned_video_ids", return_value=["v1"]).start()
+        self.reads.videos = owned_videos("v1")
         mock.patch(
             "sync.stages.youtube.fetch_video_search_terms",
             return_value=analytics_api.SearchTermsResult(
@@ -302,7 +304,7 @@ class SyncSearchRelatedInsightsStageTest(unittest.TestCase):
     def test_one_call_per_month_passes_its_terms_straight_through_to_upsert(self) -> None:
         # Only mock the March window so the assertion below stays exact.
         self.windows_mock.return_value = [MonthlyWindow("2024-03", "2024-03-01", "2024-03-14")]
-        mock.patch("sync.stages.database.get_owned_video_ids", return_value=["v1"]).start()
+        self.reads.videos = owned_videos("v1")
         mock.patch(
             "sync.stages.youtube.fetch_video_search_terms",
             return_value=analytics_api.SearchTermsResult(raw_row_count=1, terms=[{"search_term": "cats", "views": 8}]),
@@ -314,7 +316,7 @@ class SyncSearchRelatedInsightsStageTest(unittest.TestCase):
         upsert.assert_called_once_with("v1", "2024-03", [{"search_term": "cats", "views": 8}])
 
     def test_a_failed_window_stops_the_stage_but_keeps_earlier_commits_and_partial_counts(self) -> None:
-        mock.patch("sync.stages.database.get_owned_video_ids", return_value=["v1", "v2"]).start()
+        self.reads.videos = owned_videos("v1", "v2")
         upsert = mock.patch("sync.stages.database.upsert_search_terms", return_value=1).start()
 
         def fetch_side_effect(video_id: str, start: str, end: str, **kwargs: object) -> analytics_api.SearchTermsResult:
@@ -332,6 +334,7 @@ class SyncSearchRelatedInsightsStageTest(unittest.TestCase):
 class SyncSearchRelatedInsightsScopeTest(unittest.TestCase):
     def setUp(self) -> None:
         self.addCleanup(mock.patch.stopall)
+        self.reads = patch_stage_reads()
         mock.patch("sync.stages.status.update_sync_progress").start()
         mock.patch("sync.stages.database.upsert_coverage").start()
         self.mock_date = mock.patch("sync.stages.date").start()
@@ -340,11 +343,7 @@ class SyncSearchRelatedInsightsScopeTest(unittest.TestCase):
         self.mock_date.side_effect = lambda *a, **k: date(*a, **k)
 
     def test_year_scope_requests_every_month_of_the_year_within_publish_and_yesterday(self) -> None:
-        mock.patch("sync.stages.database.get_owned_video_ids", return_value=["v1"]).start()
-        mock.patch(
-            "sync.stages.database.get_owned_video",
-            return_value={"title": "T", "published_at": "2024-02-10T00:00:00Z"},
-        ).start()
+        self.reads.videos = owned_videos("v1", published_at="2024-02-10T00:00:00Z")
         fetch = mock.patch(
             "sync.stages.youtube.fetch_video_search_terms",
             return_value=analytics_api.SearchTermsResult(raw_row_count=0, terms=[]),
@@ -361,11 +360,7 @@ class SyncSearchRelatedInsightsScopeTest(unittest.TestCase):
         self.assertEqual(calls, _monthly_calls("v1", *expected_months))
 
     def test_all_scope_requests_every_month_since_publish(self) -> None:
-        mock.patch("sync.stages.database.get_owned_video_ids", return_value=["v1"]).start()
-        mock.patch(
-            "sync.stages.database.get_owned_video",
-            return_value={"title": "T", "published_at": "2024-01-20T00:00:00Z"},
-        ).start()
+        self.reads.videos = owned_videos("v1", published_at="2024-01-20T00:00:00Z")
         fetch = mock.patch(
             "sync.stages.youtube.fetch_video_search_terms",
             return_value=analytics_api.SearchTermsResult(raw_row_count=0, terms=[]),
@@ -383,8 +378,7 @@ class SyncSearchRelatedInsightsScopeTest(unittest.TestCase):
         self.assertEqual(calls, _monthly_calls("v1", *expected_months))
 
     def test_year_and_all_scope_skip_videos_with_no_publish_date(self) -> None:
-        mock.patch("sync.stages.database.get_owned_video_ids", return_value=["v1"]).start()
-        mock.patch("sync.stages.database.get_owned_video", return_value={"title": "T"}).start()
+        self.reads.videos = owned_videos("v1")
         fetch = mock.patch("sync.stages.youtube.fetch_video_search_terms").start()
 
         stages.sync_search_insights("year", 2024, SyncCounts())
@@ -394,18 +388,16 @@ class SyncSearchRelatedInsightsScopeTest(unittest.TestCase):
 
     def test_a_video_published_after_the_effective_end_is_prefiltered_out(self) -> None:
         """Verify future videos are excluded before Search Insights processing."""
-        worklist = mock.patch("sync.stages.database.get_owned_video_ids", return_value=[]).start()
-        get_video = mock.patch("sync.stages.database.get_owned_video").start()
+        worklist = mock.patch("sync.stages.queries.owned_video_worklist", wraps=queries.owned_video_worklist).start()
         fetch = mock.patch("sync.stages.youtube.fetch_video_search_terms").start()
 
         stages.sync_search_insights("all", None, SyncCounts())
 
         worklist.assert_called_once_with(published_through="2024-03-14")
-        get_video.assert_not_called()
         fetch.assert_not_called()
 
     def test_incremental_and_all_request_yesterday_as_the_effective_end(self) -> None:
-        worklist = mock.patch("sync.stages.database.get_owned_video_ids", return_value=[]).start()
+        worklist = mock.patch("sync.stages.queries.owned_video_worklist", wraps=queries.owned_video_worklist).start()
 
         stages.sync_search_insights("incremental", None, SyncCounts())
         worklist.assert_called_once_with(published_through="2024-03-14")
@@ -415,7 +407,7 @@ class SyncSearchRelatedInsightsScopeTest(unittest.TestCase):
         worklist.assert_called_once_with(published_through="2024-03-14")
 
     def test_year_scope_clamps_the_effective_end_to_the_earlier_of_year_end_and_yesterday(self) -> None:
-        worklist = mock.patch("sync.stages.database.get_owned_video_ids", return_value=[]).start()
+        worklist = mock.patch("sync.stages.queries.owned_video_worklist", wraps=queries.owned_video_worklist).start()
 
         stages.sync_search_insights("year", 2020, SyncCounts())
         worklist.assert_called_once_with(published_through="2020-12-31")
@@ -426,20 +418,17 @@ class SyncSearchRelatedInsightsScopeTest(unittest.TestCase):
         worklist.assert_called_once_with(published_through="2024-03-14")
 
     def test_an_empty_worklist_makes_no_per_video_calls(self) -> None:
-        mock.patch("sync.stages.database.get_owned_video_ids", return_value=[]).start()
-        get_video = mock.patch("sync.stages.database.get_owned_video").start()
+        self.reads.videos = []
         fetch = mock.patch("sync.stages.youtube.fetch_video_search_terms").start()
         counts = SyncCounts()
 
         stages.sync_search_insights("incremental", None, counts)
 
-        get_video.assert_not_called()
         fetch.assert_not_called()
         self.assertEqual((counts.rows_fetched, counts.rows_written), (0, 0))
 
     def test_incremental_scope_with_no_publish_date_uses_fixed_two_windows(self) -> None:
-        mock.patch("sync.stages.database.get_owned_video_ids", return_value=["v1"]).start()
-        mock.patch("sync.stages.database.get_owned_video", return_value={"title": "T"}).start()
+        self.reads.videos = owned_videos("v1")
         fetch = mock.patch(
             "sync.stages.youtube.fetch_video_search_terms",
             return_value=analytics_api.SearchTermsResult(raw_row_count=0, terms=[]),
@@ -456,12 +445,7 @@ class SyncSearchRelatedInsightsScopeTest(unittest.TestCase):
         self.assertEqual(calls, _monthly_calls("v1", *expected_months))
 
     def test_incremental_scope_backfills_from_publish_date_on_first_sync(self) -> None:
-        mock.patch("sync.stages.database.get_owned_video_ids", return_value=["v1"]).start()
-        mock.patch(
-            "sync.stages.database.get_owned_video",
-            return_value={"title": "T", "published_at": "2024-01-20T00:00:00Z"},
-        ).start()
-        mock.patch("sync.stages.database.get_covered_periods", return_value=set()).start()
+        self.reads.videos = owned_videos("v1", published_at="2024-01-20T00:00:00Z")
         fetch = mock.patch(
             "sync.stages.youtube.fetch_video_search_terms",
             return_value=analytics_api.SearchTermsResult(raw_row_count=0, terms=[]),
@@ -483,13 +467,9 @@ class SyncSearchRelatedInsightsScopeTest(unittest.TestCase):
         # today is mocked to 2024-03-15, so "already caught up" means every month through
         # last month (2024-02) is covered — leaving exactly the forced previous+current
         # refresh, same months that would be re-fetched regardless of coverage.
-        mock.patch("sync.stages.database.get_owned_video_ids", return_value=["v1"]).start()
-        mock.patch(
-            "sync.stages.database.get_owned_video",
-            return_value={"title": "T", "published_at": "2020-01-01T00:00:00Z"},
-        ).start()
+        self.reads.videos = owned_videos("v1", published_at="2020-01-01T00:00:00Z")
         covered = {w.month for w in monthly_windows_for_range(date(2020, 1, 1), date(2024, 2, 29))}
-        mock.patch("sync.stages.database.get_covered_periods", return_value=covered).start()
+        self.reads.covered = covered
         fetch = mock.patch(
             "sync.stages.youtube.fetch_video_search_terms",
             return_value=analytics_api.SearchTermsResult(raw_row_count=0, terms=[]),
@@ -509,13 +489,9 @@ class SyncSearchRelatedInsightsScopeTest(unittest.TestCase):
         # A video whose backfill was interrupted after 2023-10 must not be treated as
         # "fully caught up" just because it has *some* coverage — it should resume from
         # the first uncovered month forward, not silently skip the months in between.
-        mock.patch("sync.stages.database.get_owned_video_ids", return_value=["v1"]).start()
-        mock.patch(
-            "sync.stages.database.get_owned_video",
-            return_value={"title": "T", "published_at": "2020-01-01T00:00:00Z"},
-        ).start()
+        self.reads.videos = owned_videos("v1", published_at="2020-01-01T00:00:00Z")
         covered = {w.month for w in monthly_windows_for_range(date(2020, 1, 1), date(2023, 10, 31))}
-        mock.patch("sync.stages.database.get_covered_periods", return_value=covered).start()
+        self.reads.covered = covered
         fetch = mock.patch(
             "sync.stages.youtube.fetch_video_search_terms",
             return_value=analytics_api.SearchTermsResult(raw_row_count=0, terms=[]),

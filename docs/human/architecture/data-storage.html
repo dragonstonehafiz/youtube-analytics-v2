@@ -1,0 +1,349 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Data Storage and Access</title>
+<link rel="stylesheet" href="../human-docs.css">
+<link rel="stylesheet" href="data-storage.css">
+<script src="../human-docs.js" defer></script>
+</head>
+<body>
+<nav class="site-nav" aria-label="Human documentation">
+  <div class="site-nav-inner">
+    <span class="site-nav-brand">YouTube Analytics <span>docs</span></span>
+    <details class="nav-menu">
+      <summary>App flow</summary>
+      <div class="nav-menu-list">
+        <a href="../app-flow/overview.html">Overview</a>
+        <a href="../app-flow/requests.html">Requests</a>
+      </div>
+    </details>
+    <details class="nav-menu current">
+      <summary>Architecture</summary>
+      <div class="nav-menu-list">
+        <a href="backend-architecture.html">Backend architecture</a>
+        <a href="backend-reference.html">Backend reference</a>
+        <a href="data-storage.html" aria-current="page">Data storage and access</a>
+        <a href="frontend-components.html">Frontend components</a>
+      </div>
+    </details>
+    <details class="nav-menu">
+      <summary>Suggestions</summary>
+      <div class="nav-menu-list">
+        <a href="../suggestions/repeated-code.html">Repeated code</a>
+        <a href="../suggestions/efficiency.html">Efficiency</a>
+        <a href="../suggestions/dead-code.html">Dead code</a>
+      </div>
+    </details>
+  </div>
+</nav>
+
+<div class="page">
+  <aside class="toc" aria-label="On this page">
+    <h2>On this page</h2>
+    <ol>
+      <li><a href="#storage">Storage</a></li>
+      <li><a href="#rows">Row objects</a></li>
+      <li><a href="#registry">How the reader finds a table</a></li>
+      <li><a href="#aggregates">Aggregates</a></li>
+      <li><a href="#api-shape">From a stored row to JSON</a></li>
+      <li><a href="#boundaries">Who reads and writes the database</a></li>
+      <li><a href="#connections">Database connections</a></li>
+    </ol>
+  </aside>
+
+  <main>
+    <header class="hero">
+      <h1>Data storage and access</h1>
+      <p>This page shows where the data lives, how the backend reads it into Python objects, and how those objects become the JSON the frontend receives.</p>
+      <div class="meta-line">
+        <span>Source revision <code>926f014</code></span>
+      </div>
+    </header>
+
+    <section id="storage">
+      <h2>Storage</h2>
+      <p>Everything is in one SQLite file, <code>backend/data/youtube.db</code>. <code>backend/schema.sql</code> defines its 12 tables and runs on every startup, creating only tables that are missing.</p>
+      <div class="table-wrap fixed-table">
+        <table>
+          <caption>The 12 tables, grouped by what they hold</caption>
+          <colgroup><col class="col-narrow"><col class="col-mid"><col class="col-narrow"><col></colgroup>
+          <thead><tr><th>Group</th><th>Table</th><th>Row class</th><th>Key</th></tr></thead>
+          <tbody>
+            <tr><td><span class="tag db">Catalog</span></td><td><code>videos</code></td><td><code>Video</code></td><td><code>id</code></td></tr>
+            <tr><td><span class="tag db">Catalog</span></td><td><code>playlists</code></td><td><code>Playlist</code></td><td><code>id</code></td></tr>
+            <tr><td><span class="tag db">Catalog</span></td><td><code>playlist_items</code></td><td><code>PlaylistItem</code></td><td><code>id</code></td></tr>
+            <tr><td><span class="tag db">Daily metrics</span></td><td><code>video_analytics</code></td><td><code>VideoAnalytics</code></td><td><code>video_id</code> + <code>date</code></td></tr>
+            <tr><td><span class="tag db">Daily metrics</span></td><td><code>video_traffic_sources</code></td><td><code>VideoTrafficSource</code></td><td><code>video_id</code> + <code>date</code> + <code>traffic_source_type</code></td></tr>
+            <tr><td><span class="tag db">Daily metrics</span></td><td><code>fx_rates</code></td><td><code>FxRate</code></td><td><code>date</code></td></tr>
+            <tr><td><span class="tag db">Monthly insights</span></td><td><code>search_terms</code></td><td><code>SearchTerm</code></td><td><code>video_id</code> + <code>month</code> + <code>search_term</code></td></tr>
+            <tr><td><span class="tag db">Monthly insights</span></td><td><code>related_videos</code></td><td><code>RelatedVideo</code></td><td><code>target_video_id</code> + <code>month</code> + <code>referrer_video_id</code></td></tr>
+            <tr><td><span class="tag db">Comments</span></td><td><code>comments</code></td><td><code>Comment</code></td><td><code>id</code></td></tr>
+            <tr><td><span class="tag db">Comments</span></td><td><code>comment_authors</code></td><td><code>CommentAuthor</code></td><td><code>id</code></td></tr>
+            <tr><td><span class="tag sync">Sync bookkeeping</span></td><td><code>sync_coverage</code></td><td><code>SyncCoverage</code></td><td><code>collector</code> + <code>video_id</code> + <code>period_key</code></td></tr>
+            <tr><td><span class="tag sync">Sync bookkeeping</span></td><td><code>sync_runs</code></td><td><code>SyncRun</code></td><td><code>id</code></td></tr>
+          </tbody>
+        </table>
+      </div>
+
+      <h3>Which table references which</h3>
+      <p>Each arrow starts at a table that stores another row's ID and points at the table that ID belongs to. The label on the arrow is the column holding the ID.</p>
+      <figure class="diagram">
+        <svg viewBox="0 0 900 480" role="img" aria-labelledby="rel-title rel-desc">
+          <title id="rel-title">Which table references which</title>
+          <desc id="rel-desc">Foreign keys: playlist_items.playlist_id to playlists; video_id in video_traffic_sources, video_analytics, search_terms, comments and sync_coverage to videos; related_videos.target_video_id to videos; comments.author_id to comment_authors. Stored IDs the schema does not check: playlist_items.video_id and related_videos.referrer_video_id to videos. fx_rates and sync_runs reference no other table.</desc>
+          <defs>
+            <marker id="arrow" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse">
+              <path class="arrowhead" d="M0,0 L10,5 L0,10 z"/>
+            </marker>
+          </defs>
+          <g class="node db"><rect x="30" y="40" width="170" height="56" rx="8"/><text class="title" x="115" y="64" text-anchor="middle">playlists</text><text class="sub" x="115" y="82" text-anchor="middle">Playlist</text></g>
+          <g class="node db"><rect x="30" y="182" width="170" height="56" rx="8"/><text class="title" x="115" y="206" text-anchor="middle">playlist_items</text><text class="sub" x="115" y="224" text-anchor="middle">PlaylistItem</text></g>
+          <g class="node db"><rect x="250" y="40" width="170" height="56" rx="8"/><text class="title" x="335" y="64" text-anchor="middle">video_traffic_sources</text><text class="sub" x="335" y="82" text-anchor="middle">VideoTrafficSource</text></g>
+          <g class="node db"><rect x="470" y="40" width="170" height="56" rx="8"/><text class="title" x="555" y="64" text-anchor="middle">video_analytics</text><text class="sub" x="555" y="82" text-anchor="middle">VideoAnalytics</text></g>
+          <g class="node db"><rect x="700" y="40" width="170" height="56" rx="8"/><text class="title" x="785" y="64" text-anchor="middle">fx_rates</text><text class="sub" x="785" y="82" text-anchor="middle">FxRate · references nothing</text></g>
+          <g class="node db"><rect x="360" y="182" width="170" height="56" rx="8"/><text class="title" x="445" y="206" text-anchor="middle">videos</text><text class="sub" x="445" y="224" text-anchor="middle">Video</text></g>
+          <g class="node db"><rect x="700" y="140" width="170" height="56" rx="8"/><text class="title" x="785" y="164" text-anchor="middle">search_terms</text><text class="sub" x="785" y="182" text-anchor="middle">SearchTerm</text></g>
+          <g class="node db"><rect x="700" y="240" width="170" height="56" rx="8"/><text class="title" x="785" y="264" text-anchor="middle">related_videos</text><text class="sub" x="785" y="282" text-anchor="middle">RelatedVideo</text></g>
+          <g class="node db"><rect x="20" y="330" width="160" height="56" rx="8"/><text class="title" x="100" y="354" text-anchor="middle">comment_authors</text><text class="sub" x="100" y="372" text-anchor="middle">CommentAuthor</text></g>
+          <g class="node db"><rect x="250" y="330" width="170" height="56" rx="8"/><text class="title" x="335" y="354" text-anchor="middle">comments</text><text class="sub" x="335" y="372" text-anchor="middle">Comment</text></g>
+          <g class="node sync"><rect x="470" y="330" width="170" height="56" rx="8"/><text class="title" x="555" y="354" text-anchor="middle">sync_coverage</text><text class="sub" x="555" y="372" text-anchor="middle">SyncCoverage</text></g>
+          <g class="node sync"><rect x="700" y="340" width="170" height="56" rx="8"/><text class="title" x="785" y="364" text-anchor="middle">sync_runs</text><text class="sub" x="785" y="382" text-anchor="middle">SyncRun · references nothing</text></g>
+
+          <path class="edge" d="M115,182 L115,98" marker-end="url(#arrow)"/>
+          <text class="edge-label" x="123" y="144">playlist_id</text>
+          <path class="edge" d="M335,96 L420,180" marker-end="url(#arrow)"/>
+          <text class="edge-label" x="370" y="142" text-anchor="end">video_id</text>
+          <path class="edge" d="M555,96 L470,180" marker-end="url(#arrow)"/>
+          <text class="edge-label" x="520" y="142">video_id</text>
+          <path class="edge" d="M700,170 L532,202" marker-end="url(#arrow)"/>
+          <text class="edge-label" x="616" y="176" text-anchor="middle">video_id</text>
+          <path class="edge" d="M700,256 L532,220" marker-end="url(#arrow)"/>
+          <text class="edge-label" x="630" y="228" text-anchor="middle">target_video_id</text>
+          <path class="edge" d="M335,330 L420,240" marker-end="url(#arrow)"/>
+          <text class="edge-label" x="370" y="292" text-anchor="end">video_id</text>
+          <path class="edge" d="M555,330 L470,240" marker-end="url(#arrow)"/>
+          <text class="edge-label" x="520" y="292">video_id</text>
+          <path class="edge" d="M250,358 L182,358" marker-end="url(#arrow)"/>
+          <text class="edge-label" x="216" y="350" text-anchor="middle">author_id</text>
+
+          <path class="edge dashed" d="M200,210 L358,210" marker-end="url(#arrow)"/>
+          <text class="edge-label" x="279" y="202" text-anchor="middle">video_id</text>
+          <path class="edge dashed" d="M720,296 C680,322 540,300 500,242" marker-end="url(#arrow)"/>
+          <text class="edge-label" x="640" y="322" text-anchor="middle">referrer_video_id</text>
+
+          <g aria-hidden="true">
+            <path class="edge" d="M30,446 L70,446" marker-end="url(#arrow)"/>
+            <text class="edge-label" x="80" y="450">Foreign key: the schema checks the ID exists</text>
+            <path class="edge dashed" d="M350,446 L390,446" marker-end="url(#arrow)"/>
+            <text class="edge-label" x="400" y="450">Stored ID only: not checked</text>
+            <g class="node db"><rect x="590" y="438" width="16" height="16" rx="3"/></g>
+            <text class="edge-label" x="612" y="450">Channel data</text>
+            <g class="node sync"><rect x="710" y="438" width="16" height="16" rx="3"/></g>
+            <text class="edge-label" x="732" y="450">Sync bookkeeping</text>
+          </g>
+        </svg>
+      </figure>
+
+      <div class="card-grid">
+        <div class="card"><h3>Declared foreign keys</h3><p>Deleting a video cascades to its analytics, traffic sources, search terms, related-video rows (as target), comments, and coverage. Deleting a playlist cascades to its items. A comment author cannot be deleted while a comment still uses it.</p></div>
+        <div class="card"><h3>Links without a foreign key</h3><p><code>playlist_items.video_id</code> can name a video that isn't stored. <code>related_videos.referrer_video_id</code> can name another channel's video with no row at all. Queries join these with <code>LEFT JOIN</code> or filter them out; the schema never checks them.</p></div>
+        <div class="card"><h3>Owned vs external videos</h3><p><code>videos.own</code> is 1 for this channel's uploads and 0 for another channel's video stored only as a Related Video referrer. Every catalog and analytics read requires <code>own = 1</code>.</p></div>
+      </div>
+    </section>
+
+    <section id="rows">
+      <h2>Row objects</h2>
+      <p>Each table has one plain Python data class in <code>backend/database/dataclasses/</code>. Its fields are the table's columns in the same order, and every field defaults to <code>None</code>, because a read may select only some columns. The classes only hold values; the one thing they can do is turn themselves into a dictionary with <code>to_dict()</code>. They cannot run a query and know nothing about tables or connections.</p>
+      <span class="code-label">backend/database/dataclasses/videos.py (abridged)</span>
+<pre class="code"><code>@dataclass
+class Video(Row):
+    id: str | None = None
+    channel_id: str | None = None
+    title: str | None = None
+    description: str | None = None
+    published_at: str | None = None
+    ...
+    view_count: int | None = None
+    own: bool | None = None
+    updated_at: str | None = None</code></pre>
+      <p><code>Video(id="abc", title="Example")</code> is a complete, valid object: <code>id</code> and <code>title</code> hold values and every other attribute is <code>None</code>.</p>
+      <div class="table-wrap fixed-table">
+        <table>
+          <caption>What an attribute holds after <code>reader.select(Video, ("id", "title", "description", "view_count", "published_at"))</code></caption>
+          <colgroup><col class="col-mid"><col class="col-mid"><col class="col-narrow"><col></colgroup>
+          <thead><tr><th>Stored in SQLite</th><th>Selected?</th><th>Attribute</th><th>Meaning</th></tr></thead>
+          <tbody>
+            <tr><td><code>title = 'Example'</code></td><td>yes</td><td><code>"Example"</code></td><td>The stored value.</td></tr>
+            <tr><td><code>view_count = 0</code></td><td>yes</td><td><code>0</code></td><td>A real zero, kept as zero.</td></tr>
+            <tr><td><code>description = ''</code></td><td>yes</td><td><code>""</code></td><td>A real empty string, kept as empty.</td></tr>
+            <tr><td><code>published_at = NULL</code></td><td>yes</td><td><code>None</code></td><td>Stored as unknown.</td></tr>
+            <tr><td><code>like_count = 12</code></td><td>no</td><td><code>None</code></td><td>Not fetched by this read.</td></tr>
+          </tbody>
+        </table>
+      </div>
+      <div class="note warn"><p><code>None</code> means either "stored as NULL" or "not selected". The caller knows which fields it asked for, so it only reads those. Zero, <code>False</code> and empty strings are never turned into <code>None</code>.</p></div>
+      <p>Dates and timestamps stay as the stored text. The only converted column is <code>Video.own</code>, which becomes <code>True</code> or <code>False</code>, or stays <code>None</code> when it wasn't selected or a <code>LEFT JOIN</code> found no video.</p>
+    </section>
+
+    <section id="registry">
+      <h2>How the reader finds a table</h2>
+      <p><code>backend/database/reader.py</code> holds an explicit list pairing each row class with its table. The class name is never used to guess a table name.</p>
+<pre class="code"><code>TABLES = {
+    Video: "videos",
+    Playlist: "playlists",
+    PlaylistItem: "playlist_items",
+    ...
+    SyncRun: "sync_runs",
+}</code></pre>
+      <div class="flow">
+        <div class="flow-step route"><strong>Caller asks</strong><small><code>select(Video, ("id", "title"), where=[("own", "=", True)])</code></small></div>
+        <div class="flow-arrow" aria-hidden="true"></div>
+        <div class="flow-step db"><strong>Table</strong><small><code>TABLES[Video]</code> → <code>videos</code>; an unlisted class is an error</small></div>
+        <div class="flow-arrow" aria-hidden="true"></div>
+        <div class="flow-step db"><strong>Check names</strong><small><code>id</code>, <code>title</code>, <code>own</code> must be fields of <code>Video</code>; the operator must be one of <code>= != &lt; &lt;= &gt; &gt;= LIKE IN</code></small></div>
+        <div class="flow-arrow" aria-hidden="true"></div>
+        <div class="flow-step db"><strong>Bind values</strong><small><code>SELECT "id", "title" FROM videos WHERE "own" = ?</code> with <code>True</code> bound to <code>?</code></small></div>
+      </div>
+      <p>Column and table names in the SQL come only from this list and the data class fields; a request string never becomes part of the SQL. Every value, including one with quotes in it, is passed separately as a bound parameter. A test compares the list and every class's fields with the real schema, so a missing or misspelled column fails the test suite.</p>
+    </section>
+
+    <section id="aggregates">
+      <h2>Aggregates</h2>
+      <p>Totals such as a search term's views or a video's earnings for a period are not stored in the database. SQLite calculates them each time a request asks, with <code>SUM</code> and <code>GROUP BY</code>, and the result is sent to the frontend in one of two shapes.</p>
+      <div class="table-wrap fixed-table">
+        <table>
+          <caption>Where a calculated total ends up</caption>
+          <colgroup><col class="col-mid"><col class="col-mid"><col></colgroup>
+          <thead><tr><th>When</th><th>Held in</th><th>Sent as JSON</th></tr></thead>
+          <tbody>
+            <tr><td>Every result column matches a row class field, e.g. search terms</td><td><code>SearchTerm(search_term="cats", views=17)</code></td><td><code>{"search_term": "cats", "views": 17}</code></td></tr>
+            <tr><td>A total has no matching field, e.g. top videos' period earnings</td><td><code>row[Video]</code> for the video, <code>row.values</code> for <code>period_views</code>, <code>period_earnings_sgd</code>, <code>period_watch_time_hours</code></td><td>The video's fields and the totals merged into one object: <code>{"id": …, "title": …, "period_views": …, "period_earnings_sgd": …, …}</code></td></tr>
+          </tbody>
+        </table>
+      </div>
+      <span class="code-label">Search term totals, from the query to the response</span>
+<pre class="code"><code>SELECT st.search_term AS search_term, SUM(st.views) AS views
+FROM search_terms st JOIN videos v ON v.id = st.video_id
+WHERE v.own = 1 AND st.month &gt;= ? AND st.month &lt;= ?
+GROUP BY st.search_term
+ORDER BY views DESC, st.search_term ASC
+
+terms = reader.fetch(SearchTerm, query)                       # [SearchTerm(search_term="cats", views=17), ...]
+items = [term.to_dict(("search_term", "views")) for term in terms]</code></pre>
+      <p>A <code>SearchTerm</code> built this way is a total across many stored rows, so its <code>video_id</code>, <code>month</code> and <code>updated_at</code> stay <code>None</code>. The route only sends the two fields the query filled.</p>
+      <p>A few reports finish the calculation in Python after SQLite has added things up: the daily charts fill missing days with zeros, and the traffic-source view keeps the top videos for each source. They return finished dictionaries, which the route sends as they are.</p>
+    </section>
+
+    <section id="api-shape">
+      <h2>From a stored row to JSON</h2>
+      <p>One video's trip through <code>GET /videos/published</code>, which the charts use to mark upload days.</p>
+
+      <h3>1 · Stored in SQLite</h3>
+      <p>The full row in <code>videos</code>, all 14 columns.</p>
+<pre class="code"><code>id='v-1', channel_id='c1', title='Alpha Video', description='', published_at='2024-01-01T00:00:00Z',
+duration_seconds=100, thumbnail_url='', content_type='video', privacy_status='public',
+view_count=100, like_count=10, comment_count=2, own=1, updated_at='2024-06-01T00:00:00+00:00'</code></pre>
+
+      <h3>2 · Read into a <code>Video</code></h3>
+      <p>The route runs the query through the reader. The query selects only the five columns the chart needs, so the other nine fields stay <code>None</code>.</p>
+<pre class="code"><code>videos = reader.fetch(Video, queries.videos_published(start_date=..., end_date=...))
+
+Video(id="v-1", title="Alpha Video", published_at="2024-01-01T00:00:00Z", thumbnail_url="",
+      content_type="video", channel_id=None, description=None, view_count=None, ...)</code></pre>
+
+      <h3>3 · Turned into a dictionary</h3>
+      <p>The route asks for the same five fields it selected. <code>to_dict()</code> returns a plain Python dictionary with exactly those keys.</p>
+<pre class="code"><code>items = [video.to_dict(("id", "title", "published_at", "thumbnail_url", "content_type")) for video in videos]
+
+{"id": "v-1", "title": "Alpha Video", "published_at": "2024-01-01T00:00:00Z", "thumbnail_url": "", "content_type": "video"}</code></pre>
+
+      <h3>4 · Sent to the browser</h3>
+      <p>The route returns <code>{"items": items}</code> and FastAPI encodes it as JSON.</p>
+<pre class="code"><code>{"items": [{"id": "v-1", "title": "Alpha Video", "published_at": "2024-01-01T00:00:00Z", "thumbnail_url": "", "content_type": "video"}]}</code></pre>
+
+      <div class="note"><p>Passing the field list to <code>to_dict()</code> keeps the response to the columns the route read. A listed field that is <code>None</code> is still sent as <code>null</code>, and a name that isn't a field is an error. <code>to_dict()</code> with no list returns every field, so a route uses that form only when it selected every column.</p></div>
+    </section>
+
+    <section id="boundaries">
+      <h2>Who reads and writes the database</h2>
+      <p>Routes and sync don't run SQL themselves. Routes call the reader or a report function; sync calls the reader and the write helpers.</p>
+      <figure class="diagram">
+        <svg viewBox="0 0 900 420" role="img" aria-labelledby="bound-title bound-desc">
+          <title id="bound-title">Who reads and writes the database</title>
+          <desc id="bound-desc">routes/ calls report functions, reader.py and queries.py. sync/ calls reader.py, queries.py and the write helpers. Report functions, reader.py and the write helpers read or write SQLite. queries.py only builds SQL and does not touch SQLite.</desc>
+          <defs>
+            <marker id="arrow-route" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse">
+              <path class="arrowhead route" d="M0,0 L10,5 L0,10 z"/>
+            </marker>
+            <marker id="arrow-sync" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse">
+              <path class="arrowhead sync" d="M0,0 L10,5 L0,10 z"/>
+            </marker>
+            <marker id="arrow-db" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse">
+              <path class="arrowhead" d="M0,0 L10,5 L0,10 z"/>
+            </marker>
+          </defs>
+
+          <g class="node route"><rect x="20" y="70" width="150" height="56" rx="8"/><text class="title" x="95" y="94" text-anchor="middle">routes/</text><text class="sub" x="95" y="112" text-anchor="middle">HTTP endpoints</text></g>
+          <g class="node sync"><rect x="20" y="250" width="150" height="56" rx="8"/><text class="title" x="95" y="274" text-anchor="middle">sync/</text><text class="sub" x="95" y="292" text-anchor="middle">sync stages</text></g>
+
+          <g class="node db"><rect x="330" y="20" width="190" height="56" rx="8"/><text class="title" x="425" y="44" text-anchor="middle">report functions</text><text class="sub" x="425" y="62" text-anchor="middle">finish totals in Python</text></g>
+          <g class="node db"><rect x="330" y="110" width="190" height="56" rx="8"/><text class="title" x="425" y="134" text-anchor="middle">reader.py</text><text class="sub" x="425" y="152" text-anchor="middle">runs every read</text></g>
+          <g class="node db"><rect x="330" y="200" width="190" height="56" rx="8"/><text class="title" x="425" y="224" text-anchor="middle">queries.py</text><text class="sub" x="425" y="242" text-anchor="middle">builds SQL, never runs it</text></g>
+          <g class="node db"><rect x="330" y="290" width="190" height="56" rx="8"/><text class="title" x="425" y="314" text-anchor="middle">write helpers</text><text class="sub" x="425" y="332" text-anchor="middle">upsert_* · delete_*</text></g>
+
+          <g class="node"><rect x="700" y="155" width="170" height="56" rx="8"/><text class="title" x="785" y="179" text-anchor="middle">SQLite</text><text class="sub" x="785" y="197" text-anchor="middle">data/youtube.db</text></g>
+
+          <path class="edge route" d="M170,86 L328,50" marker-end="url(#arrow-route)"/>
+          <path class="edge route" d="M170,98 L328,136" marker-end="url(#arrow-route)"/>
+          <path class="edge route" d="M170,110 L328,220" marker-end="url(#arrow-route)"/>
+          <path class="edge sync" d="M170,264 L328,146" marker-end="url(#arrow-sync)"/>
+          <path class="edge sync" d="M170,278 L328,234" marker-end="url(#arrow-sync)"/>
+          <path class="edge sync" d="M170,292 L328,316" marker-end="url(#arrow-sync)"/>
+
+          <path class="edge" d="M520,48 L698,170" marker-end="url(#arrow-db)"/>
+          <path class="edge" d="M520,138 L698,180" marker-end="url(#arrow-db)"/>
+          <path class="edge" d="M520,318 L698,196" marker-end="url(#arrow-db)"/>
+
+          <g aria-hidden="true">
+            <path class="edge route" d="M20,390 L60,390" marker-end="url(#arrow-route)"/>
+            <text class="edge-label" x="70" y="394">called by routes/</text>
+            <path class="edge sync" d="M220,390 L260,390" marker-end="url(#arrow-sync)"/>
+            <text class="edge-label" x="270" y="394">called by sync/</text>
+            <path class="edge" d="M410,390 L450,390" marker-end="url(#arrow-db)"/>
+            <text class="edge-label" x="460" y="394">reads or writes SQLite</text>
+            <g class="node db"><rect x="640" y="382" width="16" height="16" rx="3"/></g>
+            <text class="edge-label" x="662" y="394">code in database/</text>
+          </g>
+        </svg>
+      </figure>
+      <div class="card-grid">
+        <div class="card"><h3><span class="tag db">dataclasses/</span></h3><p>One class per table holding a row's values, plus <code>to_dict()</code>. They never run a query or open a connection.</p></div>
+        <div class="card"><h3><span class="tag db">reader.py</span></h3><p>The class-to-table list and every read: <code>select</code>, <code>select_one</code> and <code>scalar</code> for one table, and <code>fetch</code>, <code>fetch_joined</code> and <code>fetch_scalar</code> for SQL from <code>queries.py</code>.</p></div>
+        <div class="card"><h3><span class="tag db">queries.py</span></h3><p>10 shared SQL definitions for joined, grouped and ranked reads. Each returns a query that the caller passes to the reader.</p></div>
+        <div class="card"><h3><span class="tag db">Report functions</span></h3><p>Legacy/New statistics, zero-filled daily charts, top videos per traffic source, referrer totals, and sync-history grouping. The statistics report runs its SQL through the reader; the others open their own connection.</p></div>
+        <div class="card"><h3><span class="tag db">Write helpers</span></h3><p>Every <code>upsert_*</code> and <code>delete_*</code>. Each runs its own SQL on its own connection, never through the reader. Only sync calls them.</p></div>
+      </div>
+    </section>
+
+    <section id="connections">
+      <h2>Database connections</h2>
+      <div class="table-wrap fixed-table">
+        <table>
+          <caption>Who opens and closes the SQLite connection for a read</caption>
+          <colgroup><col class="col-mid"><col></colgroup>
+          <thead><tr><th>Call</th><th>What happens to the connection</th></tr></thead>
+          <tbody>
+            <tr><td>Read without <code>conn=</code></td><td>The reader opens one, runs the query, and closes it.</td></tr>
+            <tr><td>Read with <code>conn=</code></td><td>The reader uses it and leaves it open. It never commits or rolls it back.</td></tr>
+            <tr><td><code>with reader.connect() as conn</code></td><td>Opens one connection for several reads, such as a page and its total count, or the four statistics queries, and closes it at the end of the block.</td></tr>
+          </tbody>
+        </table>
+      </div>
+    </section>
+
+  </main>
+</div>
+</body>
+</html>

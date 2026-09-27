@@ -5,6 +5,7 @@ from datetime import date, timedelta
 
 import database
 import youtube
+from database import Comment, FxRate, SyncCoverage, Video, queries, reader
 from logging_config import exception_context, get_logger
 
 from . import coverage, monthly_insights, status
@@ -32,7 +33,13 @@ def _incremental_monthly_windows(
     windows_all = monthly_insights.monthly_windows_for_range(publish_date, yesterday)
     if not windows_all:
         return []
-    covered = database.get_covered_periods(collector, video_id, windows_all[0].month, windows_all[-1].month)
+    rows = reader.select(SyncCoverage, ("period_key",), where=[
+        ("collector", "=", collector),
+        ("video_id", "=", video_id),
+        ("period_key", ">=", windows_all[0].month),
+        ("period_key", "<=", windows_all[-1].month),
+    ])
+    covered = {row.period_key for row in rows if row.period_key is not None}
     missing_months = {window.month for window in coverage.missing_windows(windows_all, covered)}
     forced_months = {window.month for window in forced}
     # Rebuild from windows_all (rather than concatenating missing + forced) so the
@@ -185,16 +192,19 @@ def _comment_bootstrap_cutoff(today: date) -> str:
 def sync_comments(scope: str, counts: SyncCounts) -> None:
     """Sync top-level comments for every stored owned video."""
     cutoff = _comment_bootstrap_cutoff(date.today())
-    video_ids = database.get_owned_video_ids()
-    total = len(video_ids)
+    videos = reader.fetch(Video, queries.owned_video_worklist())
+    total = len(videos)
 
-    for i, video_id in enumerate(video_ids, start=1):
+    for i, video in enumerate(videos, start=1):
         if i > 1:
             status.raise_if_stopping()
         status.update_sync_progress("comments", f"Syncing comments ({i}/{total})...")
-        video = database.get_owned_video(video_id)
-        title = video.get("title") if video else None
-        known_ids = database.get_comment_ids_for_video(video_id)
+        assert video.id is not None
+        video_id = video.id
+        title = video.title
+        known_ids = {
+            comment.id for comment in reader.select(Comment, ("id",), where=[("video_id", "=", video_id)])
+        }
         fetched_before = counts.rows_fetched
         written_before = counts.rows_written
         overlap_remaining: int | None = None
@@ -253,21 +263,22 @@ def sync_video_analytics(scope: str, year: int | None, counts: SyncCounts) -> No
     effective_end = _effective_range_end(scope, year, today - timedelta(days=1))
     end_date = effective_end.isoformat()
 
-    video_ids = database.get_owned_video_ids(published_through=end_date)
-    total = len(video_ids)
-    for i, video_id in enumerate(video_ids, start=1):
+    videos = reader.fetch(Video, queries.owned_video_worklist(published_through=end_date))
+    total = len(videos)
+    for i, video in enumerate(videos, start=1):
         if i > 1:
             status.raise_if_stopping()
         status.update_sync_progress("video_analytics", f"Syncing video analytics ({i}/{total})...")
-        video = database.get_owned_video(video_id)
-        if not video or not video.get("published_at"):
+        assert video.id is not None
+        video_id = video.id
+        title = video.title
+        if not video.published_at:
             _logger.debug(
                 "video_analytics %d/%d video=%s skipped reason=no_publish_date title=%r",
-                i, total, video_id, video.get("title") if video else None,
+                i, total, video_id, title,
             )
             continue
-        publish_date = video["published_at"][:10]
-        title = video.get("title")
+        publish_date = video.published_at[:10]
 
         requests = _video_period_requests("video_analytics", video_id, scope, year, today, end_date, publish_date)
         if not requests:
@@ -306,21 +317,22 @@ def sync_video_traffic_sources(scope: str, year: int | None, counts: SyncCounts)
     effective_end = _effective_range_end(scope, year, today - timedelta(days=1))
     end_date = effective_end.isoformat()
 
-    video_ids = database.get_owned_video_ids(published_through=end_date)
-    total = len(video_ids)
-    for i, video_id in enumerate(video_ids, start=1):
+    videos = reader.fetch(Video, queries.owned_video_worklist(published_through=end_date))
+    total = len(videos)
+    for i, video in enumerate(videos, start=1):
         if i > 1:
             status.raise_if_stopping()
         status.update_sync_progress("video_traffic_sources", f"Syncing traffic sources ({i}/{total})...")
-        video = database.get_owned_video(video_id)
-        if not video or not video.get("published_at"):
+        assert video.id is not None
+        video_id = video.id
+        title = video.title
+        if not video.published_at:
             _logger.debug(
                 "video_traffic_sources %d/%d video=%s skipped reason=no_publish_date title=%r",
-                i, total, video_id, video.get("title") if video else None,
+                i, total, video_id, title,
             )
             continue
-        publish_date = video["published_at"][:10]
-        title = video.get("title")
+        publish_date = video.published_at[:10]
 
         requests = _video_period_requests("video_traffic_sources", video_id, scope, year, today, end_date, publish_date)
         if not requests:
@@ -361,24 +373,25 @@ def sync_search_insights(scope: str, year: int | None, counts: SyncCounts) -> No
     # Captured once so a midnight rollover mid-run cannot change the worklist. Used only
     # as the incremental fallback for a video with no publish date to compute a range from.
     incremental_windows = monthly_insights.monthly_search_windows(today)
-    video_ids = database.get_owned_video_ids(published_through=effective_end.isoformat())
-    total = len(video_ids)
+    videos = reader.fetch(Video, queries.owned_video_worklist(published_through=effective_end.isoformat()))
+    total = len(videos)
 
-    for i, video_id in enumerate(video_ids, start=1):
+    for i, video in enumerate(videos, start=1):
         if i > 1:
             status.raise_if_stopping()
-        video = database.get_owned_video(video_id)
-        title = video.get("title") if video else None
+        assert video.id is not None
+        video_id = video.id
+        title = video.title
         status.update_sync_progress("search_insights", f"Syncing search insights ({i}/{total})...")
 
         if scope in ("year", "all"):
-            if not video or not video.get("published_at"):
+            if not video.published_at:
                 _logger.debug(
                     "search_insights %d/%d video=%s skipped reason=no_publish_date title=%r",
                     i, total, video_id, title,
                 )
                 continue
-            publish_date = date.fromisoformat(video["published_at"][:10])
+            publish_date = date.fromisoformat(video.published_at[:10])
             if scope == "year":
                 assert year is not None, "scope=year requires a year"
                 start = max(publish_date, date(year, 1, 1))
@@ -387,8 +400,8 @@ def sync_search_insights(scope: str, year: int | None, counts: SyncCounts) -> No
                 start = publish_date
                 end = yesterday
             windows = monthly_insights.monthly_windows_for_range(start, end)
-        elif video and video.get("published_at"):
-            publish_date = date.fromisoformat(video["published_at"][:10])
+        elif video.published_at:
+            publish_date = date.fromisoformat(video.published_at[:10])
             windows = _incremental_monthly_windows("search_insights", video_id, publish_date, yesterday, incremental_windows)
         else:
             windows = incremental_windows
@@ -417,25 +430,26 @@ def sync_related_video_insights(scope: str, year: int | None, counts: SyncCounts
     # Captured once so a midnight rollover mid-run cannot change the worklist. Used only
     # as the incremental fallback for a video with no publish date to compute a range from.
     incremental_windows = monthly_insights.monthly_search_windows(today)
-    video_ids = database.get_owned_video_ids(published_through=effective_end.isoformat())
-    total = len(video_ids)
+    videos = reader.fetch(Video, queries.owned_video_worklist(published_through=effective_end.isoformat()))
+    total = len(videos)
     newly_encountered_ids: set[str] = set()
 
-    for i, video_id in enumerate(video_ids, start=1):
+    for i, video in enumerate(videos, start=1):
         if i > 1:
             status.raise_if_stopping()
-        video = database.get_owned_video(video_id)
-        title = video.get("title") if video else None
+        assert video.id is not None
+        video_id = video.id
+        title = video.title
         status.update_sync_progress("related_video_insights", f"Syncing related video insights ({i}/{total})...")
 
         if scope in ("year", "all"):
-            if not video or not video.get("published_at"):
+            if not video.published_at:
                 _logger.debug(
                     "related_video_insights %d/%d video=%s skipped reason=no_publish_date title=%r",
                     i, total, video_id, title,
                 )
                 continue
-            publish_date = date.fromisoformat(video["published_at"][:10])
+            publish_date = date.fromisoformat(video.published_at[:10])
             if scope == "year":
                 assert year is not None, "scope=year requires a year"
                 start = max(publish_date, date(year, 1, 1))
@@ -444,8 +458,8 @@ def sync_related_video_insights(scope: str, year: int | None, counts: SyncCounts
                 start = publish_date
                 end = yesterday
             windows = monthly_insights.monthly_windows_for_range(start, end)
-        elif video and video.get("published_at"):
-            publish_date = date.fromisoformat(video["published_at"][:10])
+        elif video.published_at:
+            publish_date = date.fromisoformat(video.published_at[:10])
             windows = _incremental_monthly_windows(
                 "related_video_insights", video_id, publish_date, yesterday, incremental_windows
             )
@@ -473,7 +487,8 @@ def sync_related_video_insights(scope: str, year: int | None, counts: SyncCounts
 
 def _resolve_related_video_metadata(newly_encountered_ids: set[str], counts: SyncCounts) -> None:
     """Resolve and classify metadata for previously unknown referrer videos."""
-    unknown_ids = sorted(newly_encountered_ids - set(database.get_all_video_ids()))
+    known_ids = {video.id for video in reader.select(Video, ("id",))}
+    unknown_ids = sorted(newly_encountered_ids - known_ids)
     if not unknown_ids:
         return
 
@@ -517,11 +532,11 @@ def sync_fx_rates(counts: SyncCounts) -> None:
     import pandas as pd
 
     yesterday = date.today() - timedelta(days=1)
-    last_row = database.get_last_fx_rate()
-    carry: float | None = last_row["usd_to_sgd"] if last_row else None
+    last_rate = reader.select_one(FxRate, ("date", "usd_to_sgd"), order_by=("-date",))
+    carry: float | None = last_rate.usd_to_sgd if last_rate else None
     start = (
-        date.fromisoformat(last_row["date"]) + timedelta(days=1)
-        if last_row else date(2015, 1, 1)
+        date.fromisoformat(last_rate.date) + timedelta(days=1)
+        if last_rate and last_rate.date else date(2015, 1, 1)
     )
 
     if start > yesterday:
