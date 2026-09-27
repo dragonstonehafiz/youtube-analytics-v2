@@ -18,13 +18,14 @@ Use this workflow when:
 - files are renamed or documentation paths change;
 - issue templates or contribution rules change.
 
-Documentation updates accompany the implementation they describe — they are not deferred to a later cleanup pass.
+Documentation updates accompany the implementation they describe — they are not deferred to a later cleanup pass. This includes the human-readable HTML pages in `docs/human/` whenever the change affects what they show (see [Human-readable views](#human-readable-views)).
 
 ## Contents
 
 - [When this applies](#when-this-applies)
 - [Find the ownership map](#find-the-ownership-map)
 - [Update workflow](#update-workflow)
+- [Human-readable views](#human-readable-views)
 - [Layer boundaries](#layer-boundaries)
 - [Keep documentation implementation-derived](#keep-documentation-implementation-derived)
 - [Control duplication](#control-duplication)
@@ -46,9 +47,33 @@ Every fact should have exactly one canonical home. A file not in the ownership m
 3. Update only confirmed current behavior — verify against the actual code or policy, don't paraphrase from memory of what it used to say.
 4. Remove or correct stale statements rather than appending a correction next to them.
 5. Check related documents for links or summaries that also need updating (a root-file one-liner, a cross-reference in another reference file, a routing entry in `AGENTS.md`).
-6. Avoid copying the same detail into multiple files — link instead.
-7. Run documentation validation (see [Verification](#verification)).
-8. Confirm no unrelated runtime/application files changed.
+6. Check every `docs/human/` topic against the triggers in [Human-readable views](#human-readable-views); update each affected page.
+7. Avoid copying the same detail into multiple files — link instead.
+8. Run documentation validation (see [Verification](#verification)).
+9. Confirm no unrelated runtime/application files changed.
+
+## Human-readable views
+
+`docs/human/` holds eight HTML pages — `overview.html` and `requests.html` in `docs/human/app-flow/`, the backend and frontend-components ones in `docs/human/architecture/`, and `repeated-code.html`, `efficiency.html`, and `dead-code.html` in `docs/human/suggestions/` — sharing `docs/human/human-docs.css` and the nav-dropdown script `docs/human/human-docs.js`. Styles used by only one page go in a `.css` file of the same name next to that page, not in the shared file. Adding or renaming a page means updating the nav menu on every page. The per-page component diagrams on `frontend-components.html` are SVG files in `docs/human/architecture/figures/`.
+
+| Page | Update when a change… |
+|---|---|
+| [`app-flow/overview.html`](../human/app-flow/overview.html) | adds, removes, or rewires a sync trigger, a startup/shutdown step, a layer in the request path, an external API, or the frontend↔backend origin/port |
+| [`architecture/backend-architecture.html`](../human/architecture/backend-architecture.html) | adds, removes, or renames a backend package; changes a package's role; changes an import between backend packages; or changes a main request or sync call path |
+| [`architecture/backend-reference.html`](../human/architecture/backend-reference.html) | adds, removes, renames, or moves a backend module; changes a module's responsibility; adds or removes an endpoint; or changes which functions a route handler or a `database` function calls |
+| [`architecture/frontend-components.html`](../human/architecture/frontend-components.html) | adds, removes, or renames a route, page, tab, or component; adds or removes a JSX render site; or changes which shared hooks/helpers a file uses |
+| [`suggestions/repeated-code.html`](../human/suggestions/repeated-code.html) | adds, removes, or changes a copy of code, markup, or a CSS rule that the page lists, or introduces new code or CSS duplicated across files |
+| [`suggestions/efficiency.html`](../human/suggestions/efficiency.html) | changes how often a listed query, connection, upsert, poll, or request runs; changes a listed query's shape; or adds a per-row, per-video, or per-request cost of the same kind |
+| [`suggestions/dead-code.html`](../human/suggestions/dead-code.html) | adds a caller to, removes, or renames a listed function, route, component, export, CSS rule, or dependency; or leaves code, CSS, or a dependency with no remaining caller |
+| [`app-flow/requests.html`](../human/app-flow/requests.html) | adds, removes, or renames an `api.ts` wrapper or the endpoint it calls; changes an effect's dependencies, skip/defer condition, poll interval, or debounce; or moves a request between pages/components |
+
+When updating a page:
+
+1. Re-derive the affected facts from current source rather than editing numbers by hand from memory. Component counts are static JSX render sites; request maps describe source-defined triggers, not browser traffic.
+2. Update every table, diagram, and observation on the page that the change affects, including the matching SVG in `docs/human/architecture/figures/` when a page's components change.
+3. Whenever any value on the page is re-measured, set its stated source revision to the commit the change is based on (`git rev-parse --short HEAD`).
+4. Link to `docs/references/` for contract detail instead of copying it into the page.
+5. Check the page locally (see [Verification](#verification)).
 
 Code remains authoritative for application behavior. Repository policy files remain authoritative for workflow and safety requirements.
 
@@ -111,7 +136,8 @@ Run `python3 scripts/validate_docs.py` (`py -3` on Windows) from the repository 
 - statements accurately reflect the current code;
 - content lives in its correct canonical file, not a duplicate;
 - no unnecessary duplication was introduced;
-- application files changed only when the task genuinely required it.
+- application files changed only when the task genuinely required it;
+- `docs/human/` pages: the validator reads Markdown only, so open each changed page locally and confirm every relative `href`/`src` resolves and the page renders in light and dark color schemes.
 
 ## Action boundaries
 
@@ -126,6 +152,7 @@ Run `python3 scripts/validate_docs.py` (`py -3` on Windows) from the repository 
 - [ ] Change traced to its canonical document via `README.md`'s ownership map
 - [ ] Only confirmed current behavior written; stale statements corrected, not appended around
 - [ ] Related cross-links and summaries checked and updated
+- [ ] Every affected `docs/human/` page updated, with its source revision current, and each changed page checked locally
 - [ ] No detail duplicated across references beyond what's explicitly allowed
 - [ ] No migration commentary, experiment logs, or unverifiable operational claims introduced
 - [ ] Renamed or moved files have every cross-link and `AGENTS.md` reference updated

@@ -1,0 +1,385 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Repeated Code</title>
+<link rel="stylesheet" href="../human-docs.css">
+<script src="../human-docs.js" defer></script>
+</head>
+<body>
+<nav class="site-nav" aria-label="Human documentation">
+  <div class="site-nav-inner">
+    <span class="site-nav-brand">YouTube Analytics <span>docs</span></span>
+    <details class="nav-menu">
+      <summary>App flow</summary>
+      <div class="nav-menu-list">
+        <a href="../app-flow/overview.html">Overview</a>
+        <a href="../app-flow/requests.html">Requests</a>
+      </div>
+    </details>
+    <details class="nav-menu">
+      <summary>Architecture</summary>
+      <div class="nav-menu-list">
+        <a href="../architecture/backend-architecture.html">Backend architecture</a>
+        <a href="../architecture/backend-reference.html">Backend reference</a>
+        <a href="../architecture/frontend-components.html">Frontend components</a>
+      </div>
+    </details>
+    <details class="nav-menu current">
+      <summary>Suggestions</summary>
+      <div class="nav-menu-list">
+        <a href="repeated-code.html" aria-current="page">Repeated code</a>
+        <a href="efficiency.html">Efficiency</a>
+        <a href="dead-code.html">Dead code</a>
+      </div>
+    </details>
+  </div>
+</nav>
+
+<div class="page">
+  <aside class="toc" aria-label="On this page">
+    <h2>On this page</h2>
+    <ol>
+      <li><a href="#backend">Backend</a></li>
+      <li><a href="#frontend">Frontend code</a></li>
+      <li><a href="#css">Frontend CSS</a></li>
+    </ol>
+  </aside>
+
+  <main>
+    <header class="hero">
+      <h1>Repeated code</h1>
+      <p>This page shows code written more than once in the backend and frontend.</p>
+      <div class="meta-line">
+        <span>Source revision <code>8c18975</code></span>
+      </div>
+    </header>
+
+    <section id="backend">
+      <h2>Backend</h2>
+      <div class="dup-list">
+
+        <article class="dup">
+          <div class="dup-head"><h3>Video filter conditions</h3><span class="dup-count">×12</span></div>
+          <p>Each query function builds its own <code>WHERE</code> list for the same video filters, one <code>if</code> per filter.</p>
+          <dl>
+            <dt>Where</dt><dd><code>database/</code>: <code>analytics.py</code> (2), <code>traffic_sources.py</code> (2), <code>videos.py</code> (4), <code>playlists.py</code>, <code>search_terms.py</code>, <code>related_videos.py</code>, <code>comments.py</code></dd>
+            <dt>Differs</dt><dd>Only the date column (<code>va.date</code>, <code>c.published_at</code>, month bounds). <code>comments.py</code> has no privacy filter.</dd>
+          </dl>
+<pre><code>if content_type:
+    conditions.append("v.content_type = ?")
+    params.append(content_type)
+if privacy_status:
+    conditions.append("v.privacy_status = ?")
+    params.append(privacy_status)
+if title:
+    conditions.append("(v.title LIKE ? OR v.id LIKE ?)")
+    params.append(f"%{title}%")
+    params.append(f"%{title}%")</code></pre>
+        </article>
+
+        <article class="dup">
+          <div class="dup-head"><h3>Look up, then 404</h3><span class="dup-count">×11</span></div>
+          <p>Route handlers fetch a video or playlist and raise <code>HTTPException(404, "… not found")</code> when it is missing.</p>
+          <dl>
+            <dt>Where</dt><dd><code>routes/videos.py</code> (3), <code>routes/playlists.py</code> (3), <code>routes/analytics.py</code> (3, one inside <code>_resolve_playlist_video_ids</code>), <code>routes/comments.py</code> (2)</dd>
+            <dt>Differs</dt><dd>Video or playlist lookup, and the message text.</dd>
+          </dl>
+        </article>
+
+        <article class="dup">
+          <div class="dup-head"><h3>Channel / playlist route twins</h3><span class="dup-count">×9 pairs</span></div>
+          <p>Every playlist analytics endpoint copies its channel-wide endpoint: same five <code>Query</code> parameters, same database call, plus <code>video_ids=_resolve_playlist_video_ids(playlist_id)</code>.</p>
+          <dl>
+            <dt>Where</dt><dd><code>routes/analytics.py</code>: top videos, aggregated analytics, traffic sources, traffic-source top, search terms, top search terms, videos by search term, related referrers, related destinations</dd>
+            <dt>Differs</dt><dd>The <code>playlist_id</code> path parameter and the <code>video_ids</code> argument.</dd>
+          </dl>
+        </article>
+
+        <article class="dup">
+          <div class="dup-head"><h3>Empty video-scope guard</h3><span class="dup-count">×8</span></div>
+          <p>Functions taking <code>video_ids</code> copy the same opening: turn it into a list, return <code>[]</code> if it is empty, and later add <code>v.id IN (?, ?, …)</code>.</p>
+          <dl>
+            <dt>Where</dt><dd><code>database/</code>: <code>analytics.py</code>, <code>traffic_sources.py</code>, <code>search_terms.py</code>, <code>related_videos.py</code></dd>
+            <dt>Differs</dt><dd>Nothing.</dd>
+          </dl>
+        </article>
+
+        <article class="dup">
+          <div class="dup-head"><h3>Sync-run status updates</h3><span class="dup-count">×3</span></div>
+          <p>Three functions run the same <code>UPDATE sync_runs SET status, completed_at, rows_*</code> statement.</p>
+          <dl>
+            <dt>Where</dt><dd><code>database/sync_runs.py</code>: <code>complete_sync_run</code>, <code>fail_sync_run</code>, <code>cancel_sync_run</code></dd>
+            <dt>Differs</dt><dd>The status value; <code>fail_sync_run</code> also sets <code>error_message</code>.</dd>
+          </dl>
+        </article>
+
+        <article class="dup">
+          <div class="dup-head"><h3>Daily per-video sync stages</h3><span class="dup-count">×2</span></div>
+          <p>Two stages are almost line for line the same: loop over owned videos, skip ones without a publish date, work out the missing date ranges, stream rows, upsert, record coverage, log.</p>
+          <dl>
+            <dt>Where</dt><dd><code>sync/stages.py</code>: <code>sync_video_analytics</code>, <code>sync_video_traffic_sources</code></dd>
+            <dt>Differs</dt><dd>The stage key, the <code>youtube.iter_*</code> fetcher and the <code>database.upsert_*</code> writer.</dd>
+          </dl>
+        </article>
+
+        <article class="dup">
+          <div class="dup-head"><h3>Monthly per-video sync stages</h3><span class="dup-count">×2</span></div>
+          <p>Same shape as above for monthly data, including the identical <code>scope</code> year/all/incremental window logic.</p>
+          <dl>
+            <dt>Where</dt><dd><code>sync/stages.py</code>: <code>sync_search_insights</code>, <code>sync_related_video_insights</code></dd>
+            <dt>Differs</dt><dd>Fetcher, writer, and the related stage collects referrer IDs to resolve afterwards.</dd>
+          </dl>
+        </article>
+
+        <article class="dup">
+          <div class="dup-head"><h3>Monthly insight storage</h3><span class="dup-count">×2</span></div>
+          <p>Both modules define the same <code>_MONTH_RE</code>, validate rows, sum views per key, drop zero-view rows, upsert, and have a <code>get_last_*_month</code>.</p>
+          <dl>
+            <dt>Where</dt><dd><code>database/search_terms.py</code>, <code>database/related_videos.py</code> (<code>connection.py</code> has a related <code>_MONTH_PREFIX_RE</code>)</dd>
+            <dt>Differs</dt><dd>Key column (<code>search_term</code> vs <code>referrer_video_id</code>); related videos also checks the target is owned.</dd>
+          </dl>
+        </article>
+
+        <article class="dup">
+          <div class="dup-head"><h3>Zero-fill helpers</h3><span class="dup-count">×2</span></div>
+          <p>Walk every date in the range, add a zero row for each missing key, then trim trailing dates that had no real data.</p>
+          <dl>
+            <dt>Where</dt><dd><code>_zero_fill_analytics</code> in <code>database/analytics.py</code>, <code>_zero_fill_traffic_sources</code> in <code>database/traffic_sources.py</code></dd>
+            <dt>Differs</dt><dd>The second key (<code>content_type</code> vs <code>traffic_source_type</code>) and how the zero row is built.</dd>
+          </dl>
+        </article>
+
+        <article class="dup">
+          <div class="dup-head"><h3>YouTube client helpers</h3><span class="dup-count">×2</span></div>
+          <p>Both API clients define their own <code>_noop_checkpoint()</code> (identical) and <code>_log_page()</code> (same owner/name log fields).</p>
+          <dl>
+            <dt>Where</dt><dd><code>youtube/data_api.py</code>, <code>youtube/analytics_api.py</code></dd>
+            <dt>Differs</dt><dd><code>_log_page</code> logs a page token and anomalies in one, a <code>start_index</code> in the other.</dd>
+          </dl>
+        </article>
+
+        <article class="dup">
+          <div class="dup-head"><h3>Ownership bool coercion</h3><span class="dup-count">×2</span></div>
+          <p>Convert SQLite's 0/1 ownership column to a Python bool on each returned row.</p>
+          <dl>
+            <dt>Where</dt><dd><code>_coerce_own</code> in <code>database/videos.py</code>, <code>_coerce_referrer_own</code> in <code>database/related_videos.py</code></dd>
+            <dt>Differs</dt><dd>Column name; the referrer version keeps <code>NULL</code> as <code>None</code>.</dd>
+          </dl>
+        </article>
+
+      </div>
+    </section>
+
+    <section id="frontend">
+      <h2>Frontend code</h2>
+      <div class="dup-list">
+
+        <article class="dup">
+          <div class="dup-head"><h3>Optional query parameters in <code>api.ts</code></h3><span class="dup-count">×14</span></div>
+          <p>Wrappers spell out each optional filter as a spread so empty values are left out, even though <code>buildUrl</code> already skips empty values.</p>
+          <dl>
+            <dt>Where</dt><dd><code>api.ts</code>: <code>start_date</code>/<code>end_date</code> spread in 14 wrappers, <code>title</code> in 8, <code>content_type</code> and <code>privacy_status</code> in 7. Most playlist wrappers also mirror a channel wrapper.</dd>
+            <dt>Differs</dt><dd>Which filters a wrapper accepts. Newer wrappers take a query object instead.</dd>
+          </dl>
+<pre><code>...(startDate && { start_date: startDate }), ...(endDate && { end_date: endDate }),
+...(contentType && { content_type: contentType }), ...(privacyStatus && { privacy_status: privacyStatus })</code></pre>
+        </article>
+
+        <article class="dup">
+          <div class="dup-head"><h3>Inline filter bars</h3><span class="dup-count">×6</span></div>
+          <p>Each page writes its own <code>filter-bar</code> markup: labels, inputs and selects wired to URL params.</p>
+          <dl>
+            <dt>Where</dt><dd><code>Analytics</code>, <code>PlaylistAnalytics</code>, <code>VideoAnalytics</code>, <code>Playlists</code>, <code>VideoTable</code>, <code>CommentsPanel</code></dd>
+            <dt>Differs</dt><dd>Which fields appear. The three Analytics pages and <code>VideoTable</code> share <code>PeriodSelect</code>; the rest is repeated.</dd>
+          </dl>
+        </article>
+
+        <article class="dup">
+          <div class="dup-head"><h3>Inline pagination bar</h3><span class="dup-count">×4</span></div>
+          <p>The same Previous / “Page x of y” / Next markup.</p>
+          <dl>
+            <dt>Where</dt><dd><code>Playlists</code>, <code>Sync</code>, <code>CommentsPanel</code>, <code>VideoTable</code></dd>
+            <dt>Differs</dt><dd>The page state variable names.</dd>
+          </dl>
+        </article>
+
+        <article class="dup">
+          <div class="dup-head"><h3>Tab bars and <code>handleTabChange</code></h3><span class="dup-count">×4</span></div>
+          <p>Each page writes its own <code>tabs</code> row of buttons and a <code>handleTabChange</code> that sets <code>?tab=</code> in the URL.</p>
+          <dl>
+            <dt>Where</dt><dd><code>Analytics</code>, <code>VideoAnalytics</code>, <code>PlaylistAnalytics</code>, <code>Sync</code></dd>
+            <dt>Differs</dt><dd>The tab list.</dd>
+          </dl>
+        </article>
+
+        <article class="dup">
+          <div class="dup-head"><h3>Traffic Sources sub-tabs</h3><span class="dup-count">×3</span></div>
+          <p>The <code>TrafficSourcesSubTab</code> type, <code>toTrafficSourcesSubTab()</code> and the <code>ts-subtabs</code> button row are defined in each analytics page.</p>
+          <dl>
+            <dt>Where</dt><dd><code>Analytics</code>, <code>VideoAnalytics</code>, <code>PlaylistAnalytics</code></dd>
+            <dt>Differs</dt><dd><code>VideoAnalytics</code> has three sub-tabs instead of four.</dd>
+          </dl>
+        </article>
+
+        <article class="dup">
+          <div class="dup-head"><h3>Redefined page constants</h3><span class="dup-count">×3</span></div>
+          <p>Limits are declared at the top of each page instead of once.</p>
+          <dl>
+            <dt>Where</dt><dd><code>RECENT_COUNT</code> and <code>ALL_VIDEOS_FOR_TERM_LIMIT</code> in <code>Home</code>, <code>Analytics</code>, <code>PlaylistAnalytics</code>. <code>RELATED_VIDEOS_FETCH_LIMIT</code> in the three Analytics pages.</dd>
+            <dt>Differs</dt><dd>Nothing; the values match.</dd>
+          </dl>
+        </article>
+
+        <article class="dup">
+          <div class="dup-head"><h3>URL list handlers</h3><span class="dup-count">×3</span></div>
+          <p><code>setPage</code>, <code>handleSort</code> and <code>handleFilterChange</code> update the same URL params the same way.</p>
+          <dl>
+            <dt>Where</dt><dd><code>Videos</code>, <code>Playlists</code>, <code>PlaylistAnalytics</code></dd>
+            <dt>Differs</dt><dd>The fields <code>handleFilterChange</code> takes.</dd>
+          </dl>
+        </article>
+
+        <article class="dup">
+          <div class="dup-head"><h3>Mirrored analytics pages</h3><span class="dup-count">×2</span></div>
+          <p><code>Analytics</code> and <code>PlaylistAnalytics</code> render the same Analytics tab and Traffic Sources sub-tabs with the same cards. <code>VideoAnalytics</code> repeats part of it.</p>
+          <dl>
+            <dt>Where</dt><dd><code>pages/Analytics.tsx</code>, <code>pages/PlaylistAnalytics.tsx</code> (<code>pages/VideoAnalytics.tsx</code> partly)</dd>
+            <dt>Differs</dt><dd><code>api.ts</code> wrappers, URL param names, the playlist header and Videos tab.</dd>
+          </dl>
+        </article>
+
+        <article class="dup">
+          <div class="dup-head"><h3>Helper copies in <code>Home</code></h3><span class="dup-count">×2</span></div>
+          <p><code>Home.tsx</code> defines its own <code>last28Dates()</code> and <code>toTopVideoShape()</code>.</p>
+          <dl>
+            <dt>Where</dt><dd><code>pages/Home.tsx</code>; shared versions in <code>components/PeriodSelect.tsx</code> and <code>lib/topVideos.ts</code></dd>
+            <dt>Differs</dt><dd><code>toTopVideoShape</code> is identical. <code>last28Dates</code> computes the same range without <code>lastNDates</code>.</dd>
+          </dl>
+        </article>
+
+        <article class="dup">
+          <div class="dup-head"><h3>Year option list</h3><span class="dup-count">×2</span></div>
+          <p>Both fetch <code>GET /meta/date-range</code> and build a newest-first list of years.</p>
+          <dl>
+            <dt>Where</dt><dd><code>components/PeriodSelect.tsx</code>, <code>pages/Sync.tsx</code></dd>
+            <dt>Differs</dt><dd><code>Sync</code> catches a failed request; <code>PeriodSelect</code> does not.</dd>
+          </dl>
+        </article>
+
+        <article class="dup">
+          <div class="dup-head"><h3>Video / playlist header card</h3><span class="dup-count">×2</span></div>
+          <p>Both detail pages build an <code>AsyncCard</code> with <code>video-meta-*</code> markup styled by <code>VideoMetaCard.css</code>.</p>
+          <dl>
+            <dt>Where</dt><dd><code>pages/VideoAnalytics.tsx</code>, <code>pages/PlaylistAnalytics.tsx</code></dd>
+            <dt>Differs</dt><dd>The fields shown.</dd>
+          </dl>
+        </article>
+
+      </div>
+    </section>
+
+    <section id="css">
+      <h2>Frontend CSS</h2>
+      <p class="section-note">Rules with the same declarations under a different class name in each component's <code>.css</code> file.</p>
+      <div class="dup-list">
+
+        <article class="dup">
+          <div class="dup-head"><h3>Legend colour dot</h3><span class="dup-count">×6</span></div>
+          <p>An 8&nbsp;px round swatch next to a legend label.</p>
+          <dl>
+            <dt>Where</dt><dd><code>TrafficSourceDonutCard</code>, <code>SearchTermsDonutCard</code>, <code>SearchTermVideosDonutCard</code>, <code>RelatedReferrerBreakdownCard</code>, <code>RelatedDestinationsByReferrerCard</code>, <code>TrafficSourceTopVideosPanel</code></dd>
+            <dt>Differs</dt><dd>Only the class name.</dd>
+          </dl>
+<pre><code>.traffic-donut-legend-swatch { width: 8px; height: 8px; border-radius: 50%; flex-shrink: 0; }</code></pre>
+        </article>
+
+        <article class="dup">
+          <div class="dup-head"><h3>Donut centre overlay</h3><span class="dup-count">×5</span></div>
+          <p>Absolutely positioned, centred column over the donut hole.</p>
+          <dl>
+            <dt>Where</dt><dd>The five donut cards (<code>*-center</code>)</dd>
+            <dt>Differs</dt><dd>Only the class name. The value text inside is 18&nbsp;px in three cards and 16&nbsp;px in two.</dd>
+          </dl>
+        </article>
+
+        <article class="dup">
+          <div class="dup-head"><h3>Donut legend rows and divider</h3><span class="dup-count">×5</span></div>
+          <p>Legend item (flex row, 12&nbsp;px) and the small uppercase divider above the “Other” rows.</p>
+          <dl>
+            <dt>Where</dt><dd>The five donut cards (<code>*-legend-item</code>, <code>*-legend-divider</code>); legend container, label and views rules repeat in 3–5 of them</dd>
+            <dt>Differs</dt><dd>Only the class name.</dd>
+          </dl>
+        </article>
+
+        <article class="dup">
+          <div class="dup-head"><h3>Small video thumbnail</h3><span class="dup-count">×4</span></div>
+          <p>A 40×24&nbsp;px cover-cropped thumbnail.</p>
+          <dl>
+            <dt>Where</dt><dd><code>RelatedDestinationsByReferrerCard</code>, <code>RelatedReferrerBreakdownCard</code>, <code>SearchTermVideosDonutCard</code>, <code>TopPerformersCard</code></dd>
+            <dt>Differs</dt><dd>Only the class name.</dd>
+          </dl>
+        </article>
+
+        <article class="dup">
+          <div class="dup-head"><h3>Form control look</h3><span class="dup-count">×4</span></div>
+          <p>Same border, radius, padding, font size and focus transition for inputs and selects.</p>
+          <dl>
+            <dt>Where</dt><dd><code>.filter-bar</code> controls in <code>index.css</code>, <code>.sync-period-select</code> in <code>Sync.css</code>, the selects in <code>SearchTermVideosDonutCard</code> and <code>RelatedDestinationsByReferrerCard</code></dd>
+            <dt>Differs</dt><dd>The two card selects add <code>width: 100%</code>.</dd>
+          </dl>
+        </article>
+
+        <article class="dup">
+          <div class="dup-head"><h3>Chart legend</h3><span class="dup-count">×2</span></div>
+          <p>Wrapping legend row, legend item, and 10&nbsp;px round swatch above a line chart.</p>
+          <dl>
+            <dt>Where</dt><dd><code>AnalyticsChart.css</code>, <code>TrafficSourceChart.css</code></dd>
+            <dt>Differs</dt><dd>Only the class names.</dd>
+          </dl>
+        </article>
+
+        <article class="dup">
+          <div class="dup-head"><h3>Video picker card layout</h3><span class="dup-count">×2</span></div>
+          <p>Card padding, body column, heading column, legend column and label ellipsis.</p>
+          <dl>
+            <dt>Where</dt><dd><code>SearchTermVideosDonutCard.css</code>, <code>RelatedDestinationsByReferrerCard.css</code></dd>
+            <dt>Differs</dt><dd>Only the class names.</dd>
+          </dl>
+        </article>
+
+        <article class="dup">
+          <div class="dup-head"><h3>Top-video list row</h3><span class="dup-count">×2</span></div>
+          <p>A 120×68&nbsp;px thumbnail and a single-line ellipsis title cell.</p>
+          <dl>
+            <dt>Where</dt><dd><code>TopVideosList.css</code>, <code>TrafficSourceTopVideosPanel.css</code></dd>
+            <dt>Differs</dt><dd>Only the class names.</dd>
+          </dl>
+        </article>
+
+        <article class="dup">
+          <div class="dup-head"><h3>Page container</h3><span class="dup-count">×2</span></div>
+          <p>Centred 80%-wide container with 2&nbsp;rem padding.</p>
+          <dl>
+            <dt>Where</dt><dd><code>.page</code> in <code>index.css</code>, <code>.home</code> in <code>Home.css</code></dd>
+            <dt>Differs</dt><dd>Nothing.</dd>
+          </dl>
+        </article>
+
+        <article class="dup">
+          <div class="dup-head"><h3>Blue button hover</h3><span class="dup-count">×2</span></div>
+          <p>Light-blue background, mid-blue border, blue text on hover.</p>
+          <dl>
+            <dt>Where</dt><dd><code>.btn-back:hover</code> in <code>index.css</code>, <code>.video-carousel-arrow:hover</code> in <code>VideoCarouselCard.css</code></dd>
+            <dt>Differs</dt><dd>The carousel arrow skips disabled buttons.</dd>
+          </dl>
+        </article>
+
+      </div>
+    </section>
+
+  </main>
+</div>
+</body>
+</html>

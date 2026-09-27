@@ -19,8 +19,7 @@ def _http_error(status: int, body: bytes) -> HttpError:
 
 
 def _monthly_calls(video_id: str, *month_windows: MonthlyWindow) -> set[tuple[str, str, str]]:
-    """Expand MonthlyWindows into the (video_id, start, end) calls
-    sync_related_video_insights actually issues for them — one call per calendar month."""
+    """Expand monthly windows into expected Related Video API calls."""
     return {(video_id, window.start_date, window.end_date) for window in month_windows}
 
 
@@ -287,8 +286,7 @@ class SyncRelatedVideoInsightsStageTest(unittest.TestCase):
             stages.sync_related_video_insights("incremental", None, counts)
 
     def test_does_not_affect_search_insights_state(self) -> None:
-        """A Related failure must never touch search_insights's checkpoint or state —
-        the two stages share no code path beyond the generic monthly-windowing helpers."""
+        """Verify Related Video failures do not alter Search Insights state."""
         mock.patch("sync.stages.database.get_owned_video_ids", return_value=["v1"]).start()
         mock.patch(
             "sync.stages.youtube.fetch_video_related_videos", side_effect=RuntimeError("boom")
@@ -367,8 +365,7 @@ class SyncRelatedVideoInsightsScopeTest(unittest.TestCase):
         fetch.assert_not_called()
 
     def test_a_video_published_after_the_effective_end_is_prefiltered_out(self) -> None:
-        """A future-published video is excluded by the bounded worklist query itself,
-        before any per-video processing — sync_related_video_insights() never sees it."""
+        """Verify future videos are excluded before Related Video processing."""
         worklist = mock.patch("sync.stages.database.get_owned_video_ids", return_value=[]).start()
         get_video = mock.patch("sync.stages.database.get_owned_video").start()
         fetch = mock.patch("sync.stages.youtube.fetch_video_related_videos").start()

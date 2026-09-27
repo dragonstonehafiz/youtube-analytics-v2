@@ -83,12 +83,7 @@ def _log_page(
     owner: str | None = None,
     owner_name: str | None = None,
 ) -> None:
-    """Log one fetched Analytics page.
-
-    `owner`/`owner_name` identify the video the report is filtered to. The name is
-    rendered last and `repr`-quoted so a title containing spaces or newlines cannot
-    corrupt the fields before it.
-    """
+    """Log one fetched Analytics API page with safe owner context."""
     owner_field = f" owner={owner}" if owner else ""
     name_field = f" owner_name={owner_name!r}" if owner_name else ""
     _logger.debug(
@@ -100,13 +95,7 @@ def _log_page(
 def _analytics_query(
     service: Any, params: dict, max_attempts: int = 5, checkpoint: Callable[[], None] = _noop_checkpoint
 ) -> dict:
-    """Execute a YouTube Analytics reports.query with exponential-backoff retry.
-
-    `checkpoint` is invoked after a retry's backoff sleep returns and before the next
-    attempt is issued, letting a sync caller stop cooperatively between retries; it
-    defaults to a no-op for other callers. Never invoked before the first attempt or
-    while a sleep is in progress.
-    """
+    """Run an Analytics API query with retry and cancellation checkpoints."""
     for attempt in range(1, max_attempts + 1):
         try:
             return service.reports().query(**params).execute()
@@ -152,18 +141,7 @@ def _fetch_analytics_rows(
     owner_name: str | None = None,
     checkpoint: Callable[[], None] = _noop_checkpoint,
 ) -> list[dict[str, Any]]:
-    """Fetch all paginated rows from an Analytics reports.query call.
-
-    Pagination here is `startIndex`-based rather than token-based. A page shorter
-    than `maxResults` (including an empty page) terminates the loop, since fewer
-    rows than requested means the result set is exhausted; a page record is
-    routine DEBUG detail. `owner_name` names the video the report is filtered to;
-    its id is read back from the filter.
-
-    `checkpoint` is invoked before requesting each page after the first (and passed
-    into each `_analytics_query()` call for its own retry checkpoints), letting a sync
-    caller stop cooperatively between pages; it defaults to a no-op for other callers.
-    """
+    """Fetch every page of an Analytics API report."""
     results: list[dict[str, Any]] = []
     headers: list[str] | None = None
     max_results = params.get("maxResults", 200)
@@ -192,17 +170,7 @@ def _fetch_analytics_rows(
 def _parse_traffic_source_detail_response(
     response: dict, video_id: str, start_date: str, end_date: str, *, value_key: str, max_results: int, label: str,
 ) -> tuple[int, list[dict[str, Any]]]:
-    """Parse one Analytics traffic-source detail response by columnHeaders name (not
-    position). Shared by Search and Related detail parsing — both request the same
-    insightTrafficSourceDetail/views shape and differ only in insightTrafficSourceType
-    and what the detail value represents (a search term vs. a referrer video ID).
-
-    Returns (raw_row_count, positive-view rows shaped {value_key: str, "views": int}).
-    An empty/missing `rows` list is a valid, fully-parsed empty response. A nonempty
-    response with more than max_results rows, or headers/rows that don't match the
-    requested shape, raises RuntimeError rather than being silently accepted as a
-    successful refresh.
-    """
+    """Parse and validate a traffic-source detail response by column name."""
     rows = response.get("rows") or []
     if not rows:
         return 0, []
@@ -258,17 +226,7 @@ def _parse_related_videos_response(response: dict, video_id: str, start_date: st
 def fetch_video_search_terms(
     video_id: str, start_date: str, end_date: str, checkpoint: Callable[[], None] = _noop_checkpoint
 ) -> SearchTermsResult:
-    """Fetch one video's top Search-source terms for one exact calendar-month window.
-
-    Issues exactly one non-paginated reports.query request: maxResults=25, startIndex
-    omitted entirely. Retry may repeat this identical request, but the API is never
-    asked for a second page, even when exactly 25 rows come back. Does not clamp the
-    window to publication date or skip based on prior traffic — the caller supplies the
-    exact calendar-aligned window to query.
-
-    `checkpoint` is forwarded to `_analytics_query()` so a stop request is observed
-    between retries of this request; it defaults to a no-op for other callers.
-    """
+    """Fetch one video's top search terms for a calendar month."""
     service = _analytics_client()
     params = {
         "ids": "channel==MINE",
@@ -287,16 +245,7 @@ def fetch_video_search_terms(
 def fetch_video_related_videos(
     video_id: str, start_date: str, end_date: str, checkpoint: Callable[[], None] = _noop_checkpoint
 ) -> RelatedVideosResult:
-    """Fetch one owned video's top Related Video referrers for one exact date range.
-
-    Issues exactly one non-paginated reports.query request: maxResults=25, startIndex
-    omitted entirely. Retry may repeat this identical request, but the API is never
-    asked for a second page, even when exactly 25 rows come back. The caller (the
-    Related Video Insights sync stage) invokes it once per calendar month.
-
-    `checkpoint` is forwarded to `_analytics_query()` so a stop request is observed
-    between retries of this request; it defaults to a no-op for other callers.
-    """
+    """Fetch one video's top Related Video referrers for a date range."""
     service = _analytics_client()
     params = {
         "ids": "channel==MINE",
@@ -320,19 +269,7 @@ def iter_video_analytics(
     title: str | None = None,
     checkpoint: Callable[[], None] = _noop_checkpoint,
 ):
-    """Yield daily analytics rows for a single video, one year-chunk at a time.
-
-    Clamps start_date to publish_date if provided, skips entirely if the video
-    hasn't been published yet within the requested range. maxResults is set high
-    enough that a full year (365 rows) always fits in a single page - the API has
-    no documented upper bound on maxResults, so this avoids pagination entirely
-    in the common case (confirmed by a live full-year test returning all 365 days
-    in one call with no gaps).
-
-    `checkpoint` is invoked before requesting each year-chunk after the first, and
-    forwarded into `_fetch_analytics_rows()` for its own page/retry checkpoints; it
-    defaults to a no-op for other callers.
-    """
+    """Yield daily video analytics in yearly request windows."""
     effective_start = start_date
     if publish_date:
         if publish_date > end_date:
@@ -383,19 +320,7 @@ def iter_video_traffic_sources(
     title: str | None = None,
     checkpoint: Callable[[], None] = _noop_checkpoint,
 ):
-    """Yield daily traffic-source breakdown rows for a single video, one year-chunk at a time.
-
-    Queries dimensions=day,insightTrafficSourceType per 1-year window so each API
-    call returns one row per (day, traffic source type) pair. Clamps start_date to
-    publish_date if provided. maxResults is set well above the theoretical ceiling
-    of 365 days x 21 traffic source types (7665 rows) so a full year always fits in
-    a single page - confirmed by a live full-year test (2883 rows, 365/365 days
-    covered, no gaps) returned in one call with no pagination needed.
-
-    `checkpoint` is invoked before requesting each year-chunk after the first, and
-    forwarded into `_fetch_analytics_rows()` for its own page/retry checkpoints; it
-    defaults to a no-op for other callers.
-    """
+    """Yield daily video traffic sources in yearly request windows."""
     effective_start = start_date
     if publish_date:
         if publish_date > end_date:

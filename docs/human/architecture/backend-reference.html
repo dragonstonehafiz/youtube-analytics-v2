@@ -1,0 +1,300 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Backend Reference</title>
+<link rel="stylesheet" href="../human-docs.css">
+<link rel="stylesheet" href="backend-reference.css">
+<script src="../human-docs.js" defer></script>
+</head>
+<body>
+<nav class="site-nav" aria-label="Human documentation">
+  <div class="site-nav-inner">
+    <span class="site-nav-brand">YouTube Analytics <span>docs</span></span>
+    <details class="nav-menu">
+      <summary>App flow</summary>
+      <div class="nav-menu-list">
+        <a href="../app-flow/overview.html">Overview</a>
+        <a href="../app-flow/requests.html">Requests</a>
+      </div>
+    </details>
+    <details class="nav-menu current">
+      <summary>Architecture</summary>
+      <div class="nav-menu-list">
+        <a href="backend-architecture.html">Backend architecture</a>
+        <a href="backend-reference.html" aria-current="page">Backend reference</a>
+        <a href="frontend-components.html">Frontend components</a>
+      </div>
+    </details>
+    <details class="nav-menu">
+      <summary>Suggestions</summary>
+      <div class="nav-menu-list">
+        <a href="../suggestions/repeated-code.html">Repeated code</a>
+        <a href="../suggestions/efficiency.html">Efficiency</a>
+        <a href="../suggestions/dead-code.html">Dead code</a>
+      </div>
+    </details>
+  </div>
+</nav>
+
+<div class="page">
+  <aside class="toc" aria-label="On this page">
+    <h2>On this page</h2>
+    <ol>
+      <li><a href="#files">Files</a></li>
+      <li><a href="#route-functions">Route functions</a></li>
+      <li><a href="#call-chains">Call chains</a></li>
+    </ol>
+  </aside>
+
+  <main>
+    <header class="hero">
+      <h1>Backend reference</h1>
+      <p>This page shows what each backend file does and which functions each API route calls.</p>
+      <div class="meta-line">
+        <span>Source revision <code>8f69e1f</code></span>
+      </div>
+    </header>
+
+    <section id="files">
+      <h2>Files</h2>
+      <div class="card file-group">
+      <h3>Top level</h3>
+      <p>Starts the app and sets up logging.</p>
+      <dl class="file-list">
+        <dt><code>server.py</code></dt><dd>Creates the FastAPI app and prepares the database on startup.</dd>
+        <dt><code>logging_config.py</code></dt><dd>Sets up the application and sync log files.</dd>
+      </dl>
+      </div>
+      <div class="card file-group">
+      <h3><span class="tag route">routes/</span></h3>
+      <p>The web API the frontend calls. Each handler checks its input and passes the work to <code>database/</code>, or to <code>sync/</code> for the sync endpoints. Details: <code>docs/references/api.md</code>.</p>
+      <dl class="file-list">
+        <dt><code>videos.py</code></dt><dd>Serves the Videos page and single-video data.</dd>
+        <dt><code>playlists.py</code></dt><dd>Serves the Playlists page and single-playlist data.</dd>
+        <dt><code>analytics.py</code></dt><dd>Serves the Analytics pages: charts, top videos, traffic sources, search terms, and related videos.</dd>
+        <dt><code>comments.py</code></dt><dd>Serves the comment feeds for the channel, a video, or a playlist.</dd>
+        <dt><code>synchronization.py</code></dt><dd>Starts and stops syncs, reports progress, and returns sync history.</dd>
+        <dt><code>metadata.py</code></dt><dd>Returns the earliest publish year for the year dropdowns.</dd>
+      </dl>
+      </div>
+      <div class="card file-group">
+      <h3><span class="tag db">database/</span></h3>
+      <p>Reads and writes SQLite, one file per kind of data. Details: <code>docs/references/database.md</code>.</p>
+      <dl class="file-list">
+        <dt><code>videos.py</code></dt><dd>Stores videos and answers the video list, detail, and stats queries.</dd>
+        <dt><code>playlists.py</code></dt><dd>Stores playlists and the videos in them.</dd>
+        <dt><code>analytics.py</code></dt><dd>Stores daily video metrics and answers the chart and top-video queries.</dd>
+        <dt><code>traffic_sources.py</code></dt><dd>Stores daily views per traffic source.</dd>
+        <dt><code>search_terms.py</code></dt><dd>Stores the monthly search terms that led viewers to each video.</dd>
+        <dt><code>related_videos.py</code></dt><dd>Stores which videos sent viewers to each video through Related Videos.</dd>
+        <dt><code>comments.py</code></dt><dd>Stores comments and their authors, and answers the comment feeds.</dd>
+        <dt><code>sync_runs.py</code></dt><dd>Stores the history of sync runs.</dd>
+        <dt><code>sync_coverage.py</code></dt><dd>Records which months have already been synced for each video.</dd>
+        <dt><code>fx_rates.py</code></dt><dd>Stores daily USD to SGD exchange rates.</dd>
+        <dt><code>connection.py</code></dt><dd>Opens database connections and creates the tables.</dd>
+      </dl>
+      </div>
+      <div class="card file-group">
+      <h3><span class="tag sync">sync/</span></h3>
+      <p>Downloads data from YouTube and stores it. Details: <code>docs/references/sync.md</code>.</p>
+      <dl class="file-list">
+        <dt><code>orchestration.py</code></dt><dd>Runs a sync plan stage by stage and records each stage's result.</dd>
+        <dt><code>stages.py</code></dt><dd>Contains the code for each of the nine stages.</dd>
+        <dt><code>plans.py</code></dt><dd>Checks that a requested plan is valid and sets the order stages run in.</dd>
+        <dt><code>status.py</code></dt><dd>Tracks live progress and handles stop requests.</dd>
+        <dt><code>coverage.py</code></dt><dd>Works out which months still need downloading.</dd>
+        <dt><code>monthly_insights.py</code></dt><dd>Splits date ranges into calendar months.</dd>
+        <dt><code>scheduler.py</code></dt><dd>Is an unused daily-sync helper; nothing calls it.</dd>
+      </dl>
+      </div>
+      <div class="card file-group">
+      <h3><span class="tag yt">youtube/</span></h3>
+      <p>Talks to Google. Only <code>sync/</code> uses it. Details: <code>docs/references/sync.md</code>.</p>
+      <dl class="file-list">
+        <dt><code>data_api.py</code></dt><dd>Fetches channel info, videos, playlists, and comments from the YouTube Data API.</dd>
+        <dt><code>analytics_api.py</code></dt><dd>Fetches daily metrics, traffic sources, search terms, and related videos from the YouTube Analytics API.</dd>
+        <dt><code>auth.py</code></dt><dd>Handles the Google sign-in and keeps the token fresh.</dd>
+      </dl>
+      </div>
+      <div class="card file-group">
+      <h3>Schema and scripts</h3>
+      <dl class="file-list">
+        <dt><code>schema.sql</code></dt><dd>Defines the database tables.</dd>
+        <dt><code>scripts/issue-48-migration.py</code></dt><dd>Adds the <code>videos.own</code> column to an older database.</dd>
+        <dt><code>scripts/issue-62-migration.py</code></dt><dd>Fills in sync coverage for an older database.</dd>
+      </dl>
+      </div>
+    </section>
+
+
+    <section id="route-functions">
+      <h2>Route functions</h2>
+      <p>What each function the routes call gives back, and which endpoints use it. These only count this channel's own videos. Videos from other channels that are stored only because they sent viewers here through Related Videos never appear.</p>
+      <div class="card file-group">
+        <h3>Videos</h3>
+        <p>Defined in <code>database/videos.py</code>.</p>
+        <dl class="returns-list">
+          <dt class="col-head">Function</dt><dd class="col-head">Returns</dd><dd class="col-head">Used by</dd>
+          <dt><code>get_all_videos</code></dt><dd>Returns one page of videos for the Videos table, plus the total count for paging. Each video includes its lifetime earnings in SGD and lifetime watch hours. The list can be sorted and filtered by title, publish date, type and privacy.</dd><dd class="used-by"><code>GET /videos</code></dd>
+          <dt><code>get_video_stats</code></dt><dd>Returns the numbers in the stats bar on the Videos and Analytics pages. Videos and Shorts are each split into legacy (published before the start date) and new (published within the date range), and each group gets a count plus its views and earnings within the date range. It also returns lifetime comment totals and how many videos are public, private and unlisted. With no date range it uses the full span of stored analytics.</dd><dd class="used-by"><code>GET /videos/stats</code></dd>
+          <dt><code>get_playlist_video_stats</code></dt><dd>Returns the same numbers as <code>get_video_stats</code> for the videos in one playlist. A video listed twice in the playlist is only counted once.</dd><dd class="used-by"><code>GET /playlists/{id}/videos/stats</code></dd>
+          <dt><code>get_videos_published</code></dt><dd>Returns the videos published within the date range (ID, title, date, thumbnail and type), oldest first. The charts use it to mark the days videos were uploaded. Given a playlist ID, it only returns that playlist's videos.</dd><dd class="used-by"><code>GET /videos/published</code></dd>
+          <dt><code>get_owned_video</code></dt><dd>Returns one video with its lifetime earnings and watch hours, or nothing if the ID isn't one of this channel's videos.</dd><dd class="used-by"><code>GET /videos/{id}</code><br>404 check: <code>GET /videos/{id}/analytics</code>, <code>/videos/{id}/traffic-sources</code>, <code>/analytics/videos/{id}/search-insights</code>, <code>/analytics/videos/{id}/related-videos/referrers</code>, <code>/comments/videos/{id}</code></dd>
+          <dt><code>get_earliest_published_year</code></dt><dd>Returns the year the oldest video was published, or nothing if there are no videos. It fills the year options in the period dropdowns.</dd><dd class="used-by"><code>GET /meta/date-range</code></dd>
+        </dl>
+      </div>
+      <div class="card file-group">
+        <h3>Playlists</h3>
+        <p>Defined in <code>database/playlists.py</code>.</p>
+        <dl class="returns-list">
+          <dt class="col-head">Function</dt><dd class="col-head">Returns</dd><dd class="col-head">Used by</dd>
+          <dt><code>get_all_playlists</code></dt><dd>Returns one page of playlists for the Playlists table, plus the total count. Each playlist includes when its newest video was published, the total views of its videos and their total earnings in SGD.</dd><dd class="used-by"><code>GET /playlists</code></dd>
+          <dt><code>get_playlist</code></dt><dd>Returns one playlist with the same totals, or nothing if it doesn't exist.</dd><dd class="used-by"><code>GET /playlists/{id}</code><br>404 check: <code>GET /playlists/{id}/videos/stats</code>, <code>/playlists/{id}/videos</code>, <code>/comments/playlists/{id}</code>, and every <code>/analytics/playlists/{id}…</code> endpoint</dd>
+          <dt><code>get_playlist_video_ids</code></dt><dd>Returns the IDs of the channel's videos in a playlist, each listed once. The playlist analytics endpoints pass this list to the same functions the channel-wide endpoints use, which limits their results to the playlist.</dd><dd class="used-by">every <code>GET /analytics/playlists/{id}…</code> endpoint</dd>
+          <dt><code>get_playlist_videos</code></dt><dd>Returns one page of a playlist's videos for its Videos tab, plus the total count, with the same sorting, filters and lifetime totals as <code>get_all_videos</code>.</dd><dd class="used-by"><code>GET /playlists/{id}/videos</code></dd>
+        </dl>
+      </div>
+      <div class="card file-group">
+        <h3>Daily analytics</h3>
+        <p>Defined in <code>database/analytics.py</code>.</p>
+        <dl class="returns-list">
+          <dt class="col-head">Function</dt><dd class="col-head">Returns</dd><dd class="col-head">Used by</dd>
+          <dt><code>get_video_analytics</code></dt><dd>Returns one video's metrics for each day in the date range: views, watch time, revenue in USD and SGD, average view duration and percentage, likes, and subscribers gained and lost. Days with no data are filled with zeros so the chart has no gaps.</dd><dd class="used-by"><code>GET /videos/{id}/analytics</code></dd>
+          <dt><code>get_aggregated_analytics</code></dt><dd>Returns the same daily metrics added up across all matching videos, with one row per day for videos and one for Shorts. This feeds the main chart on the Analytics pages.</dd><dd class="used-by"><code>GET /analytics/videos</code><br><code>GET /analytics/playlists/{id}</code></dd>
+          <dt><code>get_top_videos_by_views</code></dt><dd>Returns the top videos for the date range, ranked by views or by watch time, with each video's views, watch hours and earnings in SGD for that range.</dd><dd class="used-by"><code>GET /analytics/videos/top</code> (top 10)<br><code>GET /analytics/playlists/{id}/top</code> (top 10)</dd>
+        </dl>
+      </div>
+      <div class="card file-group">
+        <h3>Traffic sources</h3>
+        <p>Defined in <code>database/traffic_sources.py</code>.</p>
+        <dl class="returns-list">
+          <dt class="col-head">Function</dt><dd class="col-head">Returns</dd><dd class="col-head">Used by</dd>
+          <dt><code>get_video_traffic_sources</code></dt><dd>Returns one video's views and watch time for each day and each traffic source, such as YouTube search, suggested videos or external sites. Missing days are filled with zeros.</dd><dd class="used-by"><code>GET /videos/{id}/traffic-sources</code></dd>
+          <dt><code>get_aggregated_traffic_sources</code></dt><dd>Returns daily views and watch time per traffic source, added up across all matching videos. This feeds the traffic source chart and table.</dd><dd class="used-by"><code>GET /analytics/traffic-sources</code><br><code>GET /analytics/playlists/{id}/traffic-sources</code></dd>
+          <dt><code>get_top_videos_by_traffic_source</code></dt><dd>Returns, for each traffic source, the videos that got the most views from it in the date range.</dd><dd class="used-by"><code>GET /analytics/traffic-sources/top</code> (10 per source)<br><code>GET /analytics/playlists/{id}/traffic-sources/top</code> (10 per source)</dd>
+        </dl>
+      </div>
+      <div class="card file-group">
+        <h3>Search terms</h3>
+        <p>Defined in <code>database/search_terms.py</code>. Search terms are stored by month, so the date range is widened to whole months.</p>
+        <dl class="returns-list">
+          <dt class="col-head">Function</dt><dd class="col-head">Returns</dd><dd class="col-head">Used by</dd>
+          <dt><code>get_search_terms</code></dt><dd>Returns the YouTube search terms that brought viewers to the matching videos, with the total views per term, most-viewed first.</dd><dd class="used-by"><code>GET /analytics/search-insights</code><br><code>GET /analytics/search-insights/top</code> (first 10)<br><code>GET /analytics/playlists/{id}/search-insights</code><br><code>GET /analytics/playlists/{id}/search-insights/top</code> (first 10)</dd>
+          <dt><code>get_video_search_terms</code></dt><dd>Returns the same list for a single video.</dd><dd class="used-by"><code>GET /analytics/videos/{id}/search-insights</code></dd>
+          <dt><code>get_videos_by_search_term</code></dt><dd>Returns the videos viewers found through one search term, with the views each got, most-viewed first. This feeds the card that shows videos for the search term you pick.</dd><dd class="used-by"><code>GET /analytics/search-insights/videos</code><br><code>GET /analytics/playlists/{id}/search-insights/videos</code></dd>
+        </dl>
+      </div>
+      <div class="card file-group">
+        <h3>Related videos</h3>
+        <p>Defined in <code>database/related_videos.py</code>. Related video data is stored by month, so the date range is widened to whole months.</p>
+        <dl class="returns-list">
+          <dt class="col-head">Function</dt><dd class="col-head">Returns</dd><dd class="col-head">Used by</dd>
+          <dt><code>get_related_video_referrers</code></dt><dd>Returns the videos that sent viewers to this channel's videos through YouTube's Related Videos, with how many views each one sent, most first. The <code>own</code> setting chooses between referrers that are this channel's own videos and referrers from other channels, which includes any referrer whose details are unknown. It also returns <code>total_named_views</code>, the total across all referrers regardless of that setting, so the page can show each referrer's share.</dd><dd class="used-by"><code>GET /analytics/related-videos/referrers</code><br><code>GET /analytics/playlists/{id}/related-videos/referrers</code><br><code>GET /analytics/videos/{id}/related-videos/referrers</code></dd>
+          <dt><code>get_related_video_destinations</code></dt><dd>Returns, for one referring video, which of this channel's videos it sent viewers to and how many views each got, most first. The video page calls it with its own video ID to show where that video sends viewers.</dd><dd class="used-by"><code>GET /analytics/related-videos/destinations</code><br><code>GET /analytics/playlists/{id}/related-videos/destinations</code></dd>
+        </dl>
+      </div>
+      <div class="card file-group">
+        <h3>Comments</h3>
+        <p>Defined in <code>database/comments.py</code>.</p>
+        <dl class="returns-list">
+          <dt class="col-head">Function</dt><dd class="col-head">Returns</dd><dd class="col-head">Used by</dd>
+          <dt><code>get_comments</code></dt><dd>Returns one page of top-level comments across the channel, plus the total count. Each comment includes its author's name and picture and the video it's on. Comments can be filtered by text, author, date, video title and type, and sorted newest, oldest or most liked.</dd><dd class="used-by"><code>GET /comments</code></dd>
+          <dt><code>get_video_comments</code></dt><dd>Returns the same for one video. Video title and type aren't filters here, since the video is already fixed.</dd><dd class="used-by"><code>GET /comments/videos/{id}</code></dd>
+          <dt><code>get_playlist_comments</code></dt><dd>Returns the same for the videos in one playlist. A video listed twice in the playlist doesn't show its comments twice.</dd><dd class="used-by"><code>GET /comments/playlists/{id}</code></dd>
+        </dl>
+      </div>
+      <div class="card file-group">
+        <h3>Sync</h3>
+        <p>Defined in <code>database/sync_runs.py</code> and <code>sync/status.py</code>.</p>
+        <dl class="returns-list">
+          <dt class="col-head">Function</dt><dd class="col-head">Returns</dd><dd class="col-head">Used by</dd>
+          <dt><code>get_sync_runs</code></dt><dd>Returns one page of past syncs for the History tab on the Sync page. Each sync lists its start time, its overall status (the worst status among its stages), how many stages ran, the rows fetched, written and deleted, and each stage's own record.</dd><dd class="used-by"><code>GET /sync/runs</code></dd>
+          <dt><code>sync.get_sync_status</code></dt><dd>Returns the live state of the current or most recent sync: whether one is running, whether a stop was requested, and each selected stage's state and progress message. It is read from memory, not the database.</dd><dd class="used-by"><code>GET /sync/status</code></dd>
+        </dl>
+      </div>
+    </section>
+
+    <section id="call-chains">
+      <h2>Call chains</h2>
+      <p>Each line shows the functions an endpoint calls, in order. Names without a prefix are <code>database</code> functions.</p>
+      <div class="card file-group">
+        <h3><code>routes/videos.py</code></h3>
+        <ul class="route-lines">
+          <li><code>GET /videos</code> → <code>get_all_videos</code></li>
+          <li><code>GET /videos/stats</code> → <code>get_video_stats</code></li>
+          <li><code>GET /videos/published</code> → <code>get_videos_published</code></li>
+          <li><code>GET /videos/{id}</code> → <code>get_owned_video</code></li>
+          <li><code>GET /videos/{id}/analytics</code> → <code>get_owned_video</code> (404 check) → <code>get_video_analytics</code></li>
+          <li><code>GET /videos/{id}/traffic-sources</code> → <code>get_owned_video</code> (404 check) → <code>get_video_traffic_sources</code></li>
+        </ul>
+      </div>
+      <div class="card file-group">
+        <h3><code>routes/playlists.py</code></h3>
+        <ul class="route-lines">
+          <li><code>GET /playlists</code> → <code>get_all_playlists</code></li>
+          <li><code>GET /playlists/{id}</code> → <code>get_playlist</code></li>
+          <li><code>GET /playlists/{id}/videos/stats</code> → <code>get_playlist</code> (404 check) → <code>get_playlist_video_stats</code></li>
+          <li><code>GET /playlists/{id}/videos</code> → <code>get_playlist</code> (404 check) → <code>get_playlist_videos</code></li>
+        </ul>
+      </div>
+      <div class="card file-group">
+        <h3><code>routes/analytics.py</code> — videos</h3>
+        <ul class="route-lines">
+          <li><code>GET /analytics/videos</code> → <code>get_aggregated_analytics</code></li>
+          <li><code>GET /analytics/videos/top</code> → <code>get_top_videos_by_views</code></li>
+          <li><code>GET /analytics/traffic-sources</code> → <code>get_aggregated_traffic_sources</code></li>
+          <li><code>GET /analytics/traffic-sources/top</code> → <code>get_top_videos_by_traffic_source</code></li>
+          <li><code>GET /analytics/search-insights</code> → <code>get_search_terms</code></li>
+          <li><code>GET /analytics/search-insights/top</code> → <code>get_search_terms</code> (top 10)</li>
+          <li><code>GET /analytics/search-insights/videos</code> → <code>get_videos_by_search_term</code></li>
+          <li><code>GET /analytics/related-videos/referrers</code> → <code>get_related_video_referrers</code></li>
+          <li><code>GET /analytics/related-videos/destinations</code> → <code>get_related_video_destinations</code></li>
+          <li><code>GET /analytics/videos/{id}/search-insights</code> → <code>get_owned_video</code> (404 check) → <code>get_video_search_terms</code></li>
+          <li><code>GET /analytics/videos/{id}/related-videos/referrers</code> → <code>get_owned_video</code> (404 check) → <code>get_related_video_referrers</code></li>
+        </ul>
+      </div>
+      <div class="card file-group">
+        <h3><code>routes/analytics.py</code> — playlists</h3>
+        <ul class="route-lines">
+          <li><code>GET /analytics/playlists/{id}</code> → <code>get_playlist</code> (404 check) → <code>get_playlist_video_ids</code> → <code>get_aggregated_analytics</code></li>
+          <li><code>GET /analytics/playlists/{id}/top</code> → <code>get_playlist</code> (404 check) → <code>get_playlist_video_ids</code> → <code>get_top_videos_by_views</code></li>
+          <li><code>GET /analytics/playlists/{id}/traffic-sources</code> → <code>get_playlist</code> (404 check) → <code>get_playlist_video_ids</code> → <code>get_aggregated_traffic_sources</code></li>
+          <li><code>GET /analytics/playlists/{id}/traffic-sources/top</code> → <code>get_playlist</code> (404 check) → <code>get_playlist_video_ids</code> → <code>get_top_videos_by_traffic_source</code></li>
+          <li><code>GET /analytics/playlists/{id}/search-insights</code> → <code>get_playlist</code> (404 check) → <code>get_playlist_video_ids</code> → <code>get_search_terms</code></li>
+          <li><code>GET /analytics/playlists/{id}/search-insights/top</code> → <code>get_playlist</code> (404 check) → <code>get_playlist_video_ids</code> → <code>get_search_terms</code> (top 10)</li>
+          <li><code>GET /analytics/playlists/{id}/search-insights/videos</code> → <code>get_playlist</code> (404 check) → <code>get_playlist_video_ids</code> → <code>get_videos_by_search_term</code></li>
+          <li><code>GET /analytics/playlists/{id}/related-videos/referrers</code> → <code>get_playlist</code> (404 check) → <code>get_playlist_video_ids</code> → <code>get_related_video_referrers</code></li>
+          <li><code>GET /analytics/playlists/{id}/related-videos/destinations</code> → <code>get_playlist</code> (404 check) → <code>get_playlist_video_ids</code> → <code>get_related_video_destinations</code></li>
+        </ul>
+      </div>
+      <div class="card file-group">
+        <h3><code>routes/comments.py</code></h3>
+        <ul class="route-lines">
+          <li><code>GET /comments</code> → <code>get_comments</code></li>
+          <li><code>GET /comments/videos/{id}</code> → <code>get_owned_video</code> (404 check) → <code>get_video_comments</code></li>
+          <li><code>GET /comments/playlists/{id}</code> → <code>get_playlist</code> (404 check) → <code>get_playlist_comments</code></li>
+        </ul>
+      </div>
+      <div class="card file-group">
+        <h3><code>routes/metadata.py</code></h3>
+        <ul class="route-lines">
+          <li><code>GET /meta/date-range</code> → <code>get_earliest_published_year</code></li>
+        </ul>
+      </div>
+      <div class="card file-group">
+        <h3><code>routes/synchronization.py</code></h3>
+        <ul class="route-lines">
+          <li><code>GET /sync/status</code> → <code>sync.get_sync_status</code> (no database call)</li>
+          <li><code>POST /sync/stop</code> → <code>sync.request_stop</code></li>
+          <li><code>POST /sync/trigger</code> → <code>sync.validate_plan</code> → <code>sync.try_begin_sync</code> → <code>sync.execute_plan</code> (in the background)</li>
+          <li><code>GET /sync/runs</code> → <code>get_sync_runs</code></li>
+        </ul>
+      </div>
+    </section>
+
+  </main>
+</div>
+</body>
+</html>

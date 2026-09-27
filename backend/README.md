@@ -75,7 +75,7 @@ backend/
     sync_runs.py
     sync_coverage.py     # persisted per-video/month completion for the four Analytics API stages
 
-  sync/                # Sync plans, orchestration, and the startup freshness check
+  sync/                # Sync plans, orchestration, and an uncalled freshness-check scheduler
     status.py
     plans.py
     orchestration.py
@@ -118,23 +118,19 @@ GET  /sync/runs               Recent sync-stage records, newest first
 
 ## Syncing
 
-On startup the app runs one complete incremental sync unless any sync run already
-succeeded today (local date). A single stage counts — manually syncing just FX rates
-marks the day as synced and the next launch runs nothing. A day on which every run failed
-still counts as not-synced, so the next launch retries.
-
-There is no recurring timer — restarting the server the same day does nothing, and
-freshness is otherwise driven manually from the `/sync` page in the frontend, which can
-select any combination of stages and give video analytics and traffic sources independent
-periods.
+Syncing is manual. Starting the server runs no sync and there is no recurring timer;
+every sync is started from the `/sync` page in the frontend (`POST /sync/trigger`), which
+can select any combination of stages and give video analytics and traffic sources
+independent periods. `sync/scheduler.py`'s `start_background_scheduler()` exists but
+nothing calls it.
 
 The comments stage imports top-level comments for videos already stored locally; reply
 bodies are never fetched. It offers two scopes rather than a period: **Incremental**
-(the default, used by the startup sync) reads each video back to the comments it already
+(the default) reads each video back to the comments it already
 holds, or to December 1 of the previous year for a video with none, and **All**
 re-reads every comment. Neither scope ever deletes a comment.
 
-The active manual or startup sync can be stopped cooperatively via `POST /sync/stop`.
+The active sync can be stopped cooperatively via `POST /sync/stop`.
 The worker keeps running until it reaches its next safe checkpoint — never interrupting
 an in-flight API request or database write — then records the stage it was on as
 `cancelled` with whatever counters it had accumulated. Earlier stages in the same batch
@@ -240,7 +236,7 @@ seeded fixtures stay reproducible, and a `seed_dataset()` convenience (built on
 `freeze_now()`) that populates every table with a small, fixed dataset.
 `create_test_app()`/`create_test_client()` build a lifespan-free FastAPI app from one or
 more routers for API contract tests, so — unlike a real request through `server.app` —
-`mark_incomplete_sync_runs()` and `sync.start_background_scheduler()` never run; only the
+`mark_incomplete_sync_runs()` never runs; only the
 test's own `IsolatedDatabaseTestCase.setUp()` initializes the database. Extend the suite
 by adding new focused tests on top of these factories rather than duplicating
 temp-database or app-construction boilerplate.

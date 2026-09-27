@@ -4,13 +4,7 @@ from .connection import _now, get_connection
 
 
 def upsert_comment_author(author: dict) -> None:
-    """Insert or refresh one commenter row with the latest metadata snapshot observed in a
-    comment payload.
-
-    `id` is supplied by the caller and is already namespaced — either from the author's
-    YouTube channel identity or from a comment-scoped fallback — so two commenters who
-    merely share a display name can never collapse into one row.
-    """
+    """Insert or refresh a comment author's latest metadata."""
     row = {**author, "updated_at": _now()}
     with get_connection() as conn:
         conn.execute(
@@ -31,11 +25,7 @@ def upsert_comment_author(author: dict) -> None:
 
 
 def upsert_comment(comment: dict) -> None:
-    """Insert or replace one top-level comment row.
-
-    The caller must have upserted the referenced author first, since `author_id` is a
-    non-null foreign key and every connection enforces foreign keys.
-    """
+    """Insert or replace a top-level comment row."""
     row = {**comment, "updated_at": _now()}
     with get_connection() as conn:
         conn.execute(
@@ -60,23 +50,14 @@ def upsert_comment(comment: dict) -> None:
 
 
 def get_comment_ids_for_video(video_id: str) -> set[str]:
-    """Return the IDs of every stored top-level comment for one video.
-
-    The incremental scan uses this both to detect that a video has no local comments at
-    all (empty set) and to recognize the boundary item where its page walk can stop.
-    """
+    """Return all stored top-level comment IDs for a video."""
     with get_connection() as conn:
         rows = conn.execute("SELECT id FROM comments WHERE video_id = ?", (video_id,)).fetchall()
     return {row["id"] for row in rows}
 
 
 def delete_orphan_comment_authors() -> int:
-    """Delete commenter rows no comment references any more. Returns the number deleted.
-
-    Kept independent of the comment cascade: a video pruned after the Comments stage
-    cascade-deletes its comments and leaves their authors behind, and those are removed on
-    the next successful Comments run rather than by the delete that orphaned them.
-    """
+    """Delete unreferenced comment authors and return the number deleted."""
     with get_connection() as conn:
         cursor = conn.execute(
             """
@@ -113,12 +94,7 @@ def _query_comments(
     video_id: str | None = None,
     playlist_id: str | None = None,
 ) -> tuple[list[dict], int]:
-    """Return one page of comments joined to their author and parent video, plus the total.
-
-    The only SQL interpolated here is the allow-listed ORDER BY fragment; every value the
-    caller supplies is bound. `playlist_id` scopes through an `EXISTS` so a video listed
-    twice in a playlist still yields each of its comments exactly once.
-    """
+    """Return a filtered comment page with author and video details, plus the total."""
     order_by = COMMENT_SORT_CLAUSES.get(sort_by, COMMENT_SORT_CLAUSES[DEFAULT_COMMENT_SORT])
     offset = (page - 1) * page_size
 
@@ -208,11 +184,7 @@ def get_video_comments(
     start_date: str | None = None,
     end_date: str | None = None,
 ) -> tuple[list[dict], int]:
-    """Return a page of one video's comments with optional filters, plus the total count.
-
-    Video title and content type are fixed by the scope itself, so neither is offered as a
-    filter here.
-    """
+    """Return a filtered page of one video's comments, plus the total count."""
     return _query_comments(
         page, page_size, sort_by, text, None, author, start_date, end_date, None,
         video_id=video_id,
@@ -231,8 +203,7 @@ def get_playlist_comments(
     end_date: str | None = None,
     content_type: str | None = None,
 ) -> tuple[list[dict], int]:
-    """Return a page of comments on one playlist's videos with optional filters, plus the
-    total count."""
+    """Return a filtered page of playlist comments, plus the total count."""
     return _query_comments(
         page, page_size, sort_by, text, video_title, author, start_date, end_date, content_type,
         playlist_id=playlist_id,

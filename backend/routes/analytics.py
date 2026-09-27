@@ -10,11 +10,7 @@ router = APIRouter()
 
 
 def _resolve_playlist_video_ids(playlist_id: str) -> list[str]:
-    """Return the playlist's distinct member video IDs, raising 404 when the playlist does not exist.
-
-    An existing playlist with no valid members yields an empty list, which scopes the shared analytics
-    helpers to an empty result rather than channel-wide data.
-    """
+    """Return valid playlist video IDs or raise 404 when the playlist is missing."""
     if not database.get_playlist(playlist_id):
         raise HTTPException(status_code=404, detail="Playlist not found")
     return database.get_playlist_video_ids(playlist_id)
@@ -41,11 +37,7 @@ def get_top_videos_by_views(
     sort_by: Literal["views", "watch_time"] = Query(default="views"),
     title: str | None = Query(default=None),
 ) -> dict:
-    """Return top 10 videos within the given filters, ranked by views or period watch time (default: views).
-
-    Metrics are aggregated over the selected analytics period. Results include period views, watch time hours,
-    and estimated SGD earnings.
-    """
+    """Return the top 10 filtered videos by views or watch time."""
     return {"items": database.get_top_videos_by_views(start_date, end_date, content_type, privacy_status, sort_by=sort_by, title=title)}
 
 
@@ -81,8 +73,7 @@ def get_search_terms(
     privacy_status: str | None = Query(default=None),
     title: str | None = Query(default=None),
 ) -> dict:
-    """Return every search term by views across all videos, for the months containing
-    start_date/end_date."""
+    """Return channel-wide search terms by views for the selected months."""
     return {"items": database.get_search_terms(start_date, end_date, content_type, privacy_status, title)}
 
 
@@ -108,8 +99,7 @@ def get_videos_by_search_term(
     title: str | None = Query(default=None),
     limit: int = Query(default=10),
 ) -> dict:
-    """Return the top `limit` (default 10) videos by views for one specific search term
-    (channel-wide)."""
+    """Return the top channel-wide videos for a search term."""
     return {"items": database.get_videos_by_search_term(
         search_term, start_date, end_date, content_type, privacy_status, title, limit=limit
     )}
@@ -125,12 +115,7 @@ def get_playlist_top_videos_by_views(
     sort_by: Literal["views", "watch_time"] = Query(default="views"),
     title: str | None = Query(default=None),
 ) -> dict:
-    """Return top 10 videos in a playlist within the given filters, ranked by views or period watch time
-    (default: views).
-
-    Metrics are aggregated over the selected analytics period. Results include period views, watch time hours,
-    and estimated SGD earnings.
-    """
+    """Return the top 10 filtered playlist videos by views or watch time."""
     video_ids = _resolve_playlist_video_ids(playlist_id)
     return {"items": database.get_top_videos_by_views(start_date, end_date, content_type, privacy_status, sort_by=sort_by, title=title, video_ids=video_ids)}
 
@@ -186,8 +171,7 @@ def get_playlist_search_terms(
     privacy_status: str | None = Query(default=None),
     title: str | None = Query(default=None),
 ) -> dict:
-    """Return every search term by views across all videos in a playlist, for the months
-    containing start_date/end_date."""
+    """Return playlist search terms by views for the selected months."""
     video_ids = _resolve_playlist_video_ids(playlist_id)
     return {"items": database.get_search_terms(
         start_date, end_date, content_type, privacy_status, title, video_ids=video_ids
@@ -221,8 +205,7 @@ def get_playlist_videos_by_search_term(
     title: str | None = Query(default=None),
     limit: int = Query(default=10),
 ) -> dict:
-    """Return the top `limit` (default 10) videos in a playlist by views for one specific
-    search term."""
+    """Return the top playlist videos for a search term."""
     video_ids = _resolve_playlist_video_ids(playlist_id)
     return {"items": database.get_videos_by_search_term(
         search_term, start_date, end_date, content_type, privacy_status, title, video_ids=video_ids, limit=limit
@@ -235,8 +218,7 @@ def get_video_search_terms(
     start_date: str | None = Query(default=None),
     end_date: str | None = Query(default=None),
 ) -> dict:
-    """Return every search term by views for a single video, for the months containing
-    start_date/end_date."""
+    """Return one video's search terms by views for the selected months."""
     if not database.get_owned_video(video_id):
         raise HTTPException(status_code=404, detail="Video not found")
     return {"items": database.get_video_search_terms(video_id, start_date, end_date)}
@@ -252,12 +234,7 @@ def get_related_video_referrers(
     own: bool = Query(),
     limit: int = Query(default=10),
 ) -> dict:
-    """Return Related Video referrers aggregated across all owned videos, for the
-    months containing start_date/end_date. `own` selects the referrer-ownership
-    bucket (True: confirmed this channel's own video; False: everything else,
-    including unresolved metadata). Returns `total_named_views`, the scope's true
-    unfiltered total across every named referrer, alongside the ranked/capped `items`.
-    """
+    """Return channel-wide Related Video referrers and total named views."""
     return database.get_related_video_referrers(
         start_date, end_date, content_type, privacy_status, title, own=own, limit=limit
     )
@@ -270,9 +247,7 @@ def get_related_video_destinations(
     end_date: str | None = Query(default=None),
     limit: int = Query(default=10),
 ) -> dict:
-    """Return the top destination videos for one Related Video referrer, across all
-    owned videos, for the months containing start_date/end_date. The referrer's own
-    ownership is irrelevant here — any video, owned or external, can be a referrer."""
+    """Return top owned destinations for a Related Video referrer."""
     return {"items": database.get_related_video_destinations(referrer_video_id, start_date, end_date, limit=limit)}
 
 
@@ -287,9 +262,7 @@ def get_playlist_related_video_referrers(
     own: bool = Query(),
     limit: int = Query(default=10),
 ) -> dict:
-    """Return Related Video referrers aggregated across a playlist's member videos,
-    for the months containing start_date/end_date. Same shape as the channel-wide
-    route, scoped to the playlist's members."""
+    """Return Related Video referrers for a playlist and total named views."""
     video_ids = _resolve_playlist_video_ids(playlist_id)
     return database.get_related_video_referrers(
         start_date, end_date, content_type, privacy_status, title, video_ids=video_ids, own=own, limit=limit
@@ -304,8 +277,7 @@ def get_playlist_related_video_destinations(
     end_date: str | None = Query(default=None),
     limit: int = Query(default=10),
 ) -> dict:
-    """Return the top destination videos for one Related Video referrer, scoped to a
-    playlist's member videos, for the months containing start_date/end_date."""
+    """Return top playlist destinations for a Related Video referrer."""
     video_ids = _resolve_playlist_video_ids(playlist_id)
     return {"items": database.get_related_video_destinations(
         referrer_video_id, start_date, end_date, video_ids=video_ids, limit=limit
@@ -320,12 +292,7 @@ def get_video_related_video_referrers(
     own: bool = Query(),
     limit: int | None = Query(default=None),
 ) -> dict:
-    """Return Related Video referrers to a single owned video, for the months
-    containing start_date/end_date. There is no destinations counterpart for a single
-    video: its target-scoped rows only ever have that video as the destination, so the
-    video page's outbound card instead calls the channel-scoped destinations route
-    with referrer_video_id set to this video's own ID.
-    """
+    """Return Related Video referrers for one owned video."""
     if not database.get_owned_video(video_id):
         raise HTTPException(status_code=404, detail="Video not found")
     return database.get_related_video_referrers(

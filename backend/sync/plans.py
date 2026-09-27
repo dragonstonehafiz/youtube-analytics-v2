@@ -88,11 +88,7 @@ class PlanStage:
 
 
 def available_years() -> tuple[int, ...]:
-    """Return the selectable analytics years, newest first.
-
-    Spans the earliest published year through the current year. Empty when no videos
-    have been synced yet, in which case no year-scoped plan can be validated.
-    """
+    """Return selectable analytics years from newest to oldest."""
     earliest = database.get_earliest_published_year()
     current_year = date.today().year
     if earliest is None or earliest > current_year:
@@ -113,12 +109,7 @@ def recorded_year(stage: PlanStage) -> int | None:
 
 
 def validate_plan(stages: Sequence[PlanStage]) -> tuple[PlanStage, ...]:
-    """Validate a sync plan and return its stages in canonical execution order.
-
-    Raises PlanValidationError when the plan is empty, repeats a stage, names an unknown
-    stage, omits or misuses a period, or requests an unavailable year. Idempotent: the
-    returned tuple revalidates cleanly.
-    """
+    """Validate a sync plan and return stages in canonical order."""
     if not stages:
         raise PlanValidationError("At least one stage must be selected")
 
@@ -170,11 +161,7 @@ def _validate_period(stage: PlanStage) -> None:
 
 
 def _validate_scope_only(stage: PlanStage) -> None:
-    """Validate the scope of one scope-aware stage, which must never carry a year.
-
-    An omitted scope is the incremental default rather than an error, so a client can
-    select the stage without restating the setting it would get anyway.
-    """
+    """Validate a scope-aware stage that cannot accept a year."""
     if stage.scope is not None and stage.scope not in SCOPE_AWARE_SCOPES:
         raise PlanValidationError(f"scope must be one of: {', '.join(SCOPE_AWARE_SCOPES)}")
     if stage.year is not None:
@@ -184,22 +171,7 @@ def _validate_scope_only(stage: PlanStage) -> None:
 def allocate_analytics_workers(
     selected: Sequence[str],
 ) -> tuple[tuple[str, ...], tuple[str, ...]]:
-    """Split the selected Analytics API stages across at most two workers.
-
-    Each worker's own queue runs fast-before-slow. Deterministic, based only on which
-    stages are selected and their canonical order — never on submission order or a
-    duration estimate. Implements the issue's distribution table:
-
-    | Selected stages | Worker A | Worker B |
-    |---|---|---|
-    | One stage | Selected stage | Idle |
-    | Two fast | Fast | Fast |
-    | Two slow | Slow | Slow |
-    | One fast, one slow | Fast | Slow |
-    | Two fast, one slow | Fast -> slow | Fast |
-    | One fast, two slow | Fast -> slow | Slow |
-    | Two fast, two slow | Fast -> slow | Fast -> slow |
-    """
+    """Distribute selected analytics stages across at most two workers."""
     selected_set = set(selected)
     fast = tuple(name for name in ANALYTICS_STAGES if name in FAST_ANALYTICS_STAGES and name in selected_set)
     slow = tuple(name for name in ANALYTICS_STAGES if name in SLOW_ANALYTICS_STAGES and name in selected_set)
@@ -221,11 +193,7 @@ def allocate_analytics_workers(
 
 
 def full_incremental_plan() -> tuple[PlanStage, ...]:
-    """Return the non-destructive startup plan: every stage except pruning.
-
-    Pruning deletes videos and is opt-in only — never selected automatically, so a
-    truncated or unattended run can never remove data.
-    """
+    """Return the complete non-destructive incremental startup plan."""
     return tuple(
         PlanStage(
             name,

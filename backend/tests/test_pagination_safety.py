@@ -250,8 +250,7 @@ class PlaylistCleanupGateTest(unittest.TestCase):
         self.assertEqual(playlist_video_ids, {"v1"})
 
     def test_truncated_items_leave_that_playlist_untouched(self) -> None:
-        """The item replace is delete-then-reinsert, so a partial page set must not run
-        it at all — otherwise the playlist silently shrinks to what was fetched."""
+        """Verify truncated playlist results do not replace stored items."""
         mock.patch(
             "sync.stages.youtube.fetch_playlists",
             return_value=([{"id": "PL1", "title": "One"}], False),

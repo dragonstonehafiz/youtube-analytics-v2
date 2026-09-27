@@ -24,8 +24,7 @@ class VideoScopeTestCase(IsolatedDatabaseTestCase):
         self._seed()
 
     def _seed(self) -> None:
-        """Seed three videos with differing metrics, a populated playlist with anomalous membership,
-        and an empty playlist."""
+        """Seed videos, analytics, and anomalous playlist memberships."""
         # v-d is deliberately indistinguishable from v-a under every filter but membership, so a
         # filtered playlist result that leaked channel-wide data would include it.
         videos = (
@@ -338,8 +337,7 @@ class FilteredPlaylistParityTest(VideoScopeTestCase):
         self.assertNotIn("v-d", {row["id"] for row in playlist["items"]["SEARCH"]})
 
     def test_filters_that_match_only_a_nonmember_return_empty(self) -> None:
-        """v-c matches these filters channel-wide but is not in p-full, so the playlist result is empty
-        while the channel result is not — the scope, not the filters, is what removes it."""
+        """Verify playlist filters exclude matching nonmembers."""
         filters = {"content_type": "short", "privacy_status": "public", "title": "Vlog"}
         playlist = self._get("/analytics/playlists/p-full/top", **DATE_RANGE, **filters)
         channel = self._get("/analytics/videos/top", **DATE_RANGE, **filters)

@@ -14,8 +14,7 @@ from youtube import analytics_api
 
 
 def _monthly_calls(video_id: str, *month_windows: MonthlyWindow) -> set[tuple[str, str, str]]:
-    """Expand MonthlyWindows into the (video_id, start, end) calls sync_search_insights
-    actually issues for them — one call per calendar month, not per week."""
+    """Expand monthly windows into expected Search Insights API calls."""
     return {(video_id, window.start_date, window.end_date) for window in month_windows}
 
 
@@ -394,8 +393,7 @@ class SyncSearchRelatedInsightsScopeTest(unittest.TestCase):
         fetch.assert_not_called()
 
     def test_a_video_published_after_the_effective_end_is_prefiltered_out(self) -> None:
-        """A future-published video is excluded by the bounded worklist query itself,
-        before any per-video processing — sync_search_insights() never sees it."""
+        """Verify future videos are excluded before Search Insights processing."""
         worklist = mock.patch("sync.stages.database.get_owned_video_ids", return_value=[]).start()
         get_video = mock.patch("sync.stages.database.get_owned_video").start()
         fetch = mock.patch("sync.stages.youtube.fetch_video_search_terms").start()

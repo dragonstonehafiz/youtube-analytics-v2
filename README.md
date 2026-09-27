@@ -17,7 +17,7 @@ A local dashboard for analysing your own YouTube channel showing video and Short
 - Traffic-source charts, breakdown tables, and top-performing videos per source
 - Top-level comments, browsable channel-wide or scoped to a video or playlist, with search by comment text, commenter, or video
 - Filter by date range, content type (video/Short), and privacy status
-- Automatic sync every 24 hours, plus manual sync (incremental, a specific year, or full resync)
+- Manual sync from the Sync page (incremental, a specific year, or full resync)
 
 ## Prerequisites
 
@@ -57,13 +57,13 @@ Frontend runs on `http://localhost:5173`.
 
 ## First run and sync
 
-On first backend startup, a browser window opens for the OAuth consent flow. The resulting token is saved to `backend/secrets/token.json` and reused on future runs; the SQLite database is created at `backend/data/youtube.db`.
+The SQLite database is created at `backend/data/youtube.db` when the backend starts. The first sync opens a browser window for the OAuth consent flow; the resulting token is saved to `backend/secrets/token.json` and reused on future runs.
 
-The initial sync pulls your channel's full history and can take a while for larger channels. After that, a background sync runs automatically every 24 hours, pulling only new data. You can also trigger a sync manually from the dashboard, choosing incremental (new data only), a specific year, or a full resync.
+Syncs run only when started from the Sync page — starting the backend does not sync, and there is no schedule. Choose incremental (new data only), a specific year, or a full resync per stage. The first sync pulls your channel's full history and can take a while for larger channels; later incremental syncs pull only new data.
 
-Comments are the one exception to "full history on first sync": the automatic sync imports top-level comments no further back than December 1 of the previous year. Choose **All** on the Comments row of the Sync page to pull the rest. Only top-level comments are stored — replies are counted but never downloaded.
+Comments are the one exception to "full history on first sync": the default **Incremental** comments scope imports top-level comments no further back than December 1 of the previous year for a video with none stored yet. Choose **All** on the Comments row of the Sync page to pull the rest. Only top-level comments are stored — replies are counted but never downloaded.
 
-An active sync — manual or automatic — can be stopped from the Sync page with the **Stop sync** button. Stopping is cooperative: the current request or database write finishes first, so it may take a moment to take effect, and no data already saved is rolled back.
+An active sync can be stopped from the Sync page with the **Stop sync** button. Stopping is cooperative: the current request or database write finishes first, so it may take a moment to take effect, and no data already saved is rolled back.
 
 ## Docker
 

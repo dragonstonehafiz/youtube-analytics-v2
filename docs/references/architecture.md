@@ -58,8 +58,9 @@ application module is imported first):
 1. Log an `INFO` "Application startup" record.
 2. `database.init_db()` — creates tables from `schema.sql` if they don't already exist.
 3. `database.mark_incomplete_sync_runs()` — closes out `sync_runs` rows a killed process left marked `running`, setting them to `incomplete` and logging a `WARNING` with the count when any were found. This belongs at startup specifically: the reservation guarding a live sync is in-memory and died with the previous process, so nothing can legitimately still be running (see `database.md`).
-4. `sync.start_background_scheduler()` — runs one complete incremental sync on a daemon thread unless any sync run already succeeded today; no recurring timer is scheduled (see `sync.md`).
-5. Yield to serve requests, then — in a `finally`, so it runs after a normal shutdown or a startup/runtime failure alike — log an `INFO` "Application shutdown" record.
+4. Yield to serve requests, then — in a `finally`, so it runs after a normal shutdown or a startup/runtime failure alike — log an `INFO` "Application shutdown" record.
+
+The lifespan starts no sync. `sync.start_background_scheduler()` (`sync/scheduler.py`) is defined and exported but not called, so the only way a sync starts is `POST /sync/trigger` (see `sync.md`).
 
 CORS is configured to allow only `http://localhost:5173` (the Vite dev server). Both `python server.py` and `uvicorn server:app --reload` start the same app; neither hardcodes `reload=True` in `server.py` itself, so file-watching only happens when `--reload` is passed on the `uvicorn` command line (or via `uvicorn.run(..., reload=True)`, which `server.py`'s `__main__` block does not currently set).
 
@@ -88,22 +89,24 @@ indefinitely and are safe to delete between runs.
 
 | Path | Responsibility |
 |---|---|
-| `server.py` | FastAPI app construction, CORS, lifespan (`init_db` → `mark_incomplete_sync_runs` → `start_background_scheduler`) |
+| `server.py` | FastAPI app construction, CORS, lifespan (`init_db` → `mark_incomplete_sync_runs`) |
 | `routes/videos.py`, `routes/playlists.py`, `routes/analytics.py`, `routes/comments.py`, `routes/synchronization.py`, `routes/metadata.py` | API route handlers, grouped by resource — thin wrappers around `database` helpers; `routes/__init__.py` aggregates them in a fixed order into one `router` |
 | `sync/status.py` | Global sync-status lifecycle (`idle \| running \| stopping \| success \| failed \| cancelled`, plus message) behind one lock, with `try_begin_sync()`/`request_stop()` reservation primitives and the `raise_if_stopping()` cooperative-cancellation checkpoint |
 | `sync/plans.py` | Plan types, canonical `STAGE_ORDER`, derived `FULL_SYNC_TYPES`, available years, `validate_plan()` |
 | `sync/orchestration.py` | `execute_plan()`/`run_plan()`, stage registry, selected-stage sequencing, `sync_runs` tracking |
 | `sync/stages.py` | The nine sync stage implementations plus the shared incremental-lookback calculation, the Related Video referrer metadata resolver, and the comment bootstrap cutoff |
 | `sync/monthly_insights.py` | Pure calendar-window helper for the Search insights stage — no I/O, no clock reads beyond the `date` it's given |
-| `sync/scheduler.py` | Startup freshness check (`synced_today()`) and the one-shot startup sync |
+| `sync/coverage.py` | Pure missing-month and range-coalescing helpers for `sync_coverage`-based selection — no I/O |
+| `sync/scheduler.py` | Freshness check (`synced_today()`) and a one-shot background sync launcher (`start_background_scheduler()`); neither is called by the application |
 | `youtube/auth.py` | OAuth credentials and token/secret paths |
 | `youtube/data_api.py` | YouTube Data API v3 client, pagination, Shorts detection, video/playlist/comment-thread fetchers |
 | `youtube/analytics_api.py` | YouTube Analytics API v2 client, retry/backoff, date chunking, daily analytics/traffic-source generators |
 | `logging_config.py` | Shared logging configuration: `TimezoneAwareFormatter`, `configure_logging()`, `get_logger(area)`, `exception_context()` |
 | `database/connection.py` | Connection setup, `init_db()`, `_now()`, shared `_month_bound_conditions()` |
-| `database/videos.py`, `database/playlists.py`, `database/analytics.py`, `database/traffic_sources.py`, `database/comments.py`, `database/fx_rates.py`, `database/sync_runs.py`, `database/search_terms.py`, `database/related_videos.py` | DB helpers grouped by domain (upserts, queries, aggregation, zero-filling) |
-| `schema.sql` | SQLite schema definition (11 tables) — see `database.md` |
+| `database/videos.py`, `database/playlists.py`, `database/analytics.py`, `database/traffic_sources.py`, `database/comments.py`, `database/fx_rates.py`, `database/sync_runs.py`, `database/sync_coverage.py`, `database/search_terms.py`, `database/related_videos.py` | DB helpers grouped by domain (upserts, queries, aggregation, zero-filling) |
+| `schema.sql` | SQLite schema definition (12 tables) — see `database.md` |
 | `scripts/issue-48-migration.py` | Standalone, one-time migration adding `videos.own` to a pre-existing database — not run by `init_db()` (see `database.md`) |
+| `scripts/issue-62-migration.py` | Standalone, one-time `sync_coverage` backfill for a pre-existing database — not run by `init_db()` (see `database.md`) |
 
 Each of `routes/`, `sync/`, `youtube/`, and `database/` re-exports its public callables from its package `__init__.py`, so other modules keep importing them as `import database`, `import sync`, `import youtube`, `from routes import router` — the split is internal.
 
@@ -177,6 +180,7 @@ backend/
     stages.py
     scheduler.py
     monthly_insights.py
+    coverage.py
 
   youtube/
     __init__.py             # re-exports get_credentials + the fetch/iter functions
@@ -196,9 +200,11 @@ backend/
     sync_runs.py
     search_terms.py
     related_videos.py
+    sync_coverage.py
 
   scripts/
     issue-48-migration.py    # standalone one-time migration adding videos.own
+    issue-62-migration.py    # standalone one-time sync_coverage backfill
 
   secrets/
     token.json           # OAuth token; auto-deleted on any credential-refresh failure, re-created on next auth

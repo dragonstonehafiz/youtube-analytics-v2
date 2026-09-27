@@ -109,7 +109,7 @@ When criteria are absent, author them following the same standards as issue draf
 - include relevant compatibility/non-regression expectations, and documentation-only verification requirements for documentation-only work;
 - five criteria is the default maximum — exceed it only when additional criteria are independently essential, describe distinct outcomes, and cannot reasonably be consolidated.
 
-Every implementation step must map to one of: an acceptance criterion, a confirmed dependency, required verification, or required documentation maintenance. Unrelated cleanup, refactoring, dependency upgrades, and style changes are excluded unless explicitly approved — when useful cleanup is spotted along the way, list it as follow-up work rather than folding it into the plan.
+Every implementation step must map to one of: an acceptance criterion, a confirmed dependency, required verification, or required documentation maintenance. Required documentation maintenance includes each affected `docs/human/` page — see [`documentation-maintenance.md`](../documentation-workflow/documentation-maintenance.md#human-readable-views) for which changes affect which page. Unrelated cleanup, refactoring, dependency upgrades, and style changes are excluded unless explicitly approved — when useful cleanup is spotted along the way, list it as follow-up work rather than folding it into the plan.
 
 ## Order implementation steps
 

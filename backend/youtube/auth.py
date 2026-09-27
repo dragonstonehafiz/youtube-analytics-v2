@@ -38,11 +38,7 @@ _credentials_lock = threading.Lock()
 
 
 def get_credentials() -> Credentials:
-    """Return OAuth credentials, refreshing or running the auth flow as needed.
-
-    Thread-safe: concurrent callers (the two Analytics API workers) are serialized so
-    only one refreshes or writes `token.json` at a time.
-    """
+    """Return thread-safe OAuth credentials, refreshing or authorizing as needed."""
     with _credentials_lock:
         creds: Credentials | None = None
         if _TOKEN_PATH.exists():

@@ -85,8 +85,7 @@ def _run_stage(
     year: int | None,
     fn: Callable[[SyncCounts], None],
 ) -> None:
-    """Run one sync stage, recording a sync_runs row that reflects partial progress on
-    failure or cooperative cancellation."""
+    """Run a sync stage and record its final or partial progress."""
     counts = SyncCounts()
     _logger.info("Sync stage started %s", _format_stage_counts(sync_type, counts))
 
@@ -154,13 +153,7 @@ def _run_stage(
 
 
 def _run_tracked_stage(batch_id: str, name: str, stage: PlanStage, run: Callable[[SyncCounts], None]) -> None:
-    """Run one stage and record its independent live outcome.
-
-    Fixed starting messages are published for stages without inner-loop progress.
-    Success, cooperative cancellation, and genuine failure each leave their own
-    explicit stage state. Always re-raises cancellation or the stage exception so the
-    caller can apply serial fail-fast or Analytics worker isolation.
-    """
+    """Run a stage while recording its live and final outcome."""
     status.update_sync_progress(name, _STAGE_MESSAGES[name])
     try:
         _run_stage(batch_id, name, recorded_scope(stage), recorded_year(stage), run)
@@ -182,9 +175,7 @@ def _pre_analytics_runner(
     set_channel_owned_ids: Callable[[set[str]], None],
     channel_owned_ids: Callable[[], set[str]],
 ) -> Callable[[SyncCounts], None]:
-    """Build the stage callable for one selected pre-analytics stage, threading the
-    plan-local playlist/channel-owned ID sets between `playlists`, `videos`, and
-    `pruning` via the given accessors."""
+    """Build a pre-analytics stage callable with plan-local ID state."""
     run: Callable[[SyncCounts], None]
     if name == "playlists":
         def run(counts: SyncCounts) -> None:
@@ -224,9 +215,7 @@ class _WorkerOutcome:
 def _run_analytics_worker(
     batch_id: str, plan: dict[str, PlanStage], stage_names: Sequence[str], outcome: _WorkerOutcome,
 ) -> None:
-    """Run one worker's ordered Analytics API stage queue to completion, or stop it at
-    its own first cancellation or genuine failure — isolated from the other worker,
-    which keeps running its own queue regardless of what happens here."""
+    """Run one analytics worker queue until completion, cancellation, or failure."""
     for name in stage_names:
         try:
             status.raise_if_stopping()
@@ -250,24 +239,7 @@ def _run_analytics_worker(
 
 
 def execute_plan(stages: Sequence[PlanStage]) -> None:
-    """Run a validated plan whose active-state reservation the caller already holds.
-
-    Only the selected stages run. The selected pre-analytics stages (`PRE_ANALYTICS_STAGES`
-    — playlists, videos, pruning, FX rates, comments) run serially, fail-fast, in that
-    canonical order; every started stage gets one sync_runs row sharing a single
-    batch_id. Once they all succeed, the selected Analytics API stages
-    (`ANALYTICS_STAGES`) are split across at most two independent workers by
-    `allocate_analytics_workers()` and run concurrently — a failure on one worker stops
-    only that worker's remaining queued stages, never the other's. An analytics-only
-    plan (no pre-analytics stage selected) proceeds straight to the workers.
-
-    Playlist- and video-discovered IDs are held in local variables for this call only
-    (never persisted) and threaded from `sync_playlists()` into `sync_videos()` and from
-    `sync_videos()` into `sync_pruning()`. Canonical ordering and fail-fast execution
-    guarantee pruning cannot run without both of its inputs already populated.
-
-    Releases the reservation in all cases. Safe to call from a background thread.
-    """
+    """Execute a reserved, validated sync plan and release its reservation."""
     playlist_video_ids: set[str] = set()
     channel_owned_ids: set[str] = set()
 
@@ -340,12 +312,7 @@ def execute_plan(stages: Sequence[PlanStage]) -> None:
 
 
 def run_plan(stages: Sequence[PlanStage]) -> bool:
-    """Reserve active state and run a validated plan. Returns False if a sync is already active.
-
-    Use this for callers that hold no reservation yet (the startup sync). Callers that
-    already reserved — the manual trigger route — must use execute_plan instead, which
-    would otherwise be blocked by their own reservation.
-    """
+    """Reserve and execute a validated plan, or return False when busy."""
     if not status.try_begin_sync([stage.stage for stage in stages]):
         _logger.warning("Sync plan skipped reason=already_active")
         return False

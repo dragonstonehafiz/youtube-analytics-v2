@@ -77,8 +77,7 @@ class ConcurrentCredentialsTest(unittest.TestCase):
         self.assertEqual(creds.refresh.call_count, 1)
 
     def test_a_failed_refresh_still_releases_the_lock_for_the_next_caller(self) -> None:
-        """A refresh failure deletes the token and falls through to re-auth; the lock
-        must not be left held for the other worker's call."""
+        """Verify failed refreshes release the credential lock."""
         creds = mock.Mock()
         creds.valid = False
         creds.expired = True

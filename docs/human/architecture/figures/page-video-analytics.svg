@@ -1,0 +1,68 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1194" height="382" viewBox="0 0 1194 382" role="img" aria-label="Components on the VideoAnalytics page">
+<title>Components on the VideoAnalytics page</title>
+
+<style>
+  .bg { fill: #ffffff; }
+  text { font-family: system-ui, -apple-system, "Segoe UI", Roboto, Arial, sans-serif; font-size: 13px; dominant-baseline: central; }
+  .edge { fill: none; stroke: #9aa3b2; stroke-width: 1.5; }
+  .page rect { fill: #fbe9e8; stroke: #c4302b; stroke-width: 1.5; }
+  .page text { fill: #c4302b; font-weight: 700; }
+  .tab rect { fill: #e6effa; stroke: #2f6fb3; stroke-width: 1.2; }
+  .tab text { fill: #1f4f85; font-weight: 600; }
+  .sub rect { fill: #f3f7fc; stroke: #7da3cf; stroke-width: 1; stroke-dasharray: 4 3; }
+  .sub text { fill: #1f4f85; }
+  .comp rect { fill: #efe9fa; stroke: #6a4bb3; stroke-width: 1.2; }
+  .comp text { fill: #3f2a80; }
+  .local rect { fill: #f0f2f5; stroke: #8a93a3; stroke-width: 1; stroke-dasharray: 4 3; }
+  .local text { fill: #1c2330; font-style: italic; }
+  @media (prefers-color-scheme: dark) {
+    .bg { fill: #1a1f27; }
+    .edge { stroke: #5b6475; }
+    .page rect { fill: #3a1e1d; stroke: #ff6b63; } .page text { fill: #ff8a80; }
+    .tab rect { fill: #1b2a3d; stroke: #7db3ef; } .tab text { fill: #a9cdf5; }
+    .sub rect { fill: #17212e; stroke: #4f79a8; } .sub text { fill: #a9cdf5; }
+    .comp rect { fill: #2a2340; stroke: #b9a2f5; } .comp text { fill: #d6c9fb; }
+    .local rect { fill: #222833; stroke: #6b7486; } .local text { fill: #e6e9ef; }
+  }
+</style>
+<rect class="bg" width="1194" height="382" rx="10"/>
+<path class="edge" d="M421.9,31.0 H443.9 V31.0 H670.3"/>
+<path class="edge" d="M626.3,71.0 H648.3 V71.0 H670.3"/>
+<path class="edge" d="M796.5,111.0 H818.5 V111.0 H913.5"/>
+<path class="edge" d="M473.0,111.0 H495.0 V111.0 H670.3"/>
+<path class="edge" d="M825.7,151.0 H847.7 V151.0 H913.5"/>
+<path class="edge" d="M745.4,191.0 H767.4 V191.0 H913.5"/>
+<path class="edge" d="M738.1,231.0 H760.1 V231.0 H913.5"/>
+<path class="edge" d="M745.4,291.0 H767.4 V271.0 H913.5"/>
+<path class="edge" d="M745.4,291.0 H767.4 V311.0 H913.5"/>
+<path class="edge" d="M516.8,221.0 H538.8 V151.0 H670.3"/>
+<path class="edge" d="M516.8,221.0 H538.8 V191.0 H670.3"/>
+<path class="edge" d="M516.8,221.0 H538.8 V231.0 H670.3"/>
+<path class="edge" d="M516.8,221.0 H538.8 V291.0 H670.3"/>
+<path class="edge" d="M465.7,351.0 H487.7 V351.0 H670.3"/>
+<path class="edge" d="M310.1,191.0 H332.1 V31.0 H354.1"/>
+<path class="edge" d="M310.1,191.0 H332.1 V71.0 H354.1"/>
+<path class="edge" d="M310.1,191.0 H332.1 V111.0 H354.1"/>
+<path class="edge" d="M310.1,191.0 H332.1 V221.0 H354.1"/>
+<path class="edge" d="M310.1,191.0 H332.1 V351.0 H354.1"/>
+<g class="local"><rect x="670.3" y="16.0" width="199.2" height="30" rx="6"/><text x="682.3" y="31.0">DescriptionBlock (local)</text></g>
+<g class="tab"><rect x="354.1" y="16.0" width="67.8" height="30" rx="6"/><text x="366.1" y="31.0">Header</text></g>
+<g class="comp"><rect x="670.3" y="56.0" width="111.6" height="30" rx="6"/><text x="682.3" y="71.0">PeriodSelect</text></g>
+<g class="tab"><rect x="354.1" y="56.0" width="272.2" height="30" rx="6"/><text x="366.1" y="71.0">Analytics and Traffic Sources tabs</text></g>
+<g class="comp"><rect x="913.5" y="96.0" width="104.3" height="30" rx="6"/><text x="925.5" y="111.0">UploadStrip</text></g>
+<g class="comp"><rect x="670.3" y="96.0" width="126.2" height="30" rx="6"/><text x="682.3" y="111.0">AnalyticsChart</text></g>
+<g class="tab"><rect x="354.1" y="96.0" width="118.9" height="30" rx="6"/><text x="366.1" y="111.0">Analytics tab</text></g>
+<g class="comp"><rect x="913.5" y="136.0" width="104.3" height="30" rx="6"/><text x="925.5" y="151.0">UploadStrip</text></g>
+<g class="comp"><rect x="670.3" y="136.0" width="155.4" height="30" rx="6"/><text x="682.3" y="151.0">TrafficSourceChart</text></g>
+<g class="comp"><rect x="913.5" y="176.0" width="162.7" height="30" rx="6"/><text x="925.5" y="191.0">TrafficSourcesTable</text></g>
+<g class="sub"><rect x="670.3" y="176.0" width="75.1" height="30" rx="6"/><text x="682.3" y="191.0">Sources</text></g>
+<g class="comp"><rect x="913.5" y="216.0" width="170.0" height="30" rx="6"/><text x="925.5" y="231.0">SearchTermsDonutCard</text></g>
+<g class="sub"><rect x="670.3" y="216.0" width="67.8" height="30" rx="6"/><text x="682.3" y="231.0">Search</text></g>
+<g class="comp"><rect x="913.5" y="256.0" width="250.3" height="30" rx="6"/><text x="925.5" y="271.0">RelatedReferrerBreakdownCard ×2</text></g>
+<g class="comp"><rect x="913.5" y="296.0" width="264.9" height="30" rx="6"/><text x="925.5" y="311.0">RelatedDestinationsByReferrerCard</text></g>
+<g class="sub"><rect x="670.3" y="276.0" width="75.1" height="30" rx="6"/><text x="682.3" y="291.0">Related</text></g>
+<g class="tab"><rect x="354.1" y="206.0" width="162.7" height="30" rx="6"/><text x="366.1" y="221.0">Traffic Sources tab</text></g>
+<g class="comp"><rect x="670.3" y="336.0" width="118.9" height="30" rx="6"/><text x="682.3" y="351.0">CommentsPanel</text></g>
+<g class="tab"><rect x="354.1" y="336.0" width="111.6" height="30" rx="6"/><text x="366.1" y="351.0">Comments tab</text></g>
+<g class="page"><rect x="16.0" y="176.0" width="294.1" height="30" rx="6"/><text x="28.0" y="191.0">VideoAnalytics  /analytics/videos/:id</text></g>
+</svg>

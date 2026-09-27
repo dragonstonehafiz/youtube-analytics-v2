@@ -14,8 +14,7 @@ from tests.support import (
 
 class AnalyticsFixtureTestCase(IsolatedDatabaseTestCase):
     def _seed(self) -> None:
-        """Two videos with analytics on 2024-01-01 (has FX) and 2024-01-03 (no FX),
-        leaving 2024-01-02 with no analytics row at all for zero-fill coverage."""
+        """Seed videos and analytics with both present and missing FX rates."""
         database.upsert_own_video(make_video("v-1", "Alpha", content_type="video"))
         database.upsert_own_video(make_video("v-2", "Beta", content_type="short"))
         database.upsert_video_analytics(make_video_analytics("v-1", "2024-01-01", views=100, watch_time_minutes=60, estimated_revenue=10.0))

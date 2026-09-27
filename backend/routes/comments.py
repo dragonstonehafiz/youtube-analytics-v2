@@ -41,10 +41,7 @@ def list_video_comments(
     start_date: str | None = Query(default=None),
     end_date: str | None = Query(default=None),
 ) -> dict:
-    """Return a page of one video's top-level comments with optional filters and sort.
-
-    Video title and content type are fixed by the scope, so neither is accepted here.
-    """
+    """Return a filtered and sorted page of one video's top-level comments."""
     if not database.get_owned_video(video_id):
         raise HTTPException(status_code=404, detail="Video not found")
     items, total = database.get_video_comments(

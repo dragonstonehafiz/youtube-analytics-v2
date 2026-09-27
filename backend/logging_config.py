@@ -60,16 +60,7 @@ def _reset_logger(name: str) -> None:
 
 
 def configure_logging(app_path: Path | str | None = None, sync_path: Path | str | None = None) -> None:
-    """Idempotently configure the application and sync file handlers.
-
-    `app_path`/`sync_path` default to the fixed backend-root constants. Nothing in
-    application code passes them; they exist so tests can target a `TemporaryDirectory`
-    instead of a developer's real logs. Calling this repeatedly with the same resolved
-    paths is a no-op — handlers are bound once and not retargeted. Calling it with
-    different paths (test isolation only) rebuilds every area logger created so far
-    against the new paths, closing the old handlers first so Windows does not retain
-    file locks.
-    """
+    """Configure application and sync file logging once for the resolved paths."""
     global _configured_paths, _current_app_handler, _current_sync_handler
 
     resolved_app = Path(app_path) if app_path is not None else _APP_LOG_PATH
@@ -137,14 +128,7 @@ def configure_logging(app_path: Path | str | None = None, sync_path: Path | str 
 
 
 def reset_logging() -> None:
-    """Detach and close every area logger's handlers, returning to an unconfigured state.
-
-    For test teardown. Calling `configure_logging()` with no arguments would instead bind
-    handlers to the real `backend/data/*.log` paths, so a test module that restored the
-    default configuration that way would leave every later test in the process pointing
-    at a developer's real logs. After this, the next `get_logger()` reconfigures from
-    scratch.
-    """
+    """Close all area logger handlers and reset logging configuration."""
     global _configured_paths, _current_app_handler, _current_sync_handler
 
     for area in _KNOWN_AREAS:
@@ -156,17 +140,7 @@ def reset_logging() -> None:
 
 
 def get_logger(area: str) -> logging.Logger:
-    """Return the configured `youtube_analytics.<area>` logger, configuring it first.
-
-    `area` other than `"lifecycle"` or `"sync"` receives the application handler only,
-    at INFO, under the same `propagate = False` rule — never a handler-less logger,
-    since `propagate = False` would then discard its records silently.
-
-    Only configures with the default paths if nothing has configured logging yet.
-    Handlers are bound the first time logging is configured and are not retargeted
-    afterwards, so a caller (a test) that already configured explicit paths is not
-    silently reset back to the real default files by a later `get_logger()` call.
-    """
+    """Return a configured logger for the requested application area."""
     if _configured_paths is None:
         configure_logging()
     name = _logger_name(area)
@@ -181,13 +155,7 @@ def get_logger(area: str) -> logging.Logger:
 
 
 def exception_context(exc: BaseException) -> str:
-    """Return safe diagnostic context for `exc`: exception class and final frame location.
-
-    Never includes the exception message/args, chained-exception text, local variables,
-    request parameters, credentials, OAuth tokens, authorization headers, or response
-    bodies — only the exception's type name and the basename/function/line of the final
-    traceback frame.
-    """
+    """Return the exception type and final traceback location without sensitive details."""
     frames = traceback.extract_tb(exc.__traceback__)
     if frames:
         frame = frames[-1]

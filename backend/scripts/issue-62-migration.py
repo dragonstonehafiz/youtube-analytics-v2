@@ -42,14 +42,7 @@ def _owned_videos(conn: sqlite3.Connection) -> list[dict]:
 
 
 def migrate(today: date | None = None) -> dict[str, int]:
-    """Mark every owned video complete for all four collectors, from its publish month
-    through today's month inclusive. Returns {"owned_videos": N, collector: count, ...}
-    with each collector's count being months-marked summed across all owned videos.
-
-    Raises ValueError without writing anything if any owned video lacks a valid
-    published_at; `today` defaults to the real current date and is otherwise only for
-    deterministic testing.
-    """
+    """Backfill monthly completion coverage for every owned video and collector."""
     today = today or date.today()
     init_db()
     with get_connection() as conn:

@@ -1,0 +1,315 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Frontend Components</title>
+<link rel="stylesheet" href="../human-docs.css">
+<link rel="stylesheet" href="frontend-components.css">
+<script src="../human-docs.js" defer></script>
+</head>
+<body>
+<nav class="site-nav" aria-label="Human documentation">
+  <div class="site-nav-inner">
+    <span class="site-nav-brand">YouTube Analytics <span>docs</span></span>
+    <details class="nav-menu">
+      <summary>App flow</summary>
+      <div class="nav-menu-list">
+        <a href="../app-flow/overview.html">Overview</a>
+        <a href="../app-flow/requests.html">Requests</a>
+      </div>
+    </details>
+    <details class="nav-menu current">
+      <summary>Architecture</summary>
+      <div class="nav-menu-list">
+        <a href="backend-architecture.html">Backend architecture</a>
+        <a href="backend-reference.html">Backend reference</a>
+        <a href="frontend-components.html" aria-current="page">Frontend components</a>
+      </div>
+    </details>
+    <details class="nav-menu">
+      <summary>Suggestions</summary>
+      <div class="nav-menu-list">
+        <a href="../suggestions/repeated-code.html">Repeated code</a>
+        <a href="../suggestions/efficiency.html">Efficiency</a>
+        <a href="../suggestions/dead-code.html">Dead code</a>
+      </div>
+    </details>
+  </div>
+</nav>
+
+<div class="page">
+  <aside class="toc" aria-label="On this page">
+    <h2>On this page</h2>
+    <ol>
+      <li><a href="#rules">Counting rules</a></li>
+      <li><a href="#routes">Routes and pages</a></li>
+      <li><a href="#components">Components</a></li>
+      <li><a href="#page-components">Components on each page</a></li>
+      <li><a href="#hooks">Shared hooks and helpers</a></li>
+      <li><a href="#observations">Observations</a></li>
+    </ol>
+  </aside>
+
+  <main>
+    <header class="hero">
+      <h1>Frontend components</h1>
+      <p>This page shows which components each page renders and where each component is used.</p>
+      <div class="meta-line">
+        <span>Source revision <code>8f69e1f</code></span>
+      </div>
+    </header>
+
+    <div class="stat-row">
+      <div class="stat"><b>7</b><span>routes / pages</span></div>
+      <div class="stat"><b>23</b><span>shared components</span></div>
+      <div class="stat"><b>2</b><span>never rendered</span></div>
+      <div class="stat"><b>3</b><span>components that own requests</span></div>
+    </div>
+
+    <section id="rules">
+      <h2>Counting rules</h2>
+      <div class="card-grid">
+        <div class="card"><h3>Direct render sites</h3><p>JSX elements <code>&lt;ComponentName …&gt;</code> written in source, per file. A <code>.map()</code> or tab-conditional render counts once per element, not per runtime render.</p></div>
+        <div class="card"><h3>Distinct pages</h3><p>Route pages whose tree includes the component, directly or through another component. <code>TopNav</code> and <code>SyncStatus</code> render outside <code>Routes</code>, so they count for all seven.</p></div>
+        <div class="card"><h3>Shared vs file-local</h3><p>Shared components live in <code>frontend/src/components/</code>. File-local ones are functions defined and used inside one file.</p></div>
+      </div>
+    </section>
+
+    <section id="routes">
+      <h2>Routes and pages</h2>
+      <p><code>App.tsx</code> renders <code>TopNav</code> above <code>Routes</code> inside one <code>BrowserRouter</code>.</p>
+      <div class="table-wrap"><table>
+        <thead><tr><th>Path</th><th>Page</th><th>Tabs (URL <code>tab</code>)</th></tr></thead>
+        <tbody>
+          <tr><td><code>/</code></td><td><code>Home</code></td><td>—</td></tr>
+          <tr><td><code>/videos</code></td><td><code>Videos</code></td><td>—</td></tr>
+          <tr><td><code>/playlists</code></td><td><code>Playlists</code></td><td>—</td></tr>
+          <tr><td><code>/analytics</code></td><td><code>Analytics</code></td><td><code>analytics</code>, <code>traffic-sources</code> (sub-tabs <code>sources</code>, <code>top-videos</code>, <code>search</code>, <code>related</code>), <code>comments</code></td></tr>
+          <tr><td><code>/analytics/videos/:id</code></td><td><code>VideoAnalytics</code></td><td><code>analytics</code>, <code>traffic-sources</code> (sub-tabs <code>sources</code>, <code>search</code>, <code>related</code>), <code>comments</code></td></tr>
+          <tr><td><code>/analytics/playlists/:id</code></td><td><code>PlaylistAnalytics</code></td><td><code>analytics</code>, <code>traffic-sources</code> (same four sub-tabs as Analytics), <code>comments</code>, <code>videos</code></td></tr>
+          <tr><td><code>/sync</code></td><td><code>Sync</code></td><td><code>sync</code>, <code>history</code></td></tr>
+        </tbody>
+      </table></div>
+    </section>
+
+    <section id="components">
+      <h2>Components</h2>
+      <p>Every shared component in <code>frontend/src/components/</code>, grouped by what it's for. General-purpose pieces come first, then the ones built for a particular kind of data.</p>
+      <h3>General purpose</h3>
+      <p class="group-note">Building blocks used across the app.</p>
+      <div class="card-grid">
+        <div class="card component-card">
+          <h4><code>AsyncCard</code></h4>
+          <p>The frame most data cards sit in. It shows a loading indicator, an error message or an empty message until the card's data arrives, and keeps the card in place while it reloads.</p>
+          <p class="meta"><strong>Used on:</strong> Every page, inside most other components</p>
+        </div>
+        <div class="card component-card">
+          <h4><code>TopNav</code></h4>
+          <p>The bar across the top of every page: links to each section, a back button on video and playlist pages, and the sync status.</p>
+          <p class="meta"><strong>Used on:</strong> Every page</p>
+        </div>
+        <div class="card component-card">
+          <h4><code>SyncStatus</code></h4>
+          <p>Shows a running sync's progress, or a failed stage, inside the top bar.</p>
+          <p class="meta"><strong>Used on:</strong> Every page, inside TopNav</p>
+          <p class="meta"><strong>Loads its own data:</strong> <code>GET /sync/status</code> every 5 seconds</p>
+        </div>
+        <div class="card component-card">
+          <h4><code>PeriodSelect</code></h4>
+          <p>The Period dropdown: a custom range, the last 28, 90 or 365 days, or a single year.</p>
+          <p class="meta"><strong>Used on:</strong> Videos (inside VideoTable), Analytics, VideoAnalytics, PlaylistAnalytics</p>
+          <p class="meta"><strong>Loads its own data:</strong> <code>GET /meta/date-range</code> to build the year list</p>
+        </div>
+      </div>
+      <h3>Video lists and stats</h3>
+      <p class="group-note">Show videos and their numbers.</p>
+      <div class="card-grid">
+        <div class="card component-card">
+          <h4><code>VideoStatsBar</code></h4>
+          <p>The stats bar at the top of a page. It counts videos and Shorts published before the period (legacy) and during it (new), with their views and earnings for the period, plus comment totals and how many videos are public, private or unlisted.</p>
+          <p class="meta"><strong>Used on:</strong> Videos, Analytics, PlaylistAnalytics</p>
+        </div>
+        <div class="card component-card">
+          <h4><code>VideoTable</code></h4>
+          <p>The video list with its own filter bar, sortable columns and paging.</p>
+          <p class="meta"><strong>Used on:</strong> Videos, PlaylistAnalytics (Videos tab)</p>
+        </div>
+        <div class="card component-card">
+          <h4><code>VideoCarouselCard</code></h4>
+          <p>A card that pages through a row of videos with thumbnails, such as Latest Uploads.</p>
+          <p class="meta"><strong>Used on:</strong> Home, Analytics, PlaylistAnalytics</p>
+        </div>
+        <div class="card component-card">
+          <h4><code>TopVideosList</code></h4>
+          <p>The Top Videos table on the Analytics tab. It can be ranked by watch time or views and shows each video's upload date and earnings.</p>
+          <p class="meta"><strong>Used on:</strong> Analytics, PlaylistAnalytics</p>
+        </div>
+        <div class="card component-card">
+          <h4><code>TopPerformersCard</code></h4>
+          <p>A short list of the top videos or Shorts from the last 7 days, in the Analytics sidebar.</p>
+          <p class="meta"><strong>Used on:</strong> Analytics, PlaylistAnalytics</p>
+        </div>
+      </div>
+      <h3>Charts</h3>
+      <p class="group-note">Show metrics over time.</p>
+      <div class="card-grid">
+        <div class="card component-card">
+          <h4><code>AnalyticsChart</code></h4>
+          <p>The main chart. It plots views, watch time or earnings over time, split into videos and Shorts, per period or as a running total, in daily, weekly or monthly steps.</p>
+          <p class="meta"><strong>Used on:</strong> Analytics, VideoAnalytics, PlaylistAnalytics</p>
+        </div>
+        <div class="card component-card">
+          <h4><code>TrafficSourceChart</code></h4>
+          <p>The same kind of chart, split by traffic source instead of video type.</p>
+          <p class="meta"><strong>Used on:</strong> Analytics, VideoAnalytics, PlaylistAnalytics</p>
+        </div>
+        <div class="card component-card">
+          <h4><code>UploadStrip</code></h4>
+          <p>The row of markers under both charts showing when videos were uploaded. Opening a marker lists the videos.</p>
+          <p class="meta"><strong>Used on:</strong> Analytics, VideoAnalytics, PlaylistAnalytics, inside both charts</p>
+        </div>
+      </div>
+      <h3>Traffic sources</h3>
+      <p class="group-note">Show where views came from.</p>
+      <div class="card-grid">
+        <div class="card component-card">
+          <h4><code>TrafficSourcesTable</code></h4>
+          <p>A table of traffic sources with views, watch hours and each source's share.</p>
+          <p class="meta"><strong>Used on:</strong> Analytics, VideoAnalytics, PlaylistAnalytics</p>
+        </div>
+        <div class="card component-card">
+          <h4><code>TrafficSourceTopVideosPanel</code></h4>
+          <p>For each traffic source, the videos that got the most views from it.</p>
+          <p class="meta"><strong>Used on:</strong> Analytics, PlaylistAnalytics</p>
+        </div>
+        <div class="card component-card">
+          <h4><code>TrafficSourceDonutCard</code></h4>
+          <p>A donut chart of the share of views from each traffic source.</p>
+          <p class="meta"><strong>Used on:</strong> Home</p>
+        </div>
+      </div>
+      <h3>Search insights</h3>
+      <p class="group-note">Show which YouTube searches found the videos.</p>
+      <div class="card-grid">
+        <div class="card component-card">
+          <h4><code>SearchTermsDonutCard</code></h4>
+          <p>A donut chart of the top search terms and their share of views.</p>
+          <p class="meta"><strong>Used on:</strong> Home, Analytics, VideoAnalytics, PlaylistAnalytics</p>
+        </div>
+        <div class="card component-card">
+          <h4><code>SearchTermVideosDonutCard</code></h4>
+          <p>Pick a search term from its dropdown to see, as a donut chart, which videos it led viewers to.</p>
+          <p class="meta"><strong>Used on:</strong> Home, Analytics, PlaylistAnalytics</p>
+        </div>
+      </div>
+      <h3>Related videos</h3>
+      <p class="group-note">Show which videos send viewers to each other through YouTube's Related Videos.</p>
+      <div class="card-grid">
+        <div class="card component-card">
+          <h4><code>RelatedReferrerBreakdownCard</code></h4>
+          <p>A ranked list of the videos that sent viewers here, with each one's share. Pages show two side by side: one for this channel's own videos and one for other channels.</p>
+          <p class="meta"><strong>Used on:</strong> Analytics, VideoAnalytics, PlaylistAnalytics</p>
+        </div>
+        <div class="card component-card">
+          <h4><code>RelatedDestinationsByReferrerCard</code></h4>
+          <p>Pick a referring video to see which of this channel's videos it sent viewers to. On the video page it has no dropdown and shows where that video sends viewers.</p>
+          <p class="meta"><strong>Used on:</strong> Analytics, VideoAnalytics, PlaylistAnalytics</p>
+        </div>
+      </div>
+      <h3>Comments</h3>
+      <div class="card-grid">
+        <div class="card component-card">
+          <h4><code>CommentsPanel</code></h4>
+          <p>The whole Comments tab: its own filters, the comment feed grouped by video, and paging.</p>
+          <p class="meta"><strong>Used on:</strong> Analytics, VideoAnalytics, PlaylistAnalytics</p>
+          <p class="meta"><strong>Loads its own data:</strong> <code>GET /comments</code>, <code>/comments/videos/{id}</code> or <code>/comments/playlists/{id}</code></p>
+        </div>
+      </div>
+      <h3>Sync</h3>
+      <div class="card-grid">
+        <div class="card component-card">
+          <h4><code>SyncStatusBanner</code></h4>
+          <p>The strip at the top of the Sync page with one small card per stage that is running, has failed or has just finished.</p>
+          <p class="meta"><strong>Used on:</strong> Sync</p>
+        </div>
+      </div>
+      <h3>Not used</h3>
+      <p class="group-note">These exist but no page renders them.</p>
+      <div class="card-grid">
+        <div class="card component-card">
+          <h4><code>NavBar</code></h4>
+          <p>A back button.</p>
+          <p class="meta"><strong>Used on:</strong> None</p>
+        </div>
+        <div class="card component-card">
+          <h4><code>VideoListItem</code></h4>
+          <p>A single video row with thumbnail, date, type and views.</p>
+          <p class="meta"><strong>Used on:</strong> None</p>
+        </div>
+      </div>
+    </section>
+
+    <section id="page-components">
+      <h2>Components on each page</h2>
+      <p>The components each page renders, laid out by tab. <code>TopNav</code> and its <code>SyncStatus</code> sit above every page, and <code>AsyncCard</code> frames almost every card, so neither is repeated below.</p>
+      <p>Red is the page, blue boxes are tabs, dashed blue boxes are sub-tabs, purple boxes are components (a component's own children branch off to its right), and dashed grey boxes are components defined inside the page file itself.</p>
+      <figure class="page-figure">
+        <figcaption><strong>Home</strong> <code>/</code></figcaption>
+        <img src="figures/page-home.svg" alt="Components on the Home page">
+      </figure>
+      <figure class="page-figure">
+        <figcaption><strong>Videos</strong> <code>/videos</code></figcaption>
+        <img src="figures/page-videos.svg" alt="Components on the Videos page">
+      </figure>
+      <figure class="page-figure">
+        <figcaption><strong>Playlists</strong> <code>/playlists</code></figcaption>
+        <p class="pf-note">The playlist table and its paging are written directly in the page, inside one <code>AsyncCard</code>.</p>
+        <img src="figures/page-playlists.svg" alt="Components on the Playlists page">
+      </figure>
+      <figure class="page-figure">
+        <figcaption><strong>Analytics</strong> <code>/analytics</code></figcaption>
+        <img src="figures/page-analytics.svg" alt="Components on the Analytics page">
+      </figure>
+      <figure class="page-figure">
+        <figcaption><strong>VideoAnalytics</strong> <code>/analytics/videos/:id</code></figcaption>
+        <img src="figures/page-video-analytics.svg" alt="Components on the VideoAnalytics page">
+      </figure>
+      <figure class="page-figure">
+        <figcaption><strong>PlaylistAnalytics</strong> <code>/analytics/playlists/:id</code></figcaption>
+        <img src="figures/page-playlist-analytics.svg" alt="Components on the PlaylistAnalytics page">
+      </figure>
+      <figure class="page-figure">
+        <figcaption><strong>Sync</strong> <code>/sync</code></figcaption>
+        <p class="pf-note">The stage table on the Sync tab and the history table are written directly in the page.</p>
+        <img src="figures/page-sync.svg" alt="Components on the Sync page">
+      </figure>
+    </section>
+
+    <section id="hooks">
+      <h2>Shared hooks and helpers</h2>
+      <div class="table-wrap"><table>
+        <thead><tr><th>Hook or helper</th><th>Used by</th></tr></thead>
+        <tbody>
+          <tr><td><code>useReplaceSearchParams</code></td><td><code>Videos</code>, <code>Playlists</code>, <code>Analytics</code>, <code>VideoAnalytics</code>, <code>PlaylistAnalytics</code>, <code>Sync</code>, <code>CommentsPanel</code></td></tr>
+          <tr><td><code>useDebouncedInput</code></td><td><code>Playlists</code>, <code>Analytics</code>, <code>PlaylistAnalytics</code>, <code>VideoTable</code></td></tr>
+          <tr><td><code>useDebouncedFields</code></td><td><code>CommentsPanel</code></td></tr>
+          <tr><td><code>useReconciledSelection</code></td><td><code>Analytics</code>, <code>PlaylistAnalytics</code></td></tr>
+          <tr><td><code>track</code> / <code>pending</code> (<code>lib/requestState.ts</code>)</td><td><code>Home</code>, <code>Videos</code>, <code>Playlists</code>, <code>Analytics</code>, <code>VideoAnalytics</code>, <code>PlaylistAnalytics</code></td></tr>
+          <tr><td><code>toTopVideoShape</code>, <code>last7Dates</code> (<code>lib/topVideos.ts</code>)</td><td><code>Analytics</code>, <code>PlaylistAnalytics</code></td></tr>
+          <tr><td><code>last28Dates</code> (<code>components/PeriodSelect.tsx</code>)</td><td><code>Analytics</code>, <code>VideoAnalytics</code>, <code>PlaylistAnalytics</code></td></tr>
+        </tbody>
+      </table></div>
+    </section>
+
+    <section id="observations">
+      <h2>Observations</h2>
+      <div class="card-grid">
+        <div class="card"><h3>Unused components</h3><p><code>NavBar</code> and <code>VideoListItem</code> are never rendered.</p></div>
+      </div>
+    </section>
+
+  </main>
+</div>
+</body>
+</html>
