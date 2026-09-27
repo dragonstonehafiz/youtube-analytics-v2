@@ -1,4 +1,4 @@
-<svg xmlns="http://www.w3.org/2000/svg" width="436" height="62" viewBox="0 0 436 62" role="img" aria-label="Routes used by the Comments tab">
+<svg xmlns="http://www.w3.org/2000/svg" width="436" height="134" viewBox="0 0 436 134" role="img" aria-label="Routes used by the Comments tab">
 <title>Routes used by the Comments tab</title>
 
 <style>
@@ -22,11 +22,21 @@
     .ep-tab rect { fill: #362d12; stroke: #c9a24a; } .ep-tab text { fill: #f2d98a; }
     .ep-after rect { fill: #1a1f27; stroke: #b9a2f5; } .ep-after text { fill: #d6c9fb; }
   }
+  .legend-text { font-size: 12px; fill: #5b6475; }
+  .legend-rule { stroke: #d9dee6; stroke-width: 1; }
+  @media (prefers-color-scheme: dark) { .legend-text { fill: #9aa3b2; } .legend-rule { stroke: #2f3744; } }
 </style>
-<rect class="bg" width="436" height="62" rx="10"/>
+<rect class="bg" width="436" height="134" rx="10"/>
 <path class="edge" d="M291.2,31.0 H309.2 V31.0 H331.2"/>
 <path class="edge" d="M126.4,31.0 H144.4 V31.0 H166.4"/>
 <g class="ep-tab"><rect x="331.2" y="16.0" width="89.2" height="30" rx="6"/><text class="mono" x="343.2" y="31.0">/comments</text></g>
 <g class="card"><rect x="166.4" y="16.0" width="124.8" height="30" rx="6"/><text x="178.4" y="31.0">Comments panel</text></g>
 <g class="root"><rect x="16.0" y="16.0" width="110.4" height="30" rx="6"/><text x="28.0" y="31.0">Comments tab</text></g>
+<line class="legend-rule" x1="16" y1="68.0" x2="420.0" y2="68.0"/>
+<g class="root"><rect x="16.0" y="82.0" width="22" height="14" rx="3"/></g>
+<text class="legend-text" x="44.0" y="89.0">Where it starts</text>
+<g class="card"><rect x="164.5" y="82.0" width="22" height="14" rx="3"/></g>
+<text class="legend-text" x="192.5" y="89.0">Card on the page</text>
+<g class="ep-tab"><rect x="16.0" y="106.0" width="22" height="14" rx="3"/></g>
+<text class="legend-text" x="44.0" y="113.0">Request sent only when this tab is shown</text>
 </svg>

@@ -76,7 +76,7 @@
     <section id="packages">
       <h2>Package dependencies</h2>
       <figure class="diagram">
-        <svg viewBox="0 0 900 370" role="img" aria-labelledby="pkg-title">
+        <svg viewBox="0 0 900 410" role="img" aria-labelledby="pkg-title">
           <title id="pkg-title">Import graph between backend packages</title>
           <defs>
             <marker id="arrow" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse">
@@ -99,8 +99,13 @@
           <path class="edge" d="M500,204 L500,288" marker-end="url(#arrow)"/>
           <path class="edge" d="M590,204 L700,288" marker-end="url(#arrow)"/>
           <path class="edge" d="M600,322 L678,322" marker-end="url(#arrow)"/>
+
+          <g aria-hidden="true">
+            <line class="edge" x1="20" y1="372" x2="880" y2="372"/>
+            <path class="edge" d="M20,392 L60,392" marker-end="url(#arrow)"/>
+            <text class="edge-label" x="68" y="396">imports (points at the package being imported)</text>
+          </g>
         </svg>
-        <figcaption>Arrows point from importer to imported.</figcaption>
       </figure>
       <div class="card-grid">
         <div class="card"><h3><span class="tag db">database/</span></h3><p>Imports no other application package — the shared bottom layer.</p></div>

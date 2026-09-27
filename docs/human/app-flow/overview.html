@@ -84,7 +84,7 @@
     <section id="paths">
       <h2>Two independent paths</h2>
       <figure class="diagram">
-        <svg viewBox="0 0 980 480" role="img" aria-labelledby="paths-title">
+        <svg viewBox="0 0 980 530" role="img" aria-labelledby="paths-title">
           <title id="paths-title">Read path from user action to SQLite and back; write path from sync trigger through YouTube APIs into SQLite</title>
           <defs>
             <marker id="arrow" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse">
@@ -102,7 +102,7 @@
           <path class="edge" d="M570,60 L603,60" marker-end="url(#arrow)"/>
           <path class="edge" d="M765,60 L798,60" marker-end="url(#arrow)"/>
           <path class="edge dashed" d="M685,90 C685,140 295,140 295,92" marker-end="url(#arrow)"/>
-          <text class="edge-label" x="490" y="136" text-anchor="middle">JSON response → card re-renders</text>
+          <text class="edge-label" x="490" y="152" text-anchor="middle">JSON response → card re-renders</text>
 
           <g class="node db"><rect x="800" y="160" width="160" height="60" rx="8"/><text class="title" x="880" y="186" text-anchor="middle">SQLite</text><text class="sub" x="880" y="204" text-anchor="middle">data/youtube.db</text></g>
           <path class="edge" d="M880,90 L880,158" marker-end="url(#arrow)"/>
@@ -121,6 +121,17 @@
 
           <g class="node yt"><rect x="560" y="400" width="250" height="60" rx="8"/><text class="title" x="685" y="426" text-anchor="middle">YouTube APIs · Yahoo Finance</text><text class="sub" x="685" y="444" text-anchor="middle">via backend/youtube/ and yfinance</text></g>
           <path class="edge" d="M685,340 L685,398" marker-end="url(#arrow)" marker-start="url(#arrow)"/>
+
+          <g aria-hidden="true">
+            <line class="edge" x1="20" y1="486" x2="960" y2="486"/>
+            <g class="node fe"><rect x="20" y="502" width="16" height="16" rx="3"/></g><text class="edge-label" x="42" y="514">Frontend</text>
+            <g class="node route"><rect x="120" y="502" width="16" height="16" rx="3"/></g><text class="edge-label" x="142" y="514">Backend API</text>
+            <g class="node db"><rect x="240" y="502" width="16" height="16" rx="3"/></g><text class="edge-label" x="262" y="514">Database</text>
+            <g class="node sync"><rect x="340" y="502" width="16" height="16" rx="3"/></g><text class="edge-label" x="362" y="514">Sync</text>
+            <g class="node yt"><rect x="420" y="502" width="16" height="16" rx="3"/></g><text class="edge-label" x="442" y="514">External service</text>
+            <path class="edge" d="M570,510 L610,510" marker-end="url(#arrow)"/><text class="edge-label" x="618" y="514">calls</text>
+            <path class="edge dashed" d="M680,510 L720,510" marker-end="url(#arrow)"/><text class="edge-label" x="728" y="514">response</text>
+          </g>
         </svg>
         <figcaption>The two paths share only SQLite (and the in-memory sync status read by <code>GET /sync/status</code>).</figcaption>
       </figure>

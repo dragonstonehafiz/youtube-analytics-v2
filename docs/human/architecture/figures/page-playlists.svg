@@ -1,4 +1,4 @@
-<svg xmlns="http://www.w3.org/2000/svg" width="343" height="62" viewBox="0 0 343 62" role="img" aria-label="Components on the Playlists page">
+<svg xmlns="http://www.w3.org/2000/svg" width="343" height="134" viewBox="0 0 343 134" role="img" aria-label="Components on the Playlists page">
 <title>Components on the Playlists page</title>
 
 <style>
@@ -24,9 +24,19 @@
     .comp rect { fill: #2a2340; stroke: #b9a2f5; } .comp text { fill: #d6c9fb; }
     .local rect { fill: #222833; stroke: #6b7486; } .local text { fill: #e6e9ef; }
   }
+  .legend-text { font-size: 12px; fill: #5b6475; }
+  .legend-rule { stroke: #d9dee6; stroke-width: 1; }
+  @media (prefers-color-scheme: dark) { .legend-text { fill: #9aa3b2; } .legend-rule { stroke: #2f3744; } }
 </style>
-<rect class="bg" width="343" height="62" rx="10"/>
+<rect class="bg" width="343" height="134" rx="10"/>
 <path class="edge" d="M193.3,31.0 H215.3 V31.0 H237.3"/>
 <g class="comp"><rect x="237.3" y="16.0" width="89.7" height="30" rx="6"/><text x="249.3" y="31.0">AsyncCard</text></g>
 <g class="page"><rect x="16.0" y="16.0" width="177.3" height="30" rx="6"/><text x="28.0" y="31.0">Playlists  /playlists</text></g>
+<line class="legend-rule" x1="16" y1="68.0" x2="327.0" y2="68.0"/>
+<path class="edge" d="M16.0,89.0 H38.0"/>
+<text class="legend-text" x="44.0" y="89.0">contains</text>
+<g class="page"><rect x="117.6" y="82.0" width="22" height="14" rx="3"/></g>
+<text class="legend-text" x="145.6" y="89.0">Page</text>
+<g class="comp"><rect x="16.0" y="106.0" width="22" height="14" rx="3"/></g>
+<text class="legend-text" x="44.0" y="113.0">Shared component</text>
 </svg>
