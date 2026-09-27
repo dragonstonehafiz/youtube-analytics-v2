@@ -296,6 +296,151 @@ class BorrowedConnectionTest(IsolatedDatabaseTestCase):
         self.assertEqual([row["id"] for row in _stored("SELECT id FROM videos")], ["v-1"])
 
 
+class UpdateTest(IsolatedDatabaseTestCase):
+    def setUp(self) -> None:
+        super().setUp()
+        writer.write(make_video("v-1", "Alpha", view_count=1, description="Kept"))
+        writer.write(make_video("v-2", "Beta", view_count=2, content_type="short"))
+        writer.write(make_video("v-3", "Gamma", view_count=3, own=False))
+
+    def test_updates_every_matching_row_and_returns_the_count(self) -> None:
+        self.assertEqual(writer.update(Video(view_count=9), where=[("own", "=", True)]), 2)
+        rows = _stored("SELECT id, view_count FROM videos ORDER BY id")
+        self.assertEqual([tuple(row) for row in rows], [("v-1", 9), ("v-2", 9), ("v-3", 3)])
+
+    def test_one_match_and_no_match(self) -> None:
+        self.assertEqual(writer.update(Video(title="Renamed"), where=[("id", "=", "v-2")]), 1)
+        self.assertEqual(writer.update(Video(title="Ghost"), where=[("id", "=", "missing")]), 0)
+        self.assertEqual(_stored("SELECT title FROM videos WHERE id = 'v-2'")[0]["title"], "Renamed")
+        self.assertEqual(len(_stored("SELECT id FROM videos")), 3)
+
+    def test_a_missing_key_is_never_inserted(self) -> None:
+        self.assertEqual(writer.update(FxRate(usd_to_sgd=1.3), where=[("date", "=", "2024-01-01")]), 0)
+        self.assertEqual(_stored("SELECT date FROM fx_rates"), [])
+
+    def test_none_fields_are_left_and_falsy_values_are_written(self) -> None:
+        writer.update(Video(view_count=0, content_type=""), where=[("id", "=", "v-1")])
+        (row,) = _stored("SELECT description, view_count, content_type FROM videos WHERE id = 'v-1'")
+        self.assertEqual(tuple(row), ("Kept", 0, ""))
+
+    def test_missing_or_invalid_conditions_are_rejected_before_any_sql(self) -> None:
+        with self.assertRaises(ValueError):
+            writer.update(Video(title="x"), where=[])
+        with self.assertRaises(ValueError):
+            writer.update(Video(title="x"), where=[("nope", "=", 1)])
+        with self.assertRaises(ValueError):
+            writer.update(Video(), where=[("nope", "=", 1)])
+        self.assertEqual({row["title"] for row in _stored("SELECT title FROM videos")}, {"Alpha", "Beta", "Gamma"})
+
+    def test_key_fields_cannot_be_assigned(self) -> None:
+        with self.assertRaises(ValueError) as raised:
+            writer.update(Video(id="v-9", title="x"), where=[("id", "=", "v-1")])
+        self.assertIn("id", str(raised.exception))
+        with self.assertRaises(ValueError):
+            writer.update(VideoAnalytics(date="2024-01-02", views=1), where=[("video_id", "=", "v-1")])
+
+    def test_an_empty_patch_is_a_no_op(self) -> None:
+        with mock.patch("database.writer.get_connection") as opened:
+            self.assertEqual(writer.update(Video(), where=[("id", "=", "v-1")]), 0)
+        opened.assert_not_called()
+
+    def test_ownership_is_promoted_but_never_demoted(self) -> None:
+        self.assertEqual(writer.update(Video(own=False), where=[("id", "IN", ["v-1", "v-3"])]), 2)
+        self.assertEqual(writer.update(Video(own=True), where=[("id", "=", "v-3")]), 1)
+        rows = _stored("SELECT id, own FROM videos ORDER BY id")
+        self.assertEqual([tuple(row) for row in rows], [("v-1", 1), ("v-2", 1), ("v-3", 1)])
+
+    def test_caller_timestamps_are_written_as_given(self) -> None:
+        writer.update(Video(updated_at="2030-01-01T00:00:00+00:00"), where=[("id", "=", "v-1")])
+        self.assertEqual(_stored("SELECT updated_at FROM videos WHERE id = 'v-1'")[0][0], "2030-01-01T00:00:00+00:00")
+
+    def test_a_constraint_failure_rolls_back_the_whole_update(self) -> None:
+        writer.write(CommentAuthor(id="a-1", display_name="Ann", youtube_channel_id="UC-1", updated_at=FIXED_NOW))
+        writer.write(CommentAuthor(id="a-2", display_name="Bob", youtube_channel_id="UC-2", updated_at=FIXED_NOW))
+        with self.assertRaises(sqlite3.IntegrityError):
+            writer.update(
+                CommentAuthor(youtube_channel_id="UC-same", display_name="Clash"), where=[("id", "IN", ["a-1", "a-2"])]
+            )
+        rows = _stored("SELECT youtube_channel_id, display_name FROM comment_authors ORDER BY id")
+        self.assertEqual([tuple(row) for row in rows], [("UC-1", "Ann"), ("UC-2", "Bob")])
+
+    def test_joins_a_borrowed_transaction_and_rolls_back_only_its_own_failure(self) -> None:
+        conn = database.get_connection()
+        self.addCleanup(conn.close)
+        conn.execute("BEGIN")
+        self.assertEqual(writer.update(Video(title="Borrowed"), where=[("id", "=", "v-1")], conn=conn), 1)
+        with self.assertRaises(ValueError):
+            writer.update(Video(title="x"), where=[("nope", "=", 1)], conn=conn)
+        self.assertTrue(conn.in_transaction)
+        conn.rollback()
+        self.assertEqual(_stored("SELECT title FROM videos WHERE id = 'v-1'")[0]["title"], "Alpha")
+
+
+class WriteReturningTest(IsolatedDatabaseTestCase):
+    def test_without_returning_the_count_is_unchanged(self) -> None:
+        self.assertEqual(writer.write(make_video("v-1")), 1)
+
+    def test_an_insert_returns_its_generated_key_and_stored_defaults(self) -> None:
+        writer.write(SyncRun(id=41, batch_id="b-0", sync_type="videos", status="success", started_at=FIXED_NOW))
+        run = SyncRun(batch_id="b-1", sync_type="videos", status="running", started_at=FIXED_NOW)
+        stored = writer.write(run, returning=("id", "rows_fetched", "status"))
+        self.assertIsInstance(stored, SyncRun)
+        (row,) = _stored("SELECT id FROM sync_runs WHERE batch_id = 'b-1'")
+        self.assertEqual((stored.id, stored.rows_fetched, stored.status), (row["id"], 0, "running"))
+        self.assertIsNone(stored.batch_id)
+        self.assertIsNone(run.id)
+
+    def test_concurrent_inserts_each_return_their_own_key(self) -> None:
+        barrier = threading.Barrier(2)
+        ids: dict[str, int | None] = {}
+
+        def insert(batch_id: str) -> None:
+            barrier.wait(timeout=5)
+            run = SyncRun(batch_id=batch_id, sync_type="videos", status="running", started_at=FIXED_NOW)
+            ids[batch_id] = writer.write(run, returning=("id",)).id
+
+        threads = [threading.Thread(target=insert, args=(batch_id,)) for batch_id in ("b-1", "b-2")]
+        for thread in threads:
+            thread.start()
+        for thread in threads:
+            thread.join(timeout=10)
+        stored = {row["batch_id"]: row["id"] for row in _stored("SELECT batch_id, id FROM sync_runs")}
+        self.assertEqual(ids, stored)
+
+    def test_an_update_through_a_composite_key_returns_persisted_values(self) -> None:
+        writer.write(make_video("v-1"))
+        writer.write(make_video_analytics("v-1", "2024-01-01", views=5, likes=2))
+        stored = writer.write(VideoAnalytics(video_id="v-1", date="2024-01-01", views=9), returning=("views", "likes"))
+        self.assertEqual((stored.views, stored.likes, stored.video_id), (9, 2, None))
+
+    def test_a_key_only_no_op_returns_the_stored_row(self) -> None:
+        writer.write(FxRate(date="2024-01-01", usd_to_sgd=1.3, updated_at=FIXED_NOW))
+        stored = writer.write(FxRate(date="2024-01-01"), returning=("date", "usd_to_sgd"))
+        self.assertEqual((stored.date, stored.usd_to_sgd), ("2024-01-01", 1.3))
+
+    def test_non_decreasing_values_are_returned_as_stored(self) -> None:
+        writer.write(make_video("v-1", own=True))
+        stored = writer.write(Video(id="v-1", own=False), returning=("own",))
+        self.assertIs(stored.own, True)
+
+    def test_invalid_or_empty_projections_are_rejected_before_writing(self) -> None:
+        with self.assertRaises(ValueError):
+            writer.write(make_video("v-1"), returning=("nope",))
+        with self.assertRaises(ValueError):
+            writer.write(make_video("v-1"), returning=())
+        self.assertEqual(_stored("SELECT id FROM videos"), [])
+
+    def test_a_borrowed_transaction_rollback_discards_the_returned_row(self) -> None:
+        conn = database.get_connection()
+        self.addCleanup(conn.close)
+        conn.execute("BEGIN")
+        run = SyncRun(batch_id="b-1", sync_type="videos", status="running", started_at=FIXED_NOW)
+        stored = writer.write(run, returning=("id",), conn=conn)
+        self.assertIsNotNone(conn.execute("SELECT 1 FROM sync_runs WHERE id = ?", (stored.id,)).fetchone())
+        conn.rollback()
+        self.assertEqual(_stored("SELECT id FROM sync_runs"), [])
+
+
 class DeleteTest(IsolatedDatabaseTestCase):
     def setUp(self) -> None:
         super().setUp()

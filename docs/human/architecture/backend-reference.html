@@ -54,7 +54,7 @@
       <h1>Backend reference</h1>
       <p>This page shows what each backend file does and which functions each API route calls.</p>
       <div class="meta-line">
-        <span>Source revision <code>b2d6118</code></span>
+        <span>Source revision <code>ab9b0f4</code></span>
       </div>
     </header>
 
@@ -64,7 +64,7 @@
       <h3>Top level</h3>
       <p>Starts the app and sets up logging.</p>
       <dl class="file-list">
-        <dt><code>server.py</code></dt><dd>Creates the FastAPI app and prepares the database on startup.</dd>
+        <dt><code>server.py</code></dt><dd>Creates the FastAPI app and prepares the database on startup: creates missing tables, then marks every sync stage a stopped process left running as incomplete with one <code>writer.update</code>.</dd>
         <dt><code>logging_config.py</code></dt><dd>Sets up the application and sync log files.</dd>
       </dl>
       </div>
@@ -79,23 +79,22 @@
         <dt><code>synchronization.py</code></dt><dd>Starts and stops syncs, reports progress, and returns sync history.</dd>
         <dt><code>metadata.py</code></dt><dd>Returns the earliest publish year for the year dropdowns.</dd>
         <dt><code>video_scope.py</code></dt><dd>Returns 404 when a video isn't one of this channel's or a playlist doesn't exist, and looks up the videos in a playlist for the playlist statistics and analytics endpoints. Defines no endpoints.</dd>
+        <dt><code>daily_series.py</code></dt><dd>Holds the settings <code>videos.py</code> and <code>analytics.py</code> pass to the reader to fill missing days in chart data, and turns daily traffic-source rows into JSON. Defines no endpoints.</dd>
       </dl>
       </div>
       <div class="card file-group">
       <h3><span class="tag db">database/</span></h3>
-      <p>Everything that touches SQLite. All reads go through <code>reader.py</code> and all inserts, updates, and deletes through <code>writer.py</code>; the domain files hold the sync-run log and the reports that do calculations of their own. Details: <code>docs/references/database.md</code>.</p>
+      <p>Everything that touches SQLite. All reads go through <code>reader.py</code> and all inserts, updates, and deletes through <code>writer.py</code>; the domain files hold the reports that do calculations of their own. Details: <code>docs/references/database.md</code>.</p>
       <dl class="file-list">
         <dt><code>dataclasses/</code></dt><dd>One small data class per table, such as <code>Video</code> or <code>Comment</code>. They only hold values and convert to and from dictionaries; they never run queries.</dd>
         <dt><code>tables.py</code></dt><dd>Knows which class belongs to which table and which columns identify a row. Shared by the reader and the writer.</dd>
-        <dt><code>filters.py</code></dt><dd>Turns a list of conditions into the SQL <code>WHERE</code> part, checking every column and operator. Shared by reader selects and writer deletes.</dd>
-        <dt><code>reader.py</code></dt><dd>Runs every read, fetches only the columns asked for, and returns filled-in data classes.</dd>
-        <dt><code>writer.py</code></dt><dd>Saves data classes: updates the row with the same key or inserts a new one, and leaves any field that is <code>None</code> as it was. Also deletes the rows matching a required condition, such as videos no longer on the channel, removed playlists, a playlist's items before they are re-saved, and comment authors no comment uses.</dd>
-        <dt><code>queries.py</code></dt><dd>Holds the SQL for joined, grouped, and ranked reads that more than one caller needs. It builds queries but never runs them.</dd>
+        <dt><code>filters.py</code></dt><dd>Turns a list of conditions into the SQL <code>WHERE</code> part, checking every column and operator. Shared by reader selects and writer updates and deletes.</dd>
+        <dt><code>reader.py</code></dt><dd>Runs every read, fetches only the columns asked for, and returns filled-in data classes. When asked, it fills missing days in a daily series and groups ranked results, such as the top videos per traffic source.</dd>
+        <dt><code>writer.py</code></dt><dd>Saves data classes: updates the row with the same key or inserts a new one, and leaves any field that is <code>None</code> as it was. It can return the stored values, such as a new sync run's ID. It also updates every row matching a required condition without ever inserting, such as finishing a sync run, and deletes the rows matching a required condition, such as videos no longer on the channel, removed playlists, a playlist's items before they are re-saved, and comment authors no comment uses.</dd>
+        <dt><code>queries.py</code></dt><dd>Holds the SQL for joined, grouped, daily, and ranked reads. It builds queries but never runs them.</dd>
         <dt><code>video_statistics.py</code></dt><dd>Calculates the Legacy/New statistics shown in the stats bar.</dd>
-        <dt><code>analytics.py</code></dt><dd>Builds the zero-filled daily chart data.</dd>
-        <dt><code>traffic_sources.py</code></dt><dd>Builds the zero-filled traffic-source chart data and per-source top videos.</dd>
         <dt><code>related_videos.py</code></dt><dd>Builds the Related Video referrer list with its total.</dd>
-        <dt><code>sync_runs.py</code></dt><dd>Saves the history of sync runs and groups it into pages of syncs.</dd>
+        <dt><code>sync_runs.py</code></dt><dd>Groups the history of sync runs into pages of syncs. The runs themselves are saved through <code>writer.py</code>.</dd>
         <dt><code>connection.py</code></dt><dd>Opens database connections and creates the tables.</dd>
       </dl>
       </div>
@@ -103,7 +102,7 @@
       <h3><span class="tag sync">sync/</span></h3>
       <p>Downloads data from YouTube and stores it. Details: <code>docs/references/sync.md</code>.</p>
       <dl class="file-list">
-        <dt><code>orchestration.py</code></dt><dd>Runs a sync plan stage by stage and records each stage's result.</dd>
+        <dt><code>orchestration.py</code></dt><dd>Runs a sync plan stage by stage and records each stage's result: it inserts a running <code>sync_runs</code> row and keeps its returned ID, then updates that row to success, failed or cancelled.</dd>
         <dt><code>stages.py</code></dt><dd>Contains the code for each of the nine stages.</dd>
         <dt><code>plans.py</code></dt><dd>Checks that a requested plan is valid and sets the order stages run in.</dd>
         <dt><code>status.py</code></dt><dd>Tracks live progress and handles stop requests.</dd>
@@ -160,22 +159,22 @@
       </div>
       <div class="card file-group">
         <h3>Daily analytics</h3>
-        <p>Defined in <code>database/analytics.py</code> and <code>database/queries.py</code>.</p>
+        <p>Defined in <code>database/queries.py</code>. The daily reads pass a fill setting from <code>routes/daily_series.py</code> so the reader fills days with no data.</p>
         <dl class="returns-list">
           <dt class="col-head">Read</dt><dd class="col-head">Returns</dd><dd class="col-head">Used by</dd>
-          <dt><code>get_video_analytics</code></dt><dd>Returns one video's metrics for each day in the date range: views, watch time, revenue in USD and SGD, average view duration and percentage, likes, and subscribers gained and lost. Days with no data are filled with zeros so the chart has no gaps.</dd><dd class="used-by"><code>GET /videos/{id}/analytics</code></dd>
-          <dt><code>get_aggregated_analytics</code></dt><dd>Returns the same daily metrics added up across all matching videos, with one row per day for videos and one for Shorts. This feeds the main chart on the Analytics pages.</dd><dd class="used-by"><code>GET /analytics/videos</code><br><code>GET /analytics/playlists/{id}</code></dd>
+          <dt><code>queries.video_daily_analytics</code></dt><dd>Returns one video's metrics for each day in the date range: views, watch time, revenue in USD and SGD, average view duration and percentage, likes, and subscribers gained and lost. Days with no data are filled so the chart has no gaps; a filled day keeps the video's ID and type, has zero metrics, and has no update time.</dd><dd class="used-by"><code>GET /videos/{id}/analytics</code></dd>
+          <dt><code>queries.daily_analytics_totals</code></dt><dd>Returns the same daily metrics added up across all matching videos, with one row per day for videos and one for Shorts, filled with zeros on days with no data. This feeds the main chart on the Analytics pages.</dd><dd class="used-by"><code>GET /analytics/videos</code><br><code>GET /analytics/playlists/{id}</code></dd>
           <dt><code>queries.top_videos_by_views</code></dt><dd>Returns the top videos for the date range, ranked by views or by watch time, with each video's views, watch hours and earnings in SGD for that range.</dd><dd class="used-by"><code>GET /analytics/videos/top</code> (top 10)<br><code>GET /analytics/playlists/{id}/top</code> (top 10)</dd>
         </dl>
       </div>
       <div class="card file-group">
         <h3>Traffic sources</h3>
-        <p>Defined in <code>database/traffic_sources.py</code>.</p>
+        <p>Defined in <code>database/queries.py</code>.</p>
         <dl class="returns-list">
           <dt class="col-head">Read</dt><dd class="col-head">Returns</dd><dd class="col-head">Used by</dd>
-          <dt><code>get_video_traffic_sources</code></dt><dd>Returns one video's views and watch time for each day and each traffic source, such as YouTube search, suggested videos or external sites. Missing days are filled with zeros.</dd><dd class="used-by"><code>GET /videos/{id}/traffic-sources</code></dd>
-          <dt><code>get_aggregated_traffic_sources</code></dt><dd>Returns daily views and watch time per traffic source, added up across all matching videos. This feeds the traffic source chart and table.</dd><dd class="used-by"><code>GET /analytics/traffic-sources</code><br><code>GET /analytics/playlists/{id}/traffic-sources</code></dd>
-          <dt><code>get_top_videos_by_traffic_source</code></dt><dd>Returns, for each traffic source, the videos that got the most views from it in the date range.</dd><dd class="used-by"><code>GET /analytics/traffic-sources/top</code> (10 per source)<br><code>GET /analytics/playlists/{id}/traffic-sources/top</code> (10 per source)</dd>
+          <dt><code>queries.video_daily_traffic_sources</code></dt><dd>Returns one video's views and watch time for each day and each traffic source, such as YouTube search, suggested videos or external sites. Missing days are filled with zeros for each source the video has.</dd><dd class="used-by"><code>GET /videos/{id}/traffic-sources</code></dd>
+          <dt><code>queries.daily_traffic_source_totals</code></dt><dd>Returns daily views and watch time per traffic source, added up across all matching videos, with missing days filled with zeros. This feeds the traffic source chart and table.</dd><dd class="used-by"><code>GET /analytics/traffic-sources</code><br><code>GET /analytics/playlists/{id}/traffic-sources</code></dd>
+          <dt><code>queries.traffic_source_video_totals</code></dt><dd>Returns every matching video's views and watch time from each traffic source in the date range, most-viewed first within each source. The route keeps the first 10 per source with <code>reader.group_by</code>.</dd><dd class="used-by"><code>GET /analytics/traffic-sources/top</code> (10 per source)<br><code>GET /analytics/playlists/{id}/traffic-sources/top</code> (10 per source)</dd>
         </dl>
       </div>
       <div class="card file-group">
@@ -217,7 +216,7 @@
 
     <section id="call-chains">
       <h2>Call chains</h2>
-      <p>Each line shows the functions an endpoint calls, in order. <code>queries.*</code> definitions are run through <code>reader.fetch</code> or <code>reader.fetch_joined</code>. Other names without a prefix are <code>database</code> functions, except the <code>require_*</code> and <code>resolve_*</code> checks from <code>routes/video_scope.py</code>.</p>
+      <p>Each line shows the functions an endpoint calls, in order. <code>queries.*</code> definitions are run through <code>reader.fetch</code> or <code>reader.fetch_joined</code>; "filled" means the read passes a fill setting so the reader adds the missing days. Other names without a prefix are <code>database</code> functions, except the <code>require_*</code> and <code>resolve_*</code> checks from <code>routes/video_scope.py</code>.</p>
       <div class="card file-group">
         <h3><code>routes/videos.py</code></h3>
         <ul class="route-lines">
@@ -225,8 +224,8 @@
           <li><code>GET /videos/stats</code> → <code>get_video_stats</code></li>
           <li><code>GET /videos/published</code> → <code>resolve_playlist_video_ids</code> (only with a playlist ID): <code>require_playlist</code> (404 check) → <code>queries.playlist_owned_video_ids</code> → <code>queries.videos_published</code></li>
           <li><code>GET /videos/{id}</code> → <code>queries.video_catalog</code> (that one video)</li>
-          <li><code>GET /videos/{id}/analytics</code> → <code>require_owned_video</code> (404 check) → <code>get_video_analytics</code></li>
-          <li><code>GET /videos/{id}/traffic-sources</code> → <code>require_owned_video</code> (404 check) → <code>get_video_traffic_sources</code></li>
+          <li><code>GET /videos/{id}/analytics</code> → <code>require_owned_video</code> (404 check) → <code>queries.video_daily_analytics</code> (filled)</li>
+          <li><code>GET /videos/{id}/traffic-sources</code> → <code>require_owned_video</code> (404 check) → <code>queries.video_daily_traffic_sources</code> (filled)</li>
         </ul>
       </div>
       <div class="card file-group">
@@ -241,10 +240,10 @@
       <div class="card file-group">
         <h3><code>routes/analytics.py</code> — videos</h3>
         <ul class="route-lines">
-          <li><code>GET /analytics/videos</code> → <code>get_aggregated_analytics</code></li>
+          <li><code>GET /analytics/videos</code> → <code>queries.daily_analytics_totals</code> (filled)</li>
           <li><code>GET /analytics/videos/top</code> → <code>queries.top_videos_by_views</code></li>
-          <li><code>GET /analytics/traffic-sources</code> → <code>get_aggregated_traffic_sources</code></li>
-          <li><code>GET /analytics/traffic-sources/top</code> → <code>get_top_videos_by_traffic_source</code></li>
+          <li><code>GET /analytics/traffic-sources</code> → <code>queries.daily_traffic_source_totals</code> (filled)</li>
+          <li><code>GET /analytics/traffic-sources/top</code> → <code>queries.traffic_source_video_totals</code> → <code>reader.group_by</code> (10 per source)</li>
           <li><code>GET /analytics/search-insights</code> → <code>queries.search_term_totals</code></li>
           <li><code>GET /analytics/search-insights/top</code> → <code>queries.search_term_totals</code> (top 10)</li>
           <li><code>GET /analytics/search-insights/videos</code> → <code>queries.videos_by_search_term</code></li>
@@ -258,10 +257,10 @@
         <h3><code>routes/analytics.py</code> — playlists</h3>
         <p>Every line starts with <code>resolve_playlist_video_ids</code>: <code>require_playlist</code> (404 check) → <code>queries.playlist_owned_video_ids</code>.</p>
         <ul class="route-lines">
-          <li><code>GET /analytics/playlists/{id}</code> → <code>get_aggregated_analytics</code></li>
+          <li><code>GET /analytics/playlists/{id}</code> → <code>queries.daily_analytics_totals</code> (filled)</li>
           <li><code>GET /analytics/playlists/{id}/top</code> → <code>queries.top_videos_by_views</code></li>
-          <li><code>GET /analytics/playlists/{id}/traffic-sources</code> → <code>get_aggregated_traffic_sources</code></li>
-          <li><code>GET /analytics/playlists/{id}/traffic-sources/top</code> → <code>get_top_videos_by_traffic_source</code></li>
+          <li><code>GET /analytics/playlists/{id}/traffic-sources</code> → <code>queries.daily_traffic_source_totals</code> (filled)</li>
+          <li><code>GET /analytics/playlists/{id}/traffic-sources/top</code> → <code>queries.traffic_source_video_totals</code> → <code>reader.group_by</code> (10 per source)</li>
           <li><code>GET /analytics/playlists/{id}/search-insights</code> → <code>queries.search_term_totals</code></li>
           <li><code>GET /analytics/playlists/{id}/search-insights/top</code> → <code>queries.search_term_totals</code> (top 10)</li>
           <li><code>GET /analytics/playlists/{id}/search-insights/videos</code> → <code>queries.videos_by_search_term</code></li>

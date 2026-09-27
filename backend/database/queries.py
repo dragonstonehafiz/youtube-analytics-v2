@@ -6,7 +6,7 @@ from collections.abc import Collection
 from datetime import date, timedelta
 
 from .connection import _month_bound_conditions
-from .dataclasses import Comment, CommentAuthor, Playlist, Video
+from .dataclasses import Comment, CommentAuthor, Playlist, Video, VideoAnalytics, VideoTrafficSource
 from .reader import Query, joined_columns
 
 VIDEO_TOTAL_VALUES = ("total_revenue_sgd", "total_watch_time_hours")
@@ -341,6 +341,163 @@ def top_videos_by_views(
         LIMIT ?
         """,
         (*params, *date_params, limit),
+    )
+
+
+ANALYTICS_METRIC_FIELDS = (
+    "views",
+    "watch_time_minutes",
+    "estimated_revenue",
+    "average_view_duration_seconds",
+    "average_view_percentage",
+    "likes",
+    "subscribers_gained",
+    "subscribers_lost",
+)
+ANALYTICS_VALUES = ("estimated_revenue_sgd",)
+
+# Daily totals as fetch_joined() columns over aliases va / v / fx.
+_ANALYTICS_TOTALS_SQL = f"""
+    va.date AS video_analytics__date,
+    v.content_type AS videos__content_type,
+    SUM(va.views) AS video_analytics__views,
+    SUM(va.watch_time_minutes) AS video_analytics__watch_time_minutes,
+    SUM(va.estimated_revenue) AS video_analytics__estimated_revenue,
+    COALESCE(SUM(va.estimated_revenue * fx.usd_to_sgd), 0) AS {ANALYTICS_VALUES[0]},
+    AVG(va.average_view_duration_seconds) AS video_analytics__average_view_duration_seconds,
+    AVG(va.average_view_percentage) AS video_analytics__average_view_percentage,
+    SUM(va.likes) AS video_analytics__likes,
+    SUM(va.subscribers_gained) AS video_analytics__subscribers_gained,
+    SUM(va.subscribers_lost) AS video_analytics__subscribers_lost
+"""
+
+
+def video_daily_analytics(video_id: str, *, start_date: str | None = None, end_date: str | None = None) -> Query:
+    """One owned video's daily analytics rows with its content type and SGD revenue."""
+    conditions, params = _video_conditions(video_ids=[video_id])
+    date_conditions, date_params = _date_bounds("va.date", start_date, end_date)
+    return Query(
+        f"""
+        SELECT {joined_columns(VideoAnalytics, 'va')}, {joined_columns(Video, 'v', ('content_type',))},
+            COALESCE(va.estimated_revenue * fx.usd_to_sgd, 0) AS {ANALYTICS_VALUES[0]}
+        FROM video_analytics va
+        JOIN videos v ON v.id = va.video_id
+        LEFT JOIN fx_rates fx ON fx.date = va.date
+        WHERE {' AND '.join([*conditions, *date_conditions])}
+        ORDER BY va.date
+        """,
+        (*params, *date_params),
+    )
+
+
+def daily_analytics_totals(
+    *,
+    start_date: str | None = None,
+    end_date: str | None = None,
+    content_type: str | None = None,
+    privacy_status: str | None = None,
+    title: str | None = None,
+    video_ids: Collection[str] | None = None,
+) -> Query:
+    """Owned-video analytics summed (durations averaged) per date and content type."""
+    conditions, params = _video_conditions(
+        video_ids=video_ids, title=title, content_type=content_type, privacy_status=privacy_status
+    )
+    date_conditions, date_params = _date_bounds("va.date", start_date, end_date)
+    return Query(
+        f"""
+        SELECT {_ANALYTICS_TOTALS_SQL}
+        FROM video_analytics va
+        JOIN videos v ON v.id = va.video_id
+        LEFT JOIN fx_rates fx ON fx.date = va.date
+        WHERE {' AND '.join([*conditions, *date_conditions])}
+        GROUP BY va.date, v.content_type
+        ORDER BY va.date, v.content_type
+        """,
+        (*params, *date_params),
+    )
+
+
+TRAFFIC_SOURCE_FIELDS = ("date", "traffic_source_type", "views", "watch_time_minutes")
+
+
+def video_daily_traffic_sources(
+    video_id: str, *, start_date: str | None = None, end_date: str | None = None
+) -> Query:
+    """One owned video's daily traffic-source rows."""
+    conditions, params = _video_conditions(video_ids=[video_id])
+    date_conditions, date_params = _date_bounds("vts.date", start_date, end_date)
+    return Query(
+        f"""
+        SELECT vts.date AS date, vts.traffic_source_type AS traffic_source_type,
+            vts.views AS views, vts.watch_time_minutes AS watch_time_minutes
+        FROM video_traffic_sources vts
+        JOIN videos v ON v.id = vts.video_id
+        WHERE {' AND '.join([*conditions, *date_conditions])}
+        ORDER BY vts.date, vts.traffic_source_type
+        """,
+        (*params, *date_params),
+    )
+
+
+def daily_traffic_source_totals(
+    *,
+    start_date: str | None = None,
+    end_date: str | None = None,
+    content_type: str | None = None,
+    privacy_status: str | None = None,
+    title: str | None = None,
+    video_ids: Collection[str] | None = None,
+) -> Query:
+    """Owned-video traffic-source views and watch time summed per date and source type."""
+    conditions, params = _video_conditions(
+        video_ids=video_ids, title=title, content_type=content_type, privacy_status=privacy_status
+    )
+    date_conditions, date_params = _date_bounds("vts.date", start_date, end_date)
+    return Query(
+        f"""
+        SELECT vts.date AS date, vts.traffic_source_type AS traffic_source_type,
+            SUM(vts.views) AS views, SUM(vts.watch_time_minutes) AS watch_time_minutes
+        FROM video_traffic_sources vts
+        JOIN videos v ON v.id = vts.video_id
+        WHERE {' AND '.join([*conditions, *date_conditions])}
+        GROUP BY vts.date, vts.traffic_source_type
+        ORDER BY vts.date, vts.traffic_source_type
+        """,
+        (*params, *date_params),
+    )
+
+
+TRAFFIC_SOURCE_VIDEO_FIELDS = ("id", "title", "thumbnail_url", "content_type")
+
+
+def traffic_source_video_totals(
+    *,
+    start_date: str | None = None,
+    end_date: str | None = None,
+    content_type: str | None = None,
+    privacy_status: str | None = None,
+    title: str | None = None,
+    video_ids: Collection[str] | None = None,
+) -> Query:
+    """Owned videos' traffic totals per source type, ordered by source then descending views."""
+    conditions, params = _video_conditions(
+        video_ids=video_ids, title=title, content_type=content_type, privacy_status=privacy_status
+    )
+    date_conditions, date_params = _date_bounds("vts.date", start_date, end_date)
+    return Query(
+        f"""
+        SELECT vts.traffic_source_type AS video_traffic_sources__traffic_source_type,
+            {joined_columns(Video, 'v', TRAFFIC_SOURCE_VIDEO_FIELDS)},
+            SUM(vts.views) AS video_traffic_sources__views,
+            SUM(vts.watch_time_minutes) AS video_traffic_sources__watch_time_minutes
+        FROM video_traffic_sources vts
+        JOIN videos v ON v.id = vts.video_id
+        WHERE {' AND '.join([*conditions, *date_conditions])}
+        GROUP BY vts.traffic_source_type, v.id
+        ORDER BY vts.traffic_source_type, video_traffic_sources__views DESC
+        """,
+        (*params, *date_params),
     )
 
 

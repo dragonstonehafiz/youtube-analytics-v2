@@ -18,10 +18,11 @@ from database import (
     SyncRun,
     Video,
     VideoAnalytics,
+    VideoTrafficSource,
     reader,
 )
 from database.dataclasses import Row
-from database.reader import Query
+from database.reader import DateFill, Query
 from tests.support import (
     FIXED_NOW,
     IsolatedDatabaseTestCase,
@@ -29,6 +30,7 @@ from tests.support import (
     make_comment_author,
     make_playlist,
     make_playlist_item,
+    make_traffic_source,
     make_video,
     make_video_analytics,
 )
@@ -367,6 +369,180 @@ class FetchJoinedTest(ReaderTestCase):
         """), (PlaylistItem, Video))
         item = {**row[PlaylistItem].to_dict(("position",)), **row[Video].to_dict(("id", "description"))}
         self.assertEqual(item, {"position": 0, "id": "v-1", "description": ""})
+
+
+
+_TRAFFIC_FIELDS = ("video_id", "date", "traffic_source_type", "views")
+
+
+def _traffic_fill(**overrides: object) -> DateFill:
+    """Return a per-video, per-source fill over the traffic projection."""
+    config: dict = {
+        "date": "date", "identifiers": ("video_id",), "breakdown": "traffic_source_type", "metrics": {"views": 0},
+    }
+    config.update(overrides)
+    return DateFill(**config)
+
+
+class DateFillTest(ReaderTestCase):
+    def _traffic(self, fill: DateFill, fields: tuple[str, ...] = _TRAFFIC_FIELDS) -> list[VideoTrafficSource]:
+        return reader.select(VideoTrafficSource, fields, order_by=("video_id", "date"), fill_dates=fill)
+
+    @staticmethod
+    def _keys(rows: list[VideoTrafficSource]) -> list[tuple]:
+        return [(row.video_id, row.date, row.traffic_source_type, row.views) for row in rows]
+
+    def test_ordinary_reads_are_unchanged(self) -> None:
+        writer.write(make_traffic_source("v-1", "2024-01-01", views=1))
+        writer.write(make_traffic_source("v-1", "2024-01-03", views=3))
+        self.assertEqual(len(reader.select(VideoTrafficSource, _TRAFFIC_FIELDS)), 2)
+
+    def test_one_series_fills_interior_gaps_in_one_query(self) -> None:
+        writer.write(make_traffic_source("v-1", "2024-01-01", views=1))
+        writer.write(make_traffic_source("v-1", "2024-01-03", views=3))
+        conn, statements = self._traced()
+        rows = reader.select(VideoTrafficSource, _TRAFFIC_FIELDS, order_by=("date",), fill_dates=_traffic_fill(), conn=conn)
+        self.assertEqual(len(statements), 1)
+        self.assertEqual(self._keys(rows), [
+            ("v-1", "2024-01-01", "SEARCH", 1), ("v-1", "2024-01-02", "SEARCH", 0), ("v-1", "2024-01-03", "SEARCH", 3),
+        ])
+
+    def test_observed_breakdowns_are_filled_per_identifier_without_cross_contamination(self) -> None:
+        writer.write(make_traffic_source("v-1", "2024-01-01", "SEARCH", views=1))
+        writer.write(make_traffic_source("v-1", "2024-01-03", "SUGGESTED", views=3))
+        writer.write(make_traffic_source("v-2", "2024-01-02", "EXTERNAL", views=2))
+        rows = self._traffic(_traffic_fill(start_date="2024-01-01"))
+        self.assertEqual(self._keys(rows), [
+            ("v-1", "2024-01-01", "SEARCH", 1), ("v-1", "2024-01-01", "SUGGESTED", 0),
+            ("v-1", "2024-01-02", "SEARCH", 0), ("v-1", "2024-01-02", "SUGGESTED", 0),
+            ("v-1", "2024-01-03", "SEARCH", 0), ("v-1", "2024-01-03", "SUGGESTED", 3),
+            ("v-2", "2024-01-01", "EXTERNAL", 0), ("v-2", "2024-01-02", "EXTERNAL", 2),
+        ])
+
+    def test_explicit_breakdowns_include_absent_values_then_other_observed_ones(self) -> None:
+        writer.write(make_traffic_source("v-1", "2024-01-01", "SEARCH", views=1))
+        writer.write(make_traffic_source("v-1", "2024-01-01", "ADVERTISING", views=2))
+        rows = self._traffic(_traffic_fill(breakdown_values=("SUGGESTED", "SEARCH")))
+        self.assertEqual([(r.traffic_source_type, r.views) for r in rows], [
+            ("SUGGESTED", 0), ("SEARCH", 1), ("ADVERTISING", 2),
+        ])
+
+    def test_leading_gaps_start_at_the_bound_across_a_leap_day(self) -> None:
+        writer.write(make_traffic_source("v-1", "2024-03-01", views=5))
+        rows = self._traffic(_traffic_fill(start_date="2024-02-27"))
+        self.assertEqual([r.date for r in rows], ["2024-02-27", "2024-02-28", "2024-02-29", "2024-03-01"])
+        self.assertEqual(sum(r.views or 0 for r in rows), 5)
+
+    def test_trailing_days_after_the_last_observation_are_not_filled(self) -> None:
+        writer.write(make_traffic_source("v-1", "2024-01-01", views=1))
+        self.assertEqual([r.date for r in self._traffic(_traffic_fill())], ["2024-01-01"])
+
+    def test_trimming_uses_the_last_date_across_every_breakdown(self) -> None:
+        writer.write(make_traffic_source("v-1", "2024-01-01", "SEARCH", views=1))
+        writer.write(make_traffic_source("v-1", "2024-01-02", "SUGGESTED", views=2))
+        rows = self._traffic(_traffic_fill())
+        self.assertEqual([(r.date, r.traffic_source_type) for r in rows][-2:], [
+            ("2024-01-02", "SEARCH"), ("2024-01-02", "SUGGESTED"),
+        ])
+
+    def test_empty_input_stays_empty(self) -> None:
+        self.assertEqual(self._traffic(_traffic_fill(start_date="2024-01-01")), [])
+
+    def test_real_nulls_stay_and_only_synthetic_metrics_take_defaults(self) -> None:
+        writer.write(make_traffic_source("v-1", "2024-01-01", views=1))
+        writer.write(make_traffic_source("v-1", "2024-01-03", views=3))
+        query = Query("SELECT date, traffic_source_type, NULL AS views FROM video_traffic_sources ORDER BY date")
+        fill = DateFill(date="date", breakdown="traffic_source_type", metrics={"views": 0})
+        rows = reader.fetch(VideoTrafficSource, query, fill_dates=fill)
+        self.assertEqual([r.views for r in rows], [None, 0, None])
+        self.assertIsNone(rows[1].video_id)
+        self.assertIsNone(rows[1].watch_time_minutes)
+
+    def test_identifiers_and_constants_are_copied_and_other_fields_stay_none(self) -> None:
+        writer.write(make_video_analytics("v-1", "2024-01-01", views=1, likes=4))
+        writer.write(make_video_analytics("v-1", "2024-01-03", views=3))
+        fill = DateFill(
+            date="date", identifiers=("video_id",), constants=("likes",), metrics={"views": 0},
+        )
+        rows = reader.select(VideoAnalytics, ("video_id", "date", "views", "likes", "updated_at"),
+                             order_by=("date",), fill_dates=fill)
+        synthetic = rows[1]
+        self.assertEqual((synthetic.video_id, synthetic.date, synthetic.views, synthetic.likes), ("v-1", "2024-01-02", 0, 4))
+        self.assertIsNone(synthetic.updated_at)
+        self.assertIsNone(synthetic.watch_time_minutes)
+
+    def test_references_outside_the_projection_are_rejected(self) -> None:
+        with self.assertRaises(ValueError):
+            reader.select(VideoTrafficSource, ("date", "views"), fill_dates=_traffic_fill())
+        with self.assertRaises(ValueError):
+            reader.fetch(VideoTrafficSource, Query("SELECT date, views FROM video_traffic_sources"),
+                         fill_dates=DateFill(date="date", metrics={"watch_time_minutes": 0}))
+        query = Query(f"SELECT {reader.joined_columns(VideoAnalytics, 'va', ('date', 'views'))} FROM video_analytics va")
+        with self.assertRaises(ValueError):
+            reader.fetch_joined(query, (VideoAnalytics,), fill_dates=DateFill(date="date", metrics={}))
+        with self.assertRaises(ValueError):
+            reader.fetch_joined(query, (VideoAnalytics,), fill_dates=DateFill(
+                date=(VideoAnalytics, "date"), metrics={(VideoAnalytics, "likes"): 0},
+            ))
+
+    def test_duplicate_keys_are_rejected(self) -> None:
+        writer.write(make_traffic_source("v-1", "2024-01-01", "SEARCH", views=1))
+        writer.write(make_traffic_source("v-2", "2024-01-01", "SEARCH", views=2))
+        with self.assertRaises(ValueError):
+            self._traffic(_traffic_fill(identifiers=()))
+
+    def test_joined_results_fill_components_and_computed_values(self) -> None:
+        writer.write(make_video_analytics("v-1", "2024-01-01", views=1))
+        writer.write(make_video_analytics("v-1", "2024-01-03", views=3))
+        query = Query(f"""
+            SELECT {reader.joined_columns(VideoAnalytics, 'va', ('video_id', 'date', 'views'))},
+                {reader.joined_columns(Video, 'v', ('content_type',))},
+                va.views * 2 AS doubled, 'tag' AS label
+            FROM video_analytics va JOIN videos v ON v.id = va.video_id
+            ORDER BY va.date
+        """)
+        fill = DateFill(
+            date=(VideoAnalytics, "date"), identifiers=((VideoAnalytics, "video_id"),),
+            constants=((Video, "content_type"),), metrics={(VideoAnalytics, "views"): 0, "doubled": 0},
+        )
+        rows = reader.fetch_joined(query, (VideoAnalytics, Video), ("doubled", "label"), fill_dates=fill)
+        synthetic = rows[1]
+        self.assertEqual((synthetic[VideoAnalytics].video_id, synthetic[VideoAnalytics].date), ("v-1", "2024-01-02"))
+        self.assertEqual(synthetic[VideoAnalytics].views, 0)
+        self.assertEqual(synthetic[Video].content_type, "video")
+        self.assertEqual(synthetic.values, {"doubled": 0, "label": None})
+        self.assertEqual(rows[2].values, {"doubled": 6, "label": "tag"})
+
+
+class GroupByTest(ReaderTestCase):
+    def test_groups_keep_input_order_and_the_original_objects(self) -> None:
+        rows = [
+            VideoTrafficSource(traffic_source_type="A", views=3),
+            VideoTrafficSource(traffic_source_type="B", views=5),
+            VideoTrafficSource(traffic_source_type="A", views=1),
+        ]
+        grouped = reader.group_by(rows, "traffic_source_type")
+        self.assertEqual(list(grouped), ["A", "B"])
+        self.assertIs(grouped["A"][0], rows[0])
+        self.assertIs(grouped["A"][1], rows[2])
+        self.assertEqual(rows[0].traffic_source_type, "A")
+
+    def test_limit_applies_to_each_group_independently(self) -> None:
+        rows = [VideoTrafficSource(traffic_source_type=source, views=views)
+                for source, views in (("A", 9), ("A", 8), ("A", 7), ("B", 6))]
+        grouped = reader.group_by(rows, "traffic_source_type", limit=2)
+        self.assertEqual({key: [r.views for r in bucket] for key, bucket in grouped.items()}, {"A": [9, 8], "B": [6]})
+
+    def test_joined_results_group_by_component_or_computed_value(self) -> None:
+        rows = [
+            reader.Joined({VideoTrafficSource: VideoTrafficSource(traffic_source_type="A")}, {"rank": 1}),
+            reader.Joined({VideoTrafficSource: VideoTrafficSource(traffic_source_type="A")}, {"rank": 2}),
+        ]
+        self.assertEqual(len(reader.group_by(rows, (VideoTrafficSource, "traffic_source_type"))["A"]), 2)
+        self.assertEqual(list(reader.group_by(rows, "rank", limit=1)), [1, 2])
+
+    def test_empty_input_returns_no_groups(self) -> None:
+        self.assertEqual(reader.group_by([], "traffic_source_type", limit=10), {})
 
 
 if __name__ == "__main__":

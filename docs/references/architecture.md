@@ -57,7 +57,7 @@ application module is imported first):
 
 1. Log an `INFO` "Application startup" record.
 2. `database.init_db()` — creates tables from `schema.sql` if they don't already exist.
-3. `database.mark_incomplete_sync_runs()` — closes out `sync_runs` rows a killed process left marked `running`, setting them to `incomplete` and logging a `WARNING` with the count when any were found. This belongs at startup specifically: the reservation guarding a live sync is in-memory and died with the previous process, so nothing can legitimately still be running (see `database.md`).
+3. `database.writer.update(SyncRun(status="incomplete"), where=(("status", "=", "running"),))` — closes out `sync_runs` rows a killed process left marked `running`, setting them to `incomplete` and logging a `WARNING` with the count when any were found. This belongs at startup specifically: the reservation guarding a live sync is in-memory and died with the previous process, so nothing can legitimately still be running (see `database.md`).
 4. Yield to serve requests, then — in a `finally`, so it runs after a normal shutdown or a startup/runtime failure alike — log an `INFO` "Application shutdown" record.
 
 The lifespan starts no sync. `sync.start_background_scheduler()` (`sync/scheduler.py`) is defined and exported but not called, so the only way a sync starts is `POST /sync/trigger` (see `sync.md`).
@@ -89,12 +89,13 @@ indefinitely and are safe to delete between runs.
 
 | Path | Responsibility |
 |---|---|
-| `server.py` | FastAPI app construction, CORS, lifespan (`init_db` → `mark_incomplete_sync_runs`) |
+| `server.py` | FastAPI app construction, CORS, lifespan (`init_db` → stranded `sync_runs` sweep through `writer.update()`) |
 | `routes/videos.py`, `routes/playlists.py`, `routes/analytics.py`, `routes/comments.py`, `routes/synchronization.py`, `routes/metadata.py` | API route handlers, grouped by resource. They read through `database.reader` (directly, or with a `database.queries` specification) and serialize row dataclasses with `to_dict(fields=...)`, or call a `database` report function; `routes/__init__.py` aggregates them in a fixed order into one `router` |
+| `routes/daily_series.py` | Shared daily-series route helpers: the analytics metric defaults and traffic-source `DateFill` passed to the reader, and the traffic-source row serializer; registers no routes |
 | `routes/video_scope.py` | Shared route helpers `require_owned_video()`, `require_playlist()` (404 existence checks through the reader), and `resolve_playlist_video_ids()` (playlist 404, then member IDs, for every playlist-scoped handler); registers no routes |
 | `sync/status.py` | Global sync-status lifecycle (`idle \| running \| stopping \| success \| failed \| cancelled`, plus message) behind one lock, with `try_begin_sync()`/`request_stop()` reservation primitives and the `raise_if_stopping()` cooperative-cancellation checkpoint |
 | `sync/plans.py` | Plan types, canonical `STAGE_ORDER`, derived `FULL_SYNC_TYPES`, available years, `validate_plan()` |
-| `sync/orchestration.py` | `execute_plan()`/`run_plan()`, stage registry, selected-stage sequencing, `sync_runs` tracking |
+| `sync/orchestration.py` | `execute_plan()`/`run_plan()`, stage registry, selected-stage sequencing, `sync_runs` tracking through the writer |
 | `sync/stages.py` | The nine sync stage implementations plus the shared incremental-lookback calculation, the Related Video referrer metadata resolver, and the comment bootstrap cutoff |
 | `sync/monthly_insights.py` | Pure calendar-window helper for the Search insights stage — no I/O, no clock reads beyond the `date` it's given |
 | `sync/coverage.py` | Pure missing-month and range-coalescing helpers for `sync_coverage`-based selection — no I/O |
@@ -107,12 +108,12 @@ indefinitely and are safe to delete between runs.
 | `database/connection.py` | Connection setup, `init_db()`, `now()` (UTC timestamp), shared `_month_bound_conditions()` |
 | `database/dataclasses/` | One data-only row dataclass per table (`Video`, `Playlist`, …), every field defaulting to `None`, with shared `from_dict()`/`to_dict(fields=...)` conversion |
 | `database/tables.py` | Shared row-class → table registry, primary keys, generated-key and non-decreasing-column rules, used by both reader and writer |
-| `database/filters.py` | Shared validated `WHERE` compilation from tuple conditions and `NotExists` predicates, used by reader selects and writer deletes |
-| `database/reader.py` | All read execution: `select`/`select_one`/`scalar` for one table, `fetch`/`fetch_joined`/`fetch_scalar` for code-owned SQL, and connection borrowing |
-| `database/writer.py` | Every insert/update/delete: `write()`/`write_many()` update-then-insert by key, leaving `None` fields untouched, and `delete()` removes the rows matching a required filter; each call runs in one committed transaction or a savepoint on a borrowed one |
+| `database/filters.py` | Shared validated `WHERE` compilation from tuple conditions and `NotExists` predicates, used by reader selects and writer updates and deletes |
+| `database/reader.py` | All read execution: `select`/`select_one`/`scalar` for one table, `fetch`/`fetch_joined`/`fetch_scalar` for code-owned SQL, optional daily date filling (`DateFill`), per-field grouping of results (`group_by`), and connection borrowing |
+| `database/writer.py` | Every insert/update/delete: `write()`/`write_many()` update-then-insert by key, leaving `None` fields untouched (`write()` can return persisted fields such as a generated ID); `update()` changes only the rows matching a required filter and never inserts; `delete()` removes the rows matching a required filter; each call runs in one committed transaction or a savepoint on a borrowed one |
 | `database/queries.py` | Non-executing `Query` specifications for joins, grouping, and ranking shared by routes and sync |
 | `database/video_statistics.py` | `get_video_stats()` Legacy/New report |
-| `database/analytics.py`, `database/traffic_sources.py`, `database/sync_runs.py`, `database/related_videos.py` | The sync-run lifecycle writes and the reports that do real calculation work (zero-filling, per-source top-N, referrer totals, sync-batch assembly) |
+| `database/sync_runs.py`, `database/related_videos.py` | The reports that do real calculation work (sync-batch assembly and status, referrer totals) |
 | `schema.sql` | SQLite schema definition (12 tables) — see `database.md` |
 | `scripts/issue-48-migration.py` | Standalone, one-time migration adding `videos.own` to a pre-existing database — not run by `init_db()` (see `database.md`) |
 | `scripts/issue-62-migration.py` | Standalone, one-time `sync_coverage` backfill for a pre-existing database — not run by `init_db()` (see `database.md`) |
@@ -181,6 +182,7 @@ backend/
     synchronization.py
     metadata.py
     video_scope.py         # require_owned_video(), require_playlist(), resolve_playlist_video_ids()
+    daily_series.py        # daily analytics/traffic-source fill configuration and serializer
 
   sync/
     __init__.py            # re-exports the plan types/validation, status primitives,
@@ -201,7 +203,7 @@ backend/
     analytics_api.py
 
   database/
-    __init__.py              # re-exports row classes, reader, queries, writes, and report functions
+    __init__.py              # re-exports row classes, reader, writer, queries, and report functions
     connection.py
     tables.py                # shared registry: tables, keys, write rules
     filters.py               # shared WHERE compilation for reads and deletes
@@ -210,8 +212,6 @@ backend/
     queries.py               # non-executing query specifications
     video_statistics.py      # get_video_stats()
     dataclasses/             # one row dataclass per table, plus base.py (from_dict/to_dict)
-    analytics.py
-    traffic_sources.py
     sync_runs.py
     related_videos.py
 

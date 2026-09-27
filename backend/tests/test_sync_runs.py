@@ -4,7 +4,7 @@ import threading
 import unittest
 
 import database
-from database import connection
+from database import SyncRun, connection, writer
 from tests.support import IsolatedDatabaseTestCase
 
 
@@ -32,6 +32,25 @@ class SyncRunsTestCase(IsolatedDatabaseTestCase):
             )
             assert cursor.lastrowid is not None
             return cursor.lastrowid
+
+    def _finish(
+        self,
+        run_id: int | None,
+        status: str,
+        rows_fetched: int = 0,
+        rows_written: int = 0,
+        rows_deleted: int = 0,
+        error_message: str | None = None,
+    ) -> None:
+        """Finalize one stage row the way orchestration does."""
+        writer.update(SyncRun(
+            status=status, completed_at=database.now(), rows_fetched=rows_fetched, rows_written=rows_written,
+            rows_deleted=rows_deleted, error_message=error_message,
+        ), where=[("id", "=", run_id)])
+
+    def _sweep(self) -> int:
+        """Mark running stages incomplete the way application startup does."""
+        return writer.update(SyncRun(status="incomplete"), where=[("status", "=", "running")])
 
 
 class GroupingTest(SyncRunsTestCase):
@@ -136,7 +155,7 @@ class RollupTest(SyncRunsTestCase):
     def test_a_failed_stage_contributes_its_partial_counters(self) -> None:
         run_id = self._seed("2024-05-01T10:00:00+00:00", "batch-a", "videos")
         self._seed("2024-05-01T10:01:00+00:00", "batch-a", "comments", 4, 2, 0)
-        database.fail_sync_run(run_id, "quota exceeded", 3, 1, 0)
+        self._finish(run_id, "failed", 3, 1, 0, "quota exceeded")
 
         items, _ = database.get_sync_runs(1, 25)
 
@@ -221,7 +240,7 @@ class MarkIncompleteTest(SyncRunsTestCase):
     def test_a_stranded_running_row_becomes_incomplete(self) -> None:
         run_id = self._seed("2024-05-01T10:00:00+00:00")
 
-        changed = database.mark_incomplete_sync_runs()
+        changed = self._sweep()
 
         self.assertEqual(changed, 1)
         self.assertEqual(self._status(run_id), "incomplete")
@@ -229,7 +248,7 @@ class MarkIncompleteTest(SyncRunsTestCase):
     def test_an_incomplete_row_keeps_its_null_completion_time(self) -> None:
         run_id = self._seed("2024-05-01T10:00:00+00:00")
 
-        database.mark_incomplete_sync_runs()
+        self._sweep()
 
         with connection.get_connection() as conn:
             row = conn.execute(
@@ -239,10 +258,10 @@ class MarkIncompleteTest(SyncRunsTestCase):
     def test_terminal_rows_are_untouched(self) -> None:
         succeeded = self._seed("2024-05-01T10:00:00+00:00")
         failed = self._seed("2024-05-01T10:01:00+00:00")
-        database.complete_sync_run(succeeded, 1, 1, 0)
-        database.fail_sync_run(failed, "boom", 0, 0, 0)
+        self._finish(succeeded, "success", 1, 1, 0)
+        self._finish(failed, "failed", 0, 0, 0, "boom")
 
-        changed = database.mark_incomplete_sync_runs()
+        changed = self._sweep()
 
         self.assertEqual(changed, 0)
         self.assertEqual(self._status(succeeded), "success")
@@ -250,19 +269,19 @@ class MarkIncompleteTest(SyncRunsTestCase):
 
     def test_an_already_incomplete_row_is_not_swept_again(self) -> None:
         self._seed("2024-05-01T10:00:00+00:00")
-        database.mark_incomplete_sync_runs()
+        self._sweep()
 
-        self.assertEqual(database.mark_incomplete_sync_runs(), 0)
+        self.assertEqual(self._sweep(), 0)
 
     def test_every_stranded_row_across_batches_is_swept(self) -> None:
         self._seed("2024-05-01T10:00:00+00:00", "batch-a")
         self._seed("2024-05-01T10:01:00+00:00", "batch-a")
         self._seed("2024-05-02T10:00:00+00:00", "batch-b")
 
-        self.assertEqual(database.mark_incomplete_sync_runs(), 3)
+        self.assertEqual(self._sweep(), 3)
 
     def test_an_empty_history_sweeps_nothing(self) -> None:
-        self.assertEqual(database.mark_incomplete_sync_runs(), 0)
+        self.assertEqual(self._sweep(), 0)
 
 
 class BatchStatusTest(SyncRunsTestCase):
@@ -273,45 +292,45 @@ class BatchStatusTest(SyncRunsTestCase):
     def test_all_successful_stages_report_success(self) -> None:
         for offset in range(3):
             run_id = self._seed(f"2024-05-01T10:0{offset}:00+00:00", "batch-a")
-            database.complete_sync_run(run_id, 1, 1, 0)
+            self._finish(run_id, "success", 1, 1, 0)
 
         self.assertEqual(self._status_of_only_batch(), "success")
 
     def test_an_in_flight_stage_reports_running(self) -> None:
         done = self._seed("2024-05-01T10:00:00+00:00", "batch-a")
-        database.complete_sync_run(done, 1, 1, 0)
+        self._finish(done, "success", 1, 1, 0)
         self._seed("2024-05-01T10:01:00+00:00", "batch-a")
 
         self.assertEqual(self._status_of_only_batch(), "running")
 
     def test_a_stranded_stage_reports_incomplete(self) -> None:
         done = self._seed("2024-05-01T10:00:00+00:00", "batch-a")
-        database.complete_sync_run(done, 1, 1, 0)
+        self._finish(done, "success", 1, 1, 0)
         self._seed("2024-05-01T10:01:00+00:00", "batch-a")
-        database.mark_incomplete_sync_runs()
+        self._sweep()
 
         self.assertEqual(self._status_of_only_batch(), "incomplete")
 
     def test_a_failed_stage_outranks_an_incomplete_one(self) -> None:
         failed = self._seed("2024-05-01T10:00:00+00:00", "batch-a")
         self._seed("2024-05-01T10:01:00+00:00", "batch-a")
-        database.mark_incomplete_sync_runs()
-        database.fail_sync_run(failed, "boom", 0, 0, 0)
+        self._sweep()
+        self._finish(failed, "failed", 0, 0, 0, "boom")
 
         self.assertEqual(self._status_of_only_batch(), "failed")
 
     def test_incomplete_outranks_running(self) -> None:
         self._seed("2024-05-01T10:00:00+00:00", "batch-a")
-        database.mark_incomplete_sync_runs()
+        self._sweep()
         self._seed("2024-05-01T10:01:00+00:00", "batch-a")
 
         self.assertEqual(self._status_of_only_batch(), "incomplete")
 
     def test_status_is_scoped_to_its_own_batch(self) -> None:
         healthy = self._seed("2024-05-01T10:00:00+00:00", "batch-a")
-        database.complete_sync_run(healthy, 1, 1, 0)
+        self._finish(healthy, "success", 1, 1, 0)
         broken = self._seed("2024-05-02T10:00:00+00:00", "batch-b")
-        database.fail_sync_run(broken, "boom", 0, 0, 0)
+        self._finish(broken, "failed", 0, 0, 0, "boom")
 
         items, _ = database.get_sync_runs(1, 25)
 
@@ -319,11 +338,11 @@ class BatchStatusTest(SyncRunsTestCase):
         self.assertEqual(by_id, {"batch-a": "success", "batch-b": "failed"})
 
 
-class CancelSyncRunTest(SyncRunsTestCase):
+class CancelledStageTest(SyncRunsTestCase):
     def test_a_cancelled_run_records_partial_counters_and_no_error(self) -> None:
         run_id = self._seed("2024-05-01T10:00:00+00:00", "batch-a")
 
-        database.cancel_sync_run(run_id, 5, 3, 1)
+        self._finish(run_id, "cancelled", 5, 3, 1)
 
         child = database.get_sync_runs(1, 25)[0][0]["runs"][0]
         self.assertEqual(child["status"], "cancelled")
@@ -340,31 +359,31 @@ class BatchStatusCancelledPrecedenceTest(SyncRunsTestCase):
 
     def test_a_cancelled_stage_alongside_successful_ones_reports_cancelled(self) -> None:
         done = self._seed("2024-05-01T10:00:00+00:00", "batch-a")
-        database.complete_sync_run(done, 1, 1, 0)
+        self._finish(done, "success", 1, 1, 0)
         cancelled = self._seed("2024-05-01T10:01:00+00:00", "batch-a")
-        database.cancel_sync_run(cancelled, 2, 1, 0)
+        self._finish(cancelled, "cancelled", 2, 1, 0)
 
         self.assertEqual(self._status_of_only_batch(), "cancelled")
 
     def test_failed_outranks_cancelled(self) -> None:
         failed = self._seed("2024-05-01T10:00:00+00:00", "batch-a")
         cancelled = self._seed("2024-05-01T10:01:00+00:00", "batch-a")
-        database.fail_sync_run(failed, "boom", 0, 0, 0)
-        database.cancel_sync_run(cancelled, 1, 0, 0)
+        self._finish(failed, "failed", 0, 0, 0, "boom")
+        self._finish(cancelled, "cancelled", 1, 0, 0)
 
         self.assertEqual(self._status_of_only_batch(), "failed")
 
     def test_incomplete_outranks_cancelled(self) -> None:
         self._seed("2024-05-01T10:00:00+00:00", "batch-a")
-        database.mark_incomplete_sync_runs()
+        self._sweep()
         cancelled = self._seed("2024-05-01T10:01:00+00:00", "batch-a")
-        database.cancel_sync_run(cancelled, 1, 0, 0)
+        self._finish(cancelled, "cancelled", 1, 0, 0)
 
         self.assertEqual(self._status_of_only_batch(), "incomplete")
 
     def test_running_outranks_cancelled(self) -> None:
         cancelled = self._seed("2024-05-01T10:00:00+00:00", "batch-a")
-        database.cancel_sync_run(cancelled, 1, 0, 0)
+        self._finish(cancelled, "cancelled", 1, 0, 0)
         self._seed("2024-05-01T10:01:00+00:00", "batch-a")
 
         self.assertEqual(self._status_of_only_batch(), "running")
@@ -372,8 +391,8 @@ class BatchStatusCancelledPrecedenceTest(SyncRunsTestCase):
     def test_cancelled_outranks_success(self) -> None:
         done = self._seed("2024-05-01T10:00:00+00:00", "batch-a")
         cancelled = self._seed("2024-05-01T10:01:00+00:00", "batch-a")
-        database.complete_sync_run(done, 1, 1, 0)
-        database.cancel_sync_run(cancelled, 1, 0, 0)
+        self._finish(done, "success", 1, 1, 0)
+        self._finish(cancelled, "cancelled", 1, 0, 0)
 
         self.assertEqual(self._status_of_only_batch(), "cancelled")
 
@@ -399,7 +418,7 @@ class ChildContentTest(SyncRunsTestCase):
 
     def test_a_completed_child_reports_its_counters_and_completion(self) -> None:
         run_id = self._seed("2024-05-01T10:00:00+00:00", "batch-a")
-        database.complete_sync_run(run_id, 10, 7, 2)
+        self._finish(run_id, "success", 10, 7, 2)
 
         child = database.get_sync_runs(1, 25)[0][0]["runs"][0]
 
@@ -410,7 +429,7 @@ class ChildContentTest(SyncRunsTestCase):
 
     def test_a_failed_child_still_carries_its_stored_error(self) -> None:
         run_id = self._seed("2024-05-01T10:00:00+00:00", "batch-a")
-        database.fail_sync_run(run_id, "quota exceeded", 3, 0, 0)
+        self._finish(run_id, "failed", 3, 0, 0, "quota exceeded")
 
         child = database.get_sync_runs(1, 25)[0][0]["runs"][0]
 
@@ -429,8 +448,12 @@ class ConcurrentWorkerWritesTest(SyncRunsTestCase):
         def worker(sync_type: str) -> None:
             try:
                 barrier.wait(timeout=5)  # maximize actual write overlap
-                run_id = database.create_sync_run("batch-concurrent", sync_type, "incremental", None)
-                database.complete_sync_run(run_id, rows_fetched=3, rows_written=2, rows_deleted=0)
+                started = SyncRun(
+                    batch_id="batch-concurrent", sync_type=sync_type, scope="incremental", status="running",
+                    started_at=database.now(),
+                )
+                run_id = writer.write(started, returning=("id",)).id
+                self._finish(run_id, "success", rows_fetched=3, rows_written=2)
             except BaseException as exc:  # noqa: BLE001 - surfaced via assertion below
                 errors.append(exc)
 
@@ -457,7 +480,10 @@ class ConcurrentWorkerWritesTest(SyncRunsTestCase):
 
         def worker(sync_type: str, scope: str, year: int | None) -> None:
             barrier.wait(timeout=5)
-            database.create_sync_run("batch-scoped", sync_type, scope, year)
+            writer.write(SyncRun(
+                batch_id="batch-scoped", sync_type=sync_type, scope=scope, year=year, status="running",
+                started_at=database.now(),
+            ))
 
         threads = [
             threading.Thread(target=worker, args=("video_analytics", "year", 2024)),

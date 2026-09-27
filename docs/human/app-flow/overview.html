@@ -58,7 +58,7 @@
       <h1>Overview</h1>
       <p>This page shows how data moves from the browser to the database, and from YouTube into the database.</p>
       <div class="meta-line">
-        <span>Source revision <code>b2d6118</code></span>
+        <span>Source revision <code>ab9b0f4</code></span>
       </div>
     </header>
 
@@ -71,7 +71,7 @@
             <tr><td><span class="tag fe">Browser UI</span></td><td>React + TypeScript single-page app served by Vite on <code>http://localhost:5173</code></td><td><code>frontend/src/</code></td></tr>
             <tr><td><span class="tag fe">API client</span></td><td>Plain <code>fetch</code> wrappers calling <code>http://localhost:8000</code></td><td><code>frontend/src/api.ts</code></td></tr>
             <tr><td><span class="tag route">HTTP API</span></td><td>FastAPI app; CORS allows only <code>http://localhost:5173</code></td><td><code>backend/server.py</code>, <code>backend/routes/</code></td></tr>
-            <tr><td><span class="tag db">Query layer</span></td><td>One data class per table, a shared reader that runs every read, shared SQL definitions, and per-domain writes and reports. A read opens its own SQLite connection unless the caller passes one in.</td><td><code>backend/database/</code></td></tr>
+            <tr><td><span class="tag db">Query layer</span></td><td>One data class per table, a shared reader that runs every read, a shared writer for every insert, update and delete, shared SQL definitions, and a few per-domain reports. A read opens its own SQLite connection unless the caller passes one in.</td><td><code>backend/database/</code></td></tr>
             <tr><td><span class="tag db">Storage</span></td><td>SQLite file <code>backend/data/youtube.db</code>, 12 tables</td><td><code>backend/schema.sql</code></td></tr>
             <tr><td><span class="tag sync">Sync engine</span></td><td>Stage plans on background threads inside the API process</td><td><code>backend/sync/</code></td></tr>
             <tr><td><span class="tag yt">External clients</span></td><td>YouTube Data API v3, YouTube Analytics API v2 (OAuth), Yahoo Finance via <code>yfinance</code></td><td><code>backend/youtube/</code>, <code>backend/sync/stages.py</code></td></tr>
@@ -147,7 +147,7 @@
         <div class="flow-arrow" aria-hidden="true"></div>
         <div class="flow-step route"><strong>4 · Route</strong><small>Checks a parent video/playlist exists (404), then reads through <code>database.reader</code> or calls a report function.</small></div>
         <div class="flow-arrow" aria-hidden="true"></div>
-        <div class="flow-step db"><strong>5 · Query</strong><small>The reader runs parameterized SQL that selects only the needed columns and returns data classes; the route turns them into JSON with <code>to_dict()</code>. Reports return finished dicts.</small></div>
+        <div class="flow-step db"><strong>5 · Query</strong><small>The reader runs parameterized SQL that selects only the needed columns and returns data classes, filling missing days for daily charts; the route turns them into JSON with <code>to_dict()</code>. Reports return finished dicts.</small></div>
         <div class="flow-arrow" aria-hidden="true"></div>
         <div class="flow-step fe"><strong>6 · Render</strong><small>JSON lands in the card's <code>RequestState</code>; the card re-renders.</small></div>
       </div>
@@ -162,7 +162,7 @@
             <tr><td class="num">2</td><td><code>start_date</code>/<code>end_date</code> are written to the URL</td><td><code>pages/Analytics.tsx</code> (<code>updateDateParams</code>)</td></tr>
             <tr><td class="num">3</td><td>Date-dependent effects re-run: stats, chart rows, uploads, traffic sources, top-by-source, search terms ×3, term videos ×2, top-videos table</td><td><code>pages/Analytics.tsx</code></td></tr>
             <tr><td class="num">4</td><td>e.g. <code>getChannelAnalytics()</code> → <code>GET /analytics/videos?start_date=…&amp;end_date=…</code></td><td><code>frontend/src/api.ts</code></td></tr>
-            <tr><td class="num">5</td><td>Route → <code>database.get_aggregated_analytics()</code></td><td><code>routes/analytics.py</code>, <code>database/analytics.py</code></td></tr>
+            <tr><td class="num">5</td><td>Route → <code>reader.fetch_joined(queries.daily_analytics_totals(…), fill_dates=…)</code>; the reader fills days with no data for videos and Shorts</td><td><code>routes/analytics.py</code>, <code>database/queries.py</code>, <code>database/reader.py</code></td></tr>
             <tr><td class="num">6</td><td>Daily rows grouped by date and content type return; the chart re-renders</td><td><code>components/AnalyticsChart.tsx</code></td></tr>
           </tbody>
         </table>
@@ -182,7 +182,7 @@
         <div class="flow-arrow" aria-hidden="true"></div>
         <div class="flow-step yt"><strong>5 · Fetch</strong><small>Data API v3, Analytics API v2, or <code>yfinance</code> for FX.</small></div>
         <div class="flow-arrow" aria-hidden="true"></div>
-        <div class="flow-step db"><strong>6 · Write</strong><small>Each fetched record becomes a data class and goes through <code>writer.write</code>/<code>write_many</code>, as do <code>sync_coverage</code> months; the playlists, comments and pruning stages remove rows with <code>writer.delete</code>; one <code>sync_runs</code> row per started stage.</small></div>
+        <div class="flow-step db"><strong>6 · Write</strong><small>Each fetched record becomes a data class and goes through <code>writer.write</code>/<code>write_many</code>, as do <code>sync_coverage</code> months; the playlists, comments and pruning stages remove rows with <code>writer.delete</code>; each started stage inserts one <code>sync_runs</code> row with <code>writer.write</code> and finishes it with <code>writer.update</code>.</small></div>
       </div>
       <div class="card-grid">
         <div class="card"><h3>Live status</h3><p>Held in memory in <code>sync/status.py</code>, served by <code>GET /sync/status</code>, polled every 5 s by the top navigation and the Sync page.</p></div>
@@ -212,7 +212,7 @@
       <ol class="phases">
         <li><span class="phase-title">Log "Application startup"</span></li>
         <li><span class="phase-title"><code>database.init_db()</code></span> — creates any missing tables from <code>schema.sql</code>.</li>
-        <li><span class="phase-title"><code>database.mark_incomplete_sync_runs()</code></span> — marks rows left <code>running</code> by a killed process as <code>incomplete</code>.</li>
+        <li><span class="phase-title"><code>database.writer.update(SyncRun(status="incomplete"), where=…running…)</code></span> — marks rows left <code>running</code> by a killed process as <code>incomplete</code>.</li>
         <li><span class="phase-title">Serve requests</span></li>
         <li><span class="phase-title">Log "Application shutdown"</span> — in a <code>finally</code> block.</li>
       </ol>

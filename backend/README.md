@@ -68,13 +68,11 @@ backend/
     connection.py
     dataclasses/         # one data-only row dataclass per table
     tables.py            # shared class-to-table registry, keys, and write rules
-    filters.py           # shared WHERE compilation for reader selects and writer deletes
-    reader.py            # all read execution
-    writer.py            # all inserts/updates (update-then-insert by key, None fields left untouched) and filtered deletes
+    filters.py           # shared WHERE compilation for reader selects and writer updates/deletes
+    reader.py            # all read execution, including daily date filling and result grouping
+    writer.py            # all inserts/updates (update-then-insert by key, None fields left untouched), filtered updates, and filtered deletes
     queries.py           # non-executing SQL specifications for joins and aggregates
     video_statistics.py  # Legacy/New video statistics report
-    analytics.py
-    traffic_sources.py
     related_videos.py
     sync_runs.py
 
@@ -249,7 +247,7 @@ count per row class). `covered_periods()` reads stored `sync_coverage` months fo
 database-backed assertions.
 `create_test_app()`/`create_test_client()` build a lifespan-free FastAPI app from one or
 more routers for API contract tests, so — unlike a real request through `server.app` —
-`mark_incomplete_sync_runs()` never runs; only the
+the stranded sync-run sweep never runs; only the
 test's own `IsolatedDatabaseTestCase.setUp()` initializes the database. Extend the suite
 by adding new focused tests on top of these factories rather than duplicating
 temp-database or app-construction boilerplate.

@@ -54,16 +54,16 @@
       <h1>Backend architecture</h1>
       <p>This page shows what each part of the backend does and how the parts connect.</p>
       <div class="meta-line">
-        <span>Source revision <code>b2d6118</code></span>
+        <span>Source revision <code>ab9b0f4</code></span>
       </div>
     </header>
 
     <section id="overview">
       <h2>What each part does</h2>
       <div class="card-grid">
-        <div class="card"><h3><span class="tag muted">server.py</span></h3><p>Starts the backend: creates the web server, plugs in the API routes, and prepares the database when the app launches.</p></div>
+        <div class="card"><h3><span class="tag muted">server.py</span></h3><p>Starts the backend: creates the web server, plugs in the API routes, and prepares the database when the app launches, including marking any sync stage a stopped process left running as incomplete.</p></div>
         <div class="card"><h3><span class="tag route">routes/</span></h3><p>The web API. Receives each request from the frontend, checks it, and answers with data from the database. One file per area: videos, playlists, analytics, comments, sync, metadata — plus <code>video_scope.py</code>, which returns 404 for a missing video or playlist and looks up a playlist's videos for the playlist handlers.</p></div>
-        <div class="card"><h3><span class="tag db">database/</span></h3><p>The only code that reads or writes SQLite. One small data class per table holds row values; <code>reader.py</code> runs every read and fills those classes; <code>queries.py</code> holds shared SQL for joined and grouped reads; <code>writer.py</code> saves every row sync downloads and deletes the rows sync removes; <code>filters.py</code> turns the conditions for reads and deletes into SQL. The per-domain files hold the sync-run log and the reports that need more than SQL.</p></div>
+        <div class="card"><h3><span class="tag db">database/</span></h3><p>The only code that reads or writes SQLite. One small data class per table holds row values; <code>reader.py</code> runs every read, fills those classes, fills missing days in daily chart data, and groups ranked results; <code>queries.py</code> holds shared SQL for joined, grouped and daily reads; <code>writer.py</code> saves every row sync downloads, updates rows that match a condition, and deletes the rows sync removes; <code>filters.py</code> turns the conditions for reads, updates and deletes into SQL. The per-domain files hold the reports that need more than SQL.</p></div>
         <div class="card"><h3><span class="tag sync">sync/</span></h3><p>The data importer. When you press <strong>Sync selected</strong>, it decides what to download, runs the steps in order, tracks progress, and lets you stop it.</p></div>
         <div class="card"><h3><span class="tag yt">youtube/</span></h3><p>Talks to Google: signs in with OAuth and calls the YouTube Data and Analytics APIs. Only sync uses it.</p></div>
         <div class="card"><h3><span class="tag muted">logging_config.py</span></h3><p>Writes the application and sync log files.</p></div>
@@ -110,7 +110,7 @@
         <div class="card"><h3><span class="tag db">database/</span></h3><p>Imports no other application package — the shared bottom layer.</p></div>
         <div class="card"><h3><span class="tag yt">youtube/</span></h3><p>Never touches the database. Only <code>sync/stages.py</code> moves API results into <code>database/</code>.</p></div>
         <div class="card"><h3><span class="tag route">routes/</span></h3><p>Never calls <code>youtube/</code>. Reads through <code>database.reader</code> directly and turns the returned data classes into JSON.</p></div>
-        <div class="card"><h3><span class="tag sync">sync/</span></h3><p>The only package that calls <code>youtube/</code>, and the only caller of <code>database.writer</code>, including every delete. It turns each fetched dictionary into a row object before writing it. Only <code>routes/</code> imports it.</p></div>
+        <div class="card"><h3><span class="tag sync">sync/</span></h3><p>The only package that calls <code>youtube/</code>, and the only caller of <code>database.writer</code> apart from <code>server.py</code>'s one startup update, including every delete and every <code>sync_runs</code> row. It turns each fetched dictionary into a row object before writing it. Only <code>routes/</code> imports it.</p></div>
       </div>
     </section>
 
@@ -122,7 +122,7 @@
         <div class="flow-arrow" aria-hidden="true"></div>
         <div class="flow-step route"><strong>Route handler</strong><small><code>routes/{domain}.py</code>; 404 guard via <code>require_owned_video</code>, <code>require_playlist</code>, or <code>resolve_playlist_video_ids</code></small></div>
         <div class="flow-arrow" aria-hidden="true"></div>
-        <div class="flow-step db"><strong>Reader</strong><small><code>reader.select</code>, or <code>reader.fetch</code>/<code>fetch_joined</code> with a <code>queries.*</code> definition; or a report function</small></div>
+        <div class="flow-step db"><strong>Reader</strong><small><code>reader.select</code>, or <code>reader.fetch</code>/<code>fetch_joined</code> with a <code>queries.*</code> definition, optionally filling missing days or followed by <code>reader.group_by</code>; or a report function</small></div>
         <div class="flow-arrow" aria-hidden="true"></div>
         <div class="flow-step db"><strong>Connection</strong><small><code>connection.get_connection()</code> → SQLite</small></div>
         <div class="flow-arrow" aria-hidden="true"></div>
@@ -136,7 +136,7 @@
         <div class="flow-arrow" aria-hidden="true"></div>
         <div class="flow-step sync"><strong>execute_plan</strong><small><code>_pre_analytics_runner</code>, then <code>allocate_analytics_workers</code> → <code>_run_analytics_worker</code> ×2 threads</small></div>
         <div class="flow-arrow" aria-hidden="true"></div>
-        <div class="flow-step sync"><strong>_run_tracked_stage → _run_stage</strong><small><code>create/complete/fail/cancel_sync_run</code></small></div>
+        <div class="flow-step sync"><strong>_run_tracked_stage → _run_stage</strong><small><code>writer.write(SyncRun(…), returning=("id",))</code>, then <code>writer.update</code> to success, failed or cancelled</small></div>
         <div class="flow-arrow" aria-hidden="true"></div>
         <div class="flow-step sync"><strong>stages.sync_*</strong><small><code>status.raise_if_stopping</code> checkpoints</small></div>
         <div class="flow-arrow" aria-hidden="true"></div>
@@ -148,9 +148,9 @@
     <section id="observations">
       <h2>Observations</h2>
       <div class="card-grid">
-        <div class="card"><h3>Broad modules</h3><p><code>sync/stages.py</code> holds all nine stage implementations plus their shared helpers. <code>database/queries.py</code> holds all 10 shared SQL definitions for routes and sync.</p></div>
+        <div class="card"><h3>Broad modules</h3><p><code>sync/stages.py</code> holds all nine stage implementations plus their shared helpers. <code>database/queries.py</code> holds all 15 shared SQL definitions for routes and sync.</p></div>
         <div class="card"><h3>Unused at runtime</h3><p><code>start_background_scheduler()</code>, <code>synced_today()</code>, and <code>run_plan()</code>.</p></div>
-        <div class="card"><h3>Re-export files</h3><p>Three package <code>__init__.py</code> files re-export every public name (<code>database</code> 36, <code>sync</code> 31, <code>youtube</code> 15); <code>routes/__init__.py</code> combines the six routers.</p></div>
+        <div class="card"><h3>Re-export files</h3><p>Three package <code>__init__.py</code> files re-export every public name (<code>database</code> 24, <code>sync</code> 31, <code>youtube</code> 15); <code>routes/__init__.py</code> combines the six routers.</p></div>
       </div>
     </section>
 

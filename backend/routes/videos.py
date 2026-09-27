@@ -3,7 +3,8 @@ from __future__ import annotations
 from fastapi import APIRouter, HTTPException, Query
 
 import database
-from database import Video, queries, reader
+from database import Video, VideoAnalytics, VideoTrafficSource, queries, reader
+from .daily_series import ANALYTICS_METRIC_DEFAULTS, traffic_source_fill, traffic_source_items
 from .video_scope import require_owned_video, resolve_playlist_video_ids
 
 router = APIRouter()
@@ -81,7 +82,19 @@ def get_video_analytics(
 ) -> dict:
     """Return daily analytics rows for a video, each tagged with content_type, with optional date filters."""
     require_owned_video(video_id)
-    return {"items": database.get_video_analytics(video_id, start_date, end_date)}
+    fill = reader.DateFill(
+        date=(VideoAnalytics, "date"),
+        identifiers=((VideoAnalytics, "video_id"),),
+        constants=((Video, "content_type"),),
+        metrics=ANALYTICS_METRIC_DEFAULTS,
+        start_date=start_date,
+    )
+    rows = reader.fetch_joined(
+        queries.video_daily_analytics(video_id, start_date=start_date, end_date=end_date),
+        (VideoAnalytics, Video), queries.ANALYTICS_VALUES, fill_dates=fill,
+    )
+    items = [{**row[VideoAnalytics].to_dict(), **row[Video].to_dict(("content_type",)), **row.values} for row in rows]
+    return {"items": items}
 
 
 @router.get("/videos/{video_id}/traffic-sources")
@@ -92,4 +105,7 @@ def get_video_traffic_sources(
 ) -> dict:
     """Return daily traffic source rows for a video with optional date filters."""
     require_owned_video(video_id)
-    return {"items": database.get_video_traffic_sources(video_id, start_date, end_date)}
+    rows = reader.fetch(VideoTrafficSource, queries.video_daily_traffic_sources(
+        video_id, start_date=start_date, end_date=end_date,
+    ), fill_dates=traffic_source_fill(start_date))
+    return {"items": traffic_source_items(rows)}

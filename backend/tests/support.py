@@ -22,6 +22,7 @@ from database import (
     Playlist,
     PlaylistItem,
     SyncCoverage,
+    SyncRun,
     Video,
     VideoAnalytics,
     VideoTrafficSource,
@@ -406,10 +407,14 @@ def seed_dataset() -> None:
         writer.write(make_comment_author("channel:UC1", "Ann Author", youtube_channel_id="UC1"))
         writer.write(make_comment("c-1", "v-1", "channel:UC1", text="great video", published_at="2024-01-10T00:00:00Z"))
 
-        success_id = database.create_sync_run("batch-seed", "videos", "incremental", None)
-        database.complete_sync_run(success_id, rows_fetched=4, rows_written=4, rows_deleted=0)
-        failed_id = database.create_sync_run("batch-seed", "fx_rates", "incremental", None)
-        database.fail_sync_run(failed_id, "quota exceeded", rows_fetched=0, rows_written=0, rows_deleted=0)
+        writer.write(SyncRun(
+            batch_id="batch-seed", sync_type="videos", scope="incremental", status="success",
+            started_at=database.now(), completed_at=database.now(), rows_fetched=4, rows_written=4, rows_deleted=0,
+        ))
+        writer.write(SyncRun(
+            batch_id="batch-seed", sync_type="fx_rates", scope="incremental", status="failed",
+            started_at=database.now(), completed_at=database.now(), error_message="quota exceeded",
+        ))
 
 
 class SeededDatabaseTestCase(IsolatedDatabaseTestCase):

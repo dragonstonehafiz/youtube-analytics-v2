@@ -3,7 +3,7 @@ from __future__ import annotations
 import unittest
 
 import database
-from database import SyncRun, connection, reader
+from database import SyncRun, connection, reader, writer
 from sync.plans import FULL_SYNC_TYPES
 from tests.support import IsolatedDatabaseTestCase
 
@@ -11,16 +11,21 @@ from tests.support import IsolatedDatabaseTestCase
 class CheckpointTestCase(IsolatedDatabaseTestCase):
     """Runs against a throwaway SQLite file so the app database is never touched."""
 
+    def _start(self, batch_id: str, sync_type: str) -> int | None:
+        started = SyncRun(
+            batch_id=batch_id, sync_type=sync_type, scope="incremental", status="running", started_at=database.now(),
+        )
+        return writer.write(started, returning=("id",)).id
+
     def _succeed(self, batch_id: str, sync_type: str) -> None:
-        run_id = database.create_sync_run(batch_id, sync_type, "incremental", None)
-        database.complete_sync_run(run_id, 0, 0, 0)
+        run_id = self._start(batch_id, sync_type)
+        writer.update(SyncRun(status="success", completed_at=database.now()), where=[("id", "=", run_id)])
 
     def _fail(self, batch_id: str, sync_type: str) -> None:
-        run_id = database.create_sync_run(batch_id, sync_type, "incremental", None)
-        database.fail_sync_run(run_id, "boom", 0, 0, 0)
-
-    def _start(self, batch_id: str, sync_type: str) -> None:
-        database.create_sync_run(batch_id, sync_type, "incremental", None)
+        run_id = self._start(batch_id, sync_type)
+        writer.update(
+            SyncRun(status="failed", completed_at=database.now(), error_message="boom"), where=[("id", "=", run_id)]
+        )
 
     def _complete_batch(self, batch_id: str) -> None:
         for sync_type in FULL_SYNC_TYPES:

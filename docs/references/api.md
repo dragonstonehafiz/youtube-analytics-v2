@@ -70,11 +70,16 @@ GET  /videos/{video_id}/analytics
   ?start_date, end_date
   → { items: AnalyticsRow[] }   # grouped by date; content_type is constant (the video's own type)
   | 404 if video not found
+  Each row carries every video_analytics column, content_type, and estimated_revenue_sgd.
+  Zero-filled days keep video_id and content_type, have updated_at null, and zero every metric
+  (see database.md's daily filling).
 
 GET  /videos/{video_id}/traffic-sources
   ?start_date, end_date
   → { items: TrafficSourceRow[] }   # daily, per traffic source type; filters vts.date, not published_at
   | 404 if video not found
+  Rows carry date, traffic_source_type, views, watch_time_minutes (no video_id); each observed
+  source type is zero-filled per day.
 ```
 
 ## Playlists
@@ -129,8 +134,8 @@ GET  /analytics/traffic-sources
 GET  /analytics/traffic-sources/top
   ?start_date, end_date, content_type, privacy_status, title
   → { items: Record<traffic_source_type, TrafficSourceTopVideo[]> }
-  Top 10 per traffic source type, channel-wide. limit=10 is passed explicitly by routes/analytics.py
-  — the underlying database.get_top_videos_by_traffic_source() itself defaults to limit=3.
+  Top 10 per traffic source type, channel-wide. routes/analytics.py groups the ranked
+  rows with reader.group_by(..., limit=10); the playlist route uses the same limit.
 ```
 
 ## Playlist analytics

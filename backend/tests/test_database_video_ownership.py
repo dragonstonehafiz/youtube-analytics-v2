@@ -9,8 +9,9 @@ from database import writer
 from sync import stages
 from sync.stages import SyncCounts
 from sync.write_preparation import search_term_rows
-from database import SearchTerm, Video, queries, reader
+from database import SearchTerm, Video, VideoAnalytics, VideoTrafficSource, queries, reader
 from routes import router
+from routes.analytics import _analytics_totals, _traffic_source_top_videos, _traffic_source_totals
 from routes.video_scope import resolve_playlist_video_ids
 from tests.support import (
     FIXED_NOW,
@@ -296,10 +297,14 @@ class OwnershipQueryBoundaryTest(IsolatedDatabaseTestCase):
         writer.write(make_video_analytics("v-owned", "2024-01-05", views=10))
         writer.write(make_video_analytics("v-external", "2024-01-05", views=20))
 
-        self.assertEqual(database.get_video_analytics("v-external"), [])
-        self.assertNotEqual(database.get_video_analytics("v-owned"), [])
+        def daily(video_id: str) -> list[reader.Joined]:
+            query = queries.video_daily_analytics(video_id)
+            return reader.fetch_joined(query, (VideoAnalytics, Video), queries.ANALYTICS_VALUES)
 
-        aggregated = database.get_aggregated_analytics()
+        self.assertEqual(daily("v-external"), [])
+        self.assertNotEqual(daily("v-owned"), [])
+
+        aggregated = _analytics_totals()
         self.assertEqual(sum(r["views"] for r in aggregated), 10)
 
         top = _get("/analytics/videos/top")["items"]
@@ -309,13 +314,13 @@ class OwnershipQueryBoundaryTest(IsolatedDatabaseTestCase):
         writer.write(make_traffic_source("v-owned", "2024-01-05", views=10))
         writer.write(make_traffic_source("v-external", "2024-01-05", views=20))
 
-        self.assertEqual(database.get_video_traffic_sources("v-external"), [])
-        self.assertNotEqual(database.get_video_traffic_sources("v-owned"), [])
+        self.assertEqual(reader.fetch(VideoTrafficSource, queries.video_daily_traffic_sources("v-external")), [])
+        self.assertNotEqual(reader.fetch(VideoTrafficSource, queries.video_daily_traffic_sources("v-owned")), [])
 
-        aggregated = database.get_aggregated_traffic_sources()
+        aggregated = _traffic_source_totals()
         self.assertEqual(sum(r["views"] for r in aggregated), 10)
 
-        top = database.get_top_videos_by_traffic_source()
+        top = _traffic_source_top_videos()
         ids = {v["id"] for videos in top.values() for v in videos}
         self.assertEqual(ids, {"v-owned"})
 

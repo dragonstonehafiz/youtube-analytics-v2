@@ -8,6 +8,7 @@ from tempfile import TemporaryDirectory
 from typing import Optional
 from unittest import mock
 
+from database import SyncRun
 from logging_config import configure_logging, reset_logging
 from sync import status
 from sync.orchestration import execute_plan, run_plan
@@ -38,7 +39,7 @@ def tearDownModule() -> None:
 
 
 class OrchestrationTestCase(unittest.TestCase):
-    """Base case that stubs every stage function and all sync_runs persistence."""
+    """Base case that stubs every stage function and the writer calls that persist sync_runs."""
 
     def setUp(self) -> None:
         status.reset_sync_status()
@@ -60,14 +61,29 @@ class OrchestrationTestCase(unittest.TestCase):
             )
         }
 
-        self.db = self._patch("sync.orchestration.database")
-        self.created: list[tuple] = []
-        self.db.create_sync_run.side_effect = self._record_sync_run
+        self.writer = self._patch("sync.orchestration.writer")
+        self.created: list[SyncRun] = []
+        self.finished: list[tuple[SyncRun, object]] = []
+        self.failing_outcome: tuple[str, Exception] | None = None
+        self.writer.write.side_effect = self._record_start
+        self.writer.update.side_effect = self._record_finish
 
-    def _record_sync_run(self, *args: object) -> int:
-        """Stand in for database.create_sync_run, capturing its arguments."""
-        self.created.append(args)
-        return len(self.created)
+    def _record_start(self, row: SyncRun, *, returning: tuple[str, ...]) -> SyncRun:
+        """Stand in for the stage-start insert, returning a generated ID."""
+        self.assertEqual(returning, ("id",))
+        self.created.append(row)
+        return SyncRun(id=len(self.created))
+
+    def _record_finish(self, row: SyncRun, *, where: object) -> int:
+        """Stand in for the stage finalization update, optionally failing one outcome."""
+        if self.failing_outcome is not None and row.status == self.failing_outcome[0]:
+            raise self.failing_outcome[1]
+        self.finished.append((row, where))
+        return 1
+
+    def finished_with(self, outcome: str) -> list[SyncRun]:
+        """Return finalization rows written with the given status."""
+        return [row for row, _ in self.finished if row.status == outcome]
 
     def _patch(self, target: str) -> mock.Mock:
         patcher = mock.patch(target)
@@ -80,8 +96,8 @@ class OrchestrationTestCase(unittest.TestCase):
         return stage_mock
 
     @property
-    def recorded_stages(self) -> list[str]:
-        return [args[1] for args in self.created]
+    def recorded_stages(self) -> list[str | None]:
+        return [row.sync_type for row in self.created]
 
 
 class SelectedStageExecutionTest(OrchestrationTestCase):
@@ -117,12 +133,15 @@ class SelectedStageExecutionTest(OrchestrationTestCase):
         execute_plan([PlanStage("videos"), PlanStage("fx_rates")])
 
         self.assertEqual(self.recorded_stages, ["videos", "fx_rates"])
-        self.assertEqual(self.db.create_sync_run.call_count, 2)
+        self.assertEqual(self.writer.write.call_count, 2)
+        for row in self.created:
+            self.assertEqual(row.status, "running")
+            self.assertIsNotNone(row.started_at)
 
     def test_all_started_stages_share_one_batch_id(self) -> None:
         execute_plan(full_incremental_plan())
 
-        batch_ids = {args[0] for args in self.created}
+        batch_ids = {row.batch_id for row in self.created}
         self.assertEqual(len(self.created), 8)
         self.assertEqual(len(batch_ids), 1)
 
@@ -139,7 +158,7 @@ class SelectedStageExecutionTest(OrchestrationTestCase):
         execute_plan([PlanStage("comments", "all")])
 
         self.assertEqual(self.stage_mocks["sync_comments"].call_args[0][0], "all")
-        self.assertEqual(self.created[0][2:], ("all", None))
+        self.assertEqual((self.created[0].scope, self.created[0].year), ("all", None))
 
     def test_records_independent_scopes_for_period_aware_stages(self) -> None:
         with mock.patch("sync.plans.available_years", return_value=(2025, 2024)):
@@ -148,15 +167,15 @@ class SelectedStageExecutionTest(OrchestrationTestCase):
                 PlanStage("video_traffic_sources", "all"),
             ])
 
-        by_stage = {args[1]: args for args in self.created}
-        self.assertEqual(by_stage["video_analytics"][2:], ("year", 2024))
-        self.assertEqual(by_stage["video_traffic_sources"][2:], ("all", None))
+        by_stage = {row.sync_type: (row.scope, row.year) for row in self.created}
+        self.assertEqual(by_stage["video_analytics"], ("year", 2024))
+        self.assertEqual(by_stage["video_traffic_sources"], ("all", None))
 
     def test_records_incremental_and_no_year_for_non_period_stages(self) -> None:
         execute_plan([PlanStage("videos"), PlanStage("playlists"), PlanStage("fx_rates")])
 
-        for args in self.created:
-            self.assertEqual(args[2:], ("incremental", None))
+        for row in self.created:
+            self.assertEqual((row.scope, row.year), ("incremental", None))
 
     def test_passes_independent_scopes_to_stage_functions(self) -> None:
         with mock.patch("sync.plans.available_years", return_value=(2025, 2024)):
@@ -173,8 +192,12 @@ class SelectedStageExecutionTest(OrchestrationTestCase):
     def test_marks_every_successful_stage_complete(self) -> None:
         execute_plan([PlanStage("videos"), PlanStage("fx_rates")])
 
-        self.assertEqual(self.db.complete_sync_run.call_count, 2)
-        self.db.fail_sync_run.assert_not_called()
+        self.assertEqual(len(self.finished_with("success")), 2)
+        self.assertEqual(self.finished_with("failed"), [])
+        self.assertEqual([where for _, where in self.finished], [(("id", "=", 1),), (("id", "=", 2),)])
+        for row in self.finished_with("success"):
+            self.assertIsNotNone(row.completed_at)
+            self.assertIsNone(row.error_message)
 
 
 class FailFastTest(OrchestrationTestCase):
@@ -211,8 +234,9 @@ class FailFastTest(OrchestrationTestCase):
         with self.assertRaises(RuntimeError):
             execute_plan([PlanStage("videos"), PlanStage("fx_rates")])
 
-        self.db.fail_sync_run.assert_called_once()
-        self.assertEqual(self.db.fail_sync_run.call_args[0][1], "quota exceeded")
+        failed = self.finished_with("failed")
+        self.assertEqual(len(failed), 1)
+        self.assertEqual(failed[0].error_message, "quota exceeded")
 
     def test_failure_still_releases_active_state(self) -> None:
         self.stage_mocks["sync_videos"].side_effect = RuntimeError("boom")
@@ -232,7 +256,7 @@ class FailFastTest(OrchestrationTestCase):
             execute_plan([])
 
         self.assertFalse(status.get_sync_status()["active"])
-        self.db.create_sync_run.assert_not_called()
+        self.writer.write.assert_not_called()
 
 
 class StatusTest(OrchestrationTestCase):
@@ -282,7 +306,7 @@ class RunPlanTest(OrchestrationTestCase):
         self.assertFalse(run_plan(full_incremental_plan()))
 
         self.assertEqual(self.calls, [])
-        self.db.create_sync_run.assert_not_called()
+        self.writer.write.assert_not_called()
         self.assertTrue(status.get_sync_status()["active"])
 
     def test_two_concurrent_reservations_cannot_both_succeed(self) -> None:
@@ -402,11 +426,9 @@ class StageFailureLoggingTest(OrchestrationTestCase):
         self.assertNotIn("FAKE_OAUTH_TOKEN", failure_messages[0])
         self.assertNotIn("quotaExceeded", failure_messages[0])
 
-        self.db.fail_sync_run.assert_called_once()
-        self.assertEqual(
-            self.db.fail_sync_run.call_args[0][1],
-            'access_token=FAKE_OAUTH_TOKEN body={"quotaExceeded": true}',
-        )
+        failed = self.finished_with("failed")
+        self.assertEqual(len(failed), 1)
+        self.assertEqual(failed[0].error_message, 'access_token=FAKE_OAUTH_TOKEN body={"quotaExceeded": true}')
 
         result = status.get_sync_status()
         failed_stage = next(stage for stage in result["stages"] if stage["key"] == "videos")
@@ -432,10 +454,12 @@ class CancellationTest(OrchestrationTestCase):
         execute_plan([PlanStage("playlists"), PlanStage("videos"), PlanStage("fx_rates")])
 
         self.assertEqual(self.calls, ["sync_playlists", "sync_videos"])
-        self.db.complete_sync_run.assert_called_once()  # playlists
-        self.db.cancel_sync_run.assert_called_once()  # videos
-        self.assertEqual(self.db.cancel_sync_run.call_args[0][1:], (0, 4, 0))
-        self.db.fail_sync_run.assert_not_called()
+        self.assertEqual(len(self.finished_with("success")), 1)  # playlists
+        cancelled = self.finished_with("cancelled")  # videos
+        self.assertEqual(len(cancelled), 1)
+        self.assertEqual((cancelled[0].rows_fetched, cancelled[0].rows_written, cancelled[0].rows_deleted), (0, 4, 0))
+        self.assertIsNone(cancelled[0].error_message)
+        self.assertEqual(self.finished_with("failed"), [])
         states = {stage["key"]: stage["state"] for stage in status.get_sync_status()["stages"]}
         self.assertEqual(states, {"playlists": "success", "videos": "cancelled", "fx_rates": "cancelled"})
 
@@ -499,7 +523,7 @@ class CancellationTest(OrchestrationTestCase):
 
 class PersistenceFailureLoggingTest(OrchestrationTestCase):
     def test_create_sync_run_failure_logs_error_and_reraises_without_stage_call(self) -> None:
-        self.db.create_sync_run.side_effect = RuntimeError("db locked")
+        self.writer.write.side_effect = RuntimeError("db locked")
 
         with self.assertLogs("youtube_analytics.sync", level="ERROR") as captured:
             with self.assertRaises(RuntimeError):
@@ -508,11 +532,10 @@ class PersistenceFailureLoggingTest(OrchestrationTestCase):
         messages = [record.getMessage() for record in captured.records]
         self.assertTrue(any("operation=create_sync_run" in m for m in messages))
         self.stage_mocks["sync_videos"].assert_not_called()
-        self.db.complete_sync_run.assert_not_called()
-        self.db.fail_sync_run.assert_not_called()
+        self.writer.update.assert_not_called()
 
     def test_complete_sync_run_failure_logs_error_and_reraises(self) -> None:
-        self.db.complete_sync_run.side_effect = RuntimeError("db locked")
+        self.failing_outcome = ("success", RuntimeError("db locked"))
 
         with self.assertLogs("youtube_analytics.sync", level="ERROR") as captured:
             with self.assertRaises(RuntimeError):
@@ -520,11 +543,11 @@ class PersistenceFailureLoggingTest(OrchestrationTestCase):
 
         messages = [record.getMessage() for record in captured.records]
         self.assertTrue(any("operation=complete_sync_run" in m for m in messages))
-        self.db.fail_sync_run.assert_not_called()
+        self.assertEqual(self.finished_with("failed"), [])
 
     def test_fail_sync_run_failure_logs_error_and_reraises_the_persistence_exception(self) -> None:
         self.stage_mocks["sync_videos"].side_effect = RuntimeError("stage boom")
-        self.db.fail_sync_run.side_effect = RuntimeError("persist boom")
+        self.failing_outcome = ("failed", RuntimeError("persist boom"))
 
         with self.assertLogs("youtube_analytics.sync", level="ERROR") as captured:
             with self.assertRaises(RuntimeError) as ctx:

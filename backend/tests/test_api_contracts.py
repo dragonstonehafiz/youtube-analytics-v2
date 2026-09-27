@@ -96,7 +96,7 @@ class MetadataContractTest(ApiContractTestCase):
 
 class NoLifespanTest(ApiContractTestCase):
     """The app under test is built with create_test_client(), which never runs
-    server.lifespan — so init_db, mark_incomplete_sync_runs, and the scheduler are never
+    server.lifespan — so init_db, the stranded sync-run sweep, and the scheduler are never
     invoked by the app itself; the isolated database is populated only by SeededDatabaseTestCase."""
 
     def test_scheduler_start_is_never_called(self) -> None:

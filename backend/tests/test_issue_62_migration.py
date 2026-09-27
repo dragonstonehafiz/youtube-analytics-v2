@@ -5,7 +5,7 @@ from datetime import date
 from pathlib import Path
 
 import database
-from database import writer
+from database import VideoAnalytics, reader, writer
 from tests.support import IsolatedDatabaseTestCase, covered_periods, make_video, make_video_analytics
 
 _MIGRATION_SCRIPT = Path(__file__).resolve().parents[1] / "scripts" / "issue-62-migration.py"
@@ -92,9 +92,9 @@ class MigrateTest(IsolatedDatabaseTestCase):
 
         migrate(today=date(2024, 3, 1))
 
-        rows = database.get_video_analytics("v1")
+        rows = reader.select(VideoAnalytics, where=[("video_id", "=", "v1")])
         self.assertEqual(len(rows), 1)
-        self.assertEqual(rows[0]["views"], 42)
+        self.assertEqual(rows[0].views, 42)
 
     def test_creates_the_coverage_table_on_a_pre_issue_62_database(self) -> None:
         with database.get_connection() as conn:

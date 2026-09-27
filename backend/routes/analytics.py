@@ -1,16 +1,96 @@
 from __future__ import annotations
 
+from collections.abc import Collection
 from typing import Literal
 
 from fastapi import APIRouter, Query
 
 import database
-from database import RelatedVideo, SearchTerm, Video, queries, reader
+from database import RelatedVideo, SearchTerm, Video, VideoAnalytics, VideoTrafficSource, queries, reader
+from .daily_series import ANALYTICS_METRIC_DEFAULTS, traffic_source_fill, traffic_source_items
 from .video_scope import require_owned_video, resolve_playlist_video_ids
 
 router = APIRouter()
 
 _SEARCH_TERM_FIELDS = ("search_term", "views")
+_TRAFFIC_SOURCE_TOTAL_FIELDS = ("views", "watch_time_minutes")
+_TRAFFIC_SOURCE_TOP_LIMIT = 10
+
+
+def _analytics_totals(
+    *,
+    start_date: str | None = None,
+    end_date: str | None = None,
+    content_type: str | None = None,
+    privacy_status: str | None = None,
+    title: str | None = None,
+    video_ids: Collection[str] | None = None,
+) -> list[dict]:
+    """Read and serialize daily analytics totals, zero-filling each content type."""
+    fill = reader.DateFill(
+        date=(VideoAnalytics, "date"),
+        breakdown=(Video, "content_type"),
+        breakdown_values=[content_type] if content_type else ["video", "short"],
+        metrics=ANALYTICS_METRIC_DEFAULTS,
+        start_date=start_date,
+    )
+    rows = reader.fetch_joined(queries.daily_analytics_totals(
+        start_date=start_date, end_date=end_date, content_type=content_type, privacy_status=privacy_status,
+        title=title, video_ids=video_ids,
+    ), (VideoAnalytics, Video), queries.ANALYTICS_VALUES, fill_dates=fill)
+    return [
+        {
+            **row[VideoAnalytics].to_dict(("date",)),
+            **row[Video].to_dict(("content_type",)),
+            **row[VideoAnalytics].to_dict(queries.ANALYTICS_METRIC_FIELDS),
+            **row.values,
+        }
+        for row in rows
+    ]
+
+
+def _traffic_source_totals(
+    *,
+    start_date: str | None = None,
+    end_date: str | None = None,
+    content_type: str | None = None,
+    privacy_status: str | None = None,
+    title: str | None = None,
+    video_ids: Collection[str] | None = None,
+) -> list[dict]:
+    """Read and serialize daily traffic-source totals, zero-filling each observed source type."""
+    rows = reader.fetch(VideoTrafficSource, queries.daily_traffic_source_totals(
+        start_date=start_date, end_date=end_date, content_type=content_type, privacy_status=privacy_status,
+        title=title, video_ids=video_ids,
+    ), fill_dates=traffic_source_fill(start_date))
+    return traffic_source_items(rows)
+
+
+def _traffic_source_top_videos(
+    *,
+    start_date: str | None = None,
+    end_date: str | None = None,
+    content_type: str | None = None,
+    privacy_status: str | None = None,
+    title: str | None = None,
+    video_ids: Collection[str] | None = None,
+) -> dict[str, list[dict]]:
+    """Read and serialize the top videos by views for each traffic-source type."""
+    rows = reader.fetch_joined(queries.traffic_source_video_totals(
+        start_date=start_date, end_date=end_date, content_type=content_type, privacy_status=privacy_status,
+        title=title, video_ids=video_ids,
+    ), (VideoTrafficSource, Video))
+    grouped = reader.group_by(rows, (VideoTrafficSource, "traffic_source_type"), limit=_TRAFFIC_SOURCE_TOP_LIMIT)
+    return {
+        source: [
+            {
+                **row[Video].to_dict(queries.TRAFFIC_SOURCE_VIDEO_FIELDS),
+                **row[VideoTrafficSource].to_dict(_TRAFFIC_SOURCE_TOTAL_FIELDS),
+            }
+            for row in bucket
+        ]
+        for source, bucket in grouped.items()
+    }
 
 
 def _top_video_items(rows: list[reader.Joined]) -> list[dict]:
@@ -44,7 +124,10 @@ def get_aggregated_analytics(
     title: str | None = Query(default=None),
 ) -> dict:
     """Return daily analytics aggregated across all videos, grouped by date and content_type."""
-    return {"items": database.get_aggregated_analytics(start_date, end_date, content_type, privacy_status, title)}
+    return {"items": _analytics_totals(
+        start_date=start_date, end_date=end_date, content_type=content_type, privacy_status=privacy_status,
+        title=title,
+    )}
 
 
 @router.get("/analytics/videos/top")
@@ -73,7 +156,10 @@ def get_aggregated_traffic_sources(
     title: str | None = Query(default=None),
 ) -> dict:
     """Return daily traffic sources aggregated across all videos."""
-    return {"items": database.get_aggregated_traffic_sources(start_date, end_date, content_type, privacy_status, title)}
+    return {"items": _traffic_source_totals(
+        start_date=start_date, end_date=end_date, content_type=content_type, privacy_status=privacy_status,
+        title=title,
+    )}
 
 
 @router.get("/analytics/traffic-sources/top")
@@ -85,7 +171,10 @@ def get_top_videos_by_traffic_source(
     title: str | None = Query(default=None),
 ) -> dict:
     """Return the top 10 videos by views for each traffic source type (channel-wide)."""
-    return {"items": database.get_top_videos_by_traffic_source(start_date, end_date, content_type, privacy_status, limit=10, title=title)}
+    return {"items": _traffic_source_top_videos(
+        start_date=start_date, end_date=end_date, content_type=content_type, privacy_status=privacy_status,
+        title=title,
+    )}
 
 
 @router.get("/analytics/search-insights")
@@ -168,7 +257,10 @@ def get_playlist_aggregated_analytics(
 ) -> dict:
     """Return daily analytics aggregated across all videos in a playlist, grouped by date and content_type."""
     video_ids = resolve_playlist_video_ids(playlist_id)
-    return {"items": database.get_aggregated_analytics(start_date, end_date, content_type, privacy_status, title, video_ids=video_ids)}
+    return {"items": _analytics_totals(
+        start_date=start_date, end_date=end_date, content_type=content_type, privacy_status=privacy_status,
+        title=title, video_ids=video_ids,
+    )}
 
 
 @router.get("/analytics/playlists/{playlist_id}/traffic-sources")
@@ -182,7 +274,10 @@ def get_playlist_aggregated_traffic_sources(
 ) -> dict:
     """Return daily traffic sources aggregated across all videos in a playlist."""
     video_ids = resolve_playlist_video_ids(playlist_id)
-    return {"items": database.get_aggregated_traffic_sources(start_date, end_date, content_type, privacy_status, title, video_ids=video_ids)}
+    return {"items": _traffic_source_totals(
+        start_date=start_date, end_date=end_date, content_type=content_type, privacy_status=privacy_status,
+        title=title, video_ids=video_ids,
+    )}
 
 
 @router.get("/analytics/playlists/{playlist_id}/traffic-sources/top")
@@ -196,7 +291,10 @@ def get_playlist_top_videos_by_traffic_source(
 ) -> dict:
     """Return the top 10 videos in a playlist by views for each traffic source type."""
     video_ids = resolve_playlist_video_ids(playlist_id)
-    return {"items": database.get_top_videos_by_traffic_source(start_date, end_date, content_type, privacy_status, limit=10, title=title, video_ids=video_ids)}
+    return {"items": _traffic_source_top_videos(
+        start_date=start_date, end_date=end_date, content_type=content_type, privacy_status=privacy_status,
+        title=title, video_ids=video_ids,
+    )}
 
 
 @router.get("/analytics/playlists/{playlist_id}/search-insights")

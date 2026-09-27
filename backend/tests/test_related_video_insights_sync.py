@@ -229,11 +229,15 @@ class SyncRelatedVideoInsightsStageTest(unittest.TestCase):
             "sync.stages.youtube.fetch_video_related_videos",
             return_value=analytics_api.RelatedVideosResult(raw_row_count=0, referrers=[]),
         ).start()
-        traffic = mock.patch("database.get_video_traffic_sources").start()
+        traffic = [
+            mock.patch(f"database.queries.{name}").start()
+            for name in ("video_daily_traffic_sources", "daily_traffic_source_totals", "traffic_source_video_totals")
+        ]
 
         stages.sync_related_video_insights("incremental", None, SyncCounts())
 
-        traffic.assert_not_called()
+        for spec in traffic:
+            spec.assert_not_called()
 
     def test_counts_accumulate_across_videos_and_windows(self) -> None:
         self.reads.videos = owned_videos("v1")

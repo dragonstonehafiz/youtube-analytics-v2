@@ -47,8 +47,10 @@
       <li><a href="#rows">Row objects</a></li>
       <li><a href="#registry">How the reader and writer find a table</a></li>
       <li><a href="#aggregates">Aggregates</a></li>
+      <li><a href="#daily">Daily charts and missing days</a></li>
       <li><a href="#api-shape">From a stored row to JSON</a></li>
       <li><a href="#writes">Writing a row</a></li>
+      <li><a href="#updates">Updating matched rows</a></li>
       <li><a href="#deletes">Deleting rows</a></li>
       <li><a href="#boundaries">Who reads and writes the database</a></li>
       <li><a href="#connections">Database connections</a></li>
@@ -60,7 +62,7 @@
       <h1>Data storage and access</h1>
       <p>This page shows where the data lives, how the backend reads it into Python objects, writes those objects back and deletes rows, and how read results become the JSON the frontend receives.</p>
       <div class="meta-line">
-        <span>Source revision <code>b2d6118</code></span>
+        <span>Source revision <code>ab9b0f4</code></span>
       </div>
     </header>
 
@@ -205,8 +207,8 @@ KEYS = {Video: ("id",), VideoAnalytics: ("video_id", "date"), ..., SyncRun: ("id
       </div>
       <p>Column and table names in the SQL come only from these lists and the data class fields; a request string never becomes part of the SQL. Every value, including one with quotes in it, is passed separately as a bound parameter. Tests compare the lists and every class's fields with the real schema, including each table's primary key, so a missing or misspelled column fails the test suite.</p>
 
-      <h3>One filter for reads and deletes</h3>
-      <p><code>backend/database/filters.py</code> turns a <code>where</code> list into SQL. <code>reader.select</code>, <code>select_one</code> and <code>scalar</code> use it for reads, and <code>writer.delete</code> uses it for deletes, so the same list matches the same rows in both. Conditions are joined with <code>AND</code>, and every column is written with its table name in front.</p>
+      <h3>One filter for reads, updates and deletes</h3>
+      <p><code>backend/database/filters.py</code> turns a <code>where</code> list into SQL. <code>reader.select</code>, <code>select_one</code> and <code>scalar</code> use it for reads, and <code>writer.update</code> and <code>writer.delete</code> use it for changes, so the same list matches the same rows in all of them. Conditions are joined with <code>AND</code>, and every column is written with its table name in front.</p>
 <pre class="code"><code>where = [("own", "=", True), ("id", "NOT IN", ["v-1", "v-2"])]
 
 reader.select(Video, ("id",), where=where)   # SELECT "id" FROM videos WHERE videos."own" = ? AND videos."id" NOT IN (?, ?)
@@ -254,7 +256,74 @@ ORDER BY views DESC, st.search_term ASC
 terms = reader.fetch(SearchTerm, query)                       # [SearchTerm(search_term="cats", views=17), ...]
 items = [term.to_dict(("search_term", "views")) for term in terms]</code></pre>
       <p>A <code>SearchTerm</code> built this way is a total across many stored rows, so its <code>video_id</code>, <code>month</code> and <code>updated_at</code> stay <code>None</code>. The route only sends the two fields the query filled.</p>
-      <p>A few reports finish the calculation in Python after SQLite has added things up: the daily charts fill missing days with zeros, and the traffic-source view keeps the top videos for each source. They return finished dictionaries, which the route sends as they are.</p>
+      <p>Two reads finish in the reader after SQLite has added things up, still from one query each: the daily charts fill missing days (next section), and the traffic-source view keeps the top ten videos for each source with <code>reader.group_by()</code>.</p>
+<pre class="code"><code>rows = reader.fetch_joined(queries.traffic_source_video_totals(...), (VideoTrafficSource, Video))
+# ordered by source, then views, highest first
+grouped = reader.group_by(rows, (VideoTrafficSource, "traffic_source_type"), limit=10)
+# {"SEARCH": [first 10 rows], "SUGGESTED": [...], ...}  — the same row objects, in the same order</code></pre>
+      <p>SQLite still returns every ranked row; the limit is applied afterwards. The route then sends each bucket's video fields and totals, without the source name, which is already the bucket's key.</p>
+    </section>
+
+    <section id="daily">
+      <h2>Daily charts and missing days</h2>
+      <p>YouTube only reports days that had activity, so a stored series has gaps. The charts need one point per day, so the four daily reads pass a <code>DateFill</code> to the reader. The reader runs the one query, then adds a made-up row for every missing day. Nothing it adds is written back to the database.</p>
+      <div class="table-wrap fixed-table">
+        <table>
+          <caption>How each daily read is filled</caption>
+          <colgroup><col class="col-mid"><col class="col-mid"><col class="col-mid"><col></colgroup>
+          <thead><tr><th>Read</th><th>One series is</th><th>Filled once per</th><th>A filled day holds</th></tr></thead>
+          <tbody>
+            <tr><td>One video's analytics</td><td>that video</td><td>day</td><td>The video's ID and content type, every metric <code>0</code>, and <code>updated_at</code> empty</td></tr>
+            <tr><td>One video's traffic sources</td><td>that video</td><td>day and each source the video has</td><td>Date, source, and <code>0</code> views and watch time</td></tr>
+            <tr><td>Channel or playlist analytics</td><td>the whole filtered set</td><td>day and content type: the requested one, or video and short</td><td>Date, content type, and every total <code>0</code>; there is no video ID</td></tr>
+            <tr><td>Channel or playlist traffic sources</td><td>the whole filtered set</td><td>day and each source in the result</td><td>Date, source, and <code>0</code> views and watch time</td></tr>
+          </tbody>
+        </table>
+      </div>
+
+      <h3>One video's daily rows</h3>
+      <p>Video <code>v-1</code> has stored analytics for 1 and 3 January. A request for 1–10 January:</p>
+      <div class="table-wrap fixed-table">
+        <table>
+          <caption>Rows returned for v-1, 1–10 January</caption>
+          <colgroup><col class="col-narrow"><col class="col-narrow"><col class="col-narrow"><col class="col-narrow"><col></colgroup>
+          <thead><tr><th>Date</th><th><code>video_id</code></th><th><code>views</code></th><th><code>updated_at</code></th><th>Where it came from</th></tr></thead>
+          <tbody>
+            <tr><td>2024-01-01</td><td><code>v-1</code></td><td>100</td><td>last sync</td><td>Stored</td></tr>
+            <tr><td>2024-01-02</td><td><code>v-1</code></td><td>0</td><td><code>null</code></td><td>Filled: the ID and content type are kept, only the metrics are zero</td></tr>
+            <tr><td>2024-01-03</td><td><code>v-1</code></td><td>200</td><td>last sync</td><td>Stored</td></tr>
+          </tbody>
+        </table>
+      </div>
+      <p>Nothing follows 3 January: filling stops at the last day that has data, so a chart never runs on as a flat line of zeros. A request starting before the first stored day does get filled days from its start date.</p>
+
+      <h3>One video's daily source rows</h3>
+      <p>For traffic sources each day is filled once per source. If <code>v-1</code> had <code>SEARCH</code> views on 1 January and <code>SUGGESTED</code> views on 3 January, the result has both sources on all three days:</p>
+      <div class="table-wrap fixed-table">
+        <table>
+          <caption>Rows returned for v-1's traffic sources</caption>
+          <colgroup><col class="col-narrow"><col class="col-mid"><col class="col-narrow"><col></colgroup>
+          <thead><tr><th>Date</th><th>Source</th><th><code>views</code></th><th>Where it came from</th></tr></thead>
+          <tbody>
+            <tr><td>2024-01-01</td><td><code>SEARCH</code></td><td>30</td><td>Stored</td></tr>
+            <tr><td>2024-01-01</td><td><code>SUGGESTED</code></td><td>0</td><td>Filled</td></tr>
+            <tr><td>2024-01-02</td><td><code>SEARCH</code></td><td>0</td><td>Filled</td></tr>
+            <tr><td>2024-01-02</td><td><code>SUGGESTED</code></td><td>0</td><td>Filled</td></tr>
+            <tr><td>2024-01-03</td><td><code>SEARCH</code></td><td>0</td><td>Filled</td></tr>
+            <tr><td>2024-01-03</td><td><code>SUGGESTED</code></td><td>20</td><td>Stored</td></tr>
+          </tbody>
+        </table>
+      </div>
+
+      <h3>From reader result to JSON</h3>
+      <p>One video's analytics are read as joined results, and the route merges the parts into one object per day. A filled day has the same keys as a stored one.</p>
+<pre class="code"><code>rows = reader.fetch_joined(queries.video_daily_analytics("v-1", ...), (VideoAnalytics, Video),
+                           ("estimated_revenue_sgd",), fill_dates=fill)
+items = [{**row[VideoAnalytics].to_dict(), **row[Video].to_dict(("content_type",)), **row.values} for row in rows]
+
+{"video_id": "v-1", "date": "2024-01-02", "views": 0, "watch_time_minutes": 0, ..., "updated_at": null,
+ "content_type": "video", "estimated_revenue_sgd": 0}</code></pre>
+      <p>Traffic-source rows are read into <code>VideoTrafficSource</code> objects and sent as <code>{"date", "traffic_source_type", "views", "watch_time_minutes"}</code>; the video ID is not part of that response.</p>
     </section>
 
     <section id="api-shape">
@@ -331,6 +400,47 @@ written = writer.write_many(rows)   # rows processed, added to the stage's rows_
         <div class="card"><h3>Timestamps</h3><p>The writer never sets <code>updated_at</code> or <code>completed_at</code>. Sync passes <code>now()</code> on every row it writes, so each sync refreshes them even when nothing else changed.</p></div>
         <div class="card"><h3>Transactions</h3><p>Each call opens its own connection, takes SQLite's write lock before deciding between update and insert, commits on success and rolls back on any error. A stage writes each streamed row in its own call, so a failure mid-stage keeps the rows already written.</p></div>
       </div>
+
+      <h3>Getting the stored ID back</h3>
+      <p>A sync stage's <code>sync_runs</code> row gets its <code>id</code> from SQLite. Orchestration needs that ID to finish the row later, so it asks the write to return it.</p>
+      <div class="flow">
+        <div class="flow-step sync"><strong>Stage starts</strong><small><code>writer.write(SyncRun(batch_id=…, sync_type="videos", status="running", started_at=now()), returning=("id",))</code></small></div>
+        <div class="flow-arrow" aria-hidden="true"></div>
+        <div class="flow-step db"><strong>Insert</strong><small>No <code>id</code> was given, so the row is inserted and SQLite picks one</small></div>
+        <div class="flow-arrow" aria-hidden="true"></div>
+        <div class="flow-step db"><strong>Read back</strong><small>In the same transaction, the writer reads <code>id</code> for that row</small></div>
+        <div class="flow-arrow" aria-hidden="true"></div>
+        <div class="flow-step sync"><strong>Returned</strong><small><code>SyncRun(id=42)</code>; every other field is <code>None</code></small></div>
+      </div>
+      <p>The returned values are what is stored, so a column the row left out comes back with its schema default. Without <code>returning</code>, <code>write()</code> returns the usual count.</p>
+    </section>
+
+    <section id="updates">
+      <h2>Updating matched rows</h2>
+      <p><code>writer.write()</code> finds a row by its key and inserts it when none exists. <code>writer.update(row, where=...)</code> changes every row that matches a condition and never inserts. The same <code>SyncRun</code> row type is used for both.</p>
+      <div class="table-wrap fixed-table">
+        <table>
+          <caption>Default write compared with a filtered update</caption>
+          <colgroup><col class="col-mid"><col><col></colgroup>
+          <thead><tr><th></th><th><code>writer.write(row)</code></th><th><code>writer.update(row, where=[...])</code></th></tr></thead>
+          <tbody>
+            <tr><td>Which rows</td><td>The one row with the row's key</td><td>Every row matching the condition</td></tr>
+            <tr><td>No row matches</td><td>Inserts a new row</td><td>Changes nothing and returns <code>0</code></td></tr>
+            <tr><td>Key fields</td><td>Required; they pick the row</td><td>Not allowed; the condition picks the rows</td></tr>
+            <tr><td><code>None</code> fields</td><td>Left unchanged</td><td>Left unchanged</td></tr>
+            <tr><td><code>Video.own</code></td><td>Can go up, never down</td><td>Can go up, never down</td></tr>
+            <tr><td>Returns</td><td><code>1</code>, or <code>0</code> for a key-only row that already exists</td><td>How many rows changed</td></tr>
+          </tbody>
+        </table>
+      </div>
+      <p>Finishing a stage and the startup clean-up are both filtered updates:</p>
+<pre class="code"><code>writer.update(SyncRun(status="success", completed_at=now(), rows_fetched=12, rows_written=12, rows_deleted=0),
+              where=[("id", "=", 42)])
+UPDATE sync_runs SET "status" = ?, "completed_at" = ?, "rows_fetched" = ?, ... WHERE sync_runs."id" = ?
+
+writer.update(SyncRun(status="incomplete"), where=[("status", "=", "running")])
+UPDATE sync_runs SET "status" = ? WHERE sync_runs."status" = ?</code></pre>
+      <p>The second call runs once at startup and marks every stage a stopped process left running as incomplete. It sets no completion time, because those stages never completed.</p>
     </section>
 
     <section id="deletes">
@@ -387,11 +497,11 @@ DELETE FROM comment_authors WHERE NOT EXISTS (
 
     <section id="boundaries">
       <h2>Who reads and writes the database</h2>
-      <p>Routes and sync don't run SQL themselves. Routes call the reader or a report function; sync calls the reader, the writer, and the sync-run functions.</p>
+      <p>Routes and sync don't run SQL themselves. Routes call the reader or a report function; sync calls the reader and the writer.</p>
       <figure class="diagram">
         <svg viewBox="0 0 900 470" role="img" aria-labelledby="bound-title bound-desc">
           <title id="bound-title">Who reads and writes the database</title>
-          <desc id="bound-desc">routes/ calls report functions, reader.py and queries.py. sync/ calls reader.py, queries.py, writer.py, and the sync-run functions. Report functions, reader.py, writer.py, and the sync-run functions read or write SQLite. queries.py only builds SQL and does not touch SQLite.</desc>
+          <desc id="bound-desc">routes/ calls report functions, reader.py and queries.py. sync/ calls reader.py, queries.py and writer.py. Report functions, reader.py and writer.py read or write SQLite. queries.py only builds SQL and does not touch SQLite.</desc>
           <defs>
             <marker id="arrow-route" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse">
               <path class="arrowhead route" d="M0,0 L10,5 L0,10 z"/>
@@ -411,7 +521,6 @@ DELETE FROM comment_authors WHERE NOT EXISTS (
           <g class="node db"><rect x="330" y="100" width="200" height="56" rx="8"/><text class="title" x="430" y="124" text-anchor="middle">reader.py</text><text class="sub" x="430" y="142" text-anchor="middle">runs every read</text></g>
           <g class="node db"><rect x="330" y="180" width="200" height="56" rx="8"/><text class="title" x="430" y="204" text-anchor="middle">queries.py</text><text class="sub" x="430" y="222" text-anchor="middle">builds SQL, never runs it</text></g>
           <g class="node db"><rect x="330" y="260" width="200" height="56" rx="8"/><text class="title" x="430" y="284" text-anchor="middle">writer.py</text><text class="sub" x="430" y="302" text-anchor="middle">inserts, updates, deletes</text></g>
-          <g class="node db"><rect x="330" y="340" width="200" height="56" rx="8"/><text class="title" x="430" y="364" text-anchor="middle">sync-run log</text><text class="sub" x="430" y="382" text-anchor="middle">*_sync_run</text></g>
 
           <g class="node"><rect x="710" y="180" width="170" height="56" rx="8"/><text class="title" x="795" y="204" text-anchor="middle">SQLite</text><text class="sub" x="795" y="222" text-anchor="middle">data/youtube.db</text></g>
 
@@ -421,12 +530,10 @@ DELETE FROM comment_authors WHERE NOT EXISTS (
           <path class="edge sync" d="M170,280 L328,138" marker-end="url(#arrow-sync)"/>
           <path class="edge sync" d="M170,290 L328,216" marker-end="url(#arrow-sync)"/>
           <path class="edge sync" d="M170,300 L328,290" marker-end="url(#arrow-sync)"/>
-          <path class="edge sync" d="M170,312 L328,366" marker-end="url(#arrow-sync)"/>
 
           <path class="edge" d="M530,48 L708,196" marker-end="url(#arrow-db)"/>
           <path class="edge" d="M530,128 L708,202" marker-end="url(#arrow-db)"/>
           <path class="edge" d="M530,288 L708,214" marker-end="url(#arrow-db)"/>
-          <path class="edge" d="M530,368 L708,222" marker-end="url(#arrow-db)"/>
 
           <g aria-hidden="true">
             <path class="edge route" d="M20,440 L60,440" marker-end="url(#arrow-route)"/>
@@ -443,12 +550,12 @@ DELETE FROM comment_authors WHERE NOT EXISTS (
       <div class="card-grid">
         <div class="card"><h3><span class="tag db">dataclasses/</span></h3><p>One class per table holding a row's values, plus <code>from_dict()</code> and <code>to_dict()</code>. They never run a query or open a connection.</p></div>
         <div class="card"><h3><span class="tag db">tables.py</span></h3><p>The class-to-table list, each table's key columns, and the two write rules: <code>SyncRun</code> ids are generated, and <code>Video.own</code> never goes down.</p></div>
-        <div class="card"><h3><span class="tag db">filters.py</span></h3><p>Turns a <code>where</code> list into SQL for reader selects and writer deletes: checks each column and operator, binds every value, and builds <code>NOT EXISTS</code> checks.</p></div>
-        <div class="card"><h3><span class="tag db">reader.py</span></h3><p>Every read: <code>select</code>, <code>select_one</code> and <code>scalar</code> for one table, and <code>fetch</code>, <code>fetch_joined</code> and <code>fetch_scalar</code> for SQL from <code>queries.py</code>.</p></div>
-        <div class="card"><h3><span class="tag db">queries.py</span></h3><p>10 shared SQL definitions for joined, grouped and ranked reads. Each returns a query that the caller passes to the reader.</p></div>
-        <div class="card"><h3><span class="tag db">writer.py</span></h3><p>Every insert, update and delete: <code>write</code> for one row, <code>write_many</code> for a batch of one class, and <code>delete</code> for the rows matching a condition. Only sync calls it.</p></div>
-        <div class="card"><h3><span class="tag db">Report functions</span></h3><p>Legacy/New statistics, zero-filled daily charts, top videos per traffic source, referrer totals, and sync-history grouping. The statistics report runs its SQL through the reader; the others open their own connection.</p></div>
-        <div class="card"><h3><span class="tag db">Sync-run log</span></h3><p>The sync-run log functions, such as <code>create_sync_run</code> and <code>complete_sync_run</code>, keep their own SQL, each on its own connection.</p></div>
+        <div class="card"><h3><span class="tag db">filters.py</span></h3><p>Turns a <code>where</code> list into SQL for reader selects and writer updates and deletes: checks each column and operator, binds every value, and builds <code>NOT EXISTS</code> checks.</p></div>
+        <div class="card"><h3><span class="tag db">reader.py</span></h3><p>Every read: <code>select</code>, <code>select_one</code> and <code>scalar</code> for one table, and <code>fetch</code>, <code>fetch_joined</code> and <code>fetch_scalar</code> for SQL from <code>queries.py</code>. It also fills missing days in daily reads and groups ranked results with <code>group_by</code>.</p></div>
+        <div class="card"><h3><span class="tag db">queries.py</span></h3><p>15 shared SQL definitions for joined, grouped, daily and ranked reads. Each returns a query that the caller passes to the reader.</p></div>
+        <div class="card"><h3><span class="tag db">writer.py</span></h3><p>Every insert, update and delete: <code>write</code> for one row (optionally returning stored fields), <code>write_many</code> for a batch of one class, <code>update</code> and <code>delete</code> for the rows matching a condition. Sync calls it, and startup calls <code>update</code> once to close stopped stages.</p></div>
+        <div class="card"><h3><span class="tag db">Report functions</span></h3><p>Legacy/New statistics, referrer totals, and sync-history grouping. The statistics report runs its SQL through the reader; the other two open their own connection.</p></div>
+        <div class="card"><h3><span class="tag sync">Sync-run rows</span></h3><p>Each stage's <code>sync_runs</code> row is inserted and finished through the writer like any other row. Only the history page's grouping has its own SQL.</p></div>
       </div>
     </section>
 
@@ -463,8 +570,8 @@ DELETE FROM comment_authors WHERE NOT EXISTS (
             <tr><td>Read without <code>conn=</code></td><td>The reader opens one, runs the query, and closes it.</td></tr>
             <tr><td>Read with <code>conn=</code></td><td>The reader uses it and leaves it open. It never commits or rolls it back.</td></tr>
             <tr><td><code>with reader.connect() as conn</code></td><td>Opens one connection for several reads, such as a page and its total count, or the four statistics queries, and closes it at the end of the block.</td></tr>
-            <tr><td>Write or delete without <code>conn=</code></td><td>The writer opens one, takes the write lock, commits the whole call or rolls it back, and closes it.</td></tr>
-            <tr><td>Write or delete with <code>conn=</code></td><td>The caller must already be inside a transaction. The writer uses a savepoint, undoes only its own work on an error, and never commits, rolls back or closes the caller's transaction.</td></tr>
+            <tr><td>Write, update or delete without <code>conn=</code></td><td>The writer opens one, takes the write lock, commits the whole call or rolls it back, and closes it.</td></tr>
+            <tr><td>Write, update or delete with <code>conn=</code></td><td>The caller must already be inside a transaction. The writer uses a savepoint, undoes only its own work on an error, and never commits, rolls back or closes the caller's transaction. A value returned by <code>returning</code> is undone too if the caller later rolls back.</td></tr>
           </tbody>
         </table>
       </div>

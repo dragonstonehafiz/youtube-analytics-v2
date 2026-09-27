@@ -53,7 +53,7 @@
       <h1>Efficiency</h1>
       <p>This page shows code that does more work than it needs to.</p>
       <div class="meta-line">
-        <span>Source revision <code>b2d6118</code></span>
+        <span>Source revision <code>ab9b0f4</code></span>
       </div>
     </header>
 
@@ -72,9 +72,9 @@
 
         <article class="dup">
           <div class="dup-head"><h3>Connections closed by garbage collection</h3><span class="dup-count">every DB call</span></div>
-          <p><code>with get_connection() as conn</code> commits or rolls back on exit but does not close the connection. Reads through <code>database/reader.py</code> and writes and deletes through <code>database/writer.py</code> close the connections they open; the code below still uses the <code>with</code> form.</p>
+          <p><code>with get_connection() as conn</code> commits or rolls back on exit but does not close the connection. Reads through <code>database/reader.py</code> and writes, updates and deletes through <code>database/writer.py</code> close the connections they open, including the daily chart reads and every <code>sync_runs</code> write; the code below still uses the <code>with</code> form.</p>
           <dl>
-            <dt>Where</dt><dd>The sync-run log functions in <code>backend/database/sync_runs.py</code>, plus the reports that call <code>get_connection()</code> directly: the analytics and traffic-source reports, <code>get_related_video_referrers</code>, and <code>get_sync_runs</code></dd>
+            <dt>Where</dt><dd>The two reports that call <code>get_connection()</code> directly: <code>get_related_video_referrers</code> (<code>database/related_videos.py</code>) and <code>get_sync_runs</code> (<code>database/sync_runs.py</code>)</dd>
             <dt>Cost</dt><dd>Closing depends on the connection object being freed, not on the <code>with</code> block ending.</dd>
           </dl>
         </article>
@@ -117,7 +117,7 @@
           <div class="dup-head"><h3>Substring title search</h3><span class="dup-count">per filtered request</span></div>
           <p>The title filter is <code>v.title LIKE '%…%' OR v.id LIKE '%…%'</code>.</p>
           <dl>
-            <dt>Where</dt><dd>11 reads in <code>backend/database/</code>: 6 <code>queries.py</code> definitions through <code>_video_conditions()</code>, and 5 report functions</dd>
+            <dt>Where</dt><dd>11 reads in <code>backend/database/</code>: 9 <code>queries.py</code> definitions through <code>_video_conditions()</code>, and 2 report functions</dd>
             <dt>Cost</dt><dd>A leading <code>%</code> cannot use an index, so every video row is scanned. Small at the current table size.</dd>
           </dl>
         </article>

@@ -53,7 +53,7 @@
       <h1>Repeated code</h1>
       <p>This page shows code written more than once in the backend and frontend.</p>
       <div class="meta-line">
-        <span>Source revision <code>a731fb1</code></span>
+        <span>Source revision <code>ab9b0f4</code></span>
       </div>
     </header>
 
@@ -62,11 +62,11 @@
       <div class="dup-list">
 
         <article class="dup">
-          <div class="dup-head"><h3>Video filter conditions</h3><span class="dup-count">×6</span></div>
-          <p>Functions that build their own <code>WHERE</code> list for the same video filters, one <code>if</code> per filter. The 10 shared SQL definitions in <code>database/queries.py</code> all use one copy, <code>_video_conditions()</code>; the reports that calculate results in Python still build their own.</p>
+          <div class="dup-head"><h3>Video filter conditions</h3><span class="dup-count">×3</span></div>
+          <p>Functions that build their own <code>WHERE</code> list for the same video filters, one <code>if</code> per filter. The 15 shared SQL definitions in <code>database/queries.py</code> all use one copy, <code>_video_conditions()</code>; the two reports that calculate results in Python still build their own.</p>
           <dl>
-            <dt>Where</dt><dd><code>database/</code>: <code>queries.py</code> (<code>_video_conditions</code>), <code>analytics.py</code>, <code>traffic_sources.py</code> (2), <code>related_videos.py</code>, <code>video_statistics.py</code></dd>
-            <dt>Differs</dt><dd>Only the date column (<code>va.date</code>, <code>vts.date</code>, month bounds); <code>video_statistics.py</code> keeps its video scope separate from the other filters.</dd>
+            <dt>Where</dt><dd><code>database/</code>: <code>queries.py</code> (<code>_video_conditions</code>), <code>related_videos.py</code>, <code>video_statistics.py</code></dd>
+            <dt>Differs</dt><dd>The date conditions (month bounds in <code>related_videos.py</code>, publish and analytics dates in <code>video_statistics.py</code>); <code>video_statistics.py</code> keeps its video scope separate from the other filters.</dd>
           </dl>
 <pre><code>if content_type:
     conditions.append("v.content_type = ?")
@@ -99,20 +99,11 @@ if title:
         </article>
 
         <article class="dup">
-          <div class="dup-head"><h3>Empty video-scope guard</h3><span class="dup-count">×5</span></div>
+          <div class="dup-head"><h3>Empty video-scope guard</h3><span class="dup-count">×2</span></div>
           <p>Report functions taking <code>video_ids</code> copy the same opening: turn it into a list, return an empty result if it is empty, and later add <code>v.id IN (?, ?, …)</code>. The <code>database/queries.py</code> definitions handle an empty list once, inside <code>_video_conditions()</code>.</p>
           <dl>
-            <dt>Where</dt><dd><code>database/</code>: <code>analytics.py</code>, <code>traffic_sources.py</code> (2), <code>related_videos.py</code>, <code>video_statistics.py</code></dd>
+            <dt>Where</dt><dd><code>database/</code>: <code>related_videos.py</code>, <code>video_statistics.py</code></dd>
             <dt>Differs</dt><dd>The empty value each returns; <code>get_video_stats</code> returns zeroed statistics and also drops duplicate IDs.</dd>
-          </dl>
-        </article>
-
-        <article class="dup">
-          <div class="dup-head"><h3>Sync-run status updates</h3><span class="dup-count">×3</span></div>
-          <p>Three functions run the same <code>UPDATE sync_runs SET status, completed_at, rows_*</code> statement.</p>
-          <dl>
-            <dt>Where</dt><dd><code>database/sync_runs.py</code>: <code>complete_sync_run</code>, <code>fail_sync_run</code>, <code>cancel_sync_run</code></dd>
-            <dt>Differs</dt><dd>The status value; <code>fail_sync_run</code> also sets <code>error_message</code>.</dd>
           </dl>
         </article>
 
@@ -131,15 +122,6 @@ if title:
           <dl>
             <dt>Where</dt><dd><code>sync/stages.py</code>: <code>sync_search_insights</code>, <code>sync_related_video_insights</code></dd>
             <dt>Differs</dt><dd>Fetcher, writer, and the related stage collects referrer IDs to resolve afterwards.</dd>
-          </dl>
-        </article>
-
-        <article class="dup">
-          <div class="dup-head"><h3>Zero-fill helpers</h3><span class="dup-count">×2</span></div>
-          <p>Walk every date in the range, add a zero row for each missing key, then trim trailing dates that had no real data.</p>
-          <dl>
-            <dt>Where</dt><dd><code>_zero_fill_analytics</code> in <code>database/analytics.py</code>, <code>_zero_fill_traffic_sources</code> in <code>database/traffic_sources.py</code></dd>
-            <dt>Differs</dt><dd>The second key (<code>content_type</code> vs <code>traffic_source_type</code>) and how the zero row is built.</dd>
           </dl>
         </article>
 

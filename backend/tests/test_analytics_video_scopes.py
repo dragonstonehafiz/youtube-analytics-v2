@@ -6,9 +6,9 @@ from unittest import mock
 
 from fastapi import HTTPException
 
-import database
 from database import Playlist, PlaylistItem, Video, VideoAnalytics, VideoTrafficSource, writer
 from database import Video, queries, reader
+from routes.analytics import _analytics_totals, _traffic_source_top_videos, _traffic_source_totals
 from routes.analytics import router as analytics_router
 from routes.video_scope import require_playlist, resolve_playlist_video_ids
 from tests.support import FIXED_NOW, IsolatedDatabaseTestCase, create_test_client
@@ -123,36 +123,36 @@ class PlaylistVideoIdsTest(VideoScopeTestCase):
 
 class AggregatedAnalyticsScopeTest(VideoScopeTestCase):
     def test_omitted_scope_covers_every_video(self) -> None:
-        rows = database.get_aggregated_analytics(start_date=START_DATE, end_date=END_DATE)
+        rows = _analytics_totals(start_date=START_DATE, end_date=END_DATE)
         self.assertEqual(sum(row["views"] for row in rows), 650)
 
     def test_populated_scope_limits_aggregation(self) -> None:
-        rows = database.get_aggregated_analytics(start_date=START_DATE, end_date=END_DATE, video_ids=["v-a", "v-b"])
+        rows = _analytics_totals(start_date=START_DATE, end_date=END_DATE, video_ids=["v-a", "v-b"])
         self.assertEqual(sum(row["views"] for row in rows), 500)
 
     def test_single_id_scope_matches_that_video_only(self) -> None:
-        rows = database.get_aggregated_analytics(start_date=START_DATE, end_date=END_DATE, video_ids=["v-c"])
+        rows = _analytics_totals(start_date=START_DATE, end_date=END_DATE, video_ids=["v-c"])
         self.assertEqual(sum(row["views"] for row in rows), 100)
 
     def test_empty_scope_returns_empty_list(self) -> None:
-        self.assertEqual(database.get_aggregated_analytics(start_date=START_DATE, end_date=END_DATE, video_ids=[]), [])
+        self.assertEqual(_analytics_totals(start_date=START_DATE, end_date=END_DATE, video_ids=[]), [])
 
     def test_scope_accepts_a_set(self) -> None:
-        rows = database.get_aggregated_analytics(start_date=START_DATE, end_date=END_DATE, video_ids={"v-a", "v-b"})
+        rows = _analytics_totals(start_date=START_DATE, end_date=END_DATE, video_ids={"v-a", "v-b"})
         self.assertEqual(sum(row["views"] for row in rows), 500)
 
     def test_scope_composes_with_content_type_and_privacy_filters(self) -> None:
-        rows = database.get_aggregated_analytics(
+        rows = _analytics_totals(
             start_date=START_DATE, end_date=END_DATE, content_type="video", privacy_status="public", video_ids=["v-a", "v-b"],
         )
         self.assertEqual(sum(row["views"] for row in rows), 300)
 
     def test_scope_composes_with_title_filter(self) -> None:
-        rows = database.get_aggregated_analytics(start_date=START_DATE, end_date=END_DATE, title="Episode", video_ids=["v-a", "v-c"])
+        rows = _analytics_totals(start_date=START_DATE, end_date=END_DATE, title="Episode", video_ids=["v-a", "v-c"])
         self.assertEqual(sum(row["views"] for row in rows), 300)
 
     def test_zero_fill_shape_is_preserved_under_scope(self) -> None:
-        rows = database.get_aggregated_analytics(start_date=START_DATE, end_date=END_DATE, video_ids=["v-a", "v-b"])
+        rows = _analytics_totals(start_date=START_DATE, end_date=END_DATE, video_ids=["v-a", "v-b"])
         self.assertEqual([row["date"] for row in rows[:2]], ["2024-01-01", "2024-01-01"])
         self.assertEqual({row["content_type"] for row in rows}, {"video", "short"})
         self.assertEqual(rows[-1]["date"], "2024-01-05")
@@ -188,29 +188,29 @@ class TopVideosByViewsScopeTest(VideoScopeTestCase):
 
 class AggregatedTrafficSourcesScopeTest(VideoScopeTestCase):
     def test_omitted_scope_covers_every_video(self) -> None:
-        rows = database.get_aggregated_traffic_sources(start_date=START_DATE, end_date=END_DATE)
+        rows = _traffic_source_totals(start_date=START_DATE, end_date=END_DATE)
         self.assertEqual(sum(row["views"] for row in rows), 1300)
 
     def test_populated_scope_limits_aggregation(self) -> None:
-        rows = database.get_aggregated_traffic_sources(start_date=START_DATE, end_date=END_DATE, video_ids=["v-a", "v-b"])
+        rows = _traffic_source_totals(start_date=START_DATE, end_date=END_DATE, video_ids=["v-a", "v-b"])
         self.assertEqual(sum(row["views"] for row in rows), 1000)
 
     def test_empty_scope_returns_empty_list(self) -> None:
-        self.assertEqual(database.get_aggregated_traffic_sources(start_date=START_DATE, end_date=END_DATE, video_ids=[]), [])
+        self.assertEqual(_traffic_source_totals(start_date=START_DATE, end_date=END_DATE, video_ids=[]), [])
 
     def test_scope_composes_with_filters(self) -> None:
-        rows = database.get_aggregated_traffic_sources(
+        rows = _traffic_source_totals(
             start_date=START_DATE, end_date=END_DATE, content_type="video", privacy_status="public",
             title="Alpha", video_ids=["v-a", "v-b"],
         )
         self.assertEqual(sum(row["views"] for row in rows), 600)
 
     def test_source_types_are_preserved_under_scope(self) -> None:
-        rows = database.get_aggregated_traffic_sources(start_date=START_DATE, end_date=END_DATE, video_ids=["v-a"])
+        rows = _traffic_source_totals(start_date=START_DATE, end_date=END_DATE, video_ids=["v-a"])
         self.assertEqual({row["traffic_source_type"] for row in rows}, {"SEARCH", "SUGGESTED"})
 
     def test_zero_fill_shape_is_preserved_under_scope(self) -> None:
-        rows = database.get_aggregated_traffic_sources(start_date=START_DATE, end_date=END_DATE, video_ids=["v-a", "v-b"])
+        rows = _traffic_source_totals(start_date=START_DATE, end_date=END_DATE, video_ids=["v-a", "v-b"])
         self.assertEqual([row["date"] for row in rows[:2]], ["2024-01-01", "2024-01-01"])
         self.assertEqual({row["traffic_source_type"] for row in rows}, {"SEARCH", "SUGGESTED"})
         self.assertEqual(rows[-1]["date"], "2024-01-05")
@@ -218,26 +218,39 @@ class AggregatedTrafficSourcesScopeTest(VideoScopeTestCase):
 
 class TopVideosByTrafficSourceScopeTest(VideoScopeTestCase):
     def test_omitted_scope_covers_every_video(self) -> None:
-        grouped = database.get_top_videos_by_traffic_source(start_date=START_DATE, end_date=END_DATE)
-        # The helper's own default limit is 3, so v-d (lowest views) is truncated here.
-        self.assertEqual([row["id"] for row in grouped["SEARCH"]], ["v-a", "v-b", "v-c"])
+        grouped = _traffic_source_top_videos(start_date=START_DATE, end_date=END_DATE)
+        self.assertEqual([row["id"] for row in grouped["SEARCH"]], ["v-a", "v-b", "v-c", "v-d"])
 
     def test_populated_scope_limits_every_source_bucket(self) -> None:
-        grouped = database.get_top_videos_by_traffic_source(start_date=START_DATE, end_date=END_DATE, video_ids=["v-b", "v-c"])
+        grouped = _traffic_source_top_videos(start_date=START_DATE, end_date=END_DATE, video_ids=["v-b", "v-c"])
         for source_type in ("SEARCH", "SUGGESTED"):
             self.assertEqual([row["id"] for row in grouped[source_type]], ["v-b", "v-c"])
 
     def test_empty_scope_returns_empty_dict(self) -> None:
-        self.assertEqual(database.get_top_videos_by_traffic_source(start_date=START_DATE, end_date=END_DATE, video_ids=[]), {})
+        self.assertEqual(_traffic_source_top_videos(start_date=START_DATE, end_date=END_DATE, video_ids=[]), {})
 
     def test_limit_applies_per_source_within_scope(self) -> None:
-        grouped = database.get_top_videos_by_traffic_source(start_date=START_DATE, end_date=END_DATE, limit=1, video_ids=["v-a", "v-b"])
+        rows = reader.fetch_joined(queries.traffic_source_video_totals(
+            start_date=START_DATE, end_date=END_DATE, video_ids=["v-a", "v-b"],
+        ), (VideoTrafficSource, Video))
+        grouped = reader.group_by(rows, (VideoTrafficSource, "traffic_source_type"), limit=1)
         self.assertEqual(set(grouped), {"SEARCH", "SUGGESTED"})
         for bucket in grouped.values():
-            self.assertEqual([row["id"] for row in bucket], ["v-a"])
+            self.assertEqual([row[Video].id for row in bucket], ["v-a"])
+
+    def test_the_route_keeps_ten_videos_per_source(self) -> None:
+        for index in range(12):
+            video_id = f"v-extra-{index:02d}"
+            writer.write(Video(id=video_id, title="Extra", content_type="video", own=True, updated_at=FIXED_NOW))
+            writer.write(VideoTrafficSource(
+                video_id=video_id, date="2024-01-07", traffic_source_type="SEARCH", views=1, updated_at=FIXED_NOW,
+            ))
+        grouped = _traffic_source_top_videos(start_date=START_DATE, end_date=END_DATE)
+        self.assertEqual(len(grouped["SEARCH"]), 10)
+        self.assertEqual(len(grouped["SUGGESTED"]), 4)
 
     def test_scope_composes_with_filters(self) -> None:
-        grouped = database.get_top_videos_by_traffic_source(
+        grouped = _traffic_source_top_videos(
             start_date=START_DATE, end_date=END_DATE, content_type="video", privacy_status="private",
             title="Episode", video_ids=["v-a", "v-b"],
         )
@@ -247,7 +260,7 @@ class TopVideosByTrafficSourceScopeTest(VideoScopeTestCase):
 class PlaylistRouteScopeTest(VideoScopeTestCase):
     def test_aggregated_analytics_matches_scoped_helper(self) -> None:
         body = self._get("/analytics/playlists/p-full", **DATE_RANGE)
-        self.assertEqual(body["items"], database.get_aggregated_analytics(start_date=START_DATE, end_date=END_DATE, video_ids=["v-a", "v-b"]))
+        self.assertEqual(body["items"], _analytics_totals(start_date=START_DATE, end_date=END_DATE, video_ids=["v-a", "v-b"]))
 
     def test_duplicate_membership_does_not_inflate_totals(self) -> None:
         """v-a appears twice in p-full; its 300 views must be counted once."""
@@ -266,13 +279,13 @@ class PlaylistRouteScopeTest(VideoScopeTestCase):
 
     def test_traffic_sources_matches_scoped_helper(self) -> None:
         body = self._get("/analytics/playlists/p-full/traffic-sources", **DATE_RANGE)
-        expected = database.get_aggregated_traffic_sources(start_date=START_DATE, end_date=END_DATE, video_ids=["v-a", "v-b"])
+        expected = _traffic_source_totals(start_date=START_DATE, end_date=END_DATE, video_ids=["v-a", "v-b"])
         self.assertEqual(body["items"], expected)
         self.assertEqual(sum(row["views"] for row in body["items"]), 1000)
 
     def test_traffic_source_top_videos_matches_scoped_helper(self) -> None:
         body = self._get("/analytics/playlists/p-full/traffic-sources/top", **DATE_RANGE)
-        expected = database.get_top_videos_by_traffic_source(start_date=START_DATE, end_date=END_DATE, limit=10, video_ids=["v-a", "v-b"])
+        expected = _traffic_source_top_videos(start_date=START_DATE, end_date=END_DATE, video_ids=["v-a", "v-b"])
         self.assertEqual(body["items"], expected)
         self.assertEqual([row["id"] for row in body["items"]["SEARCH"]], ["v-a", "v-b"])
 
@@ -297,7 +310,7 @@ class FilteredPlaylistParityTest(VideoScopeTestCase):
 
     def test_aggregated_analytics_matches_scoped_helper_under_all_filters(self) -> None:
         body = self._get("/analytics/playlists/p-full", **DATE_RANGE, **self.FILTERS)
-        expected = database.get_aggregated_analytics(
+        expected = _analytics_totals(
             start_date=START_DATE, end_date=END_DATE, content_type=self.CONTENT_TYPE,
             privacy_status=self.PRIVACY_STATUS, title=self.TITLE, video_ids=self.MEMBERS,
         )
@@ -327,7 +340,7 @@ class FilteredPlaylistParityTest(VideoScopeTestCase):
 
     def test_traffic_sources_matches_scoped_helper_under_all_filters(self) -> None:
         body = self._get("/analytics/playlists/p-full/traffic-sources", **DATE_RANGE, **self.FILTERS)
-        expected = database.get_aggregated_traffic_sources(
+        expected = _traffic_source_totals(
             start_date=START_DATE, end_date=END_DATE, content_type=self.CONTENT_TYPE,
             privacy_status=self.PRIVACY_STATUS, title=self.TITLE, video_ids=self.MEMBERS,
         )
@@ -340,9 +353,9 @@ class FilteredPlaylistParityTest(VideoScopeTestCase):
 
     def test_traffic_source_top_videos_matches_scoped_helper_under_all_filters(self) -> None:
         body = self._get("/analytics/playlists/p-full/traffic-sources/top", **DATE_RANGE, **self.FILTERS)
-        expected = database.get_top_videos_by_traffic_source(
+        expected = _traffic_source_top_videos(
             start_date=START_DATE, end_date=END_DATE, content_type=self.CONTENT_TYPE,
-            privacy_status=self.PRIVACY_STATUS, limit=10, title=self.TITLE, video_ids=self.MEMBERS,
+            privacy_status=self.PRIVACY_STATUS, title=self.TITLE, video_ids=self.MEMBERS,
         )
         self.assertEqual(body["items"], expected)
         for bucket in body["items"].values():
