@@ -58,7 +58,7 @@
       <h1>Overview</h1>
       <p>This page shows how data moves from the browser to the database, and from YouTube into the database.</p>
       <div class="meta-line">
-        <span>Source revision <code>926f014</code></span>
+        <span>Source revision <code>a731fb1</code></span>
       </div>
     </header>
 
@@ -113,7 +113,7 @@
           <g class="node route"><rect x="215" y="280" width="160" height="60" rx="8"/><text class="title" x="295" y="306" text-anchor="middle">/sync/trigger</text><text class="sub" x="295" y="324" text-anchor="middle">validate + reserve</text></g>
           <g class="node sync"><rect x="410" y="280" width="160" height="60" rx="8"/><text class="title" x="490" y="306" text-anchor="middle">execute_plan</text><text class="sub" x="490" y="324" text-anchor="middle">background task</text></g>
           <g class="node sync"><rect x="605" y="280" width="160" height="60" rx="8"/><text class="title" x="685" y="306" text-anchor="middle">sync stages</text><text class="sub" x="685" y="324" text-anchor="middle">serial + 2 workers</text></g>
-          <g class="node db"><rect x="800" y="280" width="160" height="60" rx="8"/><text class="title" x="880" y="306" text-anchor="middle">database upserts</text><text class="sub" x="880" y="324" text-anchor="middle">+ sync_runs, coverage</text></g>
+          <g class="node db"><rect x="800" y="280" width="160" height="60" rx="8"/><text class="title" x="880" y="306" text-anchor="middle">database writer</text><text class="sub" x="880" y="324" text-anchor="middle">+ sync_runs, coverage</text></g>
           <path class="edge" d="M180,310 L213,310" marker-end="url(#arrow)"/>
           <path class="edge" d="M375,310 L408,310" marker-end="url(#arrow)"/>
           <path class="edge" d="M570,310 L603,310" marker-end="url(#arrow)"/>
@@ -123,7 +123,6 @@
           <path class="edge" d="M685,340 L685,398" marker-end="url(#arrow)" marker-start="url(#arrow)"/>
 
           <g aria-hidden="true">
-            <line class="edge" x1="20" y1="486" x2="960" y2="486"/>
             <g class="node fe"><rect x="20" y="502" width="16" height="16" rx="3"/></g><text class="edge-label" x="42" y="514">Frontend</text>
             <g class="node route"><rect x="120" y="502" width="16" height="16" rx="3"/></g><text class="edge-label" x="142" y="514">Backend API</text>
             <g class="node db"><rect x="240" y="502" width="16" height="16" rx="3"/></g><text class="edge-label" x="262" y="514">Database</text>
@@ -183,7 +182,7 @@
         <div class="flow-arrow" aria-hidden="true"></div>
         <div class="flow-step yt"><strong>5 · Fetch</strong><small>Data API v3, Analytics API v2, or <code>yfinance</code> for FX.</small></div>
         <div class="flow-arrow" aria-hidden="true"></div>
-        <div class="flow-step db"><strong>6 · Write</strong><small>Upserts, one <code>sync_runs</code> row per started stage, <code>sync_coverage</code> months.</small></div>
+        <div class="flow-step db"><strong>6 · Write</strong><small>Each fetched record becomes a data class and goes through <code>writer.write</code>/<code>write_many</code>, as do <code>sync_coverage</code> months; one <code>sync_runs</code> row per started stage.</small></div>
       </div>
       <div class="card-grid">
         <div class="card"><h3>Live status</h3><p>Held in memory in <code>sync/status.py</code>, served by <code>GET /sync/status</code>, polled every 5 s by the top navigation and the Sync page.</p></div>

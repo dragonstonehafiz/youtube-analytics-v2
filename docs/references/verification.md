@@ -109,7 +109,7 @@ The last command should produce no output when the change is genuinely docs-only
 ## Adding a backend route
 
 1. Add the handler in the matching `backend/routes/<resource>.py` (`videos.py`, `playlists.py`, `analytics.py`, `comments.py`, `synchronization.py`, or `metadata.py`).
-2. Read through `database.reader` from the handler: `reader.select()`/`select_one()`/`scalar()` for one table, or a `Query` specification in `backend/database/queries.py` run with `reader.fetch()`/`fetch_joined()` for joins and aggregates. Add a report function to the matching `backend/database/<domain>.py` only when the result needs calculation beyond SQL (see `database.md`'s Row dataclasses and reader), and follow its parameterized-query and table-alias conventions.
+2. Read through `database.reader` from the handler: `reader.select()`/`select_one()`/`scalar()` for one table, or a `Query` specification in `backend/database/queries.py` run with `reader.fetch()`/`fetch_joined()` for joins and aggregates. Add a report function to the matching `backend/database/<domain>.py` only when the result needs calculation beyond SQL (see `database.md`'s Row dataclasses, reader, and writer), and follow its parameterized-query and table-alias conventions.
 3. Update `api.md` with the new route's method, path, params, and response shape.
 4. Run `.venv/Scripts/python.exe -m mypy routes/<resource>.py` plus every changed `database/` file (from `backend/`, using the venv interpreter — see [Backend verification](#backend-verification)).
 

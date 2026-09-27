@@ -12,11 +12,11 @@ import pandas as pd
 from googleapiclient.errors import HttpError
 
 from logging_config import configure_logging, reset_logging
-from database import FxRate, queries
+from database import FxRate, RelatedVideo, VideoAnalytics, VideoTrafficSource, queries
 from sync import stages
 from sync.monthly_insights import MonthlyWindow
 from sync.stages import SyncCounts
-from tests.support import owned_videos, patch_stage_reads
+from tests.support import owned_videos, patch_stage_reads, patch_stage_writes
 from youtube import analytics_api, data_api
 
 # Every test in this module logs through the real `youtube_analytics.sync` logger.
@@ -383,8 +383,7 @@ class VideoAnalyticsStageDetailLoggingTest(unittest.TestCase):
     def test_progress_ordinals_and_logging_cover_only_the_prefiltered_worklist(self) -> None:
         """Verify progress and logs use only the eligible video worklist."""
         self.reads.videos = owned_videos("v1", title="Eligible Video", published_at="2020-01-01T00:00:00Z")
-        mock.patch("sync.stages.database.upsert_coverage").start()
-        mock.patch("sync.stages.database.upsert_video_analytics").start()
+        writes = patch_stage_writes()
         mock.patch("sync.stages.youtube.iter_video_analytics", return_value=iter([])).start()
         counts = SyncCounts()
 
@@ -396,8 +395,7 @@ class VideoAnalyticsStageDetailLoggingTest(unittest.TestCase):
 
     def test_video_processed_logs_its_own_row_count_only(self) -> None:
         self.reads.videos = owned_videos("v1", title="Sample Video", published_at="2020-01-01T00:00:00Z")
-        mock.patch("sync.stages.database.upsert_coverage").start()
-        upsert_mock = mock.patch("sync.stages.database.upsert_video_analytics").start()
+        writes = patch_stage_writes()
         rows = [{"video_id": "v1", "date": "2020-01-01"}, {"video_id": "v1", "date": "2020-01-02"}]
         mock.patch("sync.stages.youtube.iter_video_analytics", return_value=iter(rows)).start()
         counts = SyncCounts()
@@ -409,12 +407,11 @@ class VideoAnalyticsStageDetailLoggingTest(unittest.TestCase):
         self.assertEqual(messages, ["video_analytics 1/1 video=v1 rows=2 title='Sample Video'"])
         self.assertEqual(counts.rows_fetched, 2)
         self.assertEqual(counts.rows_written, 2)
-        self.assertEqual(upsert_mock.call_count, 2)
+        self.assertEqual(len(writes.of(VideoAnalytics)), 2)
 
     def test_no_record_per_row_only_one_per_video(self) -> None:
         self.reads.videos = owned_videos("v1", title="Sample Video", published_at="2020-01-01T00:00:00Z")
-        mock.patch("sync.stages.database.upsert_coverage").start()
-        mock.patch("sync.stages.database.upsert_video_analytics").start()
+        writes = patch_stage_writes()
         rows = [{"video_id": "v1", "date": f"2020-01-{i:02d}"} for i in range(1, 11)]
         mock.patch("sync.stages.youtube.iter_video_analytics", return_value=iter(rows)).start()
         counts = SyncCounts()
@@ -480,8 +477,7 @@ class VideoTrafficSourcesStageDetailLoggingTest(unittest.TestCase):
 
     def test_video_processed_logs_its_own_row_count_only(self) -> None:
         self.reads.videos = owned_videos("v1", title="Sample Video", published_at="2020-01-01T00:00:00Z")
-        mock.patch("sync.stages.database.upsert_coverage").start()
-        upsert_mock = mock.patch("sync.stages.database.upsert_video_traffic_source").start()
+        writes = patch_stage_writes()
         rows = [{"video_id": "v1", "date": "2020-01-01", "traffic_source_type": "YT_SEARCH"}]
         mock.patch("sync.stages.youtube.iter_video_traffic_sources", return_value=iter(rows)).start()
         counts = SyncCounts()
@@ -492,7 +488,7 @@ class VideoTrafficSourcesStageDetailLoggingTest(unittest.TestCase):
         messages = [record.getMessage() for record in captured.records]
         self.assertEqual(messages, ["video_traffic_sources 1/1 video=v1 rows=1 title='Sample Video'"])
         self.assertEqual(counts.rows_fetched, 1)
-        self.assertEqual(upsert_mock.call_count, 1)
+        self.assertEqual(len(writes.of(VideoTrafficSource)), 1)
 
 
 class RelatedVideoInsightsStageDetailLoggingTest(unittest.TestCase):
@@ -564,8 +560,7 @@ class RelatedVideoInsightsStageDetailLoggingTest(unittest.TestCase):
             return_value=[MonthlyWindow("2020-01", "2020-01-01", "2020-01-07")],
         ).start()
         self.reads.videos = owned_videos("v1", title="Sample Video", published_at="2020-01-01T00:00:00Z")
-        mock.patch("sync.stages.database.upsert_coverage").start()
-        upsert_mock = mock.patch("sync.stages.database.upsert_related_videos", return_value=1).start()
+        writes = patch_stage_writes()
         result = analytics_api.RelatedVideosResult(
             raw_row_count=1, referrers=[{"referrer_video_id": "ref-1", "views": 5}]
         )
@@ -581,7 +576,9 @@ class RelatedVideoInsightsStageDetailLoggingTest(unittest.TestCase):
         messages = [record.getMessage() for record in captured.records]
         self.assertEqual(messages[0], "related_video_insights 1/1 video=v1 months=1 rows=1 title='Sample Video'")
         self.assertEqual(counts.rows_fetched, 1)
-        upsert_mock.assert_called_once_with("v1", "2020-01", [{"referrer_video_id": "ref-1", "views": 5}])
+        self.assertEqual(writes.of(RelatedVideo), [
+            RelatedVideo(target_video_id="v1", month="2020-01", referrer_video_id="ref-1", views=5, updated_at=mock.ANY),
+        ])
 
     def test_no_record_per_month_only_one_per_video(self) -> None:
         mock.patch(
@@ -592,8 +589,7 @@ class RelatedVideoInsightsStageDetailLoggingTest(unittest.TestCase):
             ],
         ).start()
         self.reads.videos = owned_videos("v1", title="Sample Video", published_at="2020-01-01T00:00:00Z")
-        mock.patch("sync.stages.database.upsert_coverage").start()
-        mock.patch("sync.stages.database.upsert_related_videos", return_value=0).start()
+        writes = patch_stage_writes()
         mock.patch(
             "sync.stages.youtube.fetch_video_related_videos",
             return_value=analytics_api.RelatedVideosResult(raw_row_count=0, referrers=[]),
@@ -634,14 +630,15 @@ class FxRatesDetailLoggingTest(unittest.TestCase):
             index=pd.to_datetime([day1.isoformat(), day2.isoformat()]),
         )
 
+        writes = patch_stage_writes()
+        self.addCleanup(mock.patch.stopall)
         with mock.patch("sync.stages.reader.select_one", return_value=last_rate), \
-                mock.patch("sync.stages.database.upsert_fx_rate") as upsert_mock, \
                 mock.patch("yfinance.download", return_value=df):
             counts = SyncCounts()
             with self.assertLogs("youtube_analytics.sync", level="DEBUG") as captured:
                 stages.sync_fx_rates(counts)
 
-        self.assertEqual(upsert_mock.call_count, 2)
+        self.assertEqual(len(writes.of(FxRate)), 2)
         messages = [record.getMessage() for record in captured.records]
         self.assertEqual(len(messages), 1)
         self.assertIn("days_written=2", messages[0])

@@ -45,9 +45,10 @@
     <ol>
       <li><a href="#storage">Storage</a></li>
       <li><a href="#rows">Row objects</a></li>
-      <li><a href="#registry">How the reader finds a table</a></li>
+      <li><a href="#registry">How the reader and writer find a table</a></li>
       <li><a href="#aggregates">Aggregates</a></li>
       <li><a href="#api-shape">From a stored row to JSON</a></li>
+      <li><a href="#writes">Writing a row</a></li>
       <li><a href="#boundaries">Who reads and writes the database</a></li>
       <li><a href="#connections">Database connections</a></li>
     </ol>
@@ -56,9 +57,9 @@
   <main>
     <header class="hero">
       <h1>Data storage and access</h1>
-      <p>This page shows where the data lives, how the backend reads it into Python objects, and how those objects become the JSON the frontend receives.</p>
+      <p>This page shows where the data lives, how the backend reads it into Python objects and writes those objects back, and how read results become the JSON the frontend receives.</p>
       <div class="meta-line">
-        <span>Source revision <code>926f014</code></span>
+        <span>Source revision <code>a731fb1</code></span>
       </div>
     </header>
 
@@ -155,7 +156,7 @@
 
     <section id="rows">
       <h2>Row objects</h2>
-      <p>Each table has one plain Python data class in <code>backend/database/dataclasses/</code>. Its fields are the table's columns in the same order, and every field defaults to <code>None</code>, because a read may select only some columns. The classes only hold values; the one thing they can do is turn themselves into a dictionary with <code>to_dict()</code>. They cannot run a query and know nothing about tables or connections.</p>
+      <p>Each table has one plain Python data class in <code>backend/database/dataclasses/</code>. Its fields are the table's columns in the same order, and every field defaults to <code>None</code>, because a read may select only some columns. The classes only hold values. The two things they can do are turn themselves into a dictionary with <code>to_dict()</code> and be built from one with <code>from_dict()</code>. They cannot run a query and know nothing about tables or connections.</p>
       <span class="code-label">backend/database/dataclasses/videos.py (abridged)</span>
 <pre class="code"><code>@dataclass
 class Video(Row):
@@ -188,15 +189,10 @@ class Video(Row):
     </section>
 
     <section id="registry">
-      <h2>How the reader finds a table</h2>
-      <p><code>backend/database/reader.py</code> holds an explicit list pairing each row class with its table. The class name is never used to guess a table name.</p>
-<pre class="code"><code>TABLES = {
-    Video: "videos",
-    Playlist: "playlists",
-    PlaylistItem: "playlist_items",
-    ...
-    SyncRun: "sync_runs",
-}</code></pre>
+      <h2>How the reader and writer find a table</h2>
+      <p><code>backend/database/tables.py</code> holds explicit lists pairing each row class with its table and with the columns that identify one row. The reader and the writer both use them, and a class name is never used to guess a table name.</p>
+<pre class="code"><code>TABLES = {Video: "videos", VideoAnalytics: "video_analytics", ..., SyncRun: "sync_runs"}
+KEYS = {Video: ("id",), VideoAnalytics: ("video_id", "date"), ..., SyncRun: ("id",)}</code></pre>
       <div class="flow">
         <div class="flow-step route"><strong>Caller asks</strong><small><code>select(Video, ("id", "title"), where=[("own", "=", True)])</code></small></div>
         <div class="flow-arrow" aria-hidden="true"></div>
@@ -206,7 +202,7 @@ class Video(Row):
         <div class="flow-arrow" aria-hidden="true"></div>
         <div class="flow-step db"><strong>Bind values</strong><small><code>SELECT "id", "title" FROM videos WHERE "own" = ?</code> with <code>True</code> bound to <code>?</code></small></div>
       </div>
-      <p>Column and table names in the SQL come only from this list and the data class fields; a request string never becomes part of the SQL. Every value, including one with quotes in it, is passed separately as a bound parameter. A test compares the list and every class's fields with the real schema, so a missing or misspelled column fails the test suite.</p>
+      <p>Column and table names in the SQL come only from these lists and the data class fields; a request string never becomes part of the SQL. Every value, including one with quotes in it, is passed separately as a bound parameter. Tests compare the lists and every class's fields with the real schema, including each table's primary key, so a missing or misspelled column fails the test suite.</p>
     </section>
 
     <section id="aggregates">
@@ -266,13 +262,59 @@ Video(id="v-1", title="Alpha Video", published_at="2024-01-01T00:00:00Z", thumbn
       <div class="note"><p>Passing the field list to <code>to_dict()</code> keeps the response to the columns the route read. A listed field that is <code>None</code> is still sent as <code>null</code>, and a name that isn't a field is an error. <code>to_dict()</code> with no list returns every field, so a route uses that form only when it selected every column.</p></div>
     </section>
 
+    <section id="writes">
+      <h2>Writing a row</h2>
+      <p>Sync writes every fetched record through <code>backend/database/writer.py</code>. One video's trip from the YouTube API into <code>videos</code>:</p>
+
+      <h3>1 · Fetched from YouTube</h3>
+      <p>The API client returns a plain dictionary. Its <code>content_type</code> is <code>None</code> because Shorts detection happens later in the stage.</p>
+<pre class="code"><code>{"id": "v-1", "title": "Alpha Video", "description": "", "view_count": 120, "content_type": None, ...}</code></pre>
+
+      <h3>2 · Turned into a <code>Video</code></h3>
+      <p>The stage adds the two fields it decides itself, ownership and the timestamp, and builds the row with <code>from_dict()</code>. An unknown key is an error.</p>
+<pre class="code"><code>video = Video.from_dict({**video_data, "own": True, "updated_at": now()})</code></pre>
+
+      <h3>3 · Written</h3>
+      <p><code>writer.write(video)</code> looks up the key from <code>KEYS</code>, updates the row with that key, and inserts it only if no row matched. Fields that are <code>None</code> are left out of both statements.</p>
+<pre class="code"><code>UPDATE videos SET "title" = ?, "description" = ?, "view_count" = ?, "own" = MAX("own", ?), "updated_at" = ? WHERE "id" = ?
+INSERT INTO videos ("id", "title", ...) VALUES (?, ?, ...)   -- only when the UPDATE matched nothing</code></pre>
+
+      <div class="table-wrap fixed-table">
+        <table>
+          <caption>What happens to each column when the video above is written over an existing row</caption>
+          <colgroup><col class="col-mid"><col class="col-mid"><col class="col-mid"><col></colgroup>
+          <thead><tr><th>Column</th><th>Stored before</th><th>Incoming</th><th>Stored after</th></tr></thead>
+          <tbody>
+            <tr><td><code>title</code></td><td><code>'Alpha'</code></td><td><code>"Alpha Video"</code></td><td><code>'Alpha Video'</code></td></tr>
+            <tr><td><code>description</code></td><td><code>'Old text'</code></td><td><code>""</code></td><td><code>''</code> — an empty string is a real value</td></tr>
+            <tr><td><code>view_count</code></td><td><code>100</code></td><td><code>120</code></td><td><code>120</code></td></tr>
+            <tr><td><code>content_type</code></td><td><code>'short'</code></td><td><code>None</code></td><td><code>'short'</code> — <code>None</code> keeps the stored value</td></tr>
+            <tr><td><code>own</code></td><td><code>0</code> — first stored as another channel's referrer</td><td><code>True</code></td><td><code>1</code> — ownership can go up, never down</td></tr>
+            <tr><td><code>updated_at</code></td><td>last sync</td><td><code>now()</code></td><td>this sync</td></tr>
+          </tbody>
+        </table>
+      </div>
+
+      <h3>Several rows at once</h3>
+      <p>A month of search terms is validated and summed by <code>sync/write_preparation.py</code>, which returns <code>SearchTerm</code> rows without touching the database, then written in one call. The call is all-or-nothing: if any row fails, none of that month is stored.</p>
+<pre class="code"><code>rows = search_term_rows(video_id, "2024-03", result.terms, updated_at=now())
+written = writer.write_many(rows)   # rows processed, added to the stage's rows_written</code></pre>
+
+      <div class="card-grid">
+        <div class="card"><h3>New rows</h3><p>A row for a new key needs every column the schema requires. Columns left <code>None</code> get their schema default, such as <code>own = 1</code> or a comment's <code>like_count = 0</code>. A missing required column fails the write; the writer never makes up a value.</p></div>
+        <div class="card"><h3>Existing rows</h3><p>A partial row, such as <code>Video(id="v-1", view_count=7)</code>, updates just those columns on a row that already exists, even though it couldn't create one.</p></div>
+        <div class="card"><h3>Timestamps</h3><p>The writer never sets <code>updated_at</code> or <code>completed_at</code>. Sync passes <code>now()</code> on every row it writes, so each sync refreshes them even when nothing else changed.</p></div>
+        <div class="card"><h3>Transactions</h3><p>Each call opens its own connection, takes SQLite's write lock before deciding between update and insert, commits on success and rolls back on any error. A stage writes each streamed row in its own call, so a failure mid-stage keeps the rows already written.</p></div>
+      </div>
+    </section>
+
     <section id="boundaries">
       <h2>Who reads and writes the database</h2>
-      <p>Routes and sync don't run SQL themselves. Routes call the reader or a report function; sync calls the reader and the write helpers.</p>
+      <p>Routes and sync don't run SQL themselves. Routes call the reader or a report function; sync calls the reader, the writer, and the delete and sync-run functions.</p>
       <figure class="diagram">
-        <svg viewBox="0 0 900 420" role="img" aria-labelledby="bound-title bound-desc">
+        <svg viewBox="0 0 900 470" role="img" aria-labelledby="bound-title bound-desc">
           <title id="bound-title">Who reads and writes the database</title>
-          <desc id="bound-desc">routes/ calls report functions, reader.py and queries.py. sync/ calls reader.py, queries.py and the write helpers. Report functions, reader.py and the write helpers read or write SQLite. queries.py only builds SQL and does not touch SQLite.</desc>
+          <desc id="bound-desc">routes/ calls report functions, reader.py and queries.py. sync/ calls reader.py, queries.py, writer.py, and the delete and sync-run functions. Report functions, reader.py, writer.py, and the delete and sync-run functions read or write SQLite. queries.py only builds SQL and does not touch SQLite.</desc>
           <defs>
             <marker id="arrow-route" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse">
               <path class="arrowhead route" d="M0,0 L10,5 L0,10 z"/>
@@ -286,44 +328,49 @@ Video(id="v-1", title="Alpha Video", published_at="2024-01-01T00:00:00Z", thumbn
           </defs>
 
           <g class="node route"><rect x="20" y="70" width="150" height="56" rx="8"/><text class="title" x="95" y="94" text-anchor="middle">routes/</text><text class="sub" x="95" y="112" text-anchor="middle">HTTP endpoints</text></g>
-          <g class="node sync"><rect x="20" y="250" width="150" height="56" rx="8"/><text class="title" x="95" y="274" text-anchor="middle">sync/</text><text class="sub" x="95" y="292" text-anchor="middle">sync stages</text></g>
+          <g class="node sync"><rect x="20" y="270" width="150" height="56" rx="8"/><text class="title" x="95" y="294" text-anchor="middle">sync/</text><text class="sub" x="95" y="312" text-anchor="middle">sync stages</text></g>
 
-          <g class="node db"><rect x="330" y="20" width="190" height="56" rx="8"/><text class="title" x="425" y="44" text-anchor="middle">report functions</text><text class="sub" x="425" y="62" text-anchor="middle">finish totals in Python</text></g>
-          <g class="node db"><rect x="330" y="110" width="190" height="56" rx="8"/><text class="title" x="425" y="134" text-anchor="middle">reader.py</text><text class="sub" x="425" y="152" text-anchor="middle">runs every read</text></g>
-          <g class="node db"><rect x="330" y="200" width="190" height="56" rx="8"/><text class="title" x="425" y="224" text-anchor="middle">queries.py</text><text class="sub" x="425" y="242" text-anchor="middle">builds SQL, never runs it</text></g>
-          <g class="node db"><rect x="330" y="290" width="190" height="56" rx="8"/><text class="title" x="425" y="314" text-anchor="middle">write helpers</text><text class="sub" x="425" y="332" text-anchor="middle">upsert_* · delete_*</text></g>
+          <g class="node db"><rect x="330" y="20" width="200" height="56" rx="8"/><text class="title" x="430" y="44" text-anchor="middle">report functions</text><text class="sub" x="430" y="62" text-anchor="middle">finish totals in Python</text></g>
+          <g class="node db"><rect x="330" y="100" width="200" height="56" rx="8"/><text class="title" x="430" y="124" text-anchor="middle">reader.py</text><text class="sub" x="430" y="142" text-anchor="middle">runs every read</text></g>
+          <g class="node db"><rect x="330" y="180" width="200" height="56" rx="8"/><text class="title" x="430" y="204" text-anchor="middle">queries.py</text><text class="sub" x="430" y="222" text-anchor="middle">builds SQL, never runs it</text></g>
+          <g class="node db"><rect x="330" y="260" width="200" height="56" rx="8"/><text class="title" x="430" y="284" text-anchor="middle">writer.py</text><text class="sub" x="430" y="302" text-anchor="middle">every insert and update</text></g>
+          <g class="node db"><rect x="330" y="340" width="200" height="56" rx="8"/><text class="title" x="430" y="364" text-anchor="middle">deletes · sync-run log</text><text class="sub" x="430" y="382" text-anchor="middle">delete_* · *_sync_run</text></g>
 
-          <g class="node"><rect x="700" y="155" width="170" height="56" rx="8"/><text class="title" x="785" y="179" text-anchor="middle">SQLite</text><text class="sub" x="785" y="197" text-anchor="middle">data/youtube.db</text></g>
+          <g class="node"><rect x="710" y="180" width="170" height="56" rx="8"/><text class="title" x="795" y="204" text-anchor="middle">SQLite</text><text class="sub" x="795" y="222" text-anchor="middle">data/youtube.db</text></g>
 
           <path class="edge route" d="M170,86 L328,50" marker-end="url(#arrow-route)"/>
-          <path class="edge route" d="M170,98 L328,136" marker-end="url(#arrow-route)"/>
-          <path class="edge route" d="M170,110 L328,220" marker-end="url(#arrow-route)"/>
-          <path class="edge sync" d="M170,264 L328,146" marker-end="url(#arrow-sync)"/>
-          <path class="edge sync" d="M170,278 L328,234" marker-end="url(#arrow-sync)"/>
-          <path class="edge sync" d="M170,292 L328,316" marker-end="url(#arrow-sync)"/>
+          <path class="edge route" d="M170,98 L328,126" marker-end="url(#arrow-route)"/>
+          <path class="edge route" d="M170,110 L328,200" marker-end="url(#arrow-route)"/>
+          <path class="edge sync" d="M170,280 L328,138" marker-end="url(#arrow-sync)"/>
+          <path class="edge sync" d="M170,290 L328,216" marker-end="url(#arrow-sync)"/>
+          <path class="edge sync" d="M170,300 L328,290" marker-end="url(#arrow-sync)"/>
+          <path class="edge sync" d="M170,312 L328,366" marker-end="url(#arrow-sync)"/>
 
-          <path class="edge" d="M520,48 L698,170" marker-end="url(#arrow-db)"/>
-          <path class="edge" d="M520,138 L698,180" marker-end="url(#arrow-db)"/>
-          <path class="edge" d="M520,318 L698,196" marker-end="url(#arrow-db)"/>
+          <path class="edge" d="M530,48 L708,196" marker-end="url(#arrow-db)"/>
+          <path class="edge" d="M530,128 L708,202" marker-end="url(#arrow-db)"/>
+          <path class="edge" d="M530,288 L708,214" marker-end="url(#arrow-db)"/>
+          <path class="edge" d="M530,368 L708,222" marker-end="url(#arrow-db)"/>
 
           <g aria-hidden="true">
-            <path class="edge route" d="M20,390 L60,390" marker-end="url(#arrow-route)"/>
-            <text class="edge-label" x="70" y="394">called by routes/</text>
-            <path class="edge sync" d="M220,390 L260,390" marker-end="url(#arrow-sync)"/>
-            <text class="edge-label" x="270" y="394">called by sync/</text>
-            <path class="edge" d="M410,390 L450,390" marker-end="url(#arrow-db)"/>
-            <text class="edge-label" x="460" y="394">reads or writes SQLite</text>
-            <g class="node db"><rect x="640" y="382" width="16" height="16" rx="3"/></g>
-            <text class="edge-label" x="662" y="394">code in database/</text>
+            <path class="edge route" d="M20,440 L60,440" marker-end="url(#arrow-route)"/>
+            <text class="edge-label" x="70" y="444">called by routes/</text>
+            <path class="edge sync" d="M220,440 L260,440" marker-end="url(#arrow-sync)"/>
+            <text class="edge-label" x="270" y="444">called by sync/</text>
+            <path class="edge" d="M410,440 L450,440" marker-end="url(#arrow-db)"/>
+            <text class="edge-label" x="460" y="444">reads or writes SQLite</text>
+            <g class="node db"><rect x="640" y="432" width="16" height="16" rx="3"/></g>
+            <text class="edge-label" x="662" y="444">code in database/</text>
           </g>
         </svg>
       </figure>
       <div class="card-grid">
-        <div class="card"><h3><span class="tag db">dataclasses/</span></h3><p>One class per table holding a row's values, plus <code>to_dict()</code>. They never run a query or open a connection.</p></div>
-        <div class="card"><h3><span class="tag db">reader.py</span></h3><p>The class-to-table list and every read: <code>select</code>, <code>select_one</code> and <code>scalar</code> for one table, and <code>fetch</code>, <code>fetch_joined</code> and <code>fetch_scalar</code> for SQL from <code>queries.py</code>.</p></div>
+        <div class="card"><h3><span class="tag db">dataclasses/</span></h3><p>One class per table holding a row's values, plus <code>from_dict()</code> and <code>to_dict()</code>. They never run a query or open a connection.</p></div>
+        <div class="card"><h3><span class="tag db">tables.py</span></h3><p>The class-to-table list, each table's key columns, and the two write rules: <code>SyncRun</code> ids are generated, and <code>Video.own</code> never goes down.</p></div>
+        <div class="card"><h3><span class="tag db">reader.py</span></h3><p>Every read: <code>select</code>, <code>select_one</code> and <code>scalar</code> for one table, and <code>fetch</code>, <code>fetch_joined</code> and <code>fetch_scalar</code> for SQL from <code>queries.py</code>.</p></div>
         <div class="card"><h3><span class="tag db">queries.py</span></h3><p>10 shared SQL definitions for joined, grouped and ranked reads. Each returns a query that the caller passes to the reader.</p></div>
+        <div class="card"><h3><span class="tag db">writer.py</span></h3><p>Every insert and update: <code>write</code> for one row and <code>write_many</code> for a batch of one class. Only sync calls it.</p></div>
         <div class="card"><h3><span class="tag db">Report functions</span></h3><p>Legacy/New statistics, zero-filled daily charts, top videos per traffic source, referrer totals, and sync-history grouping. The statistics report runs its SQL through the reader; the others open their own connection.</p></div>
-        <div class="card"><h3><span class="tag db">Write helpers</span></h3><p>Every <code>upsert_*</code> and <code>delete_*</code>. Each runs its own SQL on its own connection, never through the reader. Only sync calls them.</p></div>
+        <div class="card"><h3><span class="tag db">Deletes and sync-run log</span></h3><p>The <code>delete_*</code> functions and the sync-run log functions, such as <code>create_sync_run</code> and <code>complete_sync_run</code>, keep their own SQL, each on its own connection.</p></div>
       </div>
     </section>
 
@@ -331,13 +378,15 @@ Video(id="v-1", title="Alpha Video", published_at="2024-01-01T00:00:00Z", thumbn
       <h2>Database connections</h2>
       <div class="table-wrap fixed-table">
         <table>
-          <caption>Who opens and closes the SQLite connection for a read</caption>
+          <caption>Who opens and closes the SQLite connection</caption>
           <colgroup><col class="col-mid"><col></colgroup>
           <thead><tr><th>Call</th><th>What happens to the connection</th></tr></thead>
           <tbody>
             <tr><td>Read without <code>conn=</code></td><td>The reader opens one, runs the query, and closes it.</td></tr>
             <tr><td>Read with <code>conn=</code></td><td>The reader uses it and leaves it open. It never commits or rolls it back.</td></tr>
             <tr><td><code>with reader.connect() as conn</code></td><td>Opens one connection for several reads, such as a page and its total count, or the four statistics queries, and closes it at the end of the block.</td></tr>
+            <tr><td>Write without <code>conn=</code></td><td>The writer opens one, takes the write lock, commits the whole call or rolls it back, and closes it.</td></tr>
+            <tr><td>Write with <code>conn=</code></td><td>The caller must already be inside a transaction. The writer uses a savepoint, undoes only its own work on an error, and never commits, rolls back or closes the caller's transaction.</td></tr>
           </tbody>
         </table>
       </div>

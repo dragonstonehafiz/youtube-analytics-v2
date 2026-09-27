@@ -12,7 +12,7 @@ _SCHEMA_PATH = _BACKEND_ROOT / "schema.sql"
 _MONTH_PREFIX_RE = re.compile(r"^\d{4}-(0[1-9]|1[0-2])")
 
 
-def _now() -> str:
+def now() -> str:
     """Return the current time as a timezone-aware UTC ISO 8601 string."""
     return datetime.now(timezone.utc).isoformat()
 

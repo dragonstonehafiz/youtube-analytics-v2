@@ -2,44 +2,15 @@ from __future__ import annotations
 
 import dataclasses
 import sqlite3
-from collections.abc import Callable, Collection, Iterable, Iterator, Sequence
+from collections.abc import Callable, Collection, Iterator, Sequence
 from contextlib import contextmanager
 from typing import Any, TypeVar, cast
 
 from .connection import get_connection
-from .dataclasses import (
-    Comment,
-    CommentAuthor,
-    FxRate,
-    Playlist,
-    PlaylistItem,
-    RelatedVideo,
-    Row,
-    SearchTerm,
-    SyncCoverage,
-    SyncRun,
-    Video,
-    VideoAnalytics,
-    VideoTrafficSource,
-)
+from .dataclasses import Row, Video
+from .tables import TABLES, check_fields, field_names, table_name
 
 R = TypeVar("R", bound=Row)
-
-# Row class -> table. Columns are the dataclass fields; tests check both against schema.sql.
-TABLES: dict[type[Row], str] = {
-    Video: "videos",
-    Playlist: "playlists",
-    PlaylistItem: "playlist_items",
-    VideoAnalytics: "video_analytics",
-    VideoTrafficSource: "video_traffic_sources",
-    Comment: "comments",
-    CommentAuthor: "comment_authors",
-    SearchTerm: "search_terms",
-    RelatedVideo: "related_videos",
-    FxRate: "fx_rates",
-    SyncCoverage: "sync_coverage",
-    SyncRun: "sync_runs",
-}
 
 # Per-column conversions from stored SQLite values; NULL always stays None.
 _CONVERTERS: dict[type[Row], dict[str, Callable[[Any], Any]]] = {
@@ -73,30 +44,10 @@ class Joined:
         return cast(R, self.parts[model])
 
 
-def table_name(model: type[Row]) -> str:
-    """Return the registered table for a row class."""
-    try:
-        return TABLES[model]
-    except KeyError:
-        raise ValueError(f"{model.__name__} is not a registered row class") from None
-
-
-def field_names(model: type[Row]) -> tuple[str, ...]:
-    """Return a row class's column names in declaration order."""
-    return tuple(field.name for field in dataclasses.fields(model))
-
-
-def _check_fields(model: type[Row], names: Iterable[str]) -> None:
-    """Raise when any name is not a column of the row class."""
-    unknown = [name for name in names if name not in field_names(model)]
-    if unknown:
-        raise ValueError(f"{model.__name__} has no fields {unknown}")
-
-
 def joined_columns(model: type[Row], alias: str, fields: Sequence[str] | None = None) -> str:
     """Return a SELECT list aliasing each column as `<table>__<field>` for fetch_joined()."""
     names = field_names(model) if fields is None else tuple(fields)
-    _check_fields(model, names)
+    check_fields(model, names)
     table = table_name(model)
     return ", ".join(f'{alias}."{name}" AS {table}__{name}' for name in names)
 
@@ -128,7 +79,7 @@ def _where(model: type[Row], where: Sequence[Condition]) -> tuple[str, list[obje
     clauses: list[str] = []
     params: list[object] = []
     for column, operator, value in where:
-        _check_fields(model, (column,))
+        check_fields(model, (column,))
         if operator not in _OPERATORS:
             raise ValueError(f"unsupported operator {operator!r}")
         if operator == "IN":
@@ -151,7 +102,7 @@ def _order(model: type[Row], order_by: Sequence[str]) -> str:
     terms = []
     for key in order_by:
         column = key.removeprefix("-")
-        _check_fields(model, (column,))
+        check_fields(model, (column,))
         terms.append(f'"{column}" {"DESC" if key.startswith("-") else "ASC"}')
     return f" ORDER BY {', '.join(terms)}" if terms else ""
 
@@ -171,7 +122,7 @@ def select(
     names = field_names(model) if fields is None else tuple(fields)
     if not names:
         raise ValueError("fields must name at least one column")
-    _check_fields(model, names)
+    check_fields(model, names)
     where_sql, params = _where(model, where)
     column_list = ", ".join(f'"{name}"' for name in names)
     sql = f"SELECT {'DISTINCT ' if distinct else ''}{column_list} FROM {table_name(model)}{where_sql}"
@@ -211,7 +162,7 @@ def scalar(
     """Return MIN/MAX/SUM/COUNT of one column over the matching rows."""
     if aggregate not in _AGGREGATES:
         raise ValueError(f"unsupported aggregate {aggregate!r}")
-    _check_fields(model, (column,))
+    check_fields(model, (column,))
     where_sql, params = _where(model, where)
     sql = f'SELECT {aggregate}("{column}") FROM {table_name(model)}{where_sql}'
     with connect(conn) as connection:
@@ -223,7 +174,7 @@ def fetch(model: type[R], query: Query, *, conn: sqlite3.Connection | None = Non
     with connect(conn) as connection:
         cursor = connection.execute(query.sql, query.params)
         names = [column[0] for column in cursor.description]
-        _check_fields(model, names)
+        check_fields(model, names)
         rows = cursor.fetchall()
     return [_build(model, dict(zip(names, row))) for row in rows]
 

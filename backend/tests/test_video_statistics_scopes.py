@@ -3,6 +3,7 @@ from __future__ import annotations
 import unittest
 
 import database
+from database import writer
 from database import Video, reader
 from routes.playlists import router as playlists_router
 from routes.videos import router as videos_router
@@ -66,7 +67,7 @@ class VideoStatisticsTestCase(IsolatedDatabaseTestCase):
             ("v-external", "External Video", "video", "public", "2024-01-06T00:00:00Z", 13),
         )
         for video_id, title, content_type, privacy_status, published_at, comments in videos:
-            database.upsert_own_video(make_video(
+            writer.write(make_video(
                 video_id, title, content_type=content_type, privacy_status=privacy_status,
                 published_at=published_at or "2024-01-01T00:00:00Z", comment_count=comments,
             ))
@@ -86,15 +87,15 @@ class VideoStatisticsTestCase(IsolatedDatabaseTestCase):
             ("v-external", "2021-01-01", 9999, 99.0),
         )
         for video_id, day, views, revenue in analytics:
-            database.upsert_video_analytics(make_video_analytics(video_id, day, views=views, estimated_revenue=revenue))
+            writer.write(make_video_analytics(video_id, day, views=views, estimated_revenue=revenue))
         for day, rate in (
             ("2022-06-01", 1.0), ("2023-12-20", 1.0), ("2024-01-10", 1.5),
             ("2024-01-12", 1.0), ("2024-01-25", 2.0), ("2024-02-10", 1.0),
         ):
-            database.upsert_fx_rate(make_fx_rate(day, rate))
+            writer.write(make_fx_rate(day, rate))
 
         for playlist_id in ("p-mix", "p-empty", "p-fallback"):
-            database.upsert_playlist(make_playlist(playlist_id))
+            writer.write(make_playlist(playlist_id))
         members: tuple[tuple[str, str | None], ...] = (
             ("p-mix", "v-old"), ("p-mix", "v-old"), ("p-mix", "v-new"), ("p-mix", "v-short"),
             ("p-mix", "v-hidden"), ("p-mix", "v-undated"), ("p-mix", "v-silent"),
@@ -102,7 +103,7 @@ class VideoStatisticsTestCase(IsolatedDatabaseTestCase):
             ("p-fallback", "v-silent"),
         )
         for position, (playlist_id, member_id) in enumerate(members):
-            database.upsert_playlist_item(make_playlist_item(f"pi-{position}", playlist_id, member_id, position))
+            writer.write(make_playlist_item(f"pi-{position}", playlist_id, member_id, position))
 
     def _get(self, path: str, **params: str) -> dict:
         response = self.client.get(path, params=params)
@@ -232,7 +233,7 @@ class ChannelStatisticsRouteTest(VideoStatisticsTestCase):
     def test_playlist_of_every_owned_video_matches_channel(self) -> None:
         owned = reader.select(Video, ("id",), where=[("own", "=", True)], order_by=("id",))
         for position, video_id in enumerate(video.id for video in owned):
-            database.upsert_playlist_item(make_playlist_item(f"all-{position}", "p-empty", video_id, position))
+            writer.write(make_playlist_item(f"all-{position}", "p-empty", video_id, position))
         for params in ({}, {"start_date": "2024-01-10", "end_date": "2024-01-20"}, {"content_type": "short"}):
             with self.subTest(params=params):
                 self.assertEqual(self._playlist("p-empty", **params), self._channel(**params))

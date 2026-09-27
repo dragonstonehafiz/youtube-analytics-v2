@@ -11,7 +11,7 @@ Visual overviews of the current system in [`human/`](human/), as HTML pages that
 | System data flow: user action → frontend → API route → database → response, and YouTube → sync → database, with the sync triggers actually wired | [`app-flow/overview.html`](human/app-flow/overview.html) |
 | What each backend part does, package dependencies, and call paths | [`architecture/backend-architecture.html`](human/architecture/backend-architecture.html) |
 | What every backend file does, and each route's call chain down to the database | [`architecture/backend-reference.html`](human/architecture/backend-reference.html) |
-| Where data is stored, how the reader turns table rows into row objects, and how those become API JSON | [`architecture/data-storage.html`](human/architecture/data-storage.html) |
+| Where data is stored, how the reader and writer move table rows in and out of row objects, and how read results become API JSON | [`architecture/data-storage.html`](human/architecture/data-storage.html) |
 | Frontend routes, pages, component reuse, and unused components | [`architecture/frontend-components.html`](human/architecture/frontend-components.html) |
 | Code, markup, and CSS repeated across backend and frontend files, ranked by copy count | [`suggestions/repeated-code.html`](human/suggestions/repeated-code.html) |
 | Backend and frontend code that does more work than its result needs, ordered by how often it runs | [`suggestions/efficiency.html`](human/suggestions/efficiency.html) |
@@ -51,7 +51,7 @@ Load only the references relevant to the current task; expand to another referen
 | Visual system data flow and wired sync triggers | [`human/app-flow/overview.html`](human/app-flow/overview.html) |
 | Backend part overview, package dependencies, call paths, and consolidation observations | [`human/architecture/backend-architecture.html`](human/architecture/backend-architecture.html) |
 | Per-file backend duties and route-to-database call chains | [`human/architecture/backend-reference.html`](human/architecture/backend-reference.html) |
-| Visual storage map, row-object and reader walkthroughs, and the storage-to-response flow | [`human/architecture/data-storage.html`](human/architecture/data-storage.html) |
+| Visual storage map, row-object, reader and writer walkthroughs, and the storage-to-response flow | [`human/architecture/data-storage.html`](human/architecture/data-storage.html) |
 | Frontend component usage counts and unused components | [`human/architecture/frontend-components.html`](human/architecture/frontend-components.html) |
 | Repeated backend code, frontend code, and CSS | [`human/suggestions/repeated-code.html`](human/suggestions/repeated-code.html) |
 | Sync, API-read, and frontend efficiency observations | [`human/suggestions/efficiency.html`](human/suggestions/efficiency.html) |

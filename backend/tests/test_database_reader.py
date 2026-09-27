@@ -7,6 +7,8 @@ import unittest
 from unittest import mock
 
 import database
+from database import writer
+from sync.write_preparation import related_video_rows
 from database import (
     Comment,
     CommentAuthor,
@@ -20,6 +22,7 @@ from database import (
 from database.dataclasses import Row
 from database.reader import Query
 from tests.support import (
+    FIXED_NOW,
     IsolatedDatabaseTestCase,
     make_comment,
     make_comment_author,
@@ -103,11 +106,11 @@ class ToDictTest(unittest.TestCase):
 class ReaderTestCase(IsolatedDatabaseTestCase):
     def setUp(self) -> None:
         super().setUp()
-        database.upsert_own_video(make_video(
+        writer.write(make_video(
             "v-1", "Alpha", description="", view_count=0, published_at="2024-01-01T00:00:00Z",
         ))
-        database.upsert_own_video(make_video("v-2", "Beta 'quoted' \"title\"", published_at="2024-01-02T00:00:00Z"))
-        database.upsert_related_video(make_video("ext-1", "External", published_at="2024-01-03T00:00:00Z"), own=False)
+        writer.write(make_video("v-2", "Beta 'quoted' \"title\"", published_at="2024-01-02T00:00:00Z"))
+        writer.write(make_video("ext-1", "External", published_at="2024-01-03T00:00:00Z", own=False))
         with database.get_connection() as conn:
             conn.execute("UPDATE videos SET published_at = NULL WHERE id = 'ext-1'")
 
@@ -181,8 +184,8 @@ class SelectTest(ReaderTestCase):
         self.assertIsNone(reader.select_one(Video, ("id",), where=[("id", "=", "missing")]))
 
     def test_composite_key_and_distinct(self) -> None:
-        database.upsert_video_analytics(make_video_analytics("v-1", "2024-01-05", views=3))
-        database.upsert_video_analytics(make_video_analytics("v-1", "2024-01-06", views=0))
+        writer.write(make_video_analytics("v-1", "2024-01-05", views=3))
+        writer.write(make_video_analytics("v-1", "2024-01-06", views=0))
         row = reader.select_one(VideoAnalytics, ("views",), where=[("video_id", "=", "v-1"), ("date", "=", "2024-01-06")])
         assert row is not None
         self.assertEqual(row.views, 0)
@@ -228,7 +231,7 @@ class FetchTest(ReaderTestCase):
 
     def test_grouped_aggregates_map_onto_fields(self) -> None:
         for day, views in (("2024-01-05", 4), ("2024-01-06", 6)):
-            database.upsert_video_analytics(make_video_analytics("v-1", day, views=views))
+            writer.write(make_video_analytics("v-1", day, views=views))
         conn, statements = self._traced()
         rows = reader.fetch(VideoAnalytics, Query(
             "SELECT va.video_id AS video_id, SUM(va.views) AS views FROM video_analytics va GROUP BY va.video_id"
@@ -248,9 +251,9 @@ class FetchTest(ReaderTestCase):
 class FetchJoinedTest(ReaderTestCase):
     def setUp(self) -> None:
         super().setUp()
-        database.upsert_comment_author(make_comment_author("a-1", "Ann", youtube_channel_id="UC1"))
-        database.upsert_comment(make_comment("c-1", "v-1", "a-1", like_count=0))
-        database.upsert_comment(make_comment("c-2", "v-2", "a-1", like_count=5))
+        writer.write(make_comment_author("a-1", "Ann", youtube_channel_id="UC1"))
+        writer.write(make_comment("c-1", "v-1", "a-1", like_count=0))
+        writer.write(make_comment("c-2", "v-2", "a-1", like_count=5))
 
     def test_inner_join_splits_colliding_columns_into_components(self) -> None:
         query = Query(f"""
@@ -273,9 +276,9 @@ class FetchJoinedTest(ReaderTestCase):
         self.assertEqual(rows[0].values, {})
 
     def test_left_join_with_missing_metadata_leaves_component_fields_none(self) -> None:
-        database.upsert_related_videos("v-1", "2024-01", [{"referrer_video_id": "unknown", "views": 2}])
-        database.upsert_related_videos("v-1", "2024-02", [{"referrer_video_id": "unknown", "views": 3}])
-        database.upsert_related_videos("v-1", "2024-01", [{"referrer_video_id": "ext-1", "views": 1}])
+        writer.write_many(related_video_rows("v-1", "2024-01", [{"referrer_video_id": "unknown", "views": 2}], updated_at=FIXED_NOW))
+        writer.write_many(related_video_rows("v-1", "2024-02", [{"referrer_video_id": "unknown", "views": 3}], updated_at=FIXED_NOW))
+        writer.write_many(related_video_rows("v-1", "2024-01", [{"referrer_video_id": "ext-1", "views": 1}], updated_at=FIXED_NOW))
         query = Query(f"""
             SELECT rv.referrer_video_id AS related_videos__referrer_video_id,
                 SUM(rv.views) AS related_videos__views,
@@ -303,8 +306,8 @@ class FetchJoinedTest(ReaderTestCase):
             reader.fetch_joined(Query("SELECT c.id AS comments__nope FROM comments c"), (Comment,))
 
     def test_components_serialize_to_flat_response_keys(self) -> None:
-        database.upsert_playlist(make_playlist("p-1"))
-        database.upsert_playlist_item(make_playlist_item("pi-1", "p-1", "v-1", 0))
+        writer.write(make_playlist("p-1"))
+        writer.write(make_playlist_item("pi-1", "p-1", "v-1", 0))
         (row,) = reader.fetch_joined(Query(f"""
             SELECT {reader.joined_columns(PlaylistItem, 'pi', ('position',))},
                 {reader.joined_columns(Video, 'v', ('id', 'description'))}

@@ -4,8 +4,10 @@ import unittest
 from typing import Any
 
 import database
+from database import writer
+from sync.write_preparation import search_term_rows
 from database import SearchTerm, Video, queries, reader
-from tests.support import IsolatedDatabaseTestCase, make_video
+from tests.support import FIXED_NOW, IsolatedDatabaseTestCase, make_video
 
 
 def _search_terms(**filters: Any) -> list[dict]:
@@ -32,8 +34,8 @@ class SearchTermsSchemaTest(IsolatedDatabaseTestCase):
         self.assertIsNotNone(row)
 
     def test_video_deletion_cascades_to_search_terms(self) -> None:
-        database.upsert_own_video(make_video("v-1", "Alpha"))
-        database.upsert_search_terms("v-1", "2024-01", [{"search_term": "cats", "views": 5}])
+        writer.write(make_video("v-1", "Alpha"))
+        writer.write_many(search_term_rows("v-1", "2024-01", [{"search_term": "cats", "views": 5}], updated_at=FIXED_NOW))
         with database.get_connection() as conn:
             conn.execute("DELETE FROM videos WHERE id = 'v-1'")
             rows = conn.execute("SELECT * FROM search_terms WHERE video_id = 'v-1'").fetchall()
@@ -43,7 +45,7 @@ class SearchTermsSchemaTest(IsolatedDatabaseTestCase):
 class UpsertSearchTermsTest(IsolatedDatabaseTestCase):
     def setUp(self) -> None:
         super().setUp()
-        database.upsert_own_video(make_video("v-1", "Alpha"))
+        writer.write(make_video("v-1", "Alpha"))
 
     def _stored_terms(self, video_id: str = "v-1", month: str = "2024-01") -> dict[str, int]:
         with database.get_connection() as conn:
@@ -55,85 +57,85 @@ class UpsertSearchTermsTest(IsolatedDatabaseTestCase):
 
     def test_rejects_invalid_month_format(self) -> None:
         with self.assertRaises(ValueError):
-            database.upsert_search_terms("v-1", "2024-1", [{"search_term": "cats", "views": 5}])
+            writer.write_many(search_term_rows("v-1", "2024-1", [{"search_term": "cats", "views": 5}], updated_at=FIXED_NOW))
 
     def test_two_distinct_months_are_stored_independently(self) -> None:
-        database.upsert_search_terms("v-1", "2024-01", [{"search_term": "cats", "views": 5}])
-        database.upsert_search_terms("v-1", "2024-02", [{"search_term": "dogs", "views": 7}])
+        writer.write_many(search_term_rows("v-1", "2024-01", [{"search_term": "cats", "views": 5}], updated_at=FIXED_NOW))
+        writer.write_many(search_term_rows("v-1", "2024-02", [{"search_term": "dogs", "views": 7}], updated_at=FIXED_NOW))
         self.assertEqual(self._stored_terms(month="2024-01"), {"cats": 5})
         self.assertEqual(self._stored_terms(month="2024-02"), {"dogs": 7})
 
     def test_upsert_refreshes_an_unchanged_term_and_still_counts_it(self) -> None:
-        database.upsert_search_terms("v-1", "2024-01", [{"search_term": "cats", "views": 5}])
-        rows_written = database.upsert_search_terms("v-1", "2024-01", [{"search_term": "cats", "views": 5}])
+        writer.write_many(search_term_rows("v-1", "2024-01", [{"search_term": "cats", "views": 5}], updated_at=FIXED_NOW))
+        rows_written = writer.write_many(search_term_rows("v-1", "2024-01", [{"search_term": "cats", "views": 5}], updated_at=FIXED_NOW))
         self.assertEqual(rows_written, 1)
         self.assertEqual(self._stored_terms(), {"cats": 5})
 
     def test_upsert_updates_a_changed_term_count(self) -> None:
-        database.upsert_search_terms("v-1", "2024-01", [{"search_term": "cats", "views": 5}])
-        database.upsert_search_terms("v-1", "2024-01", [{"search_term": "cats", "views": 9}])
+        writer.write_many(search_term_rows("v-1", "2024-01", [{"search_term": "cats", "views": 5}], updated_at=FIXED_NOW))
+        writer.write_many(search_term_rows("v-1", "2024-01", [{"search_term": "cats", "views": 9}], updated_at=FIXED_NOW))
         self.assertEqual(self._stored_terms(), {"cats": 9})
 
     def test_terms_omitted_by_a_later_response_are_retained(self) -> None:
-        database.upsert_search_terms("v-1", "2024-01", [
+        writer.write_many(search_term_rows("v-1", "2024-01", [
             {"search_term": "cats", "views": 5},
             {"search_term": "dogs", "views": 3},
-        ])
-        database.upsert_search_terms("v-1", "2024-01", [{"search_term": "cats", "views": 6}])
+        ], updated_at=FIXED_NOW))
+        writer.write_many(search_term_rows("v-1", "2024-01", [{"search_term": "cats", "views": 6}], updated_at=FIXED_NOW))
         self.assertEqual(self._stored_terms(), {"cats": 6, "dogs": 3})
 
     def test_duplicate_exact_term_keys_in_one_response_are_summed(self) -> None:
-        database.upsert_search_terms("v-1", "2024-01", [
+        writer.write_many(search_term_rows("v-1", "2024-01", [
             {"search_term": "cats", "views": 5},
             {"search_term": "cats", "views": 3},
-        ])
+        ], updated_at=FIXED_NOW))
         self.assertEqual(self._stored_terms(), {"cats": 8})
 
     def test_zero_and_negative_view_terms_are_dropped_not_stored(self) -> None:
-        rows_written = database.upsert_search_terms("v-1", "2024-01", [
+        rows_written = writer.write_many(search_term_rows("v-1", "2024-01", [
             {"search_term": "cats", "views": 0},
             {"search_term": "dogs", "views": -1},
-        ])
+        ], updated_at=FIXED_NOW))
         self.assertEqual(rows_written, 0)
         self.assertEqual(self._stored_terms(), {})
 
     def test_a_literal_term_named_other_unattributed_is_stored_as_a_real_term(self) -> None:
-        database.upsert_search_terms("v-1", "2024-01", [{"search_term": "Other / unattributed", "views": 4}])
+        writer.write_many(search_term_rows("v-1", "2024-01", [{"search_term": "Other / unattributed", "views": 4}], updated_at=FIXED_NOW))
         self.assertEqual(self._stored_terms(), {"Other / unattributed": 4})
 
     def test_successful_empty_response_is_a_no_op(self) -> None:
-        database.upsert_search_terms("v-1", "2024-01", [{"search_term": "cats", "views": 5}])
-        rows_written = database.upsert_search_terms("v-1", "2024-01", [])
+        writer.write_many(search_term_rows("v-1", "2024-01", [{"search_term": "cats", "views": 5}], updated_at=FIXED_NOW))
+        rows_written = writer.write_many(search_term_rows("v-1", "2024-01", [], updated_at=FIXED_NOW))
         self.assertEqual(rows_written, 0)
         self.assertEqual(self._stored_terms(), {"cats": 5})
 
     def test_malformed_row_raises_and_writes_nothing(self) -> None:
         with self.assertRaises(ValueError):
-            database.upsert_search_terms("v-1", "2024-01", [
+            writer.write_many(search_term_rows("v-1", "2024-01", [
                 {"search_term": "cats", "views": 5},
                 {"search_term": "", "views": 3},
-            ])
+            ], updated_at=FIXED_NOW))
         self.assertEqual(self._stored_terms(), {})
 
     def test_non_integer_views_raises_and_writes_nothing(self) -> None:
         with self.assertRaises(ValueError):
-            database.upsert_search_terms("v-1", "2024-01", [{"search_term": "cats", "views": "5"}])
+            writer.write_many(search_term_rows("v-1", "2024-01", [{"search_term": "cats", "views": "5"}], updated_at=FIXED_NOW))
         self.assertEqual(self._stored_terms(), {})
 
     def test_rollback_on_write_error_preserves_prior_state_and_partial_batch(self) -> None:
-        database.upsert_search_terms("v-1", "2024-01", [{"search_term": "cats", "views": 5}])
+        writer.write_many(search_term_rows("v-1", "2024-01", [{"search_term": "cats", "views": 5}], updated_at=FIXED_NOW))
         with self.assertRaises(Exception):
-            database.upsert_search_terms("missing-video", "2024-01", [{"search_term": "dogs", "views": 3}])
+            writer.write_many(search_term_rows("missing-video", "2024-01", [{"search_term": "dogs", "views": 3}], updated_at=FIXED_NOW))
         self.assertEqual(self._stored_terms(), {"cats": 5})
         with database.get_connection() as conn:
             rows = conn.execute("SELECT * FROM search_terms WHERE video_id = 'missing-video'").fetchall()
         self.assertEqual(rows, [])
 
     def test_rows_written_counts_direct_upserts_only(self) -> None:
-        rows_written = database.upsert_search_terms("v-1", "2024-01", [
+        rows_written = writer.write_many(search_term_rows("v-1", "2024-01", [
             {"search_term": "cats", "views": 5},
             {"search_term": "dogs", "views": 3},
-        ])
+        ], updated_at=FIXED_NOW))
         self.assertEqual(rows_written, 2)
 
 
@@ -142,17 +144,17 @@ class SearchInsightsReportingTestCase(IsolatedDatabaseTestCase):
 
     def setUp(self) -> None:
         super().setUp()
-        database.upsert_own_video(make_video("v-1", "Alpha Episode", content_type="video", privacy_status="public"))
-        database.upsert_own_video(make_video("v-2", "Beta Vlog", content_type="short", privacy_status="private"))
-        database.upsert_own_video(make_video("v-3", "Unclassified Clip", content_type=None, privacy_status="public"))
+        writer.write(make_video("v-1", "Alpha Episode", content_type="video", privacy_status="public"))
+        writer.write(make_video("v-2", "Beta Vlog", content_type="short", privacy_status="private"))
+        writer.write(make_video("v-3", "Unclassified Clip", content_type=None, privacy_status="public"))
 
-        database.upsert_search_terms("v-1", "2024-01", [
+        writer.write_many(search_term_rows("v-1", "2024-01", [
             {"search_term": "cats", "views": 10},
             {"search_term": "dogs", "views": 5},
-        ])
-        database.upsert_search_terms("v-2", "2024-01", [{"search_term": "cats", "views": 3}])
-        database.upsert_search_terms("v-1", "2024-02", [{"search_term": "cats", "views": 4}])
-        database.upsert_search_terms("v-3", "2024-01", [{"search_term": "birds", "views": 7}])
+        ], updated_at=FIXED_NOW))
+        writer.write_many(search_term_rows("v-2", "2024-01", [{"search_term": "cats", "views": 3}], updated_at=FIXED_NOW))
+        writer.write_many(search_term_rows("v-1", "2024-02", [{"search_term": "cats", "views": 4}], updated_at=FIXED_NOW))
+        writer.write_many(search_term_rows("v-3", "2024-01", [{"search_term": "birds", "views": 7}], updated_at=FIXED_NOW))
 
 
 class GetSearchTermsTest(SearchInsightsReportingTestCase):
@@ -166,7 +168,7 @@ class GetSearchTermsTest(SearchInsightsReportingTestCase):
         self.assertEqual([r["search_term"] for r in rows], ["cats", "birds", "dogs"])
 
     def test_ties_break_by_term_text(self) -> None:
-        database.upsert_search_terms("v-2", "2024-01", [{"search_term": "ants", "views": 7}])
+        writer.write_many(search_term_rows("v-2", "2024-01", [{"search_term": "ants", "views": 7}], updated_at=FIXED_NOW))
         rows = _search_terms(start_date="2024-01-01", end_date="2024-01-31")
         tied = [r["search_term"] for r in rows if r["views"] == 7]
         self.assertEqual(tied, ["ants", "birds"])

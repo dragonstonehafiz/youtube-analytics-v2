@@ -98,17 +98,20 @@ indefinitely and are safe to delete between runs.
 | `sync/stages.py` | The nine sync stage implementations plus the shared incremental-lookback calculation, the Related Video referrer metadata resolver, and the comment bootstrap cutoff |
 | `sync/monthly_insights.py` | Pure calendar-window helper for the Search insights stage — no I/O, no clock reads beyond the `date` it's given |
 | `sync/coverage.py` | Pure missing-month and range-coalescing helpers for `sync_coverage`-based selection — no I/O |
+| `sync/write_preparation.py` | Pure validation and aggregation of monthly Search/Related insight payloads into `SearchTerm`/`RelatedVideo` rows — no I/O |
 | `sync/scheduler.py` | Freshness check (`synced_today()`) and a one-shot background sync launcher (`start_background_scheduler()`); neither is called by the application |
 | `youtube/auth.py` | OAuth credentials and token/secret paths |
 | `youtube/data_api.py` | YouTube Data API v3 client, pagination, Shorts detection, video/playlist/comment-thread fetchers |
 | `youtube/analytics_api.py` | YouTube Analytics API v2 client, retry/backoff, date chunking, daily analytics/traffic-source generators |
 | `logging_config.py` | Shared logging configuration: `TimezoneAwareFormatter`, `configure_logging()`, `get_logger(area)`, `exception_context()` |
-| `database/connection.py` | Connection setup, `init_db()`, `_now()`, shared `_month_bound_conditions()` |
-| `database/dataclasses/` | One data-only row dataclass per table (`Video`, `Playlist`, …), every field defaulting to `None`, with shared `to_dict(fields=...)` serialization |
-| `database/reader.py` | Explicit row-class → table registry and all read execution: `select`/`select_one`/`scalar` for one table, `fetch`/`fetch_joined`/`fetch_scalar` for code-owned SQL, and connection borrowing |
+| `database/connection.py` | Connection setup, `init_db()`, `now()` (UTC timestamp), shared `_month_bound_conditions()` |
+| `database/dataclasses/` | One data-only row dataclass per table (`Video`, `Playlist`, …), every field defaulting to `None`, with shared `from_dict()`/`to_dict(fields=...)` conversion |
+| `database/tables.py` | Shared row-class → table registry, primary keys, generated-key and non-decreasing-column rules, used by both reader and writer |
+| `database/reader.py` | All read execution: `select`/`select_one`/`scalar` for one table, `fetch`/`fetch_joined`/`fetch_scalar` for code-owned SQL, and connection borrowing |
+| `database/writer.py` | Every insert/update: `write()`/`write_many()` update-then-insert by key, leaving `None` fields untouched, in one committed transaction or a savepoint on a borrowed one |
 | `database/queries.py` | Non-executing `Query` specifications for joins, grouping, and ranking shared by routes and sync |
 | `database/video_statistics.py` | `get_video_stats()` Legacy/New report |
-| `database/videos.py`, `database/playlists.py`, `database/analytics.py`, `database/traffic_sources.py`, `database/comments.py`, `database/fx_rates.py`, `database/sync_runs.py`, `database/sync_coverage.py`, `database/search_terms.py`, `database/related_videos.py` | Writes (upserts, deletes) grouped by domain, plus the reports that do real calculation work: zero-filling, per-source top-N, referrer totals, sync-batch assembly |
+| `database/videos.py`, `database/playlists.py`, `database/analytics.py`, `database/traffic_sources.py`, `database/comments.py`, `database/sync_runs.py`, `database/related_videos.py` | Deletes and pruning, the sync-run lifecycle writes, and the reports that do real calculation work (zero-filling, per-source top-N, referrer totals, sync-batch assembly) |
 | `schema.sql` | SQLite schema definition (12 tables) — see `database.md` |
 | `scripts/issue-48-migration.py` | Standalone, one-time migration adding `videos.own` to a pre-existing database — not run by `init_db()` (see `database.md`) |
 | `scripts/issue-62-migration.py` | Standalone, one-time `sync_coverage` backfill for a pre-existing database — not run by `init_db()` (see `database.md`) |
@@ -164,6 +167,7 @@ backend/
     test_pagination_safety.py, test_comment_sync.py, test_comments_api.py,
     test_database_search_terms.py, test_search_insights_sync.py, test_search_insights_api.py,
     test_database_video_ownership.py, test_database_related_videos.py, test_database_reader.py,
+    test_database_writer.py, test_write_preparation.py,
     test_related_video_insights_sync.py, test_related_videos_api.py
   schema.sql
 
@@ -187,6 +191,7 @@ backend/
     scheduler.py
     monthly_insights.py
     coverage.py
+    write_preparation.py
 
   youtube/
     __init__.py             # re-exports get_credentials + the fetch/iter functions
@@ -197,20 +202,19 @@ backend/
   database/
     __init__.py              # re-exports row classes, reader, queries, writes, and report functions
     connection.py
-    reader.py                # registry + read execution
+    tables.py                # shared registry: tables, keys, write rules
+    reader.py                # read execution
+    writer.py                # insert/update execution
     queries.py               # non-executing query specifications
     video_statistics.py      # get_video_stats()
-    dataclasses/             # one row dataclass per table, plus base.py (to_dict)
+    dataclasses/             # one row dataclass per table, plus base.py (from_dict/to_dict)
     videos.py
     playlists.py
     analytics.py
     traffic_sources.py
     comments.py
-    fx_rates.py
     sync_runs.py
-    search_terms.py
     related_videos.py
-    sync_coverage.py
 
   scripts/
     issue-48-migration.py    # standalone one-time migration adding videos.own

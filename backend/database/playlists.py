@@ -1,45 +1,6 @@
 from __future__ import annotations
 
-from .connection import _now, get_connection
-
-
-def upsert_playlist(playlist: dict) -> None:
-    """Insert or replace a playlist row."""
-    row = {**playlist, "updated_at": _now()}
-    with get_connection() as conn:
-        conn.execute(
-            """
-            INSERT INTO playlists (id, title, description, published_at, thumbnail_url, item_count,
-                updated_at)
-            VALUES (:id, :title, :description, :published_at, :thumbnail_url, :item_count, :updated_at)
-            ON CONFLICT(id) DO UPDATE SET
-                title = excluded.title,
-                description = excluded.description,
-                published_at = excluded.published_at,
-                thumbnail_url = excluded.thumbnail_url,
-                item_count = excluded.item_count,
-                updated_at = excluded.updated_at
-            """,
-            row,
-        )
-
-
-def upsert_playlist_item(item: dict) -> None:
-    """Insert or replace a playlist item row."""
-    row = {**item, "updated_at": _now()}
-    with get_connection() as conn:
-        conn.execute(
-            """
-            INSERT INTO playlist_items (id, playlist_id, video_id, position, updated_at)
-            VALUES (:id, :playlist_id, :video_id, :position, :updated_at)
-            ON CONFLICT(id) DO UPDATE SET
-                playlist_id = excluded.playlist_id,
-                video_id = excluded.video_id,
-                position = excluded.position,
-                updated_at = excluded.updated_at
-            """,
-            row,
-        )
+from .connection import get_connection
 
 
 def delete_playlists_not_in(ids: list[str]) -> int:

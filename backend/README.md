@@ -64,10 +64,12 @@ backend/
     synchronization.py
     metadata.py
 
-  database/            # DB connection, row dataclasses, the reader, query specifications, writes, and reports
+  database/            # DB connection, row dataclasses, the reader and writer, query specifications, deletes, and reports
     connection.py
     dataclasses/         # one data-only row dataclass per table
-    reader.py            # class-to-table registry and all read execution
+    tables.py            # shared class-to-table registry, keys, and write rules
+    reader.py            # all read execution
+    writer.py            # all inserts/updates: update-then-insert by key, None fields left untouched
     queries.py           # non-executing SQL specifications for joins and aggregates
     video_statistics.py  # Legacy/New video statistics report
     videos.py
@@ -75,9 +77,8 @@ backend/
     analytics.py
     traffic_sources.py
     comments.py
-    fx_rates.py
+    related_videos.py
     sync_runs.py
-    sync_coverage.py     # persisted per-video/month completion for the four Analytics API stages
 
   sync/                # Sync plans, orchestration, and an uncalled freshness-check scheduler
     status.py
@@ -86,6 +87,7 @@ backend/
     stages.py
     scheduler.py
     coverage.py          # pure sync_coverage selection helpers (missing/coalescing), no I/O
+    write_preparation.py # pure validation of monthly insight payloads into row objects, no I/O
 
   scripts/             # standalone, one-time, idempotent migrations for pre-existing databases
     issue-48-migration.py
@@ -234,14 +236,18 @@ pre-seeded `SeededDatabaseTestCase`), which creates a fresh temporary SQLite fil
 test, calls the real `database.init_db()` against it, and refuses to run if the resolved
 path ever matches the real application database — so no test can touch
 `data/youtube.db`. `tests/support.py` also provides deterministic row factories
-(`make_video`, `make_playlist`, `make_video_analytics`, etc.), a `freeze_now()` context
-manager that pins every generated `updated_at`/`started_at`/`completed_at` timestamp so
-seeded fixtures stay reproducible, and a `seed_dataset()` convenience (built on
-`freeze_now()`) that populates every table with a small, fixed dataset. Sync-stage tests
-that should not touch a database install `patch_stage_reads()`, which routes
-`sync.stages`' reader calls to an in-memory `StageReads` holding typed rows (worklist
-videos, covered months, stored video and comment IDs, the latest FX rate), and
-`covered_periods()` reads stored `sync_coverage` months for database-backed assertions.
+(`make_video`, `make_playlist`, `make_video_analytics`, `make_coverage`, etc.) that return
+row dataclasses stamped with the fixed `FIXED_NOW` timestamp, ready for
+`writer.write()`/`write_many()`. `make_search_term`/`make_related_referrer` instead return
+API-shaped dictionaries for `sync.write_preparation`. It also has a `freeze_now()` context
+manager that pins the timestamps `database.now()` generates, and a `seed_dataset()`
+convenience that populates every table with a small, fixed dataset. Sync-stage tests that
+should not touch a database install `patch_stage_reads()`, which routes `sync.stages`'
+reader calls to an in-memory `StageReads` holding typed rows (worklist videos, covered
+months, stored video and comment IDs, the latest FX rate), and `patch_stage_writes()`,
+which records the rows `sync.stages` sends to the writer in a `StageWrites` (and can be
+told to fail for chosen rows). `covered_periods()` reads stored `sync_coverage` months for
+database-backed assertions.
 `create_test_app()`/`create_test_client()` build a lifespan-free FastAPI app from one or
 more routers for API contract tests, so — unlike a real request through `server.app` —
 `mark_incomplete_sync_runs()` never runs; only the

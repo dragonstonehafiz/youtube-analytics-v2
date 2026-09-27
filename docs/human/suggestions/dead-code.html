@@ -54,7 +54,7 @@
       <h1>Dead code</h1>
       <p>This page shows code, styles and dependencies that nothing in the app uses.</p>
       <div class="meta-line">
-        <span>Source revision <code>926f014</code></span>
+        <span>Source revision <code>a731fb1</code></span>
       </div>
     </header>
 
@@ -74,13 +74,13 @@
         </article>
 
         <article class="dup">
-          <div class="dup-head"><h3>Row classes no read uses</h3><span class="dup-count">2 classes</span></div>
-          <p>Data classes for two tables that the app reads without them.</p>
+          <div class="dup-head"><h3>Writer features with no production caller</h3><span class="dup-count">2 features</span></div>
+          <p>Parts of <code>database/writer.py</code> only its tests use.</p>
           <dl>
-            <dt>Where</dt><dd><code>VideoAnalytics</code> and <code>VideoTrafficSource</code> in <code>database/dataclasses/</code>; registered in <code>reader.TABLES</code> and re-exported from <code>database/__init__.py</code></dd>
-            <dt>Does</dt><dd>Hold one <code>video_analytics</code> or <code>video_traffic_sources</code> row, with every field defaulting to <code>None</code>.</dd>
-            <dt>Meant for</dt><dd>Reading those tables through the reader, like every other table.</dd>
-            <dt>Why dead</dt><dd>Both tables are read only by the zero-fill and per-source top-video reports, which run their own SQL and return dictionaries. Only the reader's tests use the classes.</dd>
+            <dt>Where</dt><dd>The <code>conn=</code> argument of <code>writer.write()</code>/<code>write_many()</code>, and writing a <code>SyncRun</code> without an <code>id</code> (<code>GENERATED_KEYS</code> in <code>database/tables.py</code>)</dd>
+            <dt>Does</dt><dd><code>conn=</code> runs the write inside the caller's open transaction using a savepoint. A <code>SyncRun</code> with no <code>id</code> is inserted and gets one from SQLite.</dd>
+            <dt>Meant for</dt><dd>Writing several tables in one transaction, and saving sync-run rows through the writer.</dd>
+            <dt>Why dead</dt><dd>Every sync write opens its own connection, and sync-run rows are still created by <code>create_sync_run()</code> with its own <code>INSERT</code>.</dd>
           </dl>
         </article>
 

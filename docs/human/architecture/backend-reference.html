@@ -54,7 +54,7 @@
       <h1>Backend reference</h1>
       <p>This page shows what each backend file does and which functions each API route calls.</p>
       <div class="meta-line">
-        <span>Source revision <code>926f014</code></span>
+        <span>Source revision <code>a731fb1</code></span>
       </div>
     </header>
 
@@ -83,22 +83,21 @@
       </div>
       <div class="card file-group">
       <h3><span class="tag db">database/</span></h3>
-      <p>Everything that touches SQLite. All reads go through <code>reader.py</code>; the domain files hold the writes and the reports that do calculations of their own. Details: <code>docs/references/database.md</code>.</p>
+      <p>Everything that touches SQLite. All reads go through <code>reader.py</code> and all inserts and updates through <code>writer.py</code>; the domain files hold the deletes, the sync-run log, and the reports that do calculations of their own. Details: <code>docs/references/database.md</code>.</p>
       <dl class="file-list">
-        <dt><code>dataclasses/</code></dt><dd>One small data class per table, such as <code>Video</code> or <code>Comment</code>. They only hold values and turn them into dictionaries; they never run queries.</dd>
-        <dt><code>reader.py</code></dt><dd>Knows which class belongs to which table. Runs every read, fetches only the columns asked for, and returns filled-in data classes.</dd>
+        <dt><code>dataclasses/</code></dt><dd>One small data class per table, such as <code>Video</code> or <code>Comment</code>. They only hold values and convert to and from dictionaries; they never run queries.</dd>
+        <dt><code>tables.py</code></dt><dd>Knows which class belongs to which table and which columns identify a row. Shared by the reader and the writer.</dd>
+        <dt><code>reader.py</code></dt><dd>Runs every read, fetches only the columns asked for, and returns filled-in data classes.</dd>
+        <dt><code>writer.py</code></dt><dd>Saves data classes: updates the row with the same key or inserts a new one, and leaves any field that is <code>None</code> as it was.</dd>
         <dt><code>queries.py</code></dt><dd>Holds the SQL for joined, grouped, and ranked reads that more than one caller needs. It builds queries but never runs them.</dd>
         <dt><code>video_statistics.py</code></dt><dd>Calculates the Legacy/New statistics shown in the stats bar.</dd>
-        <dt><code>videos.py</code></dt><dd>Saves videos and deletes ones no longer on the channel.</dd>
-        <dt><code>playlists.py</code></dt><dd>Saves playlists and the videos in them.</dd>
-        <dt><code>analytics.py</code></dt><dd>Saves daily video metrics and builds the zero-filled daily chart data.</dd>
-        <dt><code>traffic_sources.py</code></dt><dd>Saves daily views per traffic source and builds the zero-filled chart data and per-source top videos.</dd>
-        <dt><code>search_terms.py</code></dt><dd>Saves the monthly search terms that led viewers to each video.</dd>
-        <dt><code>related_videos.py</code></dt><dd>Saves which videos sent viewers to each video through Related Videos, and builds the referrer list with its total.</dd>
-        <dt><code>comments.py</code></dt><dd>Saves comments and their authors, and removes authors no comment uses.</dd>
+        <dt><code>videos.py</code></dt><dd>Deletes videos no longer on the channel.</dd>
+        <dt><code>playlists.py</code></dt><dd>Deletes removed playlists, and a playlist's items before they are re-saved.</dd>
+        <dt><code>analytics.py</code></dt><dd>Builds the zero-filled daily chart data.</dd>
+        <dt><code>traffic_sources.py</code></dt><dd>Builds the zero-filled traffic-source chart data and per-source top videos.</dd>
+        <dt><code>related_videos.py</code></dt><dd>Builds the Related Video referrer list with its total.</dd>
+        <dt><code>comments.py</code></dt><dd>Removes comment authors no comment uses.</dd>
         <dt><code>sync_runs.py</code></dt><dd>Saves the history of sync runs and groups it into pages of syncs.</dd>
-        <dt><code>sync_coverage.py</code></dt><dd>Records which months have already been synced for each video.</dd>
-        <dt><code>fx_rates.py</code></dt><dd>Saves daily USD to SGD exchange rates.</dd>
         <dt><code>connection.py</code></dt><dd>Opens database connections and creates the tables.</dd>
       </dl>
       </div>
@@ -111,6 +110,7 @@
         <dt><code>plans.py</code></dt><dd>Checks that a requested plan is valid and sets the order stages run in.</dd>
         <dt><code>status.py</code></dt><dd>Tracks live progress and handles stop requests.</dd>
         <dt><code>coverage.py</code></dt><dd>Works out which months still need downloading.</dd>
+        <dt><code>write_preparation.py</code></dt><dd>Checks a month of search terms or Related Video referrers, adds up repeats, and turns them into data classes to save.</dd>
         <dt><code>monthly_insights.py</code></dt><dd>Splits date ranges into calendar months.</dd>
         <dt><code>scheduler.py</code></dt><dd>Is an unused daily-sync helper; nothing calls it.</dd>
       </dl>

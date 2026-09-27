@@ -7,8 +7,10 @@ from typing import Optional
 from unittest import mock
 
 from logging_config import configure_logging, reset_logging
+from database import Video
 from sync import stages
 from sync.stages import SyncCounts
+from tests.support import patch_stage_writes
 from youtube import analytics_api
 
 # These tests drive stages that log through the real `youtube_analytics.sync` logger.
@@ -44,7 +46,7 @@ class VideoNeverDeletesTest(unittest.TestCase):
             "sync.stages.youtube.fetch_videos",
             return_value=[{"id": "v1", "channel_id": "UC1", "title": "Kept"}],
         ).start()
-        self.upsert = mock.patch("sync.stages.database.upsert_own_video").start()
+        self.writes = patch_stage_writes()
         self.delete = mock.patch("sync.stages.database.delete_videos_not_in").start()
 
     def test_complete_pagination_upserts_and_returns_owned_ids_without_deleting(self) -> None:
@@ -69,7 +71,7 @@ class VideoNeverDeletesTest(unittest.TestCase):
 
         self.delete.assert_not_called()
         self.assertEqual(owned_ids, {"v1"})
-        self.upsert.assert_called_once()
+        self.assertEqual(len(self.writes.of(Video)), 1)
         self.assertEqual(counts.rows_written, 1)
 
 
@@ -85,7 +87,7 @@ class VideoOwnershipFilterTest(unittest.TestCase):
         mock.patch(
             "sync.stages.youtube.fetch_all_video_ids", return_value=([], False)
         ).start()
-        self.upsert = mock.patch("sync.stages.database.upsert_own_video").start()
+        self.writes = patch_stage_writes()
         mock.patch("sync.stages.database.delete_videos_not_in").start()
 
     def test_playlist_only_video_owned_by_channel_is_upserted_and_retained(self) -> None:
@@ -97,7 +99,7 @@ class VideoOwnershipFilterTest(unittest.TestCase):
 
         owned_ids = stages.sync_videos(counts, {"v1"})
 
-        self.upsert.assert_called_once()
+        self.assertEqual(len(self.writes.of(Video)), 1)
         self.assertEqual(owned_ids, {"v1"})
 
     def test_playlist_only_video_owned_by_another_channel_is_not_imported(self) -> None:
@@ -109,7 +111,7 @@ class VideoOwnershipFilterTest(unittest.TestCase):
 
         owned_ids = stages.sync_videos(counts, {"v1"})
 
-        self.upsert.assert_not_called()
+        self.assertEqual(self.writes.of(Video), [])
         self.assertEqual(owned_ids, set())
 
     def test_uploads_id_is_retained_even_when_details_are_missing(self) -> None:
@@ -119,7 +121,7 @@ class VideoOwnershipFilterTest(unittest.TestCase):
 
         owned_ids = stages.sync_videos(counts, set())
 
-        self.upsert.assert_not_called()
+        self.assertEqual(self.writes.of(Video), [])
         self.assertEqual(owned_ids, {"v1"})
 
 
@@ -136,7 +138,7 @@ class VideoDetailFetchGapTest(unittest.TestCase):
         mock.patch(
             "sync.stages.youtube.fetch_all_video_ids", return_value=(["v1", "v2", "v3"], False)
         ).start()
-        mock.patch("sync.stages.database.upsert_own_video").start()
+        patch_stage_writes()
         mock.patch("sync.stages.database.delete_videos_not_in").start()
 
     def test_full_detail_fetch_logs_nothing(self) -> None:
@@ -185,7 +187,7 @@ class VideoShortsClassificationGateTest(unittest.TestCase):
             "sync.stages.youtube.fetch_videos",
             return_value=[{"id": "v1", "channel_id": "UC1", "title": "Kept", "content_type": None}],
         ).start()
-        self.upsert = mock.patch("sync.stages.database.upsert_own_video").start()
+        self.writes = patch_stage_writes()
         mock.patch("sync.stages.database.delete_videos_not_in").start()
 
     def test_complete_shorts_pagination_classifies_normally(self) -> None:
@@ -196,8 +198,8 @@ class VideoShortsClassificationGateTest(unittest.TestCase):
 
         stages.sync_videos(counts, set())
 
-        written = self.upsert.call_args.args[0]
-        self.assertEqual(written["content_type"], "short")
+        written = self.writes.of(Video)[-1]
+        self.assertEqual(written.content_type, "short")
 
     def test_truncated_shorts_pagination_skips_classification_but_still_upserts(self) -> None:
         mock.patch(
@@ -208,8 +210,8 @@ class VideoShortsClassificationGateTest(unittest.TestCase):
         with self.assertLogs("youtube_analytics.sync", level="DEBUG") as captured:
             stages.sync_videos(counts, set())
 
-        written = self.upsert.call_args.args[0]
-        self.assertIsNone(written["content_type"])
+        written = self.writes.of(Video)[-1]
+        self.assertIsNone(written.content_type)
         self.assertEqual(counts.rows_written, 1)
         warnings = [r.getMessage() for r in captured.records if r.levelname == "WARNING"]
         self.assertEqual(
@@ -223,8 +225,7 @@ class PlaylistCleanupGateTest(unittest.TestCase):
 
     def setUp(self) -> None:
         self.addCleanup(mock.patch.stopall)
-        mock.patch("sync.stages.database.upsert_playlist").start()
-        mock.patch("sync.stages.database.upsert_playlist_item").start()
+        patch_stage_writes()
         self.delete_items = mock.patch(
             "sync.stages.database.delete_playlist_items", return_value=3
         ).start()

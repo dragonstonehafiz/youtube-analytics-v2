@@ -7,10 +7,11 @@ from unittest import mock
 from fastapi import HTTPException
 
 import database
+from database import Playlist, PlaylistItem, Video, VideoAnalytics, VideoTrafficSource, writer
 from database import Video, queries, reader
 from routes.analytics import router as analytics_router
 from routes.video_scope import require_playlist, resolve_playlist_video_ids
-from tests.support import IsolatedDatabaseTestCase, create_test_client
+from tests.support import FIXED_NOW, IsolatedDatabaseTestCase, create_test_client
 
 
 def _top_videos(**filters: Any) -> list[dict]:
@@ -51,12 +52,12 @@ class VideoScopeTestCase(IsolatedDatabaseTestCase):
             ("v-d", "Delta Episode", "video", "public", "2024-01-04T00:00:00Z"),
         )
         for video_id, title, content_type, privacy_status, published_at in videos:
-            database.upsert_own_video({
+            writer.write(Video.from_dict({**{
                 "id": video_id, "channel_id": "c1", "title": title,
                 "description": "", "published_at": published_at, "duration_seconds": 100,
                 "thumbnail_url": "", "content_type": content_type, "privacy_status": privacy_status,
                 "view_count": 10, "like_count": 1, "comment_count": 0,
-            })
+            }, "own": True, "updated_at": FIXED_NOW}))
 
         # v-a ranks first by views, v-b first by watch time, so sort_by is observable under scoping.
         metrics = (
@@ -66,26 +67,26 @@ class VideoScopeTestCase(IsolatedDatabaseTestCase):
             ("v-d", "2024-01-06", 50, 5),
         )
         for video_id, day, views, watch_time in metrics:
-            database.upsert_video_analytics({
+            writer.write(VideoAnalytics.from_dict({**{
                 "video_id": video_id, "date": day, "views": views,
                 "watch_time_minutes": watch_time, "estimated_revenue": 1.0,
                 "average_view_duration_seconds": 5, "average_view_percentage": 50.0,
                 "likes": 1, "subscribers_gained": 0, "subscribers_lost": 0,
-            })
+            }, "updated_at": FIXED_NOW}))
             for source_type in ("SEARCH", "SUGGESTED"):
-                database.upsert_video_traffic_source({
+                writer.write(VideoTrafficSource.from_dict({**{
                     "video_id": video_id, "date": day, "traffic_source_type": source_type,
                     "views": views, "watch_time_minutes": watch_time,
-                })
+                }, "updated_at": FIXED_NOW}))
 
-        database.upsert_playlist({
+        writer.write(Playlist.from_dict({**{
             "id": "p-full", "title": "Full", "description": "",
             "published_at": "2024-01-01T00:00:00Z", "thumbnail_url": "", "item_count": 2,
-        })
-        database.upsert_playlist({
+        }, "updated_at": FIXED_NOW}))
+        writer.write(Playlist.from_dict({**{
             "id": "p-empty", "title": "Empty", "description": "",
             "published_at": "2024-01-01T00:00:00Z", "thumbnail_url": "", "item_count": 0,
-        })
+        }, "updated_at": FIXED_NOW}))
         items: tuple[tuple[str, str, str | None, int], ...] = (
             ("pi-1", "p-full", "v-a", 0),
             ("pi-2", "p-full", "v-a", 1),  # duplicate membership for the same video
@@ -94,9 +95,9 @@ class VideoScopeTestCase(IsolatedDatabaseTestCase):
             ("pi-5", "p-full", None, 4),  # null membership
         )
         for item_id, playlist_id, member_id, position in items:
-            database.upsert_playlist_item({
+            writer.write(PlaylistItem.from_dict({**{
                 "id": item_id, "playlist_id": playlist_id, "video_id": member_id, "position": position,
-            })
+            }, "updated_at": FIXED_NOW}))
 
     def _get(self, path: str, **params: str) -> dict:
         response = self.client.get(path, params=params)
@@ -453,22 +454,22 @@ class ExternalVideoExclusionRouteTest(VideoScopeTestCase):
 
     def setUp(self) -> None:
         super().setUp()
-        database.upsert_related_video({
+        writer.write(Video.from_dict({**{
             "id": "v-e", "channel_id": "cOther", "title": "External Episode",
             "description": "", "published_at": "2024-01-05T00:00:00Z", "duration_seconds": 100,
             "thumbnail_url": "", "content_type": "video", "privacy_status": "public",
             "view_count": 10, "like_count": 1, "comment_count": 0,
-        }, own=False)
-        database.upsert_video_analytics({
+        }, "own": False, "updated_at": FIXED_NOW}))
+        writer.write(VideoAnalytics.from_dict({**{
             "video_id": "v-e", "date": "2024-01-05", "views": 9999,
             "watch_time_minutes": 9999, "estimated_revenue": 1.0,
             "average_view_duration_seconds": 5, "average_view_percentage": 50.0,
             "likes": 1, "subscribers_gained": 0, "subscribers_lost": 0,
-        })
-        database.upsert_video_traffic_source({
+        }, "updated_at": FIXED_NOW}))
+        writer.write(VideoTrafficSource.from_dict({**{
             "video_id": "v-e", "date": "2024-01-05", "traffic_source_type": "SEARCH",
             "views": 9999, "watch_time_minutes": 9999,
-        })
+        }, "updated_at": FIXED_NOW}))
 
     def test_aggregated_analytics_excludes_the_external_video(self) -> None:
         body = self._get("/analytics/videos", **DATE_RANGE)

@@ -53,7 +53,7 @@
       <h1>Efficiency</h1>
       <p>This page shows code that does more work than it needs to.</p>
       <div class="meta-line">
-        <span>Source revision <code>926f014</code></span>
+        <span>Source revision <code>a731fb1</code></span>
       </div>
     </header>
 
@@ -63,18 +63,18 @@
 
         <article class="dup">
           <div class="dup-head"><h3>One connection and commit per row</h3><span class="dup-count">per row</span></div>
-          <p>Each upsert opens a new SQLite connection, runs three <code>PRAGMA</code> statements, writes one row, and commits.</p>
+          <p>Each <code>writer.write()</code> call opens a new SQLite connection, runs three <code>PRAGMA</code> statements, takes the write lock with <code>BEGIN IMMEDIATE</code>, runs an <code>UPDATE</code> (plus an <code>INSERT</code> when the row is new), and commits.</p>
           <dl>
-            <dt>Where</dt><dd><code>upsert_video_analytics</code>, <code>upsert_video_traffic_source</code>, <code>upsert_playlist_item</code>, <code>upsert_own_video</code>, <code>upsert_comment_author</code> + <code>upsert_comment</code> (two per comment), called in loops from <code>sync/stages.py</code></dd>
-            <dt>Cost</dt><dd>A commit per row instead of per batch. The analytics stages run on concurrent workers, so each commit also waits for SQLite's single write lock.</dd>
+            <dt>Where</dt><dd>Every streamed row in <code>sync/stages.py</code>: daily analytics, daily traffic sources, playlists and playlist items, videos and referrer videos, comment authors and comments (two calls per comment), and FX rates. Monthly search terms, referrers and coverage already go through one <code>write_many()</code> call per month.</dd>
+            <dt>Cost</dt><dd>A commit per row instead of per batch, and two statements for every row seen for the first time. The analytics stages run on concurrent workers, so each call also waits for SQLite's single write lock.</dd>
           </dl>
         </article>
 
         <article class="dup">
           <div class="dup-head"><h3>Connections closed by garbage collection</h3><span class="dup-count">every DB call</span></div>
-          <p><code>with get_connection() as conn</code> commits or rolls back on exit but does not close the connection. Reads through <code>database/reader.py</code> close the connections they open; the code below still uses the <code>with</code> form.</p>
+          <p><code>with get_connection() as conn</code> commits or rolls back on exit but does not close the connection. Reads through <code>database/reader.py</code> and writes through <code>database/writer.py</code> close the connections they open; the code below still uses the <code>with</code> form.</p>
           <dl>
-            <dt>Where</dt><dd>Every write helper in <code>backend/database/</code>, plus the reports that call <code>get_connection()</code> directly: the analytics and traffic-source reports, <code>get_related_video_referrers</code>, and <code>get_sync_runs</code></dd>
+            <dt>Where</dt><dd>The <code>delete_*</code> functions and the sync-run log functions in <code>backend/database/</code>, plus the reports that call <code>get_connection()</code> directly: the analytics and traffic-source reports, <code>get_related_video_referrers</code>, and <code>get_sync_runs</code></dd>
             <dt>Cost</dt><dd>Closing depends on the connection object being freed, not on the <code>with</code> block ending.</dd>
           </dl>
         </article>

@@ -54,7 +54,7 @@
       <h1>Backend architecture</h1>
       <p>This page shows what each part of the backend does and how the parts connect.</p>
       <div class="meta-line">
-        <span>Source revision <code>926f014</code></span>
+        <span>Source revision <code>a731fb1</code></span>
       </div>
     </header>
 
@@ -63,7 +63,7 @@
       <div class="card-grid">
         <div class="card"><h3><span class="tag muted">server.py</span></h3><p>Starts the backend: creates the web server, plugs in the API routes, and prepares the database when the app launches.</p></div>
         <div class="card"><h3><span class="tag route">routes/</span></h3><p>The web API. Receives each request from the frontend, checks it, and answers with data from the database. One file per area: videos, playlists, analytics, comments, sync, metadata — plus <code>video_scope.py</code>, which returns 404 for a missing video or playlist and looks up a playlist's videos for the playlist handlers.</p></div>
-        <div class="card"><h3><span class="tag db">database/</span></h3><p>The only code that reads or writes SQLite. One small data class per table holds row values; <code>reader.py</code> runs every read and fills those classes; <code>queries.py</code> holds shared SQL for joined and grouped reads. The per-domain files save what sync downloads and calculate the reports that need more than SQL.</p></div>
+        <div class="card"><h3><span class="tag db">database/</span></h3><p>The only code that reads or writes SQLite. One small data class per table holds row values; <code>reader.py</code> runs every read and fills those classes; <code>queries.py</code> holds shared SQL for joined and grouped reads; <code>writer.py</code> saves every row sync downloads. The per-domain files hold the deletes, the sync-run log, and the reports that need more than SQL.</p></div>
         <div class="card"><h3><span class="tag sync">sync/</span></h3><p>The data importer. When you press <strong>Sync selected</strong>, it decides what to download, runs the steps in order, tracks progress, and lets you stop it.</p></div>
         <div class="card"><h3><span class="tag yt">youtube/</span></h3><p>Talks to Google: signs in with OAuth and calls the YouTube Data and Analytics APIs. Only sync uses it.</p></div>
         <div class="card"><h3><span class="tag muted">logging_config.py</span></h3><p>Writes the application and sync log files.</p></div>
@@ -86,7 +86,7 @@
           <g class="node"><rect x="360" y="20" width="180" height="56" rx="8"/><text class="title" x="450" y="44" text-anchor="middle">server.py</text><text class="sub" x="450" y="62" text-anchor="middle">ASGI entry</text></g>
           <g class="node route"><rect x="80" y="140" width="200" height="64" rx="8"/><text class="title" x="180" y="166" text-anchor="middle">routes/</text><text class="sub" x="180" y="186" text-anchor="middle">38 endpoints</text></g>
           <g class="node sync"><rect x="400" y="140" width="200" height="64" rx="8"/><text class="title" x="500" y="166" text-anchor="middle">sync/</text><text class="sub" x="500" y="186" text-anchor="middle">plans · stages · status</text></g>
-          <g class="node db"><rect x="80" y="290" width="200" height="64" rx="8"/><text class="title" x="180" y="316" text-anchor="middle">database/</text><text class="sub" x="180" y="336" text-anchor="middle">rows · reader · writes</text></g>
+          <g class="node db"><rect x="80" y="290" width="200" height="64" rx="8"/><text class="title" x="180" y="316" text-anchor="middle">database/</text><text class="sub" x="180" y="336" text-anchor="middle">rows · reader · writer</text></g>
           <g class="node yt"><rect x="400" y="290" width="200" height="64" rx="8"/><text class="title" x="500" y="316" text-anchor="middle">youtube/</text><text class="sub" x="500" y="336" text-anchor="middle">API clients</text></g>
           <g class="node"><rect x="680" y="290" width="180" height="64" rx="8"/><text class="title" x="770" y="316" text-anchor="middle">logging_config.py</text><text class="sub" x="770" y="336" text-anchor="middle">shared logging</text></g>
 
@@ -101,7 +101,6 @@
           <path class="edge" d="M600,322 L678,322" marker-end="url(#arrow)"/>
 
           <g aria-hidden="true">
-            <line class="edge" x1="20" y1="372" x2="880" y2="372"/>
             <path class="edge" d="M20,392 L60,392" marker-end="url(#arrow)"/>
             <text class="edge-label" x="68" y="396">imports (points at the package being imported)</text>
           </g>
@@ -111,7 +110,7 @@
         <div class="card"><h3><span class="tag db">database/</span></h3><p>Imports no other application package — the shared bottom layer.</p></div>
         <div class="card"><h3><span class="tag yt">youtube/</span></h3><p>Never touches the database. Only <code>sync/stages.py</code> moves API results into <code>database/</code>.</p></div>
         <div class="card"><h3><span class="tag route">routes/</span></h3><p>Never calls <code>youtube/</code>. Reads through <code>database.reader</code> directly and turns the returned data classes into JSON.</p></div>
-        <div class="card"><h3><span class="tag sync">sync/</span></h3><p>The only package that calls <code>youtube/</code>, and the only caller of <code>database/</code>'s write helpers (every <code>upsert_*</code> and <code>delete_*</code>). Only <code>routes/</code> imports it.</p></div>
+        <div class="card"><h3><span class="tag sync">sync/</span></h3><p>The only package that calls <code>youtube/</code>, and the only caller of <code>database.writer</code> and the <code>delete_*</code> functions. It turns each fetched dictionary into a row object before writing it. Only <code>routes/</code> imports it.</p></div>
       </div>
     </section>
 
@@ -141,7 +140,7 @@
         <div class="flow-arrow" aria-hidden="true"></div>
         <div class="flow-step sync"><strong>stages.sync_*</strong><small><code>status.raise_if_stopping</code> checkpoints</small></div>
         <div class="flow-arrow" aria-hidden="true"></div>
-        <div class="flow-step yt"><strong>youtube.fetch_* / iter_*</strong><small>and <code>database.upsert_*</code> / <code>delete_*</code></small></div>
+        <div class="flow-step yt"><strong>youtube.fetch_* / iter_*</strong><small>then <code>Model.from_dict()</code> → <code>writer.write</code> / <code>write_many</code>, and <code>delete_*</code></small></div>
       </div>
       <div class="note warn"><p><code>sync.run_plan()</code> and <code>sync/scheduler.py</code> sit outside this path: nothing calls <code>start_background_scheduler()</code>, so neither runs.</p></div>
     </section>
@@ -151,7 +150,7 @@
       <div class="card-grid">
         <div class="card"><h3>Broad modules</h3><p><code>sync/stages.py</code> holds all nine stage implementations plus their shared helpers. <code>database/queries.py</code> holds all 10 shared SQL definitions for routes and sync.</p></div>
         <div class="card"><h3>Unused at runtime</h3><p><code>start_background_scheduler()</code>, <code>synced_today()</code>, and <code>run_plan()</code>.</p></div>
-        <div class="card"><h3>Re-export files</h3><p>Three package <code>__init__.py</code> files re-export every public name (<code>database</code> 45, <code>sync</code> 31, <code>youtube</code> 15); <code>routes/__init__.py</code> combines the six routers.</p></div>
+        <div class="card"><h3>Re-export files</h3><p>Three package <code>__init__.py</code> files re-export every public name (<code>database</code> 36, <code>sync</code> 31, <code>youtube</code> 15); <code>routes/__init__.py</code> combines the six routers.</p></div>
       </div>
     </section>
 

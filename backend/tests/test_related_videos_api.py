@@ -1,8 +1,10 @@
 from __future__ import annotations
 
 import database
+from database import Playlist, PlaylistItem, writer
+from sync.write_preparation import related_video_rows
 from routes.analytics import router as analytics_router
-from tests.support import IsolatedDatabaseTestCase, create_test_client, make_video
+from tests.support import FIXED_NOW, IsolatedDatabaseTestCase, create_test_client, make_video
 
 
 class RelatedVideosApiTestCase(IsolatedDatabaseTestCase):
@@ -15,25 +17,25 @@ class RelatedVideosApiTestCase(IsolatedDatabaseTestCase):
         self._seed()
 
     def _seed(self) -> None:
-        database.upsert_own_video(make_video("v-1", "Target One", content_type="video", privacy_status="public"))
-        database.upsert_own_video(make_video("v-2", "Target Two", content_type="short", privacy_status="private"))
-        database.upsert_own_video(make_video("ref-mine", "My Own Referrer"))
-        database.upsert_related_video(make_video("ref-ext", "External Referrer"), own=False)
+        writer.write(make_video("v-1", "Target One", content_type="video", privacy_status="public"))
+        writer.write(make_video("v-2", "Target Two", content_type="short", privacy_status="private"))
+        writer.write(make_video("ref-mine", "My Own Referrer"))
+        writer.write(make_video("ref-ext", "External Referrer", own=False))
 
-        database.upsert_playlist({
+        writer.write(Playlist.from_dict({**{
             "id": "p-1", "title": "Playlist", "description": "",
             "published_at": "2024-01-01T00:00:00Z", "thumbnail_url": "", "item_count": 1,
-        })
-        database.upsert_playlist_item({"id": "pi-1", "playlist_id": "p-1", "video_id": "v-1", "position": 0})
+        }, "updated_at": FIXED_NOW}))
+        writer.write(PlaylistItem.from_dict({**{"id": "pi-1", "playlist_id": "p-1", "video_id": "v-1", "position": 0}, "updated_at": FIXED_NOW}))
 
-        database.upsert_related_videos("v-1", "2024-01", [
+        writer.write_many(related_video_rows("v-1", "2024-01", [
             {"referrer_video_id": "ref-mine", "views": 10},
             {"referrer_video_id": "ref-ext", "views": 7},
             {"referrer_video_id": "ref-unresolved", "views": 3},
-        ])
-        database.upsert_related_videos("v-2", "2024-01", [
+        ], updated_at=FIXED_NOW))
+        writer.write_many(related_video_rows("v-2", "2024-01", [
             {"referrer_video_id": "ref-mine", "views": 4},
-        ])
+        ], updated_at=FIXED_NOW))
 
 
 DATE_RANGE = {"start_date": "2024-01-15", "end_date": "2024-01-20"}
@@ -177,10 +179,10 @@ class PlaylistDestinationsRouteTest(RelatedVideosApiTestCase):
         self.assertEqual(response.status_code, 404)
 
     def test_empty_playlist_returns_no_destinations(self) -> None:
-        database.upsert_playlist({
+        writer.write(Playlist.from_dict({**{
             "id": "p-empty", "title": "Empty", "description": "",
             "published_at": "2024-01-01T00:00:00Z", "thumbnail_url": "", "item_count": 0,
-        })
+        }, "updated_at": FIXED_NOW}))
         body = self.client.get(
             "/analytics/playlists/p-empty/related-videos/destinations",
             params={**DATE_RANGE, "referrer_video_id": "ref-mine"},

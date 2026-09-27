@@ -4,25 +4,7 @@ import sqlite3
 from collections.abc import Collection
 from datetime import date, timedelta
 
-from .connection import _now, get_connection
-
-
-def upsert_video_traffic_source(row: dict) -> None:
-    """Insert or replace a daily video traffic source row."""
-    row = {**row, "updated_at": _now()}
-    with get_connection() as conn:
-        conn.execute(
-            """
-            INSERT INTO video_traffic_sources (video_id, date, traffic_source_type,
-                views, watch_time_minutes, updated_at)
-            VALUES (:video_id, :date, :traffic_source_type, :views, :watch_time_minutes, :updated_at)
-            ON CONFLICT(video_id, date, traffic_source_type) DO UPDATE SET
-                views = excluded.views,
-                watch_time_minutes = excluded.watch_time_minutes,
-                updated_at = excluded.updated_at
-            """,
-            row,
-        )
+from .connection import get_connection
 
 
 def _zero_fill_traffic_sources(rows: list[dict], start_date: str | None, end_date: str | None) -> list[dict]:

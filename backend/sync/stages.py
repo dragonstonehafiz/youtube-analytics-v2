@@ -5,10 +5,24 @@ from datetime import date, timedelta
 
 import database
 import youtube
-from database import Comment, FxRate, SyncCoverage, Video, queries, reader
+from database import (
+    Comment,
+    CommentAuthor,
+    FxRate,
+    Playlist,
+    PlaylistItem,
+    SyncCoverage,
+    Video,
+    VideoAnalytics,
+    VideoTrafficSource,
+    now,
+    queries,
+    reader,
+    writer,
+)
 from logging_config import exception_context, get_logger
 
-from . import coverage, monthly_insights, status
+from . import coverage, monthly_insights, status, write_preparation
 
 # How many further comments an incremental scan keeps reading after it recognises the
 # first one it already stores. One maximum-size page, so the overlap costs no extra
@@ -24,6 +38,15 @@ class SyncCounts:
     rows_fetched: int = 0
     rows_written: int = 0
     rows_deleted: int = 0
+
+
+def _coverage_rows(collector: str, video_id: str, months: list[str]) -> list[SyncCoverage]:
+    """Return completed-month coverage rows for one video and collector, stamped now."""
+    completed_at = now()
+    return [
+        SyncCoverage(collector=collector, video_id=video_id, period_key=month, completed_at=completed_at)
+        for month in months
+    ]
 
 
 def _incremental_monthly_windows(
@@ -128,7 +151,7 @@ def sync_videos(counts: SyncCounts, playlist_video_ids: set[str]) -> set[str]:
         if i > 0:
             status.raise_if_stopping()
         if video_id in uploads_id_set or video_id in owned_playlist_only_ids:
-            database.upsert_own_video(video)
+            writer.write(Video.from_dict({**video, "own": True, "updated_at": now()}))
             counts.rows_written += 1
 
     return uploads_id_set | owned_playlist_only_ids
@@ -160,7 +183,7 @@ def sync_playlists(counts: SyncCounts) -> set[str]:
     for i, playlist in enumerate(playlists):
         if i > 0:
             status.raise_if_stopping()
-        database.upsert_playlist(playlist)
+        writer.write(Playlist.from_dict({**playlist, "updated_at": now()}))
         counts.rows_written += 1
         if playlist["id"] in truncated_playlists:
             _logger.warning(
@@ -170,7 +193,7 @@ def sync_playlists(counts: SyncCounts) -> set[str]:
             continue
         counts.rows_deleted += database.delete_playlist_items(playlist["id"])
         for item in all_items[playlist["id"]]:
-            database.upsert_playlist_item(item)
+            writer.write(PlaylistItem.from_dict({**item, "updated_at": now()}))
             counts.rows_written += 1
 
     if playlists_truncated:
@@ -232,9 +255,9 @@ def sync_comments(scope: str, counts: SyncCounts) -> None:
                     break
 
             try:
-                database.upsert_comment_author(item["author"])
+                writer.write(CommentAuthor.from_dict({**item["author"], "updated_at": now()}))
                 counts.rows_written += 1
-                database.upsert_comment(comment)
+                writer.write(Comment.from_dict({**comment, "updated_at": now()}))
                 counts.rows_written += 1
             except Exception as exc:
                 _logger.warning(
@@ -301,10 +324,10 @@ def sync_video_analytics(scope: str, year: int | None, counts: SyncCounts) -> No
                     status.raise_if_stopping()
                 first_row = False
                 counts.rows_fetched += 1
-                database.upsert_video_analytics(row)
+                writer.write(VideoAnalytics.from_dict({**row, "updated_at": now()}))
                 counts.rows_written += 1
             status.raise_if_stopping()
-            database.upsert_coverage("video_analytics", video_id, months)
+            writer.write_many(_coverage_rows("video_analytics", video_id, months))
         _logger.debug(
             "video_analytics %d/%d video=%s rows=%d title=%r",
             i, total, video_id, counts.rows_fetched - rows_before, title,
@@ -355,10 +378,10 @@ def sync_video_traffic_sources(scope: str, year: int | None, counts: SyncCounts)
                     status.raise_if_stopping()
                 first_row = False
                 counts.rows_fetched += 1
-                database.upsert_video_traffic_source(row)
+                writer.write(VideoTrafficSource.from_dict({**row, "updated_at": now()}))
                 counts.rows_written += 1
             status.raise_if_stopping()
-            database.upsert_coverage("video_traffic_sources", video_id, months)
+            writer.write_many(_coverage_rows("video_traffic_sources", video_id, months))
         _logger.debug(
             "video_traffic_sources %d/%d video=%s rows=%d title=%r",
             i, total, video_id, counts.rows_fetched - rows_before, title,
@@ -414,8 +437,9 @@ def sync_search_insights(scope: str, year: int | None, counts: SyncCounts) -> No
                 video_id, window.start_date, window.end_date, checkpoint=status.raise_if_stopping
             )
             counts.rows_fetched += result.raw_row_count
-            counts.rows_written += database.upsert_search_terms(video_id, window.month, result.terms)
-            database.upsert_coverage("search_insights", video_id, [window.month])
+            terms = write_preparation.search_term_rows(video_id, window.month, result.terms, updated_at=now())
+            counts.rows_written += writer.write_many(terms)
+            writer.write_many(_coverage_rows("search_insights", video_id, [window.month]))
         _logger.debug(
             "search_insights %d/%d video=%s months=%d rows=%d title=%r",
             i, total, video_id, len(windows), counts.rows_fetched - rows_before, title,
@@ -474,8 +498,13 @@ def sync_related_video_insights(scope: str, year: int | None, counts: SyncCounts
                 video_id, window.start_date, window.end_date, checkpoint=status.raise_if_stopping
             )
             counts.rows_fetched += result.raw_row_count
-            counts.rows_written += database.upsert_related_videos(video_id, window.month, result.referrers)
-            database.upsert_coverage("related_video_insights", video_id, [window.month])
+            referrers = write_preparation.related_video_rows(
+                video_id, window.month, result.referrers, updated_at=now()
+            )
+            if referrers and reader.select_one(Video, ("id",), where=[("id", "=", video_id), ("own", "=", True)]) is None:
+                raise ValueError(f"target_video_id {video_id!r} is not an owned video")
+            counts.rows_written += writer.write_many(referrers)
+            writer.write_many(_coverage_rows("related_video_insights", video_id, [window.month]))
             newly_encountered_ids.update(r["referrer_video_id"] for r in result.referrers)
         _logger.debug(
             "related_video_insights %d/%d video=%s months=%d rows=%d title=%r",
@@ -518,7 +547,7 @@ def _resolve_related_video_metadata(newly_encountered_ids: set[str], counts: Syn
             if j > 0:
                 status.raise_if_stopping()
             counts.rows_fetched += 1
-            database.upsert_related_video(video, own=video.get("channel_id") == channel_id)
+            writer.write(Video.from_dict({**video, "own": video.get("channel_id") == channel_id, "updated_at": now()}))
             counts.rows_written += 1
             resolved += 1
     _logger.debug(
@@ -561,7 +590,7 @@ def sync_fx_rates(counts: SyncCounts) -> None:
             carry = closes[day_str]
         if carry is not None:
             counts.rows_fetched += 1
-            database.upsert_fx_rate({"date": day_str, "usd_to_sgd": carry})
+            writer.write(FxRate(date=day_str, usd_to_sgd=carry, updated_at=now()))
             counts.rows_written += 1
         current += timedelta(days=1)
 

@@ -2,20 +2,20 @@
 
 ## Purpose
 
-Persistence layer, schema, row dataclasses, the shared reader, and query conventions. Owns everything about how data is stored, read, related, and aggregated. Sync-side write patterns (what calls these helpers and when) live in `sync.md`; HTTP-facing shapes live in `api.md`.
+Persistence layer, schema, row dataclasses, the shared reader and writer, and query conventions. Owns everything about how data is stored, read, written, related, and aggregated. Sync-side write patterns (what sync writes and when) live in `sync.md`; HTTP-facing shapes live in `api.md`.
 
 ## Authoritative source files
 
 - `backend/schema.sql`
-- `backend/database/dataclasses/` (one row dataclass per table), `backend/database/reader.py`, `backend/database/queries.py`, `backend/database/video_statistics.py`
-- `backend/database/connection.py`, `backend/database/videos.py`, `backend/database/playlists.py`, `backend/database/analytics.py`, `backend/database/traffic_sources.py`, `backend/database/comments.py`, `backend/database/fx_rates.py`, `backend/database/sync_runs.py`, `backend/database/search_terms.py`, `backend/database/related_videos.py`, `backend/database/sync_coverage.py`
+- `backend/database/dataclasses/` (one row dataclass per table), `backend/database/tables.py`, `backend/database/reader.py`, `backend/database/writer.py`, `backend/database/queries.py`, `backend/database/video_statistics.py`
+- `backend/database/connection.py`, `backend/database/videos.py`, `backend/database/playlists.py`, `backend/database/analytics.py`, `backend/database/traffic_sources.py`, `backend/database/comments.py`, `backend/database/sync_runs.py`, `backend/database/related_videos.py`
 - `backend/scripts/issue-48-migration.py`, `backend/scripts/issue-62-migration.py` — standalone, one-time migrations for pre-existing databases (see [Compatibility constraints](#compatibility-constraints)); neither is run by `init_db()`
 
 ## Contents
 
 - [Connection behavior](#connection-behavior)
 - [Schema](#schema)
-- [Row dataclasses and reader](#row-dataclasses-and-reader)
+- [Row dataclasses, reader, and writer](#row-dataclasses-reader-and-writer)
 - [Ownership boundary](#ownership-boundary)
 - [Sync coverage](#sync-coverage)
 - [Relationships and deletion behavior](#relationships-and-deletion-behavior)
@@ -46,7 +46,7 @@ videos                  -- id, channel_id, title, description, published_at, dur
                         --   to filter playlist-only candidates to this channel's own videos (see sync.md)
                         --   own is INTEGER NOT NULL DEFAULT 1 CHECK (own IN (0, 1)) — the ownership boundary
                         --   (see below); the reader's registered converter turns every selected own into a
-                        --   Python bool (see Row dataclasses and reader)
+                        --   Python bool (see Row dataclasses, reader, and writer)
 video_analytics         -- video_id, date, views, watch_time_minutes, estimated_revenue,
                         --   average_view_duration_seconds, average_view_percentage,
                         --   likes, subscribers_gained, subscribers_lost, updated_at
@@ -88,9 +88,9 @@ The comment-ID, thread-ID, and author-channel lookups are already covered by the
 
 There is no `sync_state` table — the scheduler derives its checkpoint from `sync_runs` directly (see [Query conventions](#query-conventions) below and `sync.md`), rather than from a separately persisted `last_synced_at` value.
 
-## Row dataclasses and reader
+## Row dataclasses, reader, and writer
 
-Reads go through `database/reader.py`; writes stay in the domain modules' upsert/delete helpers and never use the reader.
+Reads go through `database/reader.py` and inserts/updates through `database/writer.py`. Both use the table registry in `database/tables.py` and neither imports the other. Deletes, pruning, and the sync-run lifecycle functions (`create_sync_run`, `complete_sync_run`, `fail_sync_run`, `cancel_sync_run`, `mark_incomplete_sync_runs`) keep their own SQL in their domain modules.
 
 ### Row dataclasses
 
@@ -99,13 +99,24 @@ Reads go through `database/reader.py`; writes stay in the domain modules' upsert
 - `None` means either SQL `NULL` or a column the read did not select. `0`, `0.0`, `False`, and `""` are kept as they are, never turned into `None`.
 - Dates and timestamps stay as their stored text. `Video.own` is the only converted column: `bool` when present, `None` when not selected or when a `LEFT JOIN` found no row.
 - The classes hold data only. They know nothing about tables, connections, or queries, and share only the `Row` mixin (`database/dataclasses/base.py`).
+- `Model.from_dict(mapping)` builds a row from a dictionary, e.g. `Video.from_dict({**fetched, "own": True, "updated_at": now()})`. Absent keys stay `None`, supplied `None`/falsy values are kept, an unknown key raises `ValueError`, and the mapping is not modified. It converts only; it does not check value types.
 - `to_dict(fields=None, *, prefix="")` returns a plain dictionary for FastAPI to encode. With no `fields` it returns every declared field, including `None` values. With `fields` it returns exactly those keys, including selected `None`s, and raises `ValueError` for an unknown name. `prefix` renames keys, e.g. `to_dict(("display_name",), prefix="author_")` → `{"author_display_name": ...}`.
 
 The same classes also hold grouped results when the aliases match their fields, e.g. `SearchTerm(search_term=..., views=SUM(...))`. Such an instance is a computed value, not a stored row.
 
-### Registry and reads
+### Registry
 
-`reader.TABLES` maps each row class to its table explicitly; class names are never used to guess table names. Column names come from the dataclass fields, and `tests/test_database_reader.py` checks both the table set and each class's fields against `PRAGMA table_info`. Identifiers that reach SQL come from the registry or from code-owned SQL; request strings never do, and every value is a bound parameter. An unregistered class, unknown field, unsupported operator, or unsupported aggregate raises `ValueError`.
+`database/tables.py` holds the shared metadata:
+- `TABLES` maps each row class to its table explicitly; class names are never used to guess table names. `reader.TABLES` is the same object.
+- `KEYS` lists the primary-key columns the writer matches on: `id` for `Video`, `Playlist`, `PlaylistItem`, `Comment`, `CommentAuthor` and `SyncRun`; `video_id + date` for `VideoAnalytics`; `video_id + date + traffic_source_type` for `VideoTrafficSource`; `video_id + month + search_term` for `SearchTerm`; `target_video_id + month + referrer_video_id` for `RelatedVideo`; `date` for `FxRate`; `collector + video_id + period_key` for `SyncCoverage`.
+- `GENERATED_KEYS` marks `SyncRun`, whose `id` SQLite generates when an insert omits it.
+- `NON_DECREASING` marks `Video.own`, which an update may raise but never lower.
+
+Column names come from the dataclass fields. `tests/test_database_reader.py` checks the table set and each class's fields against `PRAGMA table_info`, and `tests/test_database_writer.py` checks `KEYS` against each table's primary key.
+
+### Reads
+
+ Identifiers that reach SQL come from the registry or from code-owned SQL; request strings never do, and every value is a bound parameter. An unregistered class, unknown field, unsupported operator, or unsupported aggregate raises `ValueError`.
 
 | Call | Use |
 |---|---|
@@ -120,6 +131,28 @@ The same classes also hold grouped results when the aliases match their fields, 
 `Query(sql, params)` is a frozen SQL-plus-parameters pair. Each read builds its objects from a single statement; there is no lazy relationship loading and no per-row follow-up query.
 
 Connection ownership: a read given `conn=` uses it and never commits, rolls back, or closes it. A read without `conn` opens one through `get_connection()` and closes it afterwards. Reads that must share one connection (a page and its `COUNT`, or the statistics report's four queries) open it with `reader.connect()` and pass it to each call.
+
+### Writes
+
+| Call | Returns |
+|---|---|
+| `writer.write(row, *, conn=None) -> int` | `1` when the row was inserted or updated; `0` when a row holding only its key already exists |
+| `writer.write_many(rows, *, conn=None) -> int` | The number of rows processed. All rows must be one class; mixing classes raises `ValueError`. Empty input returns `0` without opening a connection |
+
+Each row is written by matching its `KEYS` columns:
+- **Update first:** an `UPDATE` sets every non-`None` field that is not a key. `Video.own` is set with `MAX(own, ?)`, so an owned video is never demoted. If no row matched, an `INSERT` follows with the same non-`None` fields.
+- **Key-only rows:** a row with nothing but its key only checks whether the key exists, and inserts only if it doesn't.
+- **`None` never overwrites:** a `None` field is left out of both statements, so an incoming `None` keeps the stored value, and on insert the column takes its schema default or `NULL`. `0`, `False` and `""` are written like any other value. There is no way to write SQL `NULL` over a stored value through the writer.
+- **Partial rows:** a partial row can update an existing row even if it lacks fields required to insert one. A partial row for a new key fails the table's `NOT NULL`/`CHECK`/foreign-key constraints with `sqlite3.IntegrityError`, and the writer never invents values for it.
+- **Keys:** a key field that is `None` raises `ValueError`. The one exception is a `SyncRun` with no `id`, which is inserted and gets a generated one. Other `UNIQUE` columns such as `comments.thread_id` and `comment_authors.youtube_channel_id` are not keys, so a clash on them raises `IntegrityError`.
+- **Timestamps:** the writer never fills in timestamps. Callers set `updated_at`/`completed_at` themselves, normally from `database.now()`. A timestamp left `None` stays unchanged like any other field.
+- **Order:** rows in one `write_many()` are applied in input order, so two rows for the same key end with the later one's non-`None` fields.
+- **No `INSERT OR REPLACE`:** it would delete and re-insert the row and fire cascades.
+
+Transactions:
+- **Owned connection (no `conn`):** each call opens a connection and starts `BEGIN IMMEDIATE`, so the update-or-insert decision holds the write lock and two writers can't both insert the same key. It commits on success, rolls back the whole call on any error, and closes the connection.
+- **Materialized batch:** `write_many()` reads its whole input before opening the connection. An error while producing the rows therefore writes nothing.
+- **Borrowed connection (`conn`):** the caller must already be inside a transaction (`ValueError` otherwise). The writer wraps its work in `SAVEPOINT writer`, rolls back to it on error, and never commits, rolls back, or closes the caller's transaction.
 
 ### Query specifications and reports
 
@@ -151,10 +184,10 @@ These last four run their SQL through `get_connection()` directly.
 
 `videos.own` distinguishes a video the authenticated channel actually uploaded (confirmed via uploads-playlist membership or an exact `channel_id` match) from an external video whose metadata was only pulled in because it appeared as a Related Video referrer. Existing databases pick up the column via the standalone `backend/scripts/issue-48-migration.py` script (not part of `init_db()`); a fresh database gets it from `schema.sql` directly.
 
-Two writers share a private `_upsert_video_row(video, *, own)` (`database/videos.py`) whose `ON CONFLICT` clause is `own = MAX(own, excluded.own)` — an existing `own=1` can never be downgraded by either writer, and a row either writer created as `own=0` can later be promoted:
+Videos are written through `writer.write()`, whose `NON_DECREASING` rule updates `own` as `MAX(own, ?)`. An existing `own=1` is never downgraded, and a row first written as `own=0` can later be promoted:
 
-- `upsert_own_video(video)` — always writes `own=1`. The only writer for confirmed-owned videos.
-- `upsert_related_video(video, *, own)` — writes a Related referrer's metadata row, with `own` decided per call by the caller (see `sync.md`).
+- `sync_videos()` writes confirmed-owned videos with `own=True`.
+- Related referrer metadata resolution writes each referrer with `own` set to whether its `channel_id` matches this channel (see `sync.md`).
 
 Owned-only reads:
 
@@ -170,27 +203,27 @@ Every other video-scoped read carries a `v.own = 1` (or joined-alias equivalent)
 
 `database/related_videos.py` stores and reports monthly Related Video referrer data, upsert-only (no delete-and-replace), matching `search_terms`'s own retention precedent — a referrer omitted or zeroed in a later sync is left untouched, not deleted.
 
-- `upsert_related_videos(target_video_id, month, referrers)` — validates the whole payload (month format, referrer ID/views shape) before writing, aggregates duplicate referrer IDs in the same call, drops non-positive-view rows, and raises `ValueError` if `target_video_id` is not currently an owned video (Related rows only ever describe traffic *into* an owned target; a video can appear here as a referrer regardless of its own ownership, but never as an unowned target). Returns the number of referrers upserted.
+- Writes: `sync/write_preparation.py::related_video_rows(target_video_id, month, referrers, *, updated_at)` validates the whole payload (month format, referrer ID/views shape), sums duplicate referrer IDs, drops non-positive totals, and returns `RelatedVideo` rows without touching the database. `sync_related_video_insights()` then checks the target is an owned video (Related rows only ever describe traffic *into* an owned target) and raises `ValueError` if not, before passing the rows to `writer.write_many()`. An empty prepared batch skips the check and writes nothing. A target with no `videos` row at all is also rejected by the foreign key.
 - `get_related_video_referrers(start_date=None, end_date=None, content_type=None, privacy_status=None, title=None, video_ids=None, own=None, limit=None) -> {"items": [...], "total_named_views": int}` — referrers aggregated across owned target videos, summed across the months overlapping `start_date`/`end_date` (a missing bound is unbounded on that side, via the shared `_month_bound_conditions()` below), ordered by views descending then referrer ID ascending. `video_ids`/`content_type`/`privacy_status`/`title` all filter the *target* side (`title` matching the target's title or ID, never a referrer's — see the Title filter note below), with the same three-state `video_ids` scoping convention as the other aggregate helpers (`None` = every owned video, populated = that set, empty = no rows). `own` filters the *referrer* side: `True` matches only a referrer confirmed as this channel's own video; `False` matches everything else, including a referrer with no resolved metadata at all (`COALESCE(ref.own, 0) = 0` — an unresolved referrer is "not confirmed ours," so it belongs in the non-owned bucket, never in neither bucket); `None` (the default) returns every referrer regardless of ownership. `limit=None` returns every referrer. `total_named_views` is a second, independent query in the same call: the scope's unfiltered `SUM(views)` across every real referrer regardless of the `own`/`limit` filters, so a caller never has to fetch an unranked/uncapped row set just to total it.
 - `queries.related_video_destinations(referrer_video_id, start_date=None, end_date=None, limit=None, video_ids=None)` — the top owned destination (target) videos for one given referrer, summed across the overlapping months, ordered by views descending then target ID ascending. It returns `RelatedVideo(target_video_id, views)` plus `Video(title, thumbnail_url, content_type)` components, which routes flatten to `{target_video_id, title, thumbnail_url, content_type, views}`. The referrer's own ownership is irrelevant to this query — any video, owned or external, can be a referrer. `video_ids` scopes the destination set the same three-state way.
 - There is no persisted residual, no `period_start`/`period_end` columns on `related_videos` itself, and no read-time "unattributed" figure computed against aggregate Traffic Sources — the backend returns only real, stored `related_videos` rows, the same discipline `search_terms` follows (see [Search terms](#aggregation-and-filtering-semantics) below). `sync_coverage` (below) tracks *completion*, separately from this table, and is never read by any reporting/aggregation query.
 
-A shared `_month_bound_conditions(alias, start_date, end_date)` (`database/connection.py`) builds independent `<alias>.month >= ?` / `<alias>.month <= ?` conditions from each date's `YYYY-MM` prefix; both `search_terms.py` and `related_videos.py` use it with their own table alias.
+A shared `_month_bound_conditions(alias, start_date, end_date)` (`database/connection.py`) builds independent `<alias>.month >= ?` / `<alias>.month <= ?` conditions from each date's `YYYY-MM` prefix; `queries.py` (`st` for search terms, `rv` for destinations) and `related_videos.py` (`rv`) use it with their own table alias.
 
 ## Sync coverage
 
-`database/sync_coverage.py` persists, independently of any reporting table, which calendar months the four Analytics API stages (`video_analytics`, `video_traffic_sources`, `search_insights`, `related_video_insights` — these four strings are also the `collector` values) have successfully finished checking. It exists because a successful Analytics API response with zero reportable rows (e.g. a video with no views that month) leaves no reporting row anywhere, so a reporting table's `MAX(date)`/`MAX(month)` cannot distinguish "not checked yet" from "checked and genuinely empty." See `sync.md` for how the sync stages use this to select work; this section covers only the storage.
+The `sync_coverage` table persists, independently of any reporting table, which calendar months the four Analytics API stages (`video_analytics`, `video_traffic_sources`, `search_insights`, `related_video_insights` — these four strings are also the `collector` values) have successfully finished checking. It exists because a successful Analytics API response with zero reportable rows (e.g. a video with no views that month) leaves no reporting row anywhere, so a reporting table's `MAX(date)`/`MAX(month)` cannot distinguish "not checked yet" from "checked and genuinely empty." See `sync.md` for how the sync stages use this to select work; this section covers only the storage.
 
 - Schema: `sync_coverage(collector, video_id, period_key, completed_at)`, `PRIMARY KEY (collector, video_id, period_key)`, `video_id REFERENCES videos(id) ON DELETE CASCADE`. `period_key` is always `"YYYY-MM"` — there is no daily or yearly granularity, and no `granularity` column: every collector uses the same month-shaped key, so a column that never varies would be dead weight. Video Analytics/Traffic Sources track completion by calendar month the same as Search/Related Insights do, even though their own API requests can span many months or years in one call (see `sync.md`) — the granularity of *what gets marked done* is independent of the granularity of *what gets requested*.
 - Covered months are read in `sync/stages.py::_incremental_monthly_windows()` with `reader.select(SyncCoverage, ("period_key",), where=[collector =, video_id =, period_key >= start, period_key <= end])`, giving the `period_key`s already marked complete for one video/collector within an inclusive range.
-- `upsert_coverage(collector, video_id, period_keys) -> int` — marks one or many months complete, refreshing `completed_at` (`_now()`) on an already-complete month; returns the count upserted. Callers must only pass periods whose request/response fully succeeded — the function has no way to tell a genuine empty result from an unfinished one, so that guarantee is the caller's (`sync/stages.py`'s) responsibility.
-- `upsert_coverage()` and the coverage read take `collector`/`video_id`/`period_key` as plain strings with no format or enum validation — every caller is sync-stage or migration code in this same codebase, not external input, so a typo'd collector name is a bug caught by tests/mypy, not a runtime input to defend against.
+- Months are marked complete by writing `SyncCoverage(collector, video_id, period_key, completed_at)` rows with `writer.write_many()`; `sync/stages.py::_coverage_rows()` builds one row per month with a shared `database.now()` timestamp. An already-complete month gets its `completed_at` refreshed. Callers must only pass periods whose request/response fully succeeded — the writer can't tell a genuine empty result from an unfinished one, so that guarantee is the caller's (`sync/stages.py`'s) responsibility.
+- The coverage rows and the coverage read take `collector`/`video_id`/`period_key` as plain strings with no format or enum validation — every caller is sync-stage or migration code in this same codebase, not external input, so a typo'd collector name is a bug caught by tests/mypy, not a runtime input to defend against.
 - `sync_coverage` is written and read exclusively by the sync stages (`sync/stages.py`) and the manual initializer (`scripts/issue-62-migration.py`, below) — no reporting/aggregation query anywhere joins against it or reads it, and it has no HTTP-facing shape in `api.md`.
 - Comments and FX rates have no equivalent table: they keep boundaries derived from their own stored rows (the stored comment IDs from `reader.select(Comment, ("id",), where=[("video_id", "=", ...)])` for the overlap window, and the latest `reader.select_one(FxRate, ("date", "usd_to_sgd"), order_by=("-date",))`), since they're sourced from the Data API and Yahoo Finance respectively, outside this table's Analytics-API-only scope.
 
 ### Existing-database migration
 
-`backend/scripts/issue-62-migration.py` is a standalone, one-time, idempotent script for an existing database: it reads only `videos.id`/`videos.own`/`videos.published_at` for `own = 1` rows and the local current date, then marks every calendar month from each owned video's publish month through the current month complete for all four collectors — using the same conflict-upsert SQL `upsert_coverage()` uses, executed directly against one connection so the whole run commits as a single transaction (not by calling `upsert_coverage()` itself, which opens its own connection per call). It never reads or writes any Analytics reporting table. This is an explicit operator baseline assertion, not an evidence backfill: unlike the runtime sync rule above, it declares a month done whether or not a corresponding reporting row exists, since a pre-existing database's Analytics history is trusted as already synced. It calls `init_db()` first so `sync_coverage` exists even on a pre-Issue-62 database, and is safe to rerun (identical resulting rows each time). See `backend/README.md` for when to run it.
+`backend/scripts/issue-62-migration.py` is a standalone, one-time, idempotent script for an existing database: it reads only `videos.id`/`videos.own`/`videos.published_at` for `own = 1` rows and the local current date, then marks every calendar month from each owned video's publish month through the current month complete for all four collectors — with its own `INSERT … ON CONFLICT … DO UPDATE` statement executed against one connection, so the whole run commits as a single transaction. It never reads or writes any Analytics reporting table. This is an explicit operator baseline assertion, not an evidence backfill: unlike the runtime sync rule above, it declares a month done whether or not a corresponding reporting row exists, since a pre-existing database's Analytics history is trusted as already synced. It calls `init_db()` first so `sync_coverage` exists even on a pre-Issue-62 database, and is safe to rerun (identical resulting rows each time). See `backend/README.md` for when to run it.
 
 ## Relationships and deletion behavior
 
@@ -213,15 +246,15 @@ Deletion helpers report only rows they directly deleted via `cursor.rowcount` �
 
 ## Timestamp behavior
 
-`_now()` (`database/connection.py:12-14`) returns a timezone-aware UTC ISO 8601 string, e.g. `2026-07-17T08:30:45.123456+00:00`.
+`now()` (`database/connection.py`, exported as `database.now`) returns a timezone-aware UTC ISO 8601 string, e.g. `2026-07-17T08:30:45.123456+00:00`.
 
-Every upsert helper sets `updated_at = _now()` on the Python side before the query executes, and every `ON CONFLICT` clause sets `updated_at = excluded.updated_at` — so `updated_at` reflects "last successfully pulled and upserted," not "last changed." It updates even when a re-fetched row's values are identical to what's already stored.
+The writer never sets timestamps. Sync supplies `updated_at = now()` on every row it writes, and `completed_at = now()` on coverage rows; one timestamp is shared by all rows of one monthly insight batch and of one coverage call. `updated_at` therefore reflects "last successfully pulled and written," not "last changed." It updates even when a re-fetched row's values are identical to what's already stored. The sync-run lifecycle functions call `now()` for `started_at`/`completed_at` themselves.
 
 `updated_at` is not present on `sync_runs` (has its own `started_at`/`completed_at`).
 
 ## Query conventions
 
-- **Every** query uses parameterized `?` placeholders (or named `:param` placeholders for upserts) — never string-interpolated values. `f"..."` is used only to interpolate registry column names, `queries.py` SQL fragments, or `ORDER BY` fragments looked up from a fixed mapping, never raw user input.
+- **Every** query uses parameterized `?` placeholders — never string-interpolated values. `f"..."` is used only to interpolate registry table and column names (reader and writer), `queries.py` SQL fragments, or `ORDER BY` fragments looked up from a fixed mapping, never raw user input.
 - Sort keys are looked up in explicit mappings in `database/queries.py` before being interpolated into `ORDER BY`:
   - `_VIDEO_SORT_COLUMNS` maps `published_at`, `view_count`, `comment_count`, `total_revenue_sgd` to `v.published_at`, `v.view_count`, `v.comment_count`, `total_revenue_sgd`; `video_catalog()` uses it for both the channel and playlist video lists.
   - `_PLAYLIST_SORT_COLUMNS` maps `published_at`/`item_count` to the aliased `playlists__published_at`/`playlists__item_count` result columns and `last_item_added`, `total_views`, `total_earnings_sgd` to themselves, since `playlist_catalog()` sorts the outer `SELECT * FROM (…)`.
@@ -247,7 +280,7 @@ Every upsert helper sets `updated_at = _now()` on the Python side before the que
   - The batch page: `SELECT sr.batch_id, MIN(sr.started_at) AS started_at … GROUP BY sr.batch_id ORDER BY started_at DESC, sr.batch_id DESC LIMIT ? OFFSET ?`. Ordering by the aggregate means a batch is placed by its *earliest* stage, so a long-running batch cannot jump ahead of one submitted later. `batch_id DESC` breaks ties between batches whose earliest stages share a timestamp.
   - The children: explicit columns for the paged batch IDs via a parameterized `IN (?, …)` list, `ORDER BY sr.started_at DESC, sr.id DESC`. Only the placeholder *count* is interpolated — every UUID stays a bound parameter, the same rule as the `video_ids` scoping helpers above. When the requested page selects no batches the helper returns early with the total rather than emitting an invalid empty `IN ()`.
 
-  Paging over batch IDs before fetching children is what keeps a batch from being split across two pages, which a stage-row `LIMIT` could not guarantee. `run_count` and the three counters are then summed in Python from exactly the child rows placed in that response, so a group's parent totals always equal its own detail even if another sync starts mid-request. The `sr.id DESC` child tie-breaker gives rows sharing a `started_at` a total, stable order — the same discipline as `COMMENT_SORT_CLAUSES`, though collisions are far less likely here: `_now()` (`database/connection.py`) stores microsecond-resolution ISO timestamps, so distinct inserts effectively never tie, whereas comment `published_at` values come from YouTube at second resolution and genuinely do. Offset paging can still shift when a new batch starts between page requests — acceptable for an append-only history with no snapshot requirement. `sync_runs.batch_id` has no dedicated index; the grouping and child lookup scan history, which current volume does not justify migrating.
+  Paging over batch IDs before fetching children is what keeps a batch from being split across two pages, which a stage-row `LIMIT` could not guarantee. `run_count` and the three counters are then summed in Python from exactly the child rows placed in that response, so a group's parent totals always equal its own detail even if another sync starts mid-request. The `sr.id DESC` child tie-breaker gives rows sharing a `started_at` a total, stable order — the same discipline as `COMMENT_SORT_CLAUSES`, though collisions are far less likely here: `now()` (`database/connection.py`) stores microsecond-resolution ISO timestamps, so distinct inserts effectively never tie, whereas comment `published_at` values come from YouTube at second resolution and genuinely do. Offset paging can still shift when a new batch starts between page requests — acceptable for an append-only history with no snapshot requirement. `sync_runs.batch_id` has no dedicated index; the grouping and child lookup scan history, which current volume does not justify migrating.
 - `cancel_sync_run(sync_run_id, rows_fetched, rows_written, rows_deleted)` (`database/sync_runs.py`) mirrors `complete_sync_run()`/`fail_sync_run()`: sets `status = 'cancelled'`, `completed_at`, and the three partial counters, but leaves `error_message` `NULL` — cancellation is not an error and carries no exception text. Called by `sync/orchestration.py`'s `_run_stage()` when a cooperative-cancellation checkpoint raises `SyncCancelled` (see `sync.md`); `status` needed no schema migration since it is plain `TEXT NOT NULL`.
 - `mark_incomplete_sync_runs()` (`database/sync_runs.py`) is a startup-only sweep: `UPDATE sync_runs SET status = 'incomplete' WHERE status = 'running'`, returning `cursor.rowcount`. A row is created just before its stage begins and only leaves `running` when the stage completes or fails, so a killed process strands one forever — and `completed_at = null` cannot tell a stranded stage from a live one, since both have it. What makes the sweep sound is *when* it runs: `server.py`'s `lifespan` calls it right after `init_db()`, and at that moment the in-memory reservation guarding a real sync (`sync/status.py`) has died with the previous process, so no stage can legitimately still be running. **Calling it at any other time would mislabel active work.** `completed_at` is deliberately left null — the stage never completed — so `incomplete` rows still render an em dash in that column. A nonzero result is logged as a lifecycle WARNING. `status` is plain `TEXT NOT NULL` with no CHECK constraint, so the fourth value needed no migration; nothing else in the backend reads `sync_runs.status = 'running'` (`sync/status.py`'s `running` is the unrelated in-memory lifecycle state).
 - `sync/scheduler.py::synced_today()` reads `reader.scalar(SyncRun, "MAX", "completed_at", where=[("status", "=", "success")])` — `MAX(completed_at)` across `sync_runs` rows with `status = 'success'`, or `None` when nothing has ever succeeded. It does not group by `batch_id`: a single succeeded run qualifies regardless of its `sync_type`, scope, or which other stages ran alongside it. Because the `MAX` is taken over successful rows only, a later failed or still-running row cannot hide an earlier success. `synced_today()` is itself used only by the uncalled `start_background_scheduler()` — see `sync.md`.
@@ -268,7 +301,7 @@ Every upsert helper sets `updated_at = _now()` on the Python side before the que
 
 - **Comment reads**: the three comment routes share `queries.comment_feed()`, which joins `comments c` to `comment_authors ca` and `videos v` (restricted to `v.own = 1`) and selects every `Comment` column plus `CommentAuthor(youtube_channel_id, display_name, profile_image_url, channel_url)` and `Video(title, content_type, thumbnail_url)`. `routes/comments.py` flattens these with `to_dict(..., prefix="author_")`/`prefix="video_"` into `author_youtube_channel_id`, `author_display_name`, `author_profile_image_url`, `author_channel_url`, `video_title`, `video_content_type`, and `video_thumbnail_url` alongside every comment column. Filters are `c.text` and `ca.display_name` via `LIKE ?` bound to `f"%{value}%"`, `video_title` matching the parent video's title or ID (see the Title filter note above), `v.content_type`, and a `c.published_at` range using the full-timestamp convention above (`>= start_date`, `<= end_date + "T23:59:59"`). The video scope adds `c.video_id = ?`; the playlist scope adds `EXISTS (SELECT 1 FROM playlist_items pi WHERE pi.playlist_id = ? AND pi.video_id = c.video_id)`, so a video listed twice in a playlist still yields each of its comments once — the `EXISTS` is the comment-side equivalent of the `SELECT DISTINCT` dedup `playlist_owned_video_ids()` performs for the scoped queries. Both scopes count and page over the same filtered set. The video-scoped route passes no `video_title` or `content_type` filter, since a fixed video determines both.
 
-- **Search terms**: `upsert_search_terms(video_id, month, terms)` (`database/search_terms.py`) is the only writer. `terms` is a list of `{"search_term": str, "views": int}` response rows; duplicate exact term keys within one call are summed, non-positive-view terms are dropped, and malformed rows (empty/non-string term, non-int views) raise `ValueError` before any write happens. A term omitted or zeroed by a later call is left untouched, never deleted — the only deletion path is the `videos` cascade. `month` is validated against `^\d{4}-(0[1-9]|1[0-2])$` before the transaction opens. Returns the count of rows upserted, including unchanged refreshed rows.
+- **Search terms**: `sync/write_preparation.py::search_term_rows(video_id, month, terms, *, updated_at)` turns one month's `{"search_term": str, "views": int}` response rows into `SearchTerm` rows, and `sync_search_insights()` writes them with one `writer.write_many()` call. Duplicate exact term keys are summed, non-positive totals are dropped, and a malformed row (empty/non-string term, non-int views) or a `month` not matching `^\d{4}-(0[1-9]|1[0-2])$` raises `ValueError` before anything is written. A term omitted or zeroed by a later call is left untouched, never deleted — the only deletion path is the `videos` cascade. The write returns the number of rows processed, including unchanged refreshed rows.
 
   Two `queries.py` specifications share `_month_bound_conditions("st", start_date, end_date)` (`database/connection.py`), which builds independent `st.month >= ?` / `st.month <= ?` conditions from each date's `YYYY-MM` prefix — a missing bound is unbounded on that side (same convention as `traffic_sources.py`/`analytics.py`'s own date filters), and `start_date > end_date` yields no rows since no month satisfies both:
   - `search_term_totals(start_date=None, end_date=None, content_type=None, privacy_status=None, title=None, video_ids=None, limit=None)` — terms summed across owned videos and mapped onto `SearchTerm(search_term, views)`, with the same `video_ids` three-state scoping convention as above. One video's own terms are the same query with `video_ids=[video_id]`. `limit=None` (the default) returns every term; a caller wanting a capped "top N" list passes `limit` explicitly — there is no separate top-terms specification, since the only difference is a `LIMIT` clause.
@@ -280,9 +313,10 @@ Every upsert helper sets `updated_at = _now()` on the Python side before the que
 
 - Adding a new sortable column requires adding it to both the relevant sort mapping (`database/queries.py`'s `_VIDEO_SORT_COLUMNS` or `_PLAYLIST_SORT_COLUMNS`) *and* the frontend's `SortKey` type (see `frontend.md`) — the backend will silently ignore an unrecognized `sort_by` rather than reject it.
 - `_zero_fill_analytics` assumes all rows passed in share the same set of non-`(date, content_type)` keys (it derives the "zero" template from `rows[0]`) — a query that ever returned heterogeneous column sets across rows would break this.
-- Because every upsert always rewrites `updated_at`, this column cannot be used to detect "did the underlying value actually change since last sync" — only "was this row touched by the most recent sync."
+- Because every sync write supplies a fresh `updated_at`, this column cannot be used to detect "did the underlying value actually change since last sync" — only "was this row touched by the most recent sync."
 - Imports inside `database/` flow one way: `reader.py` imports `connection.py` and `dataclasses/`; `queries.py` imports `reader.py`, `dataclasses/`, and `connection.py`; `video_statistics.py` imports `reader.py`. The domain modules depend only on `connection.py`, and nothing imports back through the package facade (`database/__init__.py`). Playlist membership is resolved by the route layer and passed in as `video_ids`, which keeps the scoped reports and specifications usable with any caller-supplied set of videos.
 - The retained reports take `video_ids` **after** every other parameter, and the `queries.py` specifications take it keyword-only; callers pass it by keyword. It binds one `?` per ID, so a scope is bounded by SQLite's parameter limit — practical for playlist-sized collections, not for arbitrarily large ID sets.
 - `backend/scripts/issue-48-migration.py` is a standalone, one-time script for adding `videos.own` to a pre-existing database (idempotent — checks `PRAGMA table_info(videos)` before altering). It is intentionally not wired into `init_db()`: a one-time fixup doesn't belong in code that runs on every app start.
-- The `own = MAX(own, excluded.own)` no-downgrade rule in `_upsert_video_row()` means `own` can only ever move from `0` to `1` over a row's lifetime, never back — there is no code path that demotes a confirmed-owned video to external.
+- The writer's `MAX(own, ?)` rule for `Video.own` means `own` can only ever move from `0` to `1` over a row's lifetime, never back — there is no code path that demotes a confirmed-owned video to external.
+- Since the writer leaves `None` fields out, a value that later comes back empty from the API (say, a description removed on YouTube) keeps its previously stored value rather than being cleared.
 - `backend/scripts/issue-62-migration.py` (see [Sync coverage](#sync-coverage)) is likewise standalone and not wired into `init_db()`, but unlike `issue-48-migration.py` it doesn't alter the schema — `sync_coverage` already exists on any database via `CREATE TABLE IF NOT EXISTS`, so this script only inserts baseline completion rows. It raises `ValueError` and writes nothing if any owned video lacks a `published_at`, rather than guessing a start date for it.

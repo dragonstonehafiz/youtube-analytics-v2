@@ -5,7 +5,7 @@ from __future__ import annotations
 
 import tempfile
 import unittest
-from collections.abc import Generator
+from collections.abc import Callable, Generator, Iterable
 from contextlib import contextmanager
 from datetime import datetime, timezone
 from pathlib import Path
@@ -15,7 +15,22 @@ from fastapi import FastAPI
 from fastapi.testclient import TestClient
 
 import database
-from database import Comment, FxRate, SyncCoverage, Video, connection, reader
+from database import (
+    Comment,
+    CommentAuthor,
+    FxRate,
+    Playlist,
+    PlaylistItem,
+    SyncCoverage,
+    Video,
+    VideoAnalytics,
+    VideoTrafficSource,
+    connection,
+    reader,
+    writer,
+)
+from database.dataclasses import Row
+from sync.write_preparation import related_video_rows, search_term_rows
 
 # Captured once at import time, before any test patches connection._DB_PATH, so later
 # comparisons are always against the real application database path rather than
@@ -97,10 +112,13 @@ class StageReads:
             return [Comment(id=comment_id) for comment_id in sorted(self.comment_ids)]
         raise AssertionError(f"unexpected select of {model.__name__}")
 
-    def select_one(self, model: type, fields: object = None, **kwargs: object) -> FxRate | None:
-        """Return the latest stored FX rate."""
-        assert model is FxRate, model
-        return self.last_fx_rate
+    def select_one(self, model: type, fields: object = None, *, where: object = (), **kwargs: object) -> Row | None:
+        """Return the latest stored FX rate, or the worklist video matching an ID lookup."""
+        if model is FxRate:
+            return self.last_fx_rate
+        assert model is Video, model
+        video_id = dict((column, value) for column, _, value in where)["id"]  # type: ignore[attr-defined]
+        return next((video for video in self.videos if video.id == video_id), None)
 
 
 def patch_stage_reads() -> StageReads:
@@ -109,6 +127,39 @@ def patch_stage_reads() -> StageReads:
     for name in ("fetch", "select", "select_one"):
         mock.patch(f"sync.stages.reader.{name}", side_effect=getattr(reads, name)).start()
     return reads
+
+
+class StageWrites:
+    """Records the rows sync stages send to the writer; install with patch_stage_writes()."""
+
+    def __init__(self) -> None:
+        self.rows: list[Row] = []
+        self.fail: Callable[[Row], None] | None = None
+
+    def write(self, row: Row, **kwargs: object) -> int:
+        """Record one row, first letting `fail` raise for it."""
+        return self.write_many([row])
+
+    def write_many(self, rows: Iterable[Row], **kwargs: object) -> int:
+        """Record a batch of rows and return its size, first letting `fail` raise for any of them."""
+        batch = list(rows)
+        if self.fail is not None:
+            for row in batch:
+                self.fail(row)
+        self.rows.extend(batch)
+        return len(batch)
+
+    def of(self, model: type) -> list:
+        """Return the recorded rows of one class, in write order."""
+        return [row for row in self.rows if type(row) is model]
+
+
+def patch_stage_writes() -> StageWrites:
+    """Route sync.stages writer calls to a fresh StageWrites until mock.patch.stopall()."""
+    writes = StageWrites()
+    for name in ("write", "write_many"):
+        mock.patch(f"sync.stages.writer.{name}", side_effect=getattr(writes, name)).start()
+    return writes
 
 
 def owned_videos(*video_ids: str, title: str | None = "T", published_at: str | None = None) -> list[Video]:
@@ -138,25 +189,26 @@ def make_video(
     video_id: str,
     title: str = "Video Title",
     *,
+    own: bool = True,
     channel_id: str = "c1",
     description: str = "",
-    published_at: str = "2024-01-01T00:00:00Z",
+    published_at: str | None = "2024-01-01T00:00:00Z",
     duration_seconds: int = 100,
     thumbnail_url: str = "",
-    content_type: str = "video",
+    content_type: str | None = "video",
     privacy_status: str = "public",
     view_count: int = 0,
     like_count: int = 0,
     comment_count: int = 0,
-) -> dict:
-    """Return a video row dict with caller-overridable defaults."""
-    return {
-        "id": video_id, "channel_id": channel_id, "title": title, "description": description,
-        "published_at": published_at, "duration_seconds": duration_seconds,
-        "thumbnail_url": thumbnail_url, "content_type": content_type,
-        "privacy_status": privacy_status, "view_count": view_count,
-        "like_count": like_count, "comment_count": comment_count,
-    }
+    updated_at: str = FIXED_NOW,
+) -> Video:
+    """Return a Video row, owned unless told otherwise, with caller-overridable defaults."""
+    return Video(
+        id=video_id, channel_id=channel_id, title=title, description=description,
+        published_at=published_at, duration_seconds=duration_seconds, thumbnail_url=thumbnail_url,
+        content_type=content_type, privacy_status=privacy_status, view_count=view_count,
+        like_count=like_count, comment_count=comment_count, own=own, updated_at=updated_at,
+    )
 
 
 def make_playlist(
@@ -167,17 +219,22 @@ def make_playlist(
     published_at: str | None = "2024-01-01T00:00:00Z",
     thumbnail_url: str | None = "",
     item_count: int = 0,
-) -> dict:
-    """Return a playlist row dict with caller-overridable defaults."""
-    return {
-        "id": playlist_id, "title": title, "description": description,
-        "published_at": published_at, "thumbnail_url": thumbnail_url, "item_count": item_count,
-    }
+    updated_at: str = FIXED_NOW,
+) -> Playlist:
+    """Return a Playlist row with caller-overridable defaults."""
+    return Playlist(
+        id=playlist_id, title=title, description=description, published_at=published_at,
+        thumbnail_url=thumbnail_url, item_count=item_count, updated_at=updated_at,
+    )
 
 
-def make_playlist_item(item_id: str, playlist_id: str, video_id: str | None, position: int = 0) -> dict:
-    """Return a playlist item row dict."""
-    return {"id": item_id, "playlist_id": playlist_id, "video_id": video_id, "position": position}
+def make_playlist_item(
+    item_id: str, playlist_id: str, video_id: str | None, position: int = 0, *, updated_at: str = FIXED_NOW
+) -> PlaylistItem:
+    """Return a PlaylistItem row."""
+    return PlaylistItem(
+        id=item_id, playlist_id=playlist_id, video_id=video_id, position=position, updated_at=updated_at
+    )
 
 
 def make_video_analytics(
@@ -192,15 +249,15 @@ def make_video_analytics(
     likes: int = 0,
     subscribers_gained: int = 0,
     subscribers_lost: int = 0,
-) -> dict:
-    """Return a video_analytics row dict with caller-overridable defaults."""
-    return {
-        "video_id": video_id, "date": day, "views": views,
-        "watch_time_minutes": watch_time_minutes, "estimated_revenue": estimated_revenue,
-        "average_view_duration_seconds": average_view_duration_seconds,
-        "average_view_percentage": average_view_percentage, "likes": likes,
-        "subscribers_gained": subscribers_gained, "subscribers_lost": subscribers_lost,
-    }
+    updated_at: str = FIXED_NOW,
+) -> VideoAnalytics:
+    """Return a VideoAnalytics row with caller-overridable defaults."""
+    return VideoAnalytics(
+        video_id=video_id, date=day, views=views, watch_time_minutes=watch_time_minutes,
+        estimated_revenue=estimated_revenue, average_view_duration_seconds=average_view_duration_seconds,
+        average_view_percentage=average_view_percentage, likes=likes,
+        subscribers_gained=subscribers_gained, subscribers_lost=subscribers_lost, updated_at=updated_at,
+    )
 
 
 def make_traffic_source(
@@ -210,27 +267,38 @@ def make_traffic_source(
     *,
     views: int = 0,
     watch_time_minutes: float = 0,
-) -> dict:
-    """Return a video_traffic_sources row dict with caller-overridable defaults."""
-    return {
-        "video_id": video_id, "date": day, "traffic_source_type": traffic_source_type,
-        "views": views, "watch_time_minutes": watch_time_minutes,
-    }
+    updated_at: str = FIXED_NOW,
+) -> VideoTrafficSource:
+    """Return a VideoTrafficSource row with caller-overridable defaults."""
+    return VideoTrafficSource(
+        video_id=video_id, date=day, traffic_source_type=traffic_source_type, views=views,
+        watch_time_minutes=watch_time_minutes, updated_at=updated_at,
+    )
 
 
-def make_fx_rate(day: str, usd_to_sgd: float) -> dict:
-    """Return an fx_rates row dict."""
-    return {"date": day, "usd_to_sgd": usd_to_sgd}
+def make_fx_rate(day: str, usd_to_sgd: float, *, updated_at: str = FIXED_NOW) -> FxRate:
+    """Return an FxRate row."""
+    return FxRate(date=day, usd_to_sgd=usd_to_sgd, updated_at=updated_at)
 
 
 def make_search_term(search_term: str = "term", *, views: int = 1) -> dict:
-    """Return a search-term response row dict, shaped for database.upsert_search_terms."""
+    """Return a search-term API response row, shaped for write_preparation.search_term_rows()."""
     return {"search_term": search_term, "views": views}
 
 
 def make_related_referrer(referrer_video_id: str = "ref-1", *, views: int = 1) -> dict:
-    """Return a Related Video referrer row for database tests."""
+    """Return a Related Video API response row, shaped for write_preparation.related_video_rows()."""
     return {"referrer_video_id": referrer_video_id, "views": views}
+
+
+def make_coverage(
+    collector: str, video_id: str, period_keys: Iterable[str], *, completed_at: str = FIXED_NOW
+) -> list[SyncCoverage]:
+    """Return one completed SyncCoverage row per period key."""
+    return [
+        SyncCoverage(collector=collector, video_id=video_id, period_key=key, completed_at=completed_at)
+        for key in period_keys
+    ]
 
 
 def make_comment_author(
@@ -240,12 +308,13 @@ def make_comment_author(
     youtube_channel_id: str | None = None,
     profile_image_url: str | None = None,
     channel_url: str | None = None,
-) -> dict:
-    """Return a comment_authors row dict."""
-    return {
-        "id": author_id, "youtube_channel_id": youtube_channel_id, "display_name": display_name,
-        "profile_image_url": profile_image_url, "channel_url": channel_url,
-    }
+    updated_at: str = FIXED_NOW,
+) -> CommentAuthor:
+    """Return a CommentAuthor row."""
+    return CommentAuthor(
+        id=author_id, youtube_channel_id=youtube_channel_id, display_name=display_name,
+        profile_image_url=profile_image_url, channel_url=channel_url, updated_at=updated_at,
+    )
 
 
 def make_comment(
@@ -257,14 +326,14 @@ def make_comment(
     published_at: str = "2024-01-01T00:00:00Z",
     like_count: int = 0,
     total_reply_count: int = 0,
-) -> dict:
-    """Return a comments row dict."""
-    return {
-        "id": comment_id, "thread_id": f"thread-{comment_id}", "video_id": video_id,
-        "author_id": author_id, "text": text, "like_count": like_count,
-        "total_reply_count": total_reply_count, "published_at": published_at,
-        "youtube_updated_at": published_at,
-    }
+    updated_at: str = FIXED_NOW,
+) -> Comment:
+    """Return a Comment row."""
+    return Comment(
+        id=comment_id, thread_id=f"thread-{comment_id}", video_id=video_id, author_id=author_id,
+        text=text, like_count=like_count, total_reply_count=total_reply_count,
+        published_at=published_at, youtube_updated_at=published_at, updated_at=updated_at,
+    )
 
 
 # ---------------------------------------------------------------------------
@@ -275,7 +344,7 @@ def make_comment(
 def seed_dataset() -> None:
     """Seed a deterministic dataset spanning all required tables."""
     with freeze_now():
-        videos = [
+        writer.write_many([
             make_video("v-1", "Alpha Video", published_at="2024-01-01T00:00:00Z",
                        content_type="video", privacy_status="public", view_count=100, like_count=10, comment_count=2),
             make_video("v-2", "Beta Short", published_at="2024-01-02T00:00:00Z",
@@ -284,52 +353,47 @@ def seed_dataset() -> None:
                        content_type="video", privacy_status="private", view_count=50, like_count=5, comment_count=0),
             make_video("v-4", "Delta Short", published_at="2024-01-04T00:00:00Z",
                        content_type="short", privacy_status="unlisted", view_count=75, like_count=7, comment_count=1),
-        ]
-        for video in videos:
-            database.upsert_own_video(video)
+        ])
 
-        database.upsert_playlist(make_playlist("p-full", "Full Playlist", item_count=2))
-        database.upsert_playlist(make_playlist("p-empty", "Empty Playlist", item_count=0))
-        items = [
+        writer.write_many([
+            make_playlist("p-full", "Full Playlist", item_count=2),
+            make_playlist("p-empty", "Empty Playlist", item_count=0),
+        ])
+        writer.write_many([
             make_playlist_item("pi-1", "p-full", "v-1", 0),
             make_playlist_item("pi-2", "p-full", "v-1", 1),  # duplicate membership
             make_playlist_item("pi-3", "p-full", "v-2", 2),
             make_playlist_item("pi-4", "p-full", "missing-video", 3),  # dangling membership
-        ]
-        for item in items:
-            database.upsert_playlist_item(item)
+        ])
 
         # 2024-01-05 intentionally has no FX row so callers can assert zero-contribution behavior.
-        analytics = [
+        writer.write_many([
             make_video_analytics("v-1", "2024-01-05", views=100, watch_time_minutes=50, estimated_revenue=1.0),
             make_video_analytics("v-1", "2024-01-06", views=150, watch_time_minutes=60, estimated_revenue=2.0),
             make_video_analytics("v-2", "2024-01-06", views=80, watch_time_minutes=30, estimated_revenue=0.5),
-        ]
-        for row in analytics:
-            database.upsert_video_analytics(row)
+        ])
 
-        traffic = [
+        writer.write_many([
             make_traffic_source("v-1", "2024-01-05", "SEARCH", views=60, watch_time_minutes=30),
             make_traffic_source("v-1", "2024-01-05", "SUGGESTED", views=40, watch_time_minutes=20),
             make_traffic_source("v-1", "2024-01-06", "SEARCH", views=90, watch_time_minutes=40),
             make_traffic_source("v-2", "2024-01-06", "SEARCH", views=80, watch_time_minutes=30),
-        ]
-        for row in traffic:
-            database.upsert_video_traffic_source(row)
+        ])
 
-        database.upsert_fx_rate(make_fx_rate("2024-01-06", 1.35))
+        writer.write(make_fx_rate("2024-01-06", 1.35))
 
-        database.upsert_search_terms("v-1", "2024-01", [make_search_term("alpha tutorial", views=6)])
+        writer.write_many(search_term_rows(
+            "v-1", "2024-01", [make_search_term("alpha tutorial", views=6)], updated_at=FIXED_NOW
+        ))
+        writer.write_many(related_video_rows(
+            "v-1", "2024-01", [make_related_referrer("v-2", views=4)], updated_at=FIXED_NOW
+        ))
 
-        database.upsert_related_videos("v-1", "2024-01", [make_related_referrer("v-2", views=4)])
+        for collector in ("video_analytics", "video_traffic_sources", "search_insights", "related_video_insights"):
+            writer.write_many(make_coverage(collector, "v-1", ["2024-01"]))
 
-        database.upsert_coverage("video_analytics", "v-1", ["2024-01"])
-        database.upsert_coverage("video_traffic_sources", "v-1", ["2024-01"])
-        database.upsert_coverage("search_insights", "v-1", ["2024-01"])
-        database.upsert_coverage("related_video_insights", "v-1", ["2024-01"])
-
-        database.upsert_comment_author(make_comment_author("channel:UC1", "Ann Author", youtube_channel_id="UC1"))
-        database.upsert_comment(make_comment("c-1", "v-1", "channel:UC1", text="great video", published_at="2024-01-10T00:00:00Z"))
+        writer.write(make_comment_author("channel:UC1", "Ann Author", youtube_channel_id="UC1"))
+        writer.write(make_comment("c-1", "v-1", "channel:UC1", text="great video", published_at="2024-01-10T00:00:00Z"))
 
         success_id = database.create_sync_run("batch-seed", "videos", "incremental", None)
         database.complete_sync_run(success_id, rows_fetched=4, rows_written=4, rows_deleted=0)

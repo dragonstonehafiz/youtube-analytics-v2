@@ -4,6 +4,7 @@ import unittest
 from typing import Any
 
 import database
+from database import writer
 from database import FxRate, Video, queries, reader
 from tests.support import (
     IsolatedDatabaseTestCase,
@@ -23,12 +24,12 @@ def _top_video_ids(**filters: Any) -> list[str | None]:
 class AnalyticsFixtureTestCase(IsolatedDatabaseTestCase):
     def _seed(self) -> None:
         """Seed videos and analytics with both present and missing FX rates."""
-        database.upsert_own_video(make_video("v-1", "Alpha", content_type="video"))
-        database.upsert_own_video(make_video("v-2", "Beta", content_type="short"))
-        database.upsert_video_analytics(make_video_analytics("v-1", "2024-01-01", views=100, watch_time_minutes=60, estimated_revenue=10.0))
-        database.upsert_video_analytics(make_video_analytics("v-2", "2024-01-01", views=50, watch_time_minutes=20, estimated_revenue=5.0))
-        database.upsert_video_analytics(make_video_analytics("v-1", "2024-01-03", views=200, watch_time_minutes=90, estimated_revenue=20.0))
-        database.upsert_fx_rate(make_fx_rate("2024-01-01", 1.5))
+        writer.write(make_video("v-1", "Alpha", content_type="video"))
+        writer.write(make_video("v-2", "Beta", content_type="short"))
+        writer.write(make_video_analytics("v-1", "2024-01-01", views=100, watch_time_minutes=60, estimated_revenue=10.0))
+        writer.write(make_video_analytics("v-2", "2024-01-01", views=50, watch_time_minutes=20, estimated_revenue=5.0))
+        writer.write(make_video_analytics("v-1", "2024-01-03", views=200, watch_time_minutes=90, estimated_revenue=20.0))
+        writer.write(make_fx_rate("2024-01-01", 1.5))
 
 
 class AggregatedAnalyticsTest(AnalyticsFixtureTestCase):
@@ -71,16 +72,16 @@ class AggregatedAnalyticsTest(AnalyticsFixtureTestCase):
 class AggregatedTrafficSourcesTest(IsolatedDatabaseTestCase):
     def setUp(self) -> None:
         super().setUp()
-        database.upsert_own_video(make_video("v-1", "Alpha"))
-        database.upsert_own_video(make_video("v-2", "Beta"))
+        writer.write(make_video("v-1", "Alpha"))
+        writer.write(make_video("v-2", "Beta"))
         # Both videos have SEARCH data on the same date, so aggregation must sum across
         # videos rather than just echoing one video's number.
-        database.upsert_video_traffic_source(make_traffic_source("v-1", "2024-01-01", "SEARCH", views=30, watch_time_minutes=10))
-        database.upsert_video_traffic_source(make_traffic_source("v-1", "2024-01-01", "SUGGESTED", views=20, watch_time_minutes=5))
-        database.upsert_video_traffic_source(make_traffic_source("v-2", "2024-01-01", "SEARCH", views=40, watch_time_minutes=15))
+        writer.write(make_traffic_source("v-1", "2024-01-01", "SEARCH", views=30, watch_time_minutes=10))
+        writer.write(make_traffic_source("v-1", "2024-01-01", "SUGGESTED", views=20, watch_time_minutes=5))
+        writer.write(make_traffic_source("v-2", "2024-01-01", "SEARCH", views=40, watch_time_minutes=15))
         # v-1 also has a real row in March, so February sits strictly between two real
         # dates and must be zero-filled rather than trimmed as trailing.
-        database.upsert_video_traffic_source(make_traffic_source("v-1", "2024-03-15", "SEARCH", views=5, watch_time_minutes=2))
+        writer.write(make_traffic_source("v-1", "2024-03-15", "SEARCH", views=5, watch_time_minutes=2))
 
     def test_per_video_traffic_sources_are_grouped_by_type(self) -> None:
         rows = database.get_video_traffic_sources("v-1")
@@ -122,9 +123,9 @@ class AggregatedTrafficSourcesTest(IsolatedDatabaseTestCase):
 class FxRatesTest(IsolatedDatabaseTestCase):
     def setUp(self) -> None:
         super().setUp()
-        database.upsert_fx_rate(make_fx_rate("2024-01-01", 1.30))
-        database.upsert_fx_rate(make_fx_rate("2024-01-15", 1.35))
-        database.upsert_fx_rate(make_fx_rate("2024-02-01", 1.40))
+        writer.write(make_fx_rate("2024-01-01", 1.30))
+        writer.write(make_fx_rate("2024-01-15", 1.35))
+        writer.write(make_fx_rate("2024-02-01", 1.40))
 
     def test_range_filter_is_inclusive(self) -> None:
         rows = reader.select(
@@ -147,13 +148,13 @@ class FxRatesTest(IsolatedDatabaseTestCase):
 class TopVideosOrderingTest(IsolatedDatabaseTestCase):
     def setUp(self) -> None:
         super().setUp()
-        database.upsert_own_video(make_video("v-1", "Alpha"))
-        database.upsert_own_video(make_video("v-2", "Beta"))
-        database.upsert_own_video(make_video("v-3", "Gamma"))
+        writer.write(make_video("v-1", "Alpha"))
+        writer.write(make_video("v-2", "Beta"))
+        writer.write(make_video("v-3", "Gamma"))
         # v-1 and v-2 tie on views to prove the deterministic id tie-breaker.
-        database.upsert_video_analytics(make_video_analytics("v-1", "2024-01-01", views=100, watch_time_minutes=5))
-        database.upsert_video_analytics(make_video_analytics("v-2", "2024-01-01", views=100, watch_time_minutes=50))
-        database.upsert_video_analytics(make_video_analytics("v-3", "2024-01-01", views=50, watch_time_minutes=10))
+        writer.write(make_video_analytics("v-1", "2024-01-01", views=100, watch_time_minutes=5))
+        writer.write(make_video_analytics("v-2", "2024-01-01", views=100, watch_time_minutes=50))
+        writer.write(make_video_analytics("v-3", "2024-01-01", views=50, watch_time_minutes=10))
 
     def test_orders_by_views_descending_by_default(self) -> None:
         ids = _top_video_ids(start_date="2024-01-01", end_date="2024-01-01")

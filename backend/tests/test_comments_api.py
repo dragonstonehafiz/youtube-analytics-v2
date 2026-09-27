@@ -4,9 +4,10 @@ import sqlite3
 import unittest
 
 import database
+from database import Comment, CommentAuthor, Playlist, PlaylistItem, Video, writer
 from database import Comment, connection, reader
 from routes.comments import router as comments_router
-from tests.support import IsolatedDatabaseTestCase, create_test_client
+from tests.support import FIXED_NOW, IsolatedDatabaseTestCase, create_test_client
 
 
 def _video(video_id: str, title: str, content_type: str = "video") -> dict:
@@ -57,32 +58,32 @@ class CommentsTestCase(IsolatedDatabaseTestCase):
 class SchemaTest(CommentsTestCase):
     def test_repeated_init_db_is_idempotent(self) -> None:
         database.init_db()
-        database.upsert_own_video(_video("v1", "A"))
-        database.upsert_comment_author(_author("channel:UC1", "Ann", "UC1"))
-        database.upsert_comment(_comment("c1", "v1", "channel:UC1"))
+        writer.write(Video.from_dict({**_video("v1", "A"), "own": True, "updated_at": FIXED_NOW}))
+        writer.write(CommentAuthor.from_dict({**_author("channel:UC1", "Ann", "UC1"), "updated_at": FIXED_NOW}))
+        writer.write(Comment.from_dict({**_comment("c1", "v1", "channel:UC1"), "updated_at": FIXED_NOW}))
 
         items, total = self._comments()
         self.assertEqual(total, 1)
         self.assertEqual(items[0]["id"], "c1")
 
     def test_comment_requires_an_existing_video(self) -> None:
-        database.upsert_comment_author(_author("channel:UC1", "Ann", "UC1"))
+        writer.write(CommentAuthor.from_dict({**_author("channel:UC1", "Ann", "UC1"), "updated_at": FIXED_NOW}))
 
         with self.assertRaises(sqlite3.IntegrityError):
-            database.upsert_comment(_comment("c1", "missing-video", "channel:UC1"))
+            writer.write(Comment.from_dict({**_comment("c1", "missing-video", "channel:UC1"), "updated_at": FIXED_NOW}))
 
     def test_comment_requires_an_existing_author(self) -> None:
-        database.upsert_own_video(_video("v1", "A"))
+        writer.write(Video.from_dict({**_video("v1", "A"), "own": True, "updated_at": FIXED_NOW}))
 
         with self.assertRaises(sqlite3.IntegrityError):
-            database.upsert_comment(_comment("c1", "v1", "channel:nobody"))
+            writer.write(Comment.from_dict({**_comment("c1", "v1", "channel:nobody"), "updated_at": FIXED_NOW}))
 
     def test_deleting_a_video_cascades_to_its_comments_only(self) -> None:
-        database.upsert_own_video(_video("v1", "A"))
-        database.upsert_own_video(_video("v2", "B"))
-        database.upsert_comment_author(_author("channel:UC1", "Ann", "UC1"))
-        database.upsert_comment(_comment("c1", "v1", "channel:UC1"))
-        database.upsert_comment(_comment("c2", "v2", "channel:UC1"))
+        writer.write(Video.from_dict({**_video("v1", "A"), "own": True, "updated_at": FIXED_NOW}))
+        writer.write(Video.from_dict({**_video("v2", "B"), "own": True, "updated_at": FIXED_NOW}))
+        writer.write(CommentAuthor.from_dict({**_author("channel:UC1", "Ann", "UC1"), "updated_at": FIXED_NOW}))
+        writer.write(Comment.from_dict({**_comment("c1", "v1", "channel:UC1"), "updated_at": FIXED_NOW}))
+        writer.write(Comment.from_dict({**_comment("c2", "v2", "channel:UC1"), "updated_at": FIXED_NOW}))
 
         database.delete_videos_not_in(["v2"])
 
@@ -91,42 +92,40 @@ class SchemaTest(CommentsTestCase):
         self.assertEqual(items[0]["id"], "c2")
 
     def test_a_referenced_author_cannot_be_deleted(self) -> None:
-        database.upsert_own_video(_video("v1", "A"))
-        database.upsert_comment_author(_author("channel:UC1", "Ann", "UC1"))
-        database.upsert_comment(_comment("c1", "v1", "channel:UC1"))
+        writer.write(Video.from_dict({**_video("v1", "A"), "own": True, "updated_at": FIXED_NOW}))
+        writer.write(CommentAuthor.from_dict({**_author("channel:UC1", "Ann", "UC1"), "updated_at": FIXED_NOW}))
+        writer.write(Comment.from_dict({**_comment("c1", "v1", "channel:UC1"), "updated_at": FIXED_NOW}))
 
         with self.assertRaises(sqlite3.IntegrityError):
             with connection.get_connection() as conn:
                 conn.execute("DELETE FROM comment_authors WHERE id = 'channel:UC1'")
 
     def test_negative_counts_are_rejected(self) -> None:
-        database.upsert_own_video(_video("v1", "A"))
-        database.upsert_comment_author(_author("channel:UC1", "Ann", "UC1"))
+        writer.write(Video.from_dict({**_video("v1", "A"), "own": True, "updated_at": FIXED_NOW}))
+        writer.write(CommentAuthor.from_dict({**_author("channel:UC1", "Ann", "UC1"), "updated_at": FIXED_NOW}))
 
         with self.assertRaises(sqlite3.IntegrityError):
-            database.upsert_comment({**_comment("c1", "v1", "channel:UC1"), "like_count": -1})
+            writer.write(Comment.from_dict({**{**_comment("c1", "v1", "channel:UC1"), "like_count": -1}, "updated_at": FIXED_NOW}))
         with self.assertRaises(sqlite3.IntegrityError):
-            database.upsert_comment(
-                {**_comment("c2", "v1", "channel:UC1"), "total_reply_count": -1}
-            )
+            writer.write(Comment.from_dict({**{**_comment("c2", "v1", "channel:UC1"), "total_reply_count": -1}, "updated_at": FIXED_NOW}))
 
     def test_youtube_channel_id_is_unique(self) -> None:
-        database.upsert_comment_author(_author("channel:UC1", "Ann", "UC1"))
+        writer.write(CommentAuthor.from_dict({**_author("channel:UC1", "Ann", "UC1"), "updated_at": FIXED_NOW}))
 
         with self.assertRaises(sqlite3.IntegrityError):
-            database.upsert_comment_author(_author("channel:other", "Imposter", "UC1"))
+            writer.write(CommentAuthor.from_dict({**_author("channel:other", "Imposter", "UC1"), "updated_at": FIXED_NOW}))
 
 
 class AuthorIdentityTest(CommentsTestCase):
     def setUp(self) -> None:
         super().setUp()
-        database.upsert_own_video(_video("v1", "A"))
+        writer.write(Video.from_dict({**_video("v1", "A"), "own": True, "updated_at": FIXED_NOW}))
 
     def test_one_author_is_reused_across_comments_and_refreshed(self) -> None:
-        database.upsert_comment_author(_author("channel:UC1", "Old Name", "UC1"))
-        database.upsert_comment(_comment("c1", "v1", "channel:UC1"))
-        database.upsert_comment_author(_author("channel:UC1", "New Name", "UC1"))
-        database.upsert_comment(_comment("c2", "v1", "channel:UC1"))
+        writer.write(CommentAuthor.from_dict({**_author("channel:UC1", "Old Name", "UC1"), "updated_at": FIXED_NOW}))
+        writer.write(Comment.from_dict({**_comment("c1", "v1", "channel:UC1"), "updated_at": FIXED_NOW}))
+        writer.write(CommentAuthor.from_dict({**_author("channel:UC1", "New Name", "UC1"), "updated_at": FIXED_NOW}))
+        writer.write(Comment.from_dict({**_comment("c2", "v1", "channel:UC1"), "updated_at": FIXED_NOW}))
 
         items, total = self._comments()
         self.assertEqual(total, 2)
@@ -136,19 +135,19 @@ class AuthorIdentityTest(CommentsTestCase):
         self.assertEqual(authors, 1)
 
     def test_two_authorless_commenters_sharing_a_name_stay_separate(self) -> None:
-        database.upsert_comment_author(_author("comment:c1", "Some Person"))
-        database.upsert_comment(_comment("c1", "v1", "comment:c1"))
-        database.upsert_comment_author(_author("comment:c2", "Some Person"))
-        database.upsert_comment(_comment("c2", "v1", "comment:c2"))
+        writer.write(CommentAuthor.from_dict({**_author("comment:c1", "Some Person"), "updated_at": FIXED_NOW}))
+        writer.write(Comment.from_dict({**_comment("c1", "v1", "comment:c1"), "updated_at": FIXED_NOW}))
+        writer.write(CommentAuthor.from_dict({**_author("comment:c2", "Some Person"), "updated_at": FIXED_NOW}))
+        writer.write(Comment.from_dict({**_comment("c2", "v1", "comment:c2"), "updated_at": FIXED_NOW}))
 
         with connection.get_connection() as conn:
             authors = conn.execute("SELECT COUNT(*) FROM comment_authors").fetchone()[0]
         self.assertEqual(authors, 2)
 
     def test_orphan_cleanup_removes_only_unreferenced_authors(self) -> None:
-        database.upsert_comment_author(_author("channel:UC1", "Kept", "UC1"))
-        database.upsert_comment_author(_author("channel:UC2", "Orphan", "UC2"))
-        database.upsert_comment(_comment("c1", "v1", "channel:UC1"))
+        writer.write(CommentAuthor.from_dict({**_author("channel:UC1", "Kept", "UC1"), "updated_at": FIXED_NOW}))
+        writer.write(CommentAuthor.from_dict({**_author("channel:UC2", "Orphan", "UC2"), "updated_at": FIXED_NOW}))
+        writer.write(Comment.from_dict({**_comment("c1", "v1", "channel:UC1"), "updated_at": FIXED_NOW}))
 
         deleted = database.delete_orphan_comment_authors()
 
@@ -157,10 +156,10 @@ class AuthorIdentityTest(CommentsTestCase):
         self.assertEqual(items[0]["author_display_name"], "Kept")
 
     def test_known_comment_ids_are_scoped_to_one_video(self) -> None:
-        database.upsert_own_video(_video("v2", "B"))
-        database.upsert_comment_author(_author("channel:UC1", "Ann", "UC1"))
-        database.upsert_comment(_comment("c1", "v1", "channel:UC1"))
-        database.upsert_comment(_comment("c2", "v2", "channel:UC1"))
+        writer.write(Video.from_dict({**_video("v2", "B"), "own": True, "updated_at": FIXED_NOW}))
+        writer.write(CommentAuthor.from_dict({**_author("channel:UC1", "Ann", "UC1"), "updated_at": FIXED_NOW}))
+        writer.write(Comment.from_dict({**_comment("c1", "v1", "channel:UC1"), "updated_at": FIXED_NOW}))
+        writer.write(Comment.from_dict({**_comment("c2", "v2", "channel:UC1"), "updated_at": FIXED_NOW}))
 
         def known_ids(video_id: str) -> set[str | None]:
             return {c.id for c in reader.select(Comment, ("id",), where=[("video_id", "=", video_id)])}
@@ -174,35 +173,35 @@ class SeededCommentsTestCase(CommentsTestCase):
 
     def setUp(self) -> None:
         super().setUp()
-        database.upsert_own_video(_video("v-in", "Series Episode 1"))
-        database.upsert_own_video(_video("v-also-in", "Series Episode 2", content_type="short"))
-        database.upsert_own_video(_video("v-out", "Unrelated Vlog"))
+        writer.write(Video.from_dict({**_video("v-in", "Series Episode 1"), "own": True, "updated_at": FIXED_NOW}))
+        writer.write(Video.from_dict({**_video("v-also-in", "Series Episode 2", content_type="short"), "own": True, "updated_at": FIXED_NOW}))
+        writer.write(Video.from_dict({**_video("v-out", "Unrelated Vlog"), "own": True, "updated_at": FIXED_NOW}))
 
-        database.upsert_playlist({
+        writer.write(Playlist.from_dict({**{
             "id": "p1", "title": "Series", "description": "", "published_at": None,
             "thumbnail_url": None, "item_count": 2,
-        })
+        }, "updated_at": FIXED_NOW}))
         # v-in is listed twice on purpose: duplicate membership must not duplicate rows.
         for item_id, video_id in (("i1", "v-in"), ("i2", "v-also-in"), ("i3", "v-in")):
-            database.upsert_playlist_item({
+            writer.write(PlaylistItem.from_dict({**{
                 "id": item_id, "playlist_id": "p1", "video_id": video_id, "position": 0,
-            })
+            }, "updated_at": FIXED_NOW}))
 
-        database.upsert_comment_author(_author("channel:UC1", "Ann Author", "UC1"))
-        database.upsert_comment_author(_author("channel:UC2", "Bob Bloggs", "UC2"))
+        writer.write(CommentAuthor.from_dict({**_author("channel:UC1", "Ann Author", "UC1"), "updated_at": FIXED_NOW}))
+        writer.write(CommentAuthor.from_dict({**_author("channel:UC2", "Bob Bloggs", "UC2"), "updated_at": FIXED_NOW}))
 
-        database.upsert_comment(_comment(
+        writer.write(Comment.from_dict({**_comment(
             "c-old", "v-in", "channel:UC1", text="first thoughts",
             published_at="2024-01-10T00:00:00Z", like_count=5,
-        ))
-        database.upsert_comment(_comment(
+        ), "updated_at": FIXED_NOW}))
+        writer.write(Comment.from_dict({**_comment(
             "c-mid", "v-also-in", "channel:UC2", text="LOVED this one",
             published_at="2024-06-15T12:00:00Z", like_count=99,
-        ))
-        database.upsert_comment(_comment(
+        ), "updated_at": FIXED_NOW}))
+        writer.write(Comment.from_dict({**_comment(
             "c-new", "v-out", "channel:UC1", text="unrelated thoughts",
             published_at="2024-12-31T00:00:00Z", like_count=1,
-        ))
+        ), "updated_at": FIXED_NOW}))
 
     def ids(self, response_json: dict) -> list[str]:
         return [item["id"] for item in response_json["items"]]
@@ -378,11 +377,11 @@ class ExternalVideoExclusionRouteTest(SeededCommentsTestCase):
 
     def setUp(self) -> None:
         super().setUp()
-        database.upsert_related_video(_video("v-ext", "External Video"), own=False)
-        database.upsert_comment(_comment(
+        writer.write(Video.from_dict({**_video("v-ext", "External Video"), "own": False, "updated_at": FIXED_NOW}))
+        writer.write(Comment.from_dict({**_comment(
             "c-ext", "v-ext", "channel:UC1", text="external comment",
             published_at="2025-01-01T00:00:00Z", like_count=1000,
-        ))
+        ), "updated_at": FIXED_NOW}))
 
     def test_channel_comments_exclude_the_external_video(self) -> None:
         body = self.client.get("/comments").json()

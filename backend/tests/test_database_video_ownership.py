@@ -5,10 +5,13 @@ import sqlite3
 from pathlib import Path
 
 import database
+from database import writer
+from sync.write_preparation import search_term_rows
 from database import SearchTerm, Video, queries, reader
 from routes import router
 from routes.video_scope import resolve_playlist_video_ids
 from tests.support import (
+    FIXED_NOW,
     IsolatedDatabaseTestCase,
     create_test_client,
     make_comment,
@@ -45,13 +48,13 @@ def _worklist_ids(published_through: str | None = None) -> list[str | None]:
 
 class VideosOwnSchemaTest(IsolatedDatabaseTestCase):
     def test_fresh_database_defaults_own_to_true(self) -> None:
-        database.upsert_own_video(make_video("v-1", "Alpha"))
+        writer.write(make_video("v-1", "Alpha"))
         with database.get_connection() as conn:
             row = conn.execute("SELECT own FROM videos WHERE id = 'v-1'").fetchone()
         self.assertEqual(row["own"], 1)
 
     def test_own_column_rejects_values_outside_zero_or_one(self) -> None:
-        database.upsert_own_video(make_video("v-1", "Alpha"))
+        writer.write(make_video("v-1", "Alpha"))
         with self.assertRaises(sqlite3.IntegrityError):
             with database.get_connection() as conn:
                 conn.execute("UPDATE videos SET own = 2 WHERE id = 'v-1'")
@@ -96,7 +99,7 @@ class MigrateVideosOwnColumnTest(IsolatedDatabaseTestCase):
             )
 
     def test_migration_adds_own_column_defaulting_existing_rows_to_owned(self) -> None:
-        database.upsert_own_video(make_video("v-1", "Alpha"))
+        writer.write(make_video("v-1", "Alpha"))
         self._drop_own_column()
         with database.get_connection() as conn:
             columns_before = {row["name"] for row in conn.execute("PRAGMA table_info(videos)")}
@@ -111,7 +114,7 @@ class MigrateVideosOwnColumnTest(IsolatedDatabaseTestCase):
         self.assertEqual(row["own"], 1)
 
     def test_migration_is_idempotent(self) -> None:
-        database.upsert_own_video(make_video("v-1", "Alpha"))
+        writer.write(make_video("v-1", "Alpha"))
         self._drop_own_column()
 
         with database.get_connection() as conn:
@@ -123,17 +126,15 @@ class MigrateVideosOwnColumnTest(IsolatedDatabaseTestCase):
         self.assertFalse(second_run_added)
 
     def test_migration_is_a_no_op_against_an_already_migrated_database(self) -> None:
-        database.upsert_own_video(make_video("v-1", "Alpha"))
+        writer.write(make_video("v-1", "Alpha"))
         with database.get_connection() as conn:
             added = migrate_videos_own(conn)
         self.assertFalse(added)
 
 
-class UpsertOwnVideoConflictTest(IsolatedDatabaseTestCase):
-    """upsert_own_video() always writes own=1; a row's own value can only ever move
-    0 -> 1 (via the ON CONFLICT MAX rule), never back down. upsert_own_video() itself
-    has no own parameter and never writes own=0 — only upsert_related_video() (Step 6)
-    can write an external row, tested separately below."""
+class OwnedVideoWriteTest(IsolatedDatabaseTestCase):
+    """Writing a Video with own=True always stores own=1; the writer only ever raises a
+    stored own (0 -> 1), never lowers it."""
 
     def _set_own(self, video_id: str, own: int) -> None:
         with database.get_connection() as conn:
@@ -145,25 +146,24 @@ class UpsertOwnVideoConflictTest(IsolatedDatabaseTestCase):
         return row["own"]
 
     def test_upsert_of_a_previously_external_row_promotes_it_to_owned(self) -> None:
-        database.upsert_own_video(make_video("v-1", "Alpha"))
+        writer.write(make_video("v-1", "Alpha"))
         self._set_own("v-1", 0)
         self.assertEqual(self._get_own("v-1"), 0)
 
-        database.upsert_own_video(make_video("v-1", "Alpha Updated"))
+        writer.write(make_video("v-1", "Alpha Updated"))
 
         self.assertEqual(self._get_own("v-1"), 1)
 
     def test_upsert_of_an_already_owned_row_stays_owned(self) -> None:
-        database.upsert_own_video(make_video("v-1", "Alpha"))
-        database.upsert_own_video(make_video("v-1", "Alpha Updated"))
+        writer.write(make_video("v-1", "Alpha"))
+        writer.write(make_video("v-1", "Alpha Updated"))
         self.assertEqual(self._get_own("v-1"), 1)
 
 
-class UpsertRelatedVideoTest(IsolatedDatabaseTestCase):
-    """upsert_related_video() writes a Related referrer's metadata row, classifying
-    own per caller-supplied bool. Shares upsert_own_video's no-downgrade ON CONFLICT
-    rule: an existing own=1 is never lowered, and a later confirmed-owned upsert (from
-    either writer) can still promote a row this one wrote as own=False."""
+class ReferrerVideoWriteTest(IsolatedDatabaseTestCase):
+    """A Related referrer's metadata row is written with own=True or own=False. An
+    existing own=1 is never lowered, and a later owned write can still promote a row
+    first written as own=False."""
 
     def _get_own(self, video_id: str) -> int:
         with database.get_connection() as conn:
@@ -171,28 +171,28 @@ class UpsertRelatedVideoTest(IsolatedDatabaseTestCase):
         return row["own"]
 
     def test_own_true_writes_an_owned_row(self) -> None:
-        database.upsert_related_video(make_video("ref-1", "Mine"), own=True)
+        writer.write(make_video("ref-1", "Mine", own=True))
         self.assertEqual(self._get_own("ref-1"), 1)
 
     def test_own_false_writes_an_external_row(self) -> None:
-        database.upsert_related_video(make_video("ref-1", "Other"), own=False)
+        writer.write(make_video("ref-1", "Other", own=False))
         self.assertEqual(self._get_own("ref-1"), 0)
 
     def test_new_row_written_as_external_is_queryable_without_being_owned(self) -> None:
-        database.upsert_related_video(make_video("ref-1", "Other"), own=False)
+        writer.write(make_video("ref-1", "Other", own=False))
         self.assertEqual(_client.get("/videos/ref-1").status_code, 404)
         with database.get_connection() as conn:
             row = conn.execute("SELECT title FROM videos WHERE id = 'ref-1'").fetchone()
         self.assertEqual(row["title"], "Other")
 
     def test_never_downgrades_an_already_owned_row(self) -> None:
-        database.upsert_own_video(make_video("v-1", "Mine"))
-        database.upsert_related_video(make_video("v-1", "Mine Updated"), own=False)
+        writer.write(make_video("v-1", "Mine"))
+        writer.write(make_video("v-1", "Mine Updated", own=False))
         self.assertEqual(self._get_own("v-1"), 1)
 
     def test_a_later_confirmed_owned_upsert_promotes_a_row_written_as_external(self) -> None:
-        database.upsert_related_video(make_video("v-1", "First Seen As Referrer"), own=False)
-        database.upsert_own_video(make_video("v-1", "Now Confirmed Owned"))
+        writer.write(make_video("v-1", "First Seen As Referrer", own=False))
+        writer.write(make_video("v-1", "Now Confirmed Owned"))
         self.assertEqual(self._get_own("v-1"), 1)
 
 
@@ -204,10 +204,10 @@ class OwnershipQueryBoundaryTest(IsolatedDatabaseTestCase):
 
     def setUp(self) -> None:
         super().setUp()
-        database.upsert_own_video(make_video(
+        writer.write(make_video(
             "v-owned", "Owned Video", published_at="2024-01-01T00:00:00Z", view_count=100,
         ))
-        database.upsert_own_video(make_video(
+        writer.write(make_video(
             "v-external", "External Video", published_at="2024-01-02T00:00:00Z", view_count=999,
         ))
         with database.get_connection() as conn:
@@ -257,9 +257,9 @@ class OwnershipQueryBoundaryTest(IsolatedDatabaseTestCase):
         self.assertEqual(remaining, {"v-external"})
 
     def test_playlist_aggregate_excludes_external_member(self) -> None:
-        database.upsert_playlist(make_playlist("p-1", "Mixed Playlist"))
-        database.upsert_playlist_item(make_playlist_item("pi-1", "p-1", "v-owned"))
-        database.upsert_playlist_item(make_playlist_item("pi-2", "p-1", "v-external"))
+        writer.write(make_playlist("p-1", "Mixed Playlist"))
+        writer.write(make_playlist_item("pi-1", "p-1", "v-owned"))
+        writer.write(make_playlist_item("pi-2", "p-1", "v-external"))
 
         playlist = _get("/playlists/p-1")["item"]
         self.assertEqual(playlist["total_views"], 100)
@@ -273,16 +273,16 @@ class OwnershipQueryBoundaryTest(IsolatedDatabaseTestCase):
         self.assertEqual([v["id"] for v in items], ["v-owned"])
 
     def test_playlist_video_stats_excludes_external_member(self) -> None:
-        database.upsert_playlist(make_playlist("p-1", "Mixed Playlist"))
-        database.upsert_playlist_item(make_playlist_item("pi-1", "p-1", "v-owned"))
-        database.upsert_playlist_item(make_playlist_item("pi-2", "p-1", "v-external"))
+        writer.write(make_playlist("p-1", "Mixed Playlist"))
+        writer.write(make_playlist_item("pi-1", "p-1", "v-owned"))
+        writer.write(make_playlist_item("pi-2", "p-1", "v-external"))
 
         stats = database.get_video_stats(video_ids=resolve_playlist_video_ids("p-1"))
         self.assertEqual(stats["total_public"], 1)
 
     def test_video_analytics_excludes_external_video(self) -> None:
-        database.upsert_video_analytics(make_video_analytics("v-owned", "2024-01-05", views=10))
-        database.upsert_video_analytics(make_video_analytics("v-external", "2024-01-05", views=20))
+        writer.write(make_video_analytics("v-owned", "2024-01-05", views=10))
+        writer.write(make_video_analytics("v-external", "2024-01-05", views=20))
 
         self.assertEqual(database.get_video_analytics("v-external"), [])
         self.assertNotEqual(database.get_video_analytics("v-owned"), [])
@@ -294,8 +294,8 @@ class OwnershipQueryBoundaryTest(IsolatedDatabaseTestCase):
         self.assertEqual([v["id"] for v in top], ["v-owned"])
 
     def test_traffic_sources_exclude_external_video(self) -> None:
-        database.upsert_video_traffic_source(make_traffic_source("v-owned", "2024-01-05", views=10))
-        database.upsert_video_traffic_source(make_traffic_source("v-external", "2024-01-05", views=20))
+        writer.write(make_traffic_source("v-owned", "2024-01-05", views=10))
+        writer.write(make_traffic_source("v-external", "2024-01-05", views=20))
 
         self.assertEqual(database.get_video_traffic_sources("v-external"), [])
         self.assertNotEqual(database.get_video_traffic_sources("v-owned"), [])
@@ -308,8 +308,8 @@ class OwnershipQueryBoundaryTest(IsolatedDatabaseTestCase):
         self.assertEqual(ids, {"v-owned"})
 
     def test_search_terms_exclude_external_video(self) -> None:
-        database.upsert_search_terms("v-owned", "2024-01", [make_search_term("cats", views=5)])
-        database.upsert_search_terms("v-external", "2024-01", [make_search_term("dogs", views=7)])
+        writer.write_many(search_term_rows("v-owned", "2024-01", [make_search_term("cats", views=5)], updated_at=FIXED_NOW))
+        writer.write_many(search_term_rows("v-external", "2024-01", [make_search_term("dogs", views=7)], updated_at=FIXED_NOW))
 
         self.assertEqual(reader.fetch(SearchTerm, queries.search_term_totals(video_ids=["v-external"])), [])
         self.assertNotEqual(reader.fetch(SearchTerm, queries.search_term_totals(video_ids=["v-owned"])), [])
@@ -322,9 +322,9 @@ class OwnershipQueryBoundaryTest(IsolatedDatabaseTestCase):
         self.assertEqual(videos, [])
 
     def test_comments_exclude_external_video(self) -> None:
-        database.upsert_comment_author(make_comment_author("author-1", "Ann"))
-        database.upsert_comment(make_comment("c-owned", "v-owned", "author-1"))
-        database.upsert_comment(make_comment("c-external", "v-external", "author-1"))
+        writer.write(make_comment_author("author-1", "Ann"))
+        writer.write(make_comment("c-owned", "v-owned", "author-1"))
+        writer.write(make_comment("c-external", "v-external", "author-1"))
 
         body = _get("/comments")
         items, total = body["items"], body["total"]
@@ -340,14 +340,14 @@ class PublishedThroughWorklistBoundaryTest(IsolatedDatabaseTestCase):
 
     def setUp(self) -> None:
         super().setUp()
-        database.upsert_own_video(make_video("v-before", "Before", published_at="2024-01-10T00:00:00Z"))
-        database.upsert_own_video(make_video("v-on-bound-early", "On bound early", published_at="2024-01-15T00:00:01Z"))
-        database.upsert_own_video(make_video("v-on-bound-late", "On bound late", published_at="2024-01-15T23:59:59Z"))
-        database.upsert_own_video(make_video("v-after", "After", published_at="2024-01-16T00:00:00Z"))
-        database.upsert_own_video(make_video("v-unknown", "Unknown publish date"))
+        writer.write(make_video("v-before", "Before", published_at="2024-01-10T00:00:00Z"))
+        writer.write(make_video("v-on-bound-early", "On bound early", published_at="2024-01-15T00:00:01Z"))
+        writer.write(make_video("v-on-bound-late", "On bound late", published_at="2024-01-15T23:59:59Z"))
+        writer.write(make_video("v-after", "After", published_at="2024-01-16T00:00:00Z"))
+        writer.write(make_video("v-unknown", "Unknown publish date"))
         with database.get_connection() as conn:
             conn.execute("UPDATE videos SET published_at = NULL WHERE id = 'v-unknown'")
-        database.upsert_own_video(make_video("v-external", "External", published_at="2024-01-01T00:00:00Z"))
+        writer.write(make_video("v-external", "External", published_at="2024-01-01T00:00:00Z"))
         with database.get_connection() as conn:
             conn.execute("UPDATE videos SET own = 0 WHERE id = 'v-external'")
 
@@ -382,12 +382,12 @@ class WorklistOrderTest(IsolatedDatabaseTestCase):
         # by insertion/primary-key order) cannot coincidentally pass. "v-m"/"v-n" share
         # a timestamp to prove ties still break by ascending id, and "v-x"/"v-y" are
         # undated to prove undated rows sort last, also by ascending id.
-        database.upsert_own_video(make_video("v-a", "Newest", published_at="2024-03-01T00:00:00Z"))
-        database.upsert_own_video(make_video("v-x", "Undated 1"))
-        database.upsert_own_video(make_video("v-n", "Tied 2", published_at="2024-02-01T00:00:00Z"))
-        database.upsert_own_video(make_video("v-z", "Oldest", published_at="2024-01-01T00:00:00Z"))
-        database.upsert_own_video(make_video("v-y", "Undated 2"))
-        database.upsert_own_video(make_video("v-m", "Tied 1", published_at="2024-02-01T00:00:00Z"))
+        writer.write(make_video("v-a", "Newest", published_at="2024-03-01T00:00:00Z"))
+        writer.write(make_video("v-x", "Undated 1"))
+        writer.write(make_video("v-n", "Tied 2", published_at="2024-02-01T00:00:00Z"))
+        writer.write(make_video("v-z", "Oldest", published_at="2024-01-01T00:00:00Z"))
+        writer.write(make_video("v-y", "Undated 2"))
+        writer.write(make_video("v-m", "Tied 1", published_at="2024-02-01T00:00:00Z"))
         with database.get_connection() as conn:
             conn.execute("UPDATE videos SET published_at = NULL WHERE id IN ('v-x', 'v-y')")
 

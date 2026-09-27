@@ -1,51 +1,8 @@
 from __future__ import annotations
 
-import re
 from collections.abc import Collection
 
-from .connection import _month_bound_conditions, _now, get_connection
-
-_MONTH_RE = re.compile(r"^\d{4}-(0[1-9]|1[0-2])$")
-
-
-def upsert_related_videos(target_video_id: str, month: str, referrers: list[dict]) -> int:
-    """Upsert monthly referrers for an owned target video and return the number written."""
-    if not _MONTH_RE.match(month):
-        raise ValueError(f"invalid month {month!r}; expected YYYY-MM")
-
-    aggregated: dict[str, int] = {}
-    for referrer in referrers:
-        referrer_video_id = referrer["referrer_video_id"]
-        views = referrer["views"]
-        if not isinstance(referrer_video_id, str) or not referrer_video_id:
-            raise ValueError(f"invalid referrer_video_id in response row: {referrer!r}")
-        if not isinstance(views, int) or isinstance(views, bool):
-            raise ValueError(f"invalid views in response row: {referrer!r}")
-        aggregated[referrer_video_id] = aggregated.get(referrer_video_id, 0) + views
-
-    positive_referrers = {rid: views for rid, views in aggregated.items() if views > 0}
-    if not positive_referrers:
-        return 0
-
-    updated_at = _now()
-    rows_written = 0
-    with get_connection() as conn:
-        owned_row = conn.execute("SELECT own FROM videos WHERE id = ?", (target_video_id,)).fetchone()
-        if owned_row is None or not owned_row["own"]:
-            raise ValueError(f"target_video_id {target_video_id!r} is not an owned video")
-        for referrer_video_id, views in positive_referrers.items():
-            conn.execute(
-                """
-                INSERT INTO related_videos (target_video_id, month, referrer_video_id, views, updated_at)
-                VALUES (?, ?, ?, ?, ?)
-                ON CONFLICT(target_video_id, month, referrer_video_id) DO UPDATE SET
-                    views = excluded.views,
-                    updated_at = excluded.updated_at
-                """,
-                (target_video_id, month, referrer_video_id, views, updated_at),
-            )
-            rows_written += 1
-    return rows_written
+from .connection import _month_bound_conditions, get_connection
 
 
 def _coerce_referrer_own(row: dict) -> dict:

@@ -3,34 +3,7 @@ from __future__ import annotations
 from collections.abc import Collection
 from datetime import date, timedelta
 
-from .connection import _now, get_connection
-
-
-def upsert_video_analytics(row: dict) -> None:
-    """Insert or replace a video analytics row."""
-    row = {**row, "updated_at": _now()}
-    with get_connection() as conn:
-        conn.execute(
-            """
-            INSERT INTO video_analytics (video_id, date, views, watch_time_minutes,
-                estimated_revenue, average_view_duration_seconds, average_view_percentage,
-                likes, subscribers_gained, subscribers_lost, updated_at)
-            VALUES (:video_id, :date, :views, :watch_time_minutes,
-                :estimated_revenue, :average_view_duration_seconds, :average_view_percentage,
-                :likes, :subscribers_gained, :subscribers_lost, :updated_at)
-            ON CONFLICT(video_id, date) DO UPDATE SET
-                views = excluded.views,
-                watch_time_minutes = excluded.watch_time_minutes,
-                estimated_revenue = excluded.estimated_revenue,
-                average_view_duration_seconds = excluded.average_view_duration_seconds,
-                average_view_percentage = excluded.average_view_percentage,
-                likes = excluded.likes,
-                subscribers_gained = excluded.subscribers_gained,
-                subscribers_lost = excluded.subscribers_lost,
-                updated_at = excluded.updated_at
-            """,
-            row,
-        )
+from .connection import get_connection
 
 
 def _zero_fill_analytics(rows: list[dict], start_date: str | None, end_date: str | None, content_types: list[str]) -> list[dict]:

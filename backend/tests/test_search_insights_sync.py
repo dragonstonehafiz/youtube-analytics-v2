@@ -7,11 +7,11 @@ from unittest import mock
 
 from googleapiclient.errors import HttpError
 
-from database import queries
+from database import SearchTerm, SyncCoverage, queries
 from sync import stages
 from sync.monthly_insights import MonthlyWindow, monthly_search_windows, monthly_windows_for_range
 from sync.stages import SyncCounts
-from tests.support import owned_videos, patch_stage_reads
+from tests.support import owned_videos, patch_stage_reads, patch_stage_writes
 from youtube import analytics_api
 
 
@@ -232,7 +232,7 @@ class SyncSearchRelatedInsightsStageTest(unittest.TestCase):
         # incremental path has its own test class below.
         self.reads = patch_stage_reads()
         mock.patch("sync.stages.status.update_sync_progress").start()
-        mock.patch("sync.stages.database.upsert_coverage").start()
+        self.writes = patch_stage_writes()
 
     def test_windows_are_captured_once_for_the_whole_stage(self) -> None:
         self.reads.videos = owned_videos("v1", "v2")
@@ -291,7 +291,6 @@ class SyncSearchRelatedInsightsStageTest(unittest.TestCase):
                 raw_row_count=3, terms=[{"search_term": "cats", "views": 5}]
             ),
         ).start()
-        mock.patch("sync.stages.database.upsert_search_terms", return_value=1).start()
         counts = SyncCounts()
 
         stages.sync_search_insights("incremental", None, counts)
@@ -309,15 +308,15 @@ class SyncSearchRelatedInsightsStageTest(unittest.TestCase):
             "sync.stages.youtube.fetch_video_search_terms",
             return_value=analytics_api.SearchTermsResult(raw_row_count=1, terms=[{"search_term": "cats", "views": 8}]),
         ).start()
-        upsert = mock.patch("sync.stages.database.upsert_search_terms", return_value=1).start()
 
         stages.sync_search_insights("incremental", None, SyncCounts())
 
-        upsert.assert_called_once_with("v1", "2024-03", [{"search_term": "cats", "views": 8}])
+        self.assertEqual(self.writes.of(SearchTerm), [
+            SearchTerm(video_id="v1", month="2024-03", search_term="cats", views=8, updated_at=mock.ANY),
+        ])
 
     def test_a_failed_window_stops_the_stage_but_keeps_earlier_commits_and_partial_counts(self) -> None:
         self.reads.videos = owned_videos("v1", "v2")
-        upsert = mock.patch("sync.stages.database.upsert_search_terms", return_value=1).start()
 
         def fetch_side_effect(video_id: str, start: str, end: str, **kwargs: object) -> analytics_api.SearchTermsResult:
             if video_id == "v2":
@@ -330,13 +329,18 @@ class SyncSearchRelatedInsightsStageTest(unittest.TestCase):
         with self.assertRaises(RuntimeError):
             stages.sync_search_insights("incremental", None, counts)
 
+        # v1's two months were written and covered before v2's first fetch failed.
+        self.assertEqual({term.video_id for term in self.writes.of(SearchTerm)}, {"v1"})
+        self.assertEqual(len(self.writes.of(SyncCoverage)), len(self.windows))
+        self.assertEqual(counts.rows_written, len(self.windows))
+
 
 class SyncSearchRelatedInsightsScopeTest(unittest.TestCase):
     def setUp(self) -> None:
         self.addCleanup(mock.patch.stopall)
         self.reads = patch_stage_reads()
         mock.patch("sync.stages.status.update_sync_progress").start()
-        mock.patch("sync.stages.database.upsert_coverage").start()
+        self.writes = patch_stage_writes()
         self.mock_date = mock.patch("sync.stages.date").start()
         self.mock_date.today.return_value = date(2024, 3, 15)
         self.mock_date.fromisoformat = date.fromisoformat
@@ -348,7 +352,6 @@ class SyncSearchRelatedInsightsScopeTest(unittest.TestCase):
             "sync.stages.youtube.fetch_video_search_terms",
             return_value=analytics_api.SearchTermsResult(raw_row_count=0, terms=[]),
         ).start()
-        mock.patch("sync.stages.database.upsert_search_terms", return_value=0).start()
 
         stages.sync_search_insights("year", 2024, SyncCounts())
 
@@ -365,7 +368,6 @@ class SyncSearchRelatedInsightsScopeTest(unittest.TestCase):
             "sync.stages.youtube.fetch_video_search_terms",
             return_value=analytics_api.SearchTermsResult(raw_row_count=0, terms=[]),
         ).start()
-        mock.patch("sync.stages.database.upsert_search_terms", return_value=0).start()
 
         stages.sync_search_insights("all", None, SyncCounts())
 
@@ -433,7 +435,6 @@ class SyncSearchRelatedInsightsScopeTest(unittest.TestCase):
             "sync.stages.youtube.fetch_video_search_terms",
             return_value=analytics_api.SearchTermsResult(raw_row_count=0, terms=[]),
         ).start()
-        mock.patch("sync.stages.database.upsert_search_terms", return_value=0).start()
 
         stages.sync_search_insights("incremental", None, SyncCounts())
 
@@ -450,7 +451,6 @@ class SyncSearchRelatedInsightsScopeTest(unittest.TestCase):
             "sync.stages.youtube.fetch_video_search_terms",
             return_value=analytics_api.SearchTermsResult(raw_row_count=0, terms=[]),
         ).start()
-        mock.patch("sync.stages.database.upsert_search_terms", return_value=0).start()
 
         stages.sync_search_insights("incremental", None, SyncCounts())
 
@@ -474,7 +474,6 @@ class SyncSearchRelatedInsightsScopeTest(unittest.TestCase):
             "sync.stages.youtube.fetch_video_search_terms",
             return_value=analytics_api.SearchTermsResult(raw_row_count=0, terms=[]),
         ).start()
-        mock.patch("sync.stages.database.upsert_search_terms", return_value=0).start()
 
         stages.sync_search_insights("incremental", None, SyncCounts())
 
@@ -496,7 +495,6 @@ class SyncSearchRelatedInsightsScopeTest(unittest.TestCase):
             "sync.stages.youtube.fetch_video_search_terms",
             return_value=analytics_api.SearchTermsResult(raw_row_count=0, terms=[]),
         ).start()
-        mock.patch("sync.stages.database.upsert_search_terms", return_value=0).start()
 
         stages.sync_search_insights("incremental", None, SyncCounts())
 

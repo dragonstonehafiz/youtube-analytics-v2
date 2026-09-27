@@ -5,6 +5,7 @@ from datetime import date
 from pathlib import Path
 
 import database
+from database import writer
 from tests.support import IsolatedDatabaseTestCase, covered_periods, make_video, make_video_analytics
 
 _MIGRATION_SCRIPT = Path(__file__).resolve().parents[1] / "scripts" / "issue-62-migration.py"
@@ -18,7 +19,7 @@ COLLECTORS = _migration_module.COLLECTORS
 
 class MigrateTest(IsolatedDatabaseTestCase):
     def test_marks_every_month_from_publish_through_current_month_for_all_collectors(self) -> None:
-        database.upsert_own_video(make_video("v1", "Alpha", published_at="2023-11-15T00:00:00Z"))
+        writer.write(make_video("v1", "Alpha", published_at="2023-11-15T00:00:00Z"))
 
         migrate(today=date(2024, 3, 10))
 
@@ -29,8 +30,8 @@ class MigrateTest(IsolatedDatabaseTestCase):
                 self.assertEqual(covered, expected)
 
     def test_two_videos_with_different_publish_dates_get_independent_ranges(self) -> None:
-        database.upsert_own_video(make_video("v1", "Alpha", published_at="2024-01-01T00:00:00Z"))
-        database.upsert_own_video(make_video("v2", "Beta", published_at="2024-02-01T00:00:00Z"))
+        writer.write(make_video("v1", "Alpha", published_at="2024-01-01T00:00:00Z"))
+        writer.write(make_video("v2", "Beta", published_at="2024-02-01T00:00:00Z"))
 
         migrate(today=date(2024, 3, 1))
 
@@ -44,7 +45,7 @@ class MigrateTest(IsolatedDatabaseTestCase):
         )
 
     def test_external_video_is_not_touched(self) -> None:
-        database.upsert_own_video(make_video("v-ext", "External", published_at="2020-01-01T00:00:00Z"))
+        writer.write(make_video("v-ext", "External", published_at="2020-01-01T00:00:00Z"))
         with database.get_connection() as conn:
             conn.execute("UPDATE videos SET own = 0 WHERE id = 'v-ext'")
 
@@ -54,7 +55,7 @@ class MigrateTest(IsolatedDatabaseTestCase):
             self.assertEqual(covered_periods(collector, "v-ext", "2000-01", "2100-01"), set())
 
     def test_rerun_produces_the_identical_key_set(self) -> None:
-        database.upsert_own_video(make_video("v1", "Alpha", published_at="2023-11-15T00:00:00Z"))
+        writer.write(make_video("v1", "Alpha", published_at="2023-11-15T00:00:00Z"))
 
         migrate(today=date(2024, 3, 10))
         first = covered_periods("video_analytics", "v1", "2023-01", "2024-12")
@@ -64,8 +65,8 @@ class MigrateTest(IsolatedDatabaseTestCase):
         self.assertEqual(first, second)
 
     def test_missing_published_at_aborts_with_no_writes(self) -> None:
-        database.upsert_own_video(make_video("v-good", "Good", published_at="2024-01-01T00:00:00Z"))
-        database.upsert_own_video(make_video("v-bad", "Bad", published_at="2024-01-01T00:00:00Z"))
+        writer.write(make_video("v-good", "Good", published_at="2024-01-01T00:00:00Z"))
+        writer.write(make_video("v-bad", "Bad", published_at="2024-01-01T00:00:00Z"))
         with database.get_connection() as conn:
             conn.execute("UPDATE videos SET published_at = NULL WHERE id = 'v-bad'")
 
@@ -77,7 +78,7 @@ class MigrateTest(IsolatedDatabaseTestCase):
             self.assertEqual(covered_periods(collector, "v-good", "2000-01", "2100-01"), set())
 
     def test_return_value_reports_owned_video_count_and_per_collector_totals(self) -> None:
-        database.upsert_own_video(make_video("v1", "Alpha", published_at="2024-01-01T00:00:00Z"))
+        writer.write(make_video("v1", "Alpha", published_at="2024-01-01T00:00:00Z"))
 
         result = migrate(today=date(2024, 3, 1))
 
@@ -86,8 +87,8 @@ class MigrateTest(IsolatedDatabaseTestCase):
             self.assertEqual(result[collector], 3)
 
     def test_never_touches_analytics_reporting_tables(self) -> None:
-        database.upsert_own_video(make_video("v1", "Alpha", published_at="2024-01-01T00:00:00Z"))
-        database.upsert_video_analytics(make_video_analytics("v1", "2024-01-05", views=42))
+        writer.write(make_video("v1", "Alpha", published_at="2024-01-01T00:00:00Z"))
+        writer.write(make_video_analytics("v1", "2024-01-05", views=42))
 
         migrate(today=date(2024, 3, 1))
 
@@ -98,7 +99,7 @@ class MigrateTest(IsolatedDatabaseTestCase):
     def test_creates_the_coverage_table_on_a_pre_issue_62_database(self) -> None:
         with database.get_connection() as conn:
             conn.execute("DROP TABLE sync_coverage")
-        database.upsert_own_video(make_video("v1", "Alpha", published_at="2024-01-01T00:00:00Z"))
+        writer.write(make_video("v1", "Alpha", published_at="2024-01-01T00:00:00Z"))
 
         migrate(today=date(2024, 3, 1))
 

@@ -3,9 +3,11 @@ from __future__ import annotations
 import unittest
 
 import database
+from database import FxRate, VideoAnalytics, writer
 from routes.playlists import router as playlists_router
 from routes.videos import router as videos_router
 from tests.support import (
+    FIXED_NOW,
     IsolatedDatabaseTestCase,
     create_test_client,
     make_fx_rate,
@@ -33,19 +35,19 @@ def _item(path: str) -> dict | None:
 class VideoCatalogTestCase(IsolatedDatabaseTestCase):
     def _seed_sortable_videos(self) -> None:
         """Four videos with distinct, non-tied values on every sortable column."""
-        database.upsert_own_video(make_video(
+        writer.write(make_video(
             "v-1", "Alpha", published_at="2024-01-01T00:00:00Z",
             content_type="video", privacy_status="public", view_count=10, comment_count=1,
         ))
-        database.upsert_own_video(make_video(
+        writer.write(make_video(
             "v-2", "Beta", published_at="2024-01-02T00:00:00Z",
             content_type="video", privacy_status="private", view_count=40, comment_count=4,
         ))
-        database.upsert_own_video(make_video(
+        writer.write(make_video(
             "v-3", "Gamma", published_at="2024-01-03T00:00:00Z",
             content_type="short", privacy_status="public", view_count=20, comment_count=2,
         ))
-        database.upsert_own_video(make_video(
+        writer.write(make_video(
             "v-4", "Delta", published_at="2024-01-04T00:00:00Z",
             content_type="short", privacy_status="unlisted", view_count=30, comment_count=3,
         ))
@@ -103,13 +105,13 @@ class GetAllVideosSortTest(VideoCatalogTestCase):
     def test_total_revenue_sgd_sorts_both_directions(self) -> None:
         # Distinct, non-tied revenue on three of the four seeded videos; v-4 stays at
         # zero (no analytics row) so the sort must also place an unearning video correctly.
-        database.upsert_fx_rate({"date": "2024-02-01", "usd_to_sgd": 1.0})
+        writer.write(FxRate.from_dict({**{"date": "2024-02-01", "usd_to_sgd": 1.0}, "updated_at": FIXED_NOW}))
         for video_id, revenue in (("v-1", 5.0), ("v-2", 15.0), ("v-3", 10.0)):
-            database.upsert_video_analytics({
+            writer.write(VideoAnalytics.from_dict({**{
                 "video_id": video_id, "date": "2024-02-01", "views": 1, "watch_time_minutes": 1,
                 "estimated_revenue": revenue, "average_view_duration_seconds": 1, "average_view_percentage": 1.0,
                 "likes": 0, "subscribers_gained": 0, "subscribers_lost": 0,
-            })
+            }, "updated_at": FIXED_NOW}))
         asc_items, _ = _page("/videos", page_size=10, sort_by="total_revenue_sgd", sort_dir="asc")
         desc_items, _ = _page("/videos", page_size=10, sort_by="total_revenue_sgd", sort_dir="desc")
         self.assertEqual([i["id"] for i in asc_items], ["v-4", "v-1", "v-3", "v-2"])
@@ -183,9 +185,9 @@ class GetVideoTest(VideoCatalogTestCase):
 
 class PlaylistCatalogTestCase(IsolatedDatabaseTestCase):
     def _seed_sortable_playlists(self) -> None:
-        database.upsert_playlist(make_playlist("p-1", "Alpha Playlist", published_at="2024-01-01T00:00:00Z", item_count=1))
-        database.upsert_playlist(make_playlist("p-2", "Beta Playlist", published_at="2024-01-02T00:00:00Z", item_count=3))
-        database.upsert_playlist(make_playlist("p-3", "Gamma Playlist", published_at="2024-01-03T00:00:00Z", item_count=2))
+        writer.write(make_playlist("p-1", "Alpha Playlist", published_at="2024-01-01T00:00:00Z", item_count=1))
+        writer.write(make_playlist("p-2", "Beta Playlist", published_at="2024-01-02T00:00:00Z", item_count=3))
+        writer.write(make_playlist("p-3", "Gamma Playlist", published_at="2024-01-03T00:00:00Z", item_count=2))
 
 
 class GetAllPlaylistsTest(PlaylistCatalogTestCase):
@@ -233,24 +235,24 @@ class PlaylistAggregateSortTest(IsolatedDatabaseTestCase):
 
     def setUp(self) -> None:
         super().setUp()
-        database.upsert_playlist(make_playlist("p-1", "First"))
-        database.upsert_playlist(make_playlist("p-2", "Second"))
-        database.upsert_playlist(make_playlist("p-3", "Third"))
+        writer.write(make_playlist("p-1", "First"))
+        writer.write(make_playlist("p-2", "Second"))
+        writer.write(make_playlist("p-3", "Third"))
 
-        database.upsert_own_video(make_video("v-1", "Video One", published_at="2024-01-01T00:00:00Z", view_count=30))
-        database.upsert_own_video(make_video("v-2", "Video Two", published_at="2024-03-01T00:00:00Z", view_count=10))
-        database.upsert_own_video(make_video("v-3", "Video Three", published_at="2024-02-01T00:00:00Z", view_count=20))
-        database.upsert_playlist_item(make_playlist_item("pi-1", "p-1", "v-1", 0))
-        database.upsert_playlist_item(make_playlist_item("pi-2", "p-2", "v-2", 0))
-        database.upsert_playlist_item(make_playlist_item("pi-3", "p-3", "v-3", 0))
+        writer.write(make_video("v-1", "Video One", published_at="2024-01-01T00:00:00Z", view_count=30))
+        writer.write(make_video("v-2", "Video Two", published_at="2024-03-01T00:00:00Z", view_count=10))
+        writer.write(make_video("v-3", "Video Three", published_at="2024-02-01T00:00:00Z", view_count=20))
+        writer.write(make_playlist_item("pi-1", "p-1", "v-1", 0))
+        writer.write(make_playlist_item("pi-2", "p-2", "v-2", 0))
+        writer.write(make_playlist_item("pi-3", "p-3", "v-3", 0))
 
-        database.upsert_fx_rate({"date": "2024-06-01", "usd_to_sgd": 1.0})
+        writer.write(FxRate.from_dict({**{"date": "2024-06-01", "usd_to_sgd": 1.0}, "updated_at": FIXED_NOW}))
         for video_id, revenue in (("v-1", 5.0), ("v-2", 15.0), ("v-3", 10.0)):
-            database.upsert_video_analytics({
+            writer.write(VideoAnalytics.from_dict({**{
                 "video_id": video_id, "date": "2024-06-01", "views": 1, "watch_time_minutes": 1,
                 "estimated_revenue": revenue, "average_view_duration_seconds": 1, "average_view_percentage": 1.0,
                 "likes": 0, "subscribers_gained": 0, "subscribers_lost": 0,
-            })
+            }, "updated_at": FIXED_NOW}))
 
     def test_last_item_added_sorts_both_directions(self) -> None:
         asc, _ = _page("/playlists", sort_by="last_item_added", sort_dir="asc")
@@ -285,12 +287,12 @@ class GetPlaylistTest(PlaylistCatalogTestCase):
 class GetPlaylistVideosTest(PlaylistCatalogTestCase):
     def setUp(self) -> None:
         super().setUp()
-        database.upsert_playlist(make_playlist("p-1", "Playlist", item_count=2))
-        database.upsert_own_video(make_video("v-1", "Alpha", published_at="2024-01-01T00:00:00Z", view_count=10))
-        database.upsert_own_video(make_video("v-2", "Beta", published_at="2024-01-02T00:00:00Z", view_count=20))
-        database.upsert_own_video(make_video("v-3", "Gamma", published_at="2024-01-03T00:00:00Z", view_count=30))
-        database.upsert_playlist_item(make_playlist_item("pi-1", "p-1", "v-1", 0))
-        database.upsert_playlist_item(make_playlist_item("pi-2", "p-1", "v-2", 1))
+        writer.write(make_playlist("p-1", "Playlist", item_count=2))
+        writer.write(make_video("v-1", "Alpha", published_at="2024-01-01T00:00:00Z", view_count=10))
+        writer.write(make_video("v-2", "Beta", published_at="2024-01-02T00:00:00Z", view_count=20))
+        writer.write(make_video("v-3", "Gamma", published_at="2024-01-03T00:00:00Z", view_count=30))
+        writer.write(make_playlist_item("pi-1", "p-1", "v-1", 0))
+        writer.write(make_playlist_item("pi-2", "p-1", "v-2", 1))
 
     def test_scoped_to_playlist_membership(self) -> None:
         items, total = _page("/playlists/p-1/videos")
@@ -298,7 +300,7 @@ class GetPlaylistVideosTest(PlaylistCatalogTestCase):
         self.assertEqual(total, 2)
 
     def test_empty_playlist_returns_empty_page(self) -> None:
-        database.upsert_playlist(make_playlist("p-empty", "Empty", item_count=0))
+        writer.write(make_playlist("p-empty", "Empty", item_count=0))
         items, total = _page("/playlists/p-empty/videos")
         self.assertEqual(items, [])
         self.assertEqual(total, 0)
@@ -312,9 +314,9 @@ class GetPlaylistVideosTest(PlaylistCatalogTestCase):
         self.assertEqual([i["id"] for i in items], ["v-1"])
 
     def test_duplicate_membership_counts_once_and_does_not_inflate_totals(self) -> None:
-        database.upsert_playlist_item(make_playlist_item("pi-dup", "p-1", "v-1", 2))
-        database.upsert_fx_rate(make_fx_rate("2024-01-05", 1.5))
-        database.upsert_video_analytics(make_video_analytics("v-1", "2024-01-05", watch_time_minutes=60, estimated_revenue=2.0))
+        writer.write(make_playlist_item("pi-dup", "p-1", "v-1", 2))
+        writer.write(make_fx_rate("2024-01-05", 1.5))
+        writer.write(make_video_analytics("v-1", "2024-01-05", watch_time_minutes=60, estimated_revenue=2.0))
         items, total = _page("/playlists/p-1/videos")
         self.assertEqual(total, 2)
         self.assertEqual(sorted(i["id"] for i in items), ["v-1", "v-2"])

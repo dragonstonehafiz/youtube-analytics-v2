@@ -53,7 +53,7 @@
       <h1>Repeated code</h1>
       <p>This page shows code written more than once in the backend and frontend.</p>
       <div class="meta-line">
-        <span>Source revision <code>926f014</code></span>
+        <span>Source revision <code>a731fb1</code></span>
       </div>
     </header>
 
@@ -118,10 +118,10 @@ if title:
 
         <article class="dup">
           <div class="dup-head"><h3>Daily per-video sync stages</h3><span class="dup-count">×2</span></div>
-          <p>Two stages are almost line for line the same: loop over owned videos, skip ones without a publish date, work out the missing date ranges, stream rows, upsert, record coverage, log.</p>
+          <p>Two stages are almost line for line the same: loop over owned videos, skip ones without a publish date, work out the missing date ranges, stream rows, write each one, record coverage, log.</p>
           <dl>
             <dt>Where</dt><dd><code>sync/stages.py</code>: <code>sync_video_analytics</code>, <code>sync_video_traffic_sources</code></dd>
-            <dt>Differs</dt><dd>The stage key, the <code>youtube.iter_*</code> fetcher and the <code>database.upsert_*</code> writer.</dd>
+            <dt>Differs</dt><dd>The stage key, the <code>youtube.iter_*</code> fetcher, and the row class each fetched row becomes (<code>VideoAnalytics</code> or <code>VideoTrafficSource</code>).</dd>
           </dl>
         </article>
 
@@ -131,15 +131,6 @@ if title:
           <dl>
             <dt>Where</dt><dd><code>sync/stages.py</code>: <code>sync_search_insights</code>, <code>sync_related_video_insights</code></dd>
             <dt>Differs</dt><dd>Fetcher, writer, and the related stage collects referrer IDs to resolve afterwards.</dd>
-          </dl>
-        </article>
-
-        <article class="dup">
-          <div class="dup-head"><h3>Monthly insight storage</h3><span class="dup-count">×2</span></div>
-          <p>Both modules define the same <code>_MONTH_RE</code>, validate rows, sum views per key, drop zero-view rows, and upsert.</p>
-          <dl>
-            <dt>Where</dt><dd><code>database/search_terms.py</code>, <code>database/related_videos.py</code> (<code>connection.py</code> has a related <code>_MONTH_PREFIX_RE</code>)</dd>
-            <dt>Differs</dt><dd>Key column (<code>search_term</code> vs <code>referrer_video_id</code>); related videos also checks the target is owned.</dd>
           </dl>
         </article>
 

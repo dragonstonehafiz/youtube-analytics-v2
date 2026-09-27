@@ -12,7 +12,8 @@ from googleapiclient.errors import HttpError
 from logging_config import configure_logging, reset_logging
 from sync import stages
 from sync.stages import COMMENT_INCREMENTAL_OVERLAP, SyncCounts
-from tests.support import owned_videos, patch_stage_reads
+from database import Comment, CommentAuthor
+from tests.support import owned_videos, patch_stage_reads, patch_stage_writes
 from youtube import data_api
 
 # These tests drive the comments stage and fetcher, both of which log through the real
@@ -79,8 +80,7 @@ class CommentStageTestCase(unittest.TestCase):
         self.addCleanup(mock.patch.stopall)
         self.reads = patch_stage_reads()
         self.reads.videos = owned_videos("v1", title="A video")
-        self.upsert_author = mock.patch("sync.stages.database.upsert_comment_author").start()
-        self.upsert_comment = mock.patch("sync.stages.database.upsert_comment").start()
+        self.writes = patch_stage_writes()
         self.cleanup = mock.patch(
             "sync.stages.database.delete_orphan_comment_authors", return_value=0
         ).start()
@@ -88,7 +88,7 @@ class CommentStageTestCase(unittest.TestCase):
 
     @property
     def written_ids(self) -> list[str]:
-        return [call.args[0]["id"] for call in self.upsert_comment.call_args_list]
+        return [comment.id for comment in self.writes.of(Comment)]
 
 
 class IncrementalBoundaryTest(CommentStageTestCase):
@@ -171,23 +171,26 @@ class FullDataScanTest(CommentStageTestCase):
 
 class CommentStageBehaviourTest(CommentStageTestCase):
     def test_writes_the_author_before_its_comment(self) -> None:
-        order: list[str] = []
-        self.upsert_author.side_effect = lambda author: order.append("author")
-        self.upsert_comment.side_effect = lambda comment: order.append("comment")
         self.iter_threads.return_value = iter([_normalized("c1")])
 
         stages.sync_comments("incremental", SyncCounts())
 
-        self.assertEqual(order, ["author", "comment"])
+        self.assertEqual([type(row) for row in self.writes.rows], [CommentAuthor, Comment])
+        (comment,) = self.writes.of(Comment)
+        self.assertEqual(comment, Comment.from_dict({**_normalized("c1")["comment"], "updated_at": comment.updated_at}))
 
     def test_one_failed_item_does_not_stop_the_others(self) -> None:
-        self.upsert_comment.side_effect = [RuntimeError("constraint"), None]
+        def fail_bad_comment(row: object) -> None:
+            if isinstance(row, Comment) and row.id == "bad":
+                raise RuntimeError("constraint")
+
+        self.writes.fail = fail_bad_comment
         self.iter_threads.return_value = iter([_normalized("bad"), _normalized("good")])
         counts = SyncCounts()
 
         stages.sync_comments("incremental", counts)
 
-        self.assertEqual(self.written_ids, ["bad", "good"])
+        self.assertEqual(self.written_ids, ["good"])
         # The failed comment's author write still counted; its comment write did not.
         self.assertEqual(counts.rows_written, 3)
 

@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from .connection import _now, get_connection
+from .connection import get_connection, now
 
 
 def create_sync_run(batch_id: str, sync_type: str, scope: str | None, year: int | None) -> int:
@@ -11,7 +11,7 @@ def create_sync_run(batch_id: str, sync_type: str, scope: str | None, year: int 
             INSERT INTO sync_runs (batch_id, sync_type, scope, year, status, started_at)
             VALUES (?, ?, ?, ?, 'running', ?)
             """,
-            (batch_id, sync_type, scope, year, _now()),
+            (batch_id, sync_type, scope, year, now()),
         )
         assert cursor.lastrowid is not None
         return cursor.lastrowid
@@ -26,7 +26,7 @@ def complete_sync_run(sync_run_id: int, rows_fetched: int, rows_written: int, ro
             SET status = 'success', completed_at = ?, rows_fetched = ?, rows_written = ?, rows_deleted = ?
             WHERE id = ?
             """,
-            (_now(), rows_fetched, rows_written, rows_deleted, sync_run_id),
+            (now(), rows_fetched, rows_written, rows_deleted, sync_run_id),
         )
 
 
@@ -46,7 +46,7 @@ def fail_sync_run(
                 error_message = ?
             WHERE id = ?
             """,
-            (_now(), rows_fetched, rows_written, rows_deleted, error_message, sync_run_id),
+            (now(), rows_fetched, rows_written, rows_deleted, error_message, sync_run_id),
         )
 
 
@@ -59,7 +59,7 @@ def cancel_sync_run(sync_run_id: int, rows_fetched: int, rows_written: int, rows
             SET status = 'cancelled', completed_at = ?, rows_fetched = ?, rows_written = ?, rows_deleted = ?
             WHERE id = ?
             """,
-            (_now(), rows_fetched, rows_written, rows_deleted, sync_run_id),
+            (now(), rows_fetched, rows_written, rows_deleted, sync_run_id),
         )
 
 

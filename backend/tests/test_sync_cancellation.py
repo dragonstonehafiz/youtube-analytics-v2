@@ -5,6 +5,7 @@ from unittest import mock
 
 from sync import status
 from sync.stages import SyncCounts
+from tests.support import patch_stage_writes
 from youtube import analytics_api, data_api
 
 
@@ -178,7 +179,7 @@ class StageCheckpointWiringTest(unittest.TestCase):
         fetch_items = mock.patch(
             "sync.stages.youtube.fetch_playlist_items", return_value=([], False)
         ).start()
-        mock.patch("sync.stages.database.upsert_playlist").start()
+        patch_stage_writes()
         mock.patch("sync.stages.database.delete_playlist_items", return_value=0).start()
 
         status.try_begin_sync(["playlists"])
@@ -214,7 +215,7 @@ class StageCheckpointWiringTest(unittest.TestCase):
             "sync.stages.reader.select_one",
             return_value=FxRate(date=last_synced, usd_to_sgd=1.35),
         ).start()
-        upsert = mock.patch("sync.stages.database.upsert_fx_rate").start()
+        writes = patch_stage_writes()
 
         import pandas as pd
         mock.patch("yfinance.download", return_value=pd.DataFrame()).start()
@@ -226,7 +227,7 @@ class StageCheckpointWiringTest(unittest.TestCase):
             stages.sync_fx_rates(SyncCounts())
 
         # Day 1 (carried rate) is written before the checkpoint on day 2 raises.
-        self.assertEqual(upsert.call_count, 1)
+        self.assertEqual(len(writes.of(FxRate)), 1)
 
 
 if __name__ == "__main__":
