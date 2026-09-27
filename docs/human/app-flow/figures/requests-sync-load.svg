@@ -23,8 +23,7 @@
     .ep-after rect { fill: #1a1f27; stroke: #b9a2f5; } .ep-after text { fill: #d6c9fb; }
   }
   .legend-text { font-size: 12px; fill: #5b6475; }
-  .legend-rule { stroke: #d9dee6; stroke-width: 1; }
-  @media (prefers-color-scheme: dark) { .legend-text { fill: #9aa3b2; } .legend-rule { stroke: #2f3744; } }
+  @media (prefers-color-scheme: dark) { .legend-text { fill: #9aa3b2; } }
 </style>
 <rect class="bg" width="776" height="150" rx="10"/>
 <path class="edge" d="M356.0,31.0 H374.0 V31.0 H475.2"/>
@@ -36,7 +35,6 @@
 <g class="ep"><rect x="475.2" y="56.0" width="140.0" height="30" rx="6"/><text class="mono" x="487.2" y="71.0">/meta/date-range</text></g>
 <g class="card"><rect x="152.0" y="56.0" width="283.2" height="30" rx="6"/><text x="164.0" y="71.0">Year options in the period selectors</text></g>
 <g class="root"><rect x="16.0" y="36.0" width="96.0" height="30" rx="6"/><text x="28.0" y="51.0">Page opens</text></g>
-<line class="legend-rule" x1="16" y1="108.0" x2="760.0" y2="108.0"/>
 <g class="root"><rect x="16.0" y="122.0" width="22" height="14" rx="3"/></g>
 <text class="legend-text" x="44.0" y="129.0">Where it starts</text>
 <g class="card"><rect x="164.5" y="122.0" width="22" height="14" rx="3"/></g>

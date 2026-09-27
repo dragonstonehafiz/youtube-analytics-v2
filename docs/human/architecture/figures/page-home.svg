@@ -25,8 +25,7 @@
     .local rect { fill: #222833; stroke: #6b7486; } .local text { fill: #e6e9ef; }
   }
   .legend-text { font-size: 12px; fill: #5b6475; }
-  .legend-rule { stroke: #d9dee6; stroke-width: 1; }
-  @media (prefers-color-scheme: dark) { .legend-text { fill: #9aa3b2; } .legend-rule { stroke: #2f3744; } }
+  @media (prefers-color-scheme: dark) { .legend-text { fill: #9aa3b2; } }
 </style>
 <rect class="bg" width="358" height="254" rx="10"/>
 <path class="edge" d="M91.1,91.0 H113.1 V31.0 H135.1"/>
@@ -38,7 +37,6 @@
 <g class="comp"><rect x="135.1" y="96.0" width="170.0" height="30" rx="6"/><text x="147.1" y="111.0">SearchTermsDonutCard</text></g>
 <g class="comp"><rect x="135.1" y="136.0" width="206.5" height="30" rx="6"/><text x="147.1" y="151.0">SearchTermVideosDonutCard</text></g>
 <g class="page"><rect x="16.0" y="76.0" width="75.1" height="30" rx="6"/><text x="28.0" y="91.0">Home  /</text></g>
-<line class="legend-rule" x1="16" y1="188.0" x2="342.0" y2="188.0"/>
 <path class="edge" d="M16.0,209.0 H38.0"/>
 <text class="legend-text" x="44.0" y="209.0">contains</text>
 <g class="page"><rect x="117.6" y="202.0" width="22" height="14" rx="3"/></g>

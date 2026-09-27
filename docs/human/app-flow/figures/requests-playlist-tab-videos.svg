@@ -23,8 +23,7 @@
     .ep-after rect { fill: #1a1f27; stroke: #b9a2f5; } .ep-after text { fill: #d6c9fb; }
   }
   .legend-text { font-size: 12px; fill: #5b6475; }
-  .legend-rule { stroke: #d9dee6; stroke-width: 1; }
-  @media (prefers-color-scheme: dark) { .legend-text { fill: #9aa3b2; } .legend-rule { stroke: #2f3744; } }
+  @media (prefers-color-scheme: dark) { .legend-text { fill: #9aa3b2; } }
 </style>
 <rect class="bg" width="654" height="174" rx="10"/>
 <path class="edge" d="M255.2,31.0 H273.2 V31.0 H324.0"/>
@@ -36,7 +35,6 @@
 <g class="ep-tab"><rect x="324.0" y="56.0" width="140.0" height="30" rx="6"/><text class="mono" x="336.0" y="71.0">/meta/date-range</text></g>
 <g class="card"><rect x="152.0" y="56.0" width="132.0" height="30" rx="6"/><text x="164.0" y="71.0">Period dropdown</text></g>
 <g class="root"><rect x="16.0" y="36.0" width="96.0" height="30" rx="6"/><text x="28.0" y="51.0">Videos tab</text></g>
-<line class="legend-rule" x1="16" y1="108.0" x2="638.0" y2="108.0"/>
 <g class="root"><rect x="16.0" y="122.0" width="22" height="14" rx="3"/></g>
 <text class="legend-text" x="44.0" y="129.0">Where it starts</text>
 <g class="card"><rect x="164.5" y="122.0" width="22" height="14" rx="3"/></g>

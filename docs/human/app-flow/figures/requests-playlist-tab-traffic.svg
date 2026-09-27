@@ -23,8 +23,7 @@
     .ep-after rect { fill: #1a1f27; stroke: #b9a2f5; } .ep-after text { fill: #d6c9fb; }
   }
   .legend-text { font-size: 12px; fill: #5b6475; }
-  .legend-rule { stroke: #d9dee6; stroke-width: 1; }
-  @media (prefers-color-scheme: dark) { .legend-text { fill: #9aa3b2; } .legend-rule { stroke: #2f3744; } }
+  @media (prefers-color-scheme: dark) { .legend-text { fill: #9aa3b2; } }
 </style>
 <rect class="bg" width="1109" height="414" rx="10"/>
 <path class="edge" d="M305.6,31.0 H323.6 V31.0 H374.4"/>
@@ -58,7 +57,6 @@
 <g class="ep-tab"><rect x="374.4" y="296.0" width="415.5" height="30" rx="6"/><text class="mono" x="386.4" y="311.0">/analytics/playlists/{id}/related-videos/referrers  ×2</text></g>
 <g class="sub"><rect x="216.8" y="296.0" width="74.4" height="30" rx="6"/><text x="228.8" y="311.0">Related</text></g>
 <g class="root"><rect x="16.0" y="156.0" width="160.8" height="30" rx="6"/><text x="28.0" y="171.0">Traffic Sources tab</text></g>
-<line class="legend-rule" x1="16" y1="348.0" x2="1093.0" y2="348.0"/>
 <g class="root"><rect x="16.0" y="362.0" width="22" height="14" rx="3"/></g>
 <text class="legend-text" x="44.0" y="369.0">Where it starts</text>
 <g class="card"><rect x="164.5" y="362.0" width="22" height="14" rx="3"/></g>

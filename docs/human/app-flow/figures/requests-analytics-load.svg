@@ -23,8 +23,7 @@
     .ep-after rect { fill: #1a1f27; stroke: #b9a2f5; } .ep-after text { fill: #d6c9fb; }
   }
   .legend-text { font-size: 12px; fill: #5b6475; }
-  .legend-rule { stroke: #d9dee6; stroke-width: 1; }
-  @media (prefers-color-scheme: dark) { .legend-text { fill: #9aa3b2; } .legend-rule { stroke: #2f3744; } }
+  @media (prefers-color-scheme: dark) { .legend-text { fill: #9aa3b2; } }
 </style>
 <rect class="bg" width="1109" height="630" rx="10"/>
 <path class="edge" d="M269.6,91.0 H287.6 V31.0 H381.6"/>
@@ -78,7 +77,6 @@
 <g class="ep"><rect x="381.6" y="536.0" width="285.0" height="30" rx="6"/><text class="mono" x="393.6" y="551.0">/analytics/search-insights  (Shorts)</text></g>
 <g class="card"><rect x="152.0" y="496.0" width="110.4" height="30" rx="6"/><text x="164.0" y="511.0">Search terms</text></g>
 <g class="root"><rect x="16.0" y="286.0" width="96.0" height="30" rx="6"/><text x="28.0" y="301.0">Page opens</text></g>
-<line class="legend-rule" x1="16" y1="588.0" x2="1093.0" y2="588.0"/>
 <g class="root"><rect x="16.0" y="602.0" width="22" height="14" rx="3"/></g>
 <text class="legend-text" x="44.0" y="609.0">Where it starts</text>
 <g class="card"><rect x="164.5" y="602.0" width="22" height="14" rx="3"/></g>
