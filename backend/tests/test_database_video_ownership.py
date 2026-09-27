@@ -258,7 +258,7 @@ class OwnershipQueryBoundaryTest(IsolatedDatabaseTestCase):
         database.upsert_playlist_item(make_playlist_item("pi-1", "p-1", "v-owned"))
         database.upsert_playlist_item(make_playlist_item("pi-2", "p-1", "v-external"))
 
-        stats = database.get_playlist_video_stats("p-1")
+        stats = database.get_video_stats(video_ids=database.get_playlist_video_ids("p-1"))
         self.assertEqual(stats["total_public"], 1)
 
     def test_video_analytics_excludes_external_video(self) -> None:

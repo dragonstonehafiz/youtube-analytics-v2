@@ -111,6 +111,13 @@ def get_playlist(playlist_id: str) -> dict | None:
     return dict(row) if row else None
 
 
+def playlist_exists(playlist_id: str) -> bool:
+    """Return whether a playlist row exists, without computing aggregate statistics."""
+    with get_connection() as conn:
+        row = conn.execute("SELECT 1 FROM playlists WHERE id = ?", (playlist_id,)).fetchone()
+    return row is not None
+
+
 def get_playlist_video_ids(playlist_id: str) -> list[str]:
     """Return the distinct valid owned-video IDs in a playlist."""
     with get_connection() as conn:

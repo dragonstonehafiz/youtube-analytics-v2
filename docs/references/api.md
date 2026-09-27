@@ -91,6 +91,9 @@ GET  /playlists/{playlist_id}/videos/stats
   ?title, start_date, end_date, content_type, privacy_status
   → VideoStats | 404 if playlist not found
   Same semantics as GET /videos/stats, scoped to the playlist's member videos (deduplicated by video ID).
+  Resolves members through resolve_playlist_video_ids() (see Analytics below), then calls the same
+  database.get_video_stats() as /videos/stats with video_ids=. Default dates come from the playlist's
+  own analytics range. An existing playlist with no valid members returns all-zero VideoStats.
 
 GET  /playlists/{playlist_id}/videos
   ?page=1, page_size=50 (max 200), sort_by=published_at, sort_dir=desc,
@@ -151,10 +154,12 @@ GET  /analytics/playlists/{playlist_id}/traffic-sources/top
 ```
 
 Each of these four routes is a thin wrapper over the *same* database helper its channel-wide
-counterpart calls — there are no playlist-specific query helpers. Every playlist handler follows one
-flow, factored into `_resolve_playlist_video_ids()` in `routes/analytics.py`:
+counterpart calls — there are no playlist-specific query helpers. Every playlist analytics handler,
+and `GET /playlists/{playlist_id}/videos/stats`, follows one flow, factored into
+`resolve_playlist_video_ids()` in `routes/video_scope.py`:
 
-1. `database.get_playlist(playlist_id)` — the sole 404 boundary, raising `404 {"detail": "Playlist not found"}`.
+1. `database.playlist_exists(playlist_id)` — the sole 404 boundary, raising `404 {"detail": "Playlist not found"}`.
+   It is a bare existence lookup; no playlist aggregate statistics are computed.
 2. `database.get_playlist_video_ids(playlist_id)` — the playlist's distinct, catalog-backed member IDs.
 3. the shared helper, called with `video_ids=` those IDs.
 
@@ -248,7 +253,7 @@ GET  /analytics/related-videos/destinations
 GET  /analytics/playlists/{playlist_id}/related-videos/referrers
   Same query params as the channel-wide referrers route
   → { items: RelatedReferrerRow[], total_named_views: number } | 404 if playlist not found
-  Scoped to the playlist's member videos via the same _resolve_playlist_video_ids() flow
+  Scoped to the playlist's member videos via the same resolve_playlist_video_ids() flow
   as every other playlist-analytics route.
 
 GET  /analytics/playlists/{playlist_id}/related-videos/destinations

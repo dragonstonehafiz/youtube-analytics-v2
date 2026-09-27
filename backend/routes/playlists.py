@@ -3,6 +3,7 @@ from __future__ import annotations
 from fastapi import APIRouter, HTTPException, Query
 
 import database
+from .video_scope import resolve_playlist_video_ids
 
 router = APIRouter()
 
@@ -41,10 +42,8 @@ def get_playlist_video_stats(
     privacy_status: str | None = Query(default=None),
 ) -> dict:
     """Return filtered playlist statistics split into Legacy and New groups."""
-    playlist = database.get_playlist(playlist_id)
-    if not playlist:
-        raise HTTPException(status_code=404, detail="Playlist not found")
-    return database.get_playlist_video_stats(playlist_id, title, start_date, end_date, content_type, privacy_status)
+    video_ids = resolve_playlist_video_ids(playlist_id)
+    return database.get_video_stats(title, start_date, end_date, content_type, privacy_status, video_ids=video_ids)
 
 
 @router.get("/playlists/{playlist_id}/videos")

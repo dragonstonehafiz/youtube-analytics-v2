@@ -52,7 +52,7 @@
       <h1>Efficiency</h1>
       <p>This page shows code that does more work than it needs to.</p>
       <div class="meta-line">
-        <span>Source revision <code>8c18975</code></span>
+        <span>Source revision <code>7c617f2</code></span>
       </div>
     </header>
 
@@ -98,7 +98,7 @@
           <div class="dup-head"><h3>Lifetime earnings recomputed on every read</h3><span class="dup-count">per request</span></div>
           <p>Lifetime SGD earnings are not stored. Each list, detail and existence check sums every daily analytics row × that day's FX rate again.</p>
           <dl>
-            <dt>Where</dt><dd><code>get_all_videos</code> and <code>get_owned_video</code> in <code>database/videos.py</code>; <code>get_all_playlists</code>, <code>get_playlist</code> and <code>get_playlist_videos</code> in <code>database/playlists.py</code>. <code>get_owned_video</code> and <code>get_playlist</code> are also the 404 checks in <code>routes/</code>.</dd>
+            <dt>Where</dt><dd><code>get_all_videos</code> and <code>get_owned_video</code> in <code>database/videos.py</code>; <code>get_all_playlists</code>, <code>get_playlist</code> and <code>get_playlist_videos</code> in <code>database/playlists.py</code>. <code>get_owned_video</code> is also the 404 check for single-video routes, and <code>get_playlist</code> for the playlist videos and playlist comments routes.</dd>
             <dt>Cost</dt><dd>Work proportional to all analytics rows of the videos involved, on every request, for totals that change only after a sync. <code>get_all_videos</code> does it for every matching video before applying <code>LIMIT</code>, even when sorting by publish date.</dd>
           </dl>
         </article>
@@ -114,10 +114,10 @@
 
         <article class="dup">
           <div class="dup-head"><h3>Playlist lookup repeated per endpoint</h3><span class="dup-count">per request</span></div>
-          <p>Each playlist analytics route checks the playlist exists and loads its video IDs before its own query.</p>
+          <p>The playlist statistics route and each playlist analytics route check the playlist exists and load its video IDs before their own query.</p>
           <dl>
-            <dt>Where</dt><dd><code>_resolve_playlist_video_ids</code> in the 9 playlist routes of <code>routes/analytics.py</code></dd>
-            <dt>Cost</dt><dd>Two extra queries per request, and the existence check (<code>get_playlist</code>) also recomputes the playlist's lifetime earnings. <code>PlaylistAnalytics</code> sends many of these requests together, each repeating the same work.</dd>
+            <dt>Where</dt><dd><code>resolve_playlist_video_ids</code> (<code>routes/video_scope.py</code>), called by the 9 playlist routes in <code>routes/analytics.py</code> and the statistics route in <code>routes/playlists.py</code></dd>
+            <dt>Cost</dt><dd>Two extra queries per request. The existence check (<code>playlist_exists</code>) is a single-row lookup with no totals. <code>PlaylistAnalytics</code> sends many of these requests together, each repeating both lookups.</dd>
           </dl>
         </article>
 
@@ -125,7 +125,7 @@
           <div class="dup-head"><h3>Substring title search</h3><span class="dup-count">per filtered request</span></div>
           <p>The title filter is <code>v.title LIKE '%…%' OR v.id LIKE '%…%'</code>.</p>
           <dl>
-            <dt>Where</dt><dd>12 query functions in <code>backend/database/</code></dd>
+            <dt>Where</dt><dd>11 query functions in <code>backend/database/</code></dd>
             <dt>Cost</dt><dd>A leading <code>%</code> cannot use an index, so every video row is scanned. Small at the current table size.</dd>
           </dl>
         </article>

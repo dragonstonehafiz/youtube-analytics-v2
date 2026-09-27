@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+from collections.abc import Collection
 from datetime import date, timedelta
 
 from .connection import _now, get_connection
@@ -203,7 +204,7 @@ def get_all_video_ids() -> list[str]:
 
 
 def _empty_video_stats() -> dict:
-    """Return a zeroed-out video stats dict matching the get_video_stats()/get_playlist_video_stats() contract."""
+    """Return a zeroed-out video stats dict matching the get_video_stats() contract."""
     return {
         "legacy_video_count": 0, "legacy_video_views": 0, "legacy_video_earnings_sgd": 0.0,
         "legacy_short_count": 0, "legacy_short_views": 0, "legacy_short_earnings_sgd": 0.0,
@@ -220,10 +221,21 @@ def get_video_stats(
     end_date: str | None = None,
     content_type: str | None = None,
     privacy_status: str | None = None,
+    video_ids: Collection[str] | None = None,
 ) -> dict:
-    """Return filtered channel video statistics split into Legacy and New groups."""
-    conditions: list[str] = ["v.own = 1"]
-    params: list[object] = []
+    """Return filtered video statistics split into Legacy and New groups; None scopes to the whole channel."""
+    scoped_ids = None if video_ids is None else list(dict.fromkeys(video_ids))
+    if scoped_ids is not None and not scoped_ids:
+        return _empty_video_stats()
+
+    scope_conditions: list[str] = ["v.own = 1"]
+    scope_params: list[object] = []
+    if scoped_ids:
+        scope_conditions.append(f"v.id IN ({','.join('?' * len(scoped_ids))})")
+        scope_params.extend(scoped_ids)
+
+    conditions: list[str] = list(scope_conditions)
+    params: list[object] = list(scope_params)
     if title:
         conditions.append("(v.title LIKE ? OR v.id LIKE ?)")
         params.append(f"%{title}%")
@@ -238,112 +250,12 @@ def get_video_stats(
 
     with get_connection() as conn:
         analytics_min, analytics_max = conn.execute(
-            """
+            f"""
             SELECT MIN(va.date), MAX(va.date) FROM video_analytics va
-            JOIN videos v ON v.id = va.video_id AND v.own = 1
-            """
-        ).fetchone()
-        publication_min, publication_max = conn.execute(
-            f"SELECT MIN(v.published_at), MAX(v.published_at) FROM videos v {where}", params
-        ).fetchone()
-
-        eff_start = start_date or analytics_min or (publication_min[:10] if publication_min else None)
-        eff_end = end_date or analytics_max or (publication_max[:10] if publication_max else None)
-        eff_end_ts = f"{eff_end}T23:59:59" if eff_end else None
-
-        catalog_row = conn.execute(
-            f"""
-            SELECT
-                COALESCE(SUM(CASE WHEN v.published_at IS NOT NULL AND v.published_at < ? AND v.content_type = 'video' THEN 1 ELSE 0 END), 0) AS legacy_video_count,
-                COALESCE(SUM(CASE WHEN v.published_at IS NOT NULL AND v.published_at < ? AND v.content_type = 'short' THEN 1 ELSE 0 END), 0) AS legacy_short_count,
-                COALESCE(SUM(CASE WHEN v.published_at IS NOT NULL AND v.published_at >= ? AND v.published_at <= ? AND v.content_type = 'video' THEN 1 ELSE 0 END), 0) AS new_video_count,
-                COALESCE(SUM(CASE WHEN v.published_at IS NOT NULL AND v.published_at >= ? AND v.published_at <= ? AND v.content_type = 'short' THEN 1 ELSE 0 END), 0) AS new_short_count,
-                COALESCE(SUM(v.comment_count), 0) AS total_comments,
-                COALESCE(SUM(CASE WHEN v.content_type = 'video' THEN v.comment_count ELSE 0 END), 0) AS video_comments,
-                COALESCE(SUM(CASE WHEN v.content_type = 'short' THEN v.comment_count ELSE 0 END), 0) AS short_comments,
-                COALESCE(SUM(CASE WHEN v.privacy_status = 'public' THEN 1 ELSE 0 END), 0) AS total_public,
-                COALESCE(SUM(CASE WHEN v.privacy_status = 'private' THEN 1 ELSE 0 END), 0) AS total_private,
-                COALESCE(SUM(CASE WHEN v.privacy_status = 'unlisted' THEN 1 ELSE 0 END), 0) AS total_unlisted
-            FROM videos v
-            {where}
+            JOIN videos v ON v.id = va.video_id
+            WHERE {' AND '.join(scope_conditions)}
             """,
-            [eff_start, eff_start, eff_start, eff_end_ts, eff_start, eff_end_ts, *params],
-        ).fetchone()
-
-        period_rows = conn.execute(
-            f"""
-            SELECT
-                CASE
-                    WHEN v.published_at IS NULL THEN NULL
-                    WHEN v.published_at < ? THEN 'legacy'
-                    WHEN v.published_at >= ? AND v.published_at <= ? THEN 'new'
-                    ELSE NULL
-                END AS bucket,
-                v.content_type AS content_type,
-                COALESCE(SUM(pa.period_views), 0) AS period_views,
-                COALESCE(SUM(pa.period_revenue_sgd), 0) AS period_revenue_sgd
-            FROM videos v
-            JOIN (
-                SELECT va.video_id AS video_id,
-                    SUM(va.views) AS period_views,
-                    SUM(va.estimated_revenue * fx.usd_to_sgd) AS period_revenue_sgd
-                FROM video_analytics va
-                LEFT JOIN fx_rates fx ON fx.date = va.date
-                WHERE va.date >= ? AND va.date <= ?
-                GROUP BY va.video_id
-            ) pa ON pa.video_id = v.id
-            {where}
-            GROUP BY bucket, v.content_type
-            """,
-            [eff_start, eff_start, eff_end_ts, eff_start, eff_end, *params],
-        ).fetchall()
-
-    result = {**_empty_video_stats(), **dict(catalog_row)}
-    for period_row in period_rows:
-        bucket = period_row["bucket"]
-        if bucket is None or period_row["content_type"] not in ("video", "short"):
-            continue
-        prefix = f"{bucket}_{period_row['content_type']}"
-        result[f"{prefix}_views"] = period_row["period_views"] or 0
-        result[f"{prefix}_earnings_sgd"] = period_row["period_revenue_sgd"] or 0.0
-    return result
-
-
-def get_playlist_video_stats(
-    playlist_id: str,
-    title: str | None = None,
-    start_date: str | None = None,
-    end_date: str | None = None,
-    content_type: str | None = None,
-    privacy_status: str | None = None,
-) -> dict:
-    """Return filtered playlist video statistics split into Legacy and New groups."""
-    conditions: list[str] = [
-        "v.own = 1",
-        "v.id IN (SELECT DISTINCT pi.video_id FROM playlist_items pi WHERE pi.playlist_id = ?)",
-    ]
-    params: list[object] = [playlist_id]
-    if title:
-        conditions.append("(v.title LIKE ? OR v.id LIKE ?)")
-        params.append(f"%{title}%")
-        params.append(f"%{title}%")
-    if content_type:
-        conditions.append("v.content_type = ?")
-        params.append(content_type)
-    if privacy_status:
-        conditions.append("v.privacy_status = ?")
-        params.append(privacy_status)
-    where = f"WHERE {' AND '.join(conditions)}"
-
-    with get_connection() as conn:
-        analytics_min, analytics_max = conn.execute(
-            """
-            SELECT MIN(va.date), MAX(va.date)
-            FROM video_analytics va
-            JOIN videos v ON v.id = va.video_id AND v.own = 1
-            WHERE va.video_id IN (SELECT DISTINCT pi.video_id FROM playlist_items pi WHERE pi.playlist_id = ?)
-            """,
-            [playlist_id],
+            scope_params,
         ).fetchone()
         publication_min, publication_max = conn.execute(
             f"SELECT MIN(v.published_at), MAX(v.published_at) FROM videos v {where}", params

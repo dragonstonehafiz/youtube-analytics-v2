@@ -5,15 +5,9 @@ from typing import Literal
 from fastapi import APIRouter, HTTPException, Query
 
 import database
+from .video_scope import resolve_playlist_video_ids
 
 router = APIRouter()
-
-
-def _resolve_playlist_video_ids(playlist_id: str) -> list[str]:
-    """Return valid playlist video IDs or raise 404 when the playlist is missing."""
-    if not database.get_playlist(playlist_id):
-        raise HTTPException(status_code=404, detail="Playlist not found")
-    return database.get_playlist_video_ids(playlist_id)
 
 
 @router.get("/analytics/videos")
@@ -116,7 +110,7 @@ def get_playlist_top_videos_by_views(
     title: str | None = Query(default=None),
 ) -> dict:
     """Return the top 10 filtered playlist videos by views or watch time."""
-    video_ids = _resolve_playlist_video_ids(playlist_id)
+    video_ids = resolve_playlist_video_ids(playlist_id)
     return {"items": database.get_top_videos_by_views(start_date, end_date, content_type, privacy_status, sort_by=sort_by, title=title, video_ids=video_ids)}
 
 
@@ -130,7 +124,7 @@ def get_playlist_aggregated_analytics(
     title: str | None = Query(default=None),
 ) -> dict:
     """Return daily analytics aggregated across all videos in a playlist, grouped by date and content_type."""
-    video_ids = _resolve_playlist_video_ids(playlist_id)
+    video_ids = resolve_playlist_video_ids(playlist_id)
     return {"items": database.get_aggregated_analytics(start_date, end_date, content_type, privacy_status, title, video_ids=video_ids)}
 
 
@@ -144,7 +138,7 @@ def get_playlist_aggregated_traffic_sources(
     title: str | None = Query(default=None),
 ) -> dict:
     """Return daily traffic sources aggregated across all videos in a playlist."""
-    video_ids = _resolve_playlist_video_ids(playlist_id)
+    video_ids = resolve_playlist_video_ids(playlist_id)
     return {"items": database.get_aggregated_traffic_sources(start_date, end_date, content_type, privacy_status, title, video_ids=video_ids)}
 
 
@@ -158,7 +152,7 @@ def get_playlist_top_videos_by_traffic_source(
     title: str | None = Query(default=None),
 ) -> dict:
     """Return the top 10 videos in a playlist by views for each traffic source type."""
-    video_ids = _resolve_playlist_video_ids(playlist_id)
+    video_ids = resolve_playlist_video_ids(playlist_id)
     return {"items": database.get_top_videos_by_traffic_source(start_date, end_date, content_type, privacy_status, limit=10, title=title, video_ids=video_ids)}
 
 
@@ -172,7 +166,7 @@ def get_playlist_search_terms(
     title: str | None = Query(default=None),
 ) -> dict:
     """Return playlist search terms by views for the selected months."""
-    video_ids = _resolve_playlist_video_ids(playlist_id)
+    video_ids = resolve_playlist_video_ids(playlist_id)
     return {"items": database.get_search_terms(
         start_date, end_date, content_type, privacy_status, title, video_ids=video_ids
     )}
@@ -188,7 +182,7 @@ def get_playlist_top_search_terms(
     title: str | None = Query(default=None),
 ) -> dict:
     """Return the top 10 search terms by views across all videos in a playlist."""
-    video_ids = _resolve_playlist_video_ids(playlist_id)
+    video_ids = resolve_playlist_video_ids(playlist_id)
     return {"items": database.get_search_terms(
         start_date, end_date, content_type, privacy_status, title, video_ids=video_ids, limit=10
     )}
@@ -206,7 +200,7 @@ def get_playlist_videos_by_search_term(
     limit: int = Query(default=10),
 ) -> dict:
     """Return the top playlist videos for a search term."""
-    video_ids = _resolve_playlist_video_ids(playlist_id)
+    video_ids = resolve_playlist_video_ids(playlist_id)
     return {"items": database.get_videos_by_search_term(
         search_term, start_date, end_date, content_type, privacy_status, title, video_ids=video_ids, limit=limit
     )}
@@ -263,7 +257,7 @@ def get_playlist_related_video_referrers(
     limit: int = Query(default=10),
 ) -> dict:
     """Return Related Video referrers for a playlist and total named views."""
-    video_ids = _resolve_playlist_video_ids(playlist_id)
+    video_ids = resolve_playlist_video_ids(playlist_id)
     return database.get_related_video_referrers(
         start_date, end_date, content_type, privacy_status, title, video_ids=video_ids, own=own, limit=limit
     )
@@ -278,7 +272,7 @@ def get_playlist_related_video_destinations(
     limit: int = Query(default=10),
 ) -> dict:
     """Return top playlist destinations for a Related Video referrer."""
-    video_ids = _resolve_playlist_video_ids(playlist_id)
+    video_ids = resolve_playlist_video_ids(playlist_id)
     return {"items": database.get_related_video_destinations(
         referrer_video_id, start_date, end_date, video_ids=video_ids, limit=limit
     )}

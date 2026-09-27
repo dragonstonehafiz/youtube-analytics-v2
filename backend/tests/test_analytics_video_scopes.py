@@ -1,9 +1,13 @@
 ﻿from __future__ import annotations
 
 import unittest
+from unittest import mock
+
+from fastapi import HTTPException
 
 import database
 from routes.analytics import router as analytics_router
+from routes.video_scope import resolve_playlist_video_ids
 from tests.support import IsolatedDatabaseTestCase, create_test_client
 
 START_DATE = "2024-01-01"
@@ -360,19 +364,54 @@ class EmptyPlaylistRouteTest(VideoScopeTestCase):
         self.assertEqual(body["items"], {})
 
 
+PLAYLIST_ROUTE_PARAMS: tuple[tuple[str, dict[str, str]], ...] = (
+    ("", {}),
+    ("/top", {}),
+    ("/traffic-sources", {}),
+    ("/traffic-sources/top", {}),
+    ("/search-insights", {}),
+    ("/search-insights/top", {}),
+    ("/search-insights/videos", {"search_term": "cats"}),
+    ("/related-videos/referrers", {"own": "true"}),
+    ("/related-videos/destinations", {"referrer_video_id": "ref-1"}),
+)
+
+
 class UnknownPlaylistRouteTest(VideoScopeTestCase):
     def test_every_playlist_route_returns_the_same_404(self) -> None:
-        paths = (
-            "/analytics/playlists/nope",
-            "/analytics/playlists/nope/top",
-            "/analytics/playlists/nope/traffic-sources",
-            "/analytics/playlists/nope/traffic-sources/top",
-        )
-        for path in paths:
-            with self.subTest(path=path):
-                response = self.client.get(path, params=DATE_RANGE)
+        for suffix, params in PLAYLIST_ROUTE_PARAMS:
+            with self.subTest(suffix=suffix):
+                response = self.client.get(f"/analytics/playlists/nope{suffix}", params={**DATE_RANGE, **params})
                 self.assertEqual(response.status_code, 404)
-                self.assertEqual(response.json()["detail"], "Playlist not found")
+                self.assertEqual(response.json(), {"detail": "Playlist not found"})
+
+
+class PlaylistScopeResolverTest(VideoScopeTestCase):
+    def test_resolves_distinct_valid_members(self) -> None:
+        self.assertEqual(sorted(resolve_playlist_video_ids("p-full")), ["v-a", "v-b"])
+
+    def test_empty_playlist_resolves_to_empty_list(self) -> None:
+        self.assertEqual(resolve_playlist_video_ids("p-empty"), [])
+
+    def test_missing_playlist_raises_404(self) -> None:
+        with self.assertRaises(HTTPException) as raised:
+            resolve_playlist_video_ids("nope")
+        self.assertEqual(raised.exception.status_code, 404)
+        self.assertEqual(raised.exception.detail, "Playlist not found")
+
+    def test_playlist_exists_distinguishes_empty_from_missing(self) -> None:
+        self.assertTrue(database.playlist_exists("p-empty"))
+        self.assertFalse(database.playlist_exists("nope"))
+
+    def test_playlist_routes_never_compute_playlist_aggregates(self) -> None:
+        with mock.patch.object(database, "get_playlist", side_effect=AssertionError("aggregate lookup")):
+            for suffix, params in PLAYLIST_ROUTE_PARAMS:
+                for playlist_id in ("p-full", "p-empty"):
+                    with self.subTest(suffix=suffix, playlist_id=playlist_id):
+                        response = self.client.get(
+                            f"/analytics/playlists/{playlist_id}{suffix}", params={**DATE_RANGE, **params},
+                        )
+                        self.assertEqual(response.status_code, 200)
 
 
 class ChannelRouteRegressionTest(VideoScopeTestCase):

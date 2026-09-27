@@ -53,7 +53,7 @@
       <h1>Backend reference</h1>
       <p>This page shows what each backend file does and which functions each API route calls.</p>
       <div class="meta-line">
-        <span>Source revision <code>8f69e1f</code></span>
+        <span>Source revision <code>7c617f2</code></span>
       </div>
     </header>
 
@@ -77,6 +77,7 @@
         <dt><code>comments.py</code></dt><dd>Serves the comment feeds for the channel, a video, or a playlist.</dd>
         <dt><code>synchronization.py</code></dt><dd>Starts and stops syncs, reports progress, and returns sync history.</dd>
         <dt><code>metadata.py</code></dt><dd>Returns the earliest publish year for the year dropdowns.</dd>
+        <dt><code>video_scope.py</code></dt><dd>Looks up the videos in a playlist for the playlist statistics and playlist analytics endpoints, returning 404 if the playlist doesn't exist. Defines no endpoints.</dd>
       </dl>
       </div>
       <div class="card file-group">
@@ -138,8 +139,7 @@
         <dl class="returns-list">
           <dt class="col-head">Function</dt><dd class="col-head">Returns</dd><dd class="col-head">Used by</dd>
           <dt><code>get_all_videos</code></dt><dd>Returns one page of videos for the Videos table, plus the total count for paging. Each video includes its lifetime earnings in SGD and lifetime watch hours. The list can be sorted and filtered by title, publish date, type and privacy.</dd><dd class="used-by"><code>GET /videos</code></dd>
-          <dt><code>get_video_stats</code></dt><dd>Returns the numbers in the stats bar on the Videos and Analytics pages. Videos and Shorts are each split into legacy (published before the start date) and new (published within the date range), and each group gets a count plus its views and earnings within the date range. It also returns lifetime comment totals and how many videos are public, private and unlisted. With no date range it uses the full span of stored analytics.</dd><dd class="used-by"><code>GET /videos/stats</code></dd>
-          <dt><code>get_playlist_video_stats</code></dt><dd>Returns the same numbers as <code>get_video_stats</code> for the videos in one playlist. A video listed twice in the playlist is only counted once.</dd><dd class="used-by"><code>GET /playlists/{id}/videos/stats</code></dd>
+          <dt><code>get_video_stats</code></dt><dd>Returns the numbers in the stats bar on the Videos and Analytics pages. Videos and Shorts are each split into legacy (published before the start date) and new (published within the date range), and each group gets a count plus its views and earnings within the date range. It also returns lifetime comment totals and how many videos are public, private and unlisted. With no date range it uses the full span of stored analytics. Given a list of video IDs, it returns the same numbers for just those videos (each counted once), and its default date range comes from their analytics only.</dd><dd class="used-by"><code>GET /videos/stats</code><br><code>GET /playlists/{id}/videos/stats</code> (the playlist's video IDs)</dd>
           <dt><code>get_videos_published</code></dt><dd>Returns the videos published within the date range (ID, title, date, thumbnail and type), oldest first. The charts use it to mark the days videos were uploaded. Given a playlist ID, it only returns that playlist's videos.</dd><dd class="used-by"><code>GET /videos/published</code></dd>
           <dt><code>get_owned_video</code></dt><dd>Returns one video with its lifetime earnings and watch hours, or nothing if the ID isn't one of this channel's videos.</dd><dd class="used-by"><code>GET /videos/{id}</code><br>404 check: <code>GET /videos/{id}/analytics</code>, <code>/videos/{id}/traffic-sources</code>, <code>/analytics/videos/{id}/search-insights</code>, <code>/analytics/videos/{id}/related-videos/referrers</code>, <code>/comments/videos/{id}</code></dd>
           <dt><code>get_earliest_published_year</code></dt><dd>Returns the year the oldest video was published, or nothing if there are no videos. It fills the year options in the period dropdowns.</dd><dd class="used-by"><code>GET /meta/date-range</code></dd>
@@ -151,8 +151,9 @@
         <dl class="returns-list">
           <dt class="col-head">Function</dt><dd class="col-head">Returns</dd><dd class="col-head">Used by</dd>
           <dt><code>get_all_playlists</code></dt><dd>Returns one page of playlists for the Playlists table, plus the total count. Each playlist includes when its newest video was published, the total views of its videos and their total earnings in SGD.</dd><dd class="used-by"><code>GET /playlists</code></dd>
-          <dt><code>get_playlist</code></dt><dd>Returns one playlist with the same totals, or nothing if it doesn't exist.</dd><dd class="used-by"><code>GET /playlists/{id}</code><br>404 check: <code>GET /playlists/{id}/videos/stats</code>, <code>/playlists/{id}/videos</code>, <code>/comments/playlists/{id}</code>, and every <code>/analytics/playlists/{id}…</code> endpoint</dd>
-          <dt><code>get_playlist_video_ids</code></dt><dd>Returns the IDs of the channel's videos in a playlist, each listed once. The playlist analytics endpoints pass this list to the same functions the channel-wide endpoints use, which limits their results to the playlist.</dd><dd class="used-by">every <code>GET /analytics/playlists/{id}…</code> endpoint</dd>
+          <dt><code>get_playlist</code></dt><dd>Returns one playlist with the same totals, or nothing if it doesn't exist.</dd><dd class="used-by"><code>GET /playlists/{id}</code><br>404 check: <code>GET /playlists/{id}/videos</code> and <code>/comments/playlists/{id}</code></dd>
+          <dt><code>playlist_exists</code></dt><dd>Says whether a playlist exists, without adding up any totals.</dd><dd class="used-by">404 check: <code>GET /playlists/{id}/videos/stats</code> and every <code>/analytics/playlists/{id}…</code> endpoint</dd>
+          <dt><code>get_playlist_video_ids</code></dt><dd>Returns the IDs of the channel's videos in a playlist, each listed once. The playlist statistics and analytics endpoints pass this list to the same functions the channel-wide endpoints use, which limits their results to the playlist.</dd><dd class="used-by"><code>GET /playlists/{id}/videos/stats</code><br>every <code>GET /analytics/playlists/{id}…</code> endpoint</dd>
           <dt><code>get_playlist_videos</code></dt><dd>Returns one page of a playlist's videos for its Videos tab, plus the total count, with the same sorting, filters and lifetime totals as <code>get_all_videos</code>.</dd><dd class="used-by"><code>GET /playlists/{id}/videos</code></dd>
         </dl>
       </div>
@@ -235,7 +236,7 @@
         <ul class="route-lines">
           <li><code>GET /playlists</code> → <code>get_all_playlists</code></li>
           <li><code>GET /playlists/{id}</code> → <code>get_playlist</code></li>
-          <li><code>GET /playlists/{id}/videos/stats</code> → <code>get_playlist</code> (404 check) → <code>get_playlist_video_stats</code></li>
+          <li><code>GET /playlists/{id}/videos/stats</code> → <code>resolve_playlist_video_ids</code>: <code>playlist_exists</code> (404 check) → <code>get_playlist_video_ids</code> → <code>get_video_stats</code></li>
           <li><code>GET /playlists/{id}/videos</code> → <code>get_playlist</code> (404 check) → <code>get_playlist_videos</code></li>
         </ul>
       </div>
@@ -258,15 +259,15 @@
       <div class="card file-group">
         <h3><code>routes/analytics.py</code> — playlists</h3>
         <ul class="route-lines">
-          <li><code>GET /analytics/playlists/{id}</code> → <code>get_playlist</code> (404 check) → <code>get_playlist_video_ids</code> → <code>get_aggregated_analytics</code></li>
-          <li><code>GET /analytics/playlists/{id}/top</code> → <code>get_playlist</code> (404 check) → <code>get_playlist_video_ids</code> → <code>get_top_videos_by_views</code></li>
-          <li><code>GET /analytics/playlists/{id}/traffic-sources</code> → <code>get_playlist</code> (404 check) → <code>get_playlist_video_ids</code> → <code>get_aggregated_traffic_sources</code></li>
-          <li><code>GET /analytics/playlists/{id}/traffic-sources/top</code> → <code>get_playlist</code> (404 check) → <code>get_playlist_video_ids</code> → <code>get_top_videos_by_traffic_source</code></li>
-          <li><code>GET /analytics/playlists/{id}/search-insights</code> → <code>get_playlist</code> (404 check) → <code>get_playlist_video_ids</code> → <code>get_search_terms</code></li>
-          <li><code>GET /analytics/playlists/{id}/search-insights/top</code> → <code>get_playlist</code> (404 check) → <code>get_playlist_video_ids</code> → <code>get_search_terms</code> (top 10)</li>
-          <li><code>GET /analytics/playlists/{id}/search-insights/videos</code> → <code>get_playlist</code> (404 check) → <code>get_playlist_video_ids</code> → <code>get_videos_by_search_term</code></li>
-          <li><code>GET /analytics/playlists/{id}/related-videos/referrers</code> → <code>get_playlist</code> (404 check) → <code>get_playlist_video_ids</code> → <code>get_related_video_referrers</code></li>
-          <li><code>GET /analytics/playlists/{id}/related-videos/destinations</code> → <code>get_playlist</code> (404 check) → <code>get_playlist_video_ids</code> → <code>get_related_video_destinations</code></li>
+          <li><code>GET /analytics/playlists/{id}</code> → <code>resolve_playlist_video_ids</code>: <code>playlist_exists</code> (404 check) → <code>get_playlist_video_ids</code> → <code>get_aggregated_analytics</code></li>
+          <li><code>GET /analytics/playlists/{id}/top</code> → <code>resolve_playlist_video_ids</code>: <code>playlist_exists</code> (404 check) → <code>get_playlist_video_ids</code> → <code>get_top_videos_by_views</code></li>
+          <li><code>GET /analytics/playlists/{id}/traffic-sources</code> → <code>resolve_playlist_video_ids</code>: <code>playlist_exists</code> (404 check) → <code>get_playlist_video_ids</code> → <code>get_aggregated_traffic_sources</code></li>
+          <li><code>GET /analytics/playlists/{id}/traffic-sources/top</code> → <code>resolve_playlist_video_ids</code>: <code>playlist_exists</code> (404 check) → <code>get_playlist_video_ids</code> → <code>get_top_videos_by_traffic_source</code></li>
+          <li><code>GET /analytics/playlists/{id}/search-insights</code> → <code>resolve_playlist_video_ids</code>: <code>playlist_exists</code> (404 check) → <code>get_playlist_video_ids</code> → <code>get_search_terms</code></li>
+          <li><code>GET /analytics/playlists/{id}/search-insights/top</code> → <code>resolve_playlist_video_ids</code>: <code>playlist_exists</code> (404 check) → <code>get_playlist_video_ids</code> → <code>get_search_terms</code> (top 10)</li>
+          <li><code>GET /analytics/playlists/{id}/search-insights/videos</code> → <code>resolve_playlist_video_ids</code>: <code>playlist_exists</code> (404 check) → <code>get_playlist_video_ids</code> → <code>get_videos_by_search_term</code></li>
+          <li><code>GET /analytics/playlists/{id}/related-videos/referrers</code> → <code>resolve_playlist_video_ids</code>: <code>playlist_exists</code> (404 check) → <code>get_playlist_video_ids</code> → <code>get_related_video_referrers</code></li>
+          <li><code>GET /analytics/playlists/{id}/related-videos/destinations</code> → <code>resolve_playlist_video_ids</code>: <code>playlist_exists</code> (404 check) → <code>get_playlist_video_ids</code> → <code>get_related_video_destinations</code></li>
         </ul>
       </div>
       <div class="card file-group">

@@ -91,6 +91,7 @@ indefinitely and are safe to delete between runs.
 |---|---|
 | `server.py` | FastAPI app construction, CORS, lifespan (`init_db` → `mark_incomplete_sync_runs`) |
 | `routes/videos.py`, `routes/playlists.py`, `routes/analytics.py`, `routes/comments.py`, `routes/synchronization.py`, `routes/metadata.py` | API route handlers, grouped by resource — thin wrappers around `database` helpers; `routes/__init__.py` aggregates them in a fixed order into one `router` |
+| `routes/video_scope.py` | Shared route helper `resolve_playlist_video_ids()`: playlist existence 404 plus member-ID resolution for playlist statistics and playlist analytics handlers; registers no routes |
 | `sync/status.py` | Global sync-status lifecycle (`idle \| running \| stopping \| success \| failed \| cancelled`, plus message) behind one lock, with `try_begin_sync()`/`request_stop()` reservation primitives and the `raise_if_stopping()` cooperative-cancellation checkpoint |
 | `sync/plans.py` | Plan types, canonical `STAGE_ORDER`, derived `FULL_SYNC_TYPES`, available years, `validate_plan()` |
 | `sync/orchestration.py` | `execute_plan()`/`run_plan()`, stage registry, selected-stage sequencing, `sync_runs` tracking |
@@ -151,7 +152,7 @@ backend/
     conftest.py            # autouse fixture: fails any real network/OAuth access
     support.py              # IsolatedDatabaseTestCase, row factories, seed_dataset(), create_test_app()
     test_test_harness.py, test_database_catalog.py, test_database_analytics.py, test_api_contracts.py,
-    test_analytics_video_scopes.py, test_analytics_title_filters.py,
+    test_analytics_video_scopes.py, test_analytics_title_filters.py, test_video_statistics_scopes.py,
     test_sync_plans.py, test_sync_orchestration.py, test_sync_status.py,
     test_sync_scheduler.py, test_sync_routes.py, test_sync_checkpoint.py, test_sync_runs.py,
     test_sync_cancellation.py,
@@ -170,6 +171,7 @@ backend/
     comments.py
     synchronization.py
     metadata.py
+    video_scope.py         # resolve_playlist_video_ids(), shared by playlists.py and analytics.py
 
   sync/
     __init__.py            # re-exports the plan types/validation, status primitives,

@@ -52,7 +52,7 @@
       <h1>Repeated code</h1>
       <p>This page shows code written more than once in the backend and frontend.</p>
       <div class="meta-line">
-        <span>Source revision <code>8c18975</code></span>
+        <span>Source revision <code>7c617f2</code></span>
       </div>
     </header>
 
@@ -61,10 +61,10 @@
       <div class="dup-list">
 
         <article class="dup">
-          <div class="dup-head"><h3>Video filter conditions</h3><span class="dup-count">×12</span></div>
+          <div class="dup-head"><h3>Video filter conditions</h3><span class="dup-count">×11</span></div>
           <p>Each query function builds its own <code>WHERE</code> list for the same video filters, one <code>if</code> per filter.</p>
           <dl>
-            <dt>Where</dt><dd><code>database/</code>: <code>analytics.py</code> (2), <code>traffic_sources.py</code> (2), <code>videos.py</code> (4), <code>playlists.py</code>, <code>search_terms.py</code>, <code>related_videos.py</code>, <code>comments.py</code></dd>
+            <dt>Where</dt><dd><code>database/</code>: <code>analytics.py</code> (2), <code>traffic_sources.py</code> (2), <code>videos.py</code> (3), <code>playlists.py</code>, <code>search_terms.py</code>, <code>related_videos.py</code>, <code>comments.py</code></dd>
             <dt>Differs</dt><dd>Only the date column (<code>va.date</code>, <code>c.published_at</code>, month bounds). <code>comments.py</code> has no privacy filter.</dd>
           </dl>
 <pre><code>if content_type:
@@ -80,29 +80,29 @@ if title:
         </article>
 
         <article class="dup">
-          <div class="dup-head"><h3>Look up, then 404</h3><span class="dup-count">×11</span></div>
+          <div class="dup-head"><h3>Look up, then 404</h3><span class="dup-count">×10</span></div>
           <p>Route handlers fetch a video or playlist and raise <code>HTTPException(404, "… not found")</code> when it is missing.</p>
           <dl>
-            <dt>Where</dt><dd><code>routes/videos.py</code> (3), <code>routes/playlists.py</code> (3), <code>routes/analytics.py</code> (3, one inside <code>_resolve_playlist_video_ids</code>), <code>routes/comments.py</code> (2)</dd>
-            <dt>Differs</dt><dd>Video or playlist lookup, and the message text.</dd>
+            <dt>Where</dt><dd><code>routes/videos.py</code> (3), <code>routes/playlists.py</code> (2), <code>routes/analytics.py</code> (2), <code>routes/comments.py</code> (2), <code>routes/video_scope.py</code> (1, inside <code>resolve_playlist_video_ids</code>, shared by the playlist statistics endpoint and all 9 playlist analytics endpoints)</dd>
+            <dt>Differs</dt><dd>Video or playlist lookup (<code>get_owned_video</code>, <code>get_playlist</code>, or <code>playlist_exists</code>), and the message text.</dd>
           </dl>
         </article>
 
         <article class="dup">
-          <div class="dup-head"><h3>Channel / playlist route twins</h3><span class="dup-count">×9 pairs</span></div>
-          <p>Every playlist analytics endpoint copies its channel-wide endpoint: same five <code>Query</code> parameters, same database call, plus <code>video_ids=_resolve_playlist_video_ids(playlist_id)</code>.</p>
+          <div class="dup-head"><h3>Channel / playlist route twins</h3><span class="dup-count">×10 pairs</span></div>
+          <p>Every playlist analytics endpoint, and the playlist statistics endpoint, copies its channel-wide endpoint: same <code>Query</code> parameters, same database call, plus <code>video_ids=</code> the result of <code>resolve_playlist_video_ids(playlist_id)</code>.</p>
           <dl>
-            <dt>Where</dt><dd><code>routes/analytics.py</code>: top videos, aggregated analytics, traffic sources, traffic-source top, search terms, top search terms, videos by search term, related referrers, related destinations</dd>
+            <dt>Where</dt><dd><code>routes/analytics.py</code>: top videos, aggregated analytics, traffic sources, traffic-source top, search terms, top search terms, videos by search term, related referrers, related destinations. <code>routes/videos.py</code> / <code>routes/playlists.py</code>: video statistics (<code>get_video_stats</code>)</dd>
             <dt>Differs</dt><dd>The <code>playlist_id</code> path parameter and the <code>video_ids</code> argument.</dd>
           </dl>
         </article>
 
         <article class="dup">
-          <div class="dup-head"><h3>Empty video-scope guard</h3><span class="dup-count">×8</span></div>
-          <p>Functions taking <code>video_ids</code> copy the same opening: turn it into a list, return <code>[]</code> if it is empty, and later add <code>v.id IN (?, ?, …)</code>.</p>
+          <div class="dup-head"><h3>Empty video-scope guard</h3><span class="dup-count">×9</span></div>
+          <p>Functions taking <code>video_ids</code> copy the same opening: turn it into a list, return an empty result if it is empty, and later add <code>v.id IN (?, ?, …)</code>.</p>
           <dl>
-            <dt>Where</dt><dd><code>database/</code>: <code>analytics.py</code>, <code>traffic_sources.py</code>, <code>search_terms.py</code>, <code>related_videos.py</code></dd>
-            <dt>Differs</dt><dd>Nothing.</dd>
+            <dt>Where</dt><dd><code>database/</code>: <code>analytics.py</code> (2), <code>traffic_sources.py</code> (2), <code>search_terms.py</code> (2), <code>related_videos.py</code> (2), <code>videos.py</code> (<code>get_video_stats</code>)</dd>
+            <dt>Differs</dt><dd>The empty value each returns; <code>get_video_stats</code> returns zeroed statistics and also drops duplicate IDs.</dd>
           </dl>
         </article>
 

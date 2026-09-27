@@ -53,7 +53,7 @@
       <h1>Backend architecture</h1>
       <p>This page shows what each part of the backend does and how the parts connect.</p>
       <div class="meta-line">
-        <span>Source revision <code>8f69e1f</code></span>
+        <span>Source revision <code>7c617f2</code></span>
       </div>
     </header>
 
@@ -61,7 +61,7 @@
       <h2>What each part does</h2>
       <div class="card-grid">
         <div class="card"><h3><span class="tag muted">server.py</span></h3><p>Starts the backend: creates the web server, plugs in the API routes, and prepares the database when the app launches.</p></div>
-        <div class="card"><h3><span class="tag route">routes/</span></h3><p>The web API. Receives each request from the frontend, checks it, and answers with data from the database. One file per area: videos, playlists, analytics, comments, sync, metadata.</p></div>
+        <div class="card"><h3><span class="tag route">routes/</span></h3><p>The web API. Receives each request from the frontend, checks it, and answers with data from the database. One file per area: videos, playlists, analytics, comments, sync, metadata — plus <code>video_scope.py</code>, which looks up a playlist's videos for the playlist handlers.</p></div>
         <div class="card"><h3><span class="tag db">database/</span></h3><p>The only code that reads or writes SQLite. Stores what sync downloads and answers the questions the routes ask. One file per kind of data.</p></div>
         <div class="card"><h3><span class="tag sync">sync/</span></h3><p>The data importer. When you press <strong>Sync selected</strong>, it decides what to download, runs the steps in order, tracks progress, and lets you stop it.</p></div>
         <div class="card"><h3><span class="tag yt">youtube/</span></h3><p>Talks to Google: signs in with OAuth and calls the YouTube Data and Analytics APIs. Only sync uses it.</p></div>
@@ -115,13 +115,13 @@
       <div class="flow">
         <div class="flow-step"><strong>server.app</strong><small>includes <code>routes.router</code></small></div>
         <div class="flow-arrow" aria-hidden="true"></div>
-        <div class="flow-step route"><strong>Route handler</strong><small><code>routes/{domain}.py</code>; 404 guard via <code>get_owned_video</code> / <code>get_playlist</code></small></div>
+        <div class="flow-step route"><strong>Route handler</strong><small><code>routes/{domain}.py</code>; 404 guard via <code>get_owned_video</code>, <code>get_playlist</code>, or <code>resolve_playlist_video_ids</code></small></div>
         <div class="flow-arrow" aria-hidden="true"></div>
         <div class="flow-step db"><strong>Query helper</strong><small><code>database.{helper}</code></small></div>
         <div class="flow-arrow" aria-hidden="true"></div>
         <div class="flow-step db"><strong>Connection</strong><small><code>connection.get_connection()</code> → SQLite</small></div>
       </div>
-      <p>Playlist-scoped analytics handlers call <code>_resolve_playlist_video_ids()</code> and pass the IDs to the same helper the channel-wide handler uses.</p>
+      <p>Playlist statistics and every playlist-scoped analytics handler call <code>resolve_playlist_video_ids()</code> in <code>routes/video_scope.py</code>. It checks the playlist exists with <code>playlist_exists()</code>, loads its video IDs with <code>get_playlist_video_ids()</code>, and the handler passes those IDs to the same database helper the channel-wide handler uses — <code>get_video_stats()</code> for statistics.</p>
 
       <h3>Sync</h3>
       <div class="flow">
@@ -141,7 +141,7 @@
     <section id="observations">
       <h2>Observations</h2>
       <div class="card-grid">
-        <div class="card"><h3>Broad modules</h3><p><code>sync/stages.py</code> holds all nine stage implementations plus their shared helpers. <code>database/videos.py</code> mixes catalog writes, listing, ID lists, both stats helpers, and the pruning delete.</p></div>
+        <div class="card"><h3>Broad modules</h3><p><code>sync/stages.py</code> holds all nine stage implementations plus their shared helpers. <code>database/videos.py</code> mixes catalog writes, listing, ID lists, the shared channel/playlist stats helper, and the pruning delete.</p></div>
         <div class="card"><h3>Unused at runtime</h3><p>Database functions <code>get_last_analytics_date()</code>, <code>get_last_traffic_source_date()</code>, <code>get_last_search_terms_month()</code>, <code>get_last_related_videos_month()</code>, <code>get_fx_rates()</code> (the last two used only by tests); and <code>start_background_scheduler()</code>, <code>synced_today()</code>, <code>run_plan()</code>, <code>get_last_successful_run_completed_at()</code>.</p></div>
         <div class="card"><h3>Re-export files</h3><p>Three package <code>__init__.py</code> files re-export every public name (<code>database</code> 59, <code>sync</code> 31, <code>youtube</code> 15); <code>routes/__init__.py</code> combines the six routers.</p></div>
       </div>
