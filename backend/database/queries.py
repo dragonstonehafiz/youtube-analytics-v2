@@ -564,6 +564,56 @@ def videos_by_search_term(
     )
 
 
+REFERRER_VIDEO_FIELDS = ("title", "thumbnail_url", "own")
+
+
+def related_video_referrers(
+    *,
+    start_date: str | None = None,
+    end_date: str | None = None,
+    content_type: str | None = None,
+    privacy_status: str | None = None,
+    title: str | None = None,
+    video_ids: Collection[str] | None = None,
+    own: bool | None = None,
+    limit: int | None = None,
+) -> tuple[Query, Query]:
+    """Total named views and ranked referrers for owned targets; own and limit apply only to the list."""
+    conditions, params = _video_conditions(
+        video_ids=video_ids, title=title, content_type=content_type, privacy_status=privacy_status
+    )
+    month_conditions, month_params = _month_bound_conditions("rv", start_date, end_date)
+    where = " AND ".join([*conditions, *month_conditions])
+    scope_params = (*params, *month_params)
+    total = Query(
+        f"""
+        SELECT COALESCE(SUM(rv.views), 0)
+        FROM related_videos rv
+        JOIN videos v ON v.id = rv.target_video_id
+        WHERE {where}
+        """,
+        scope_params,
+    )
+    own_sql, own_params = ("AND COALESCE(ref.own, 0) = ?", [1 if own else 0]) if own is not None else ("", [])
+    limit_sql, limit_params = _limit(limit)
+    rows = Query(
+        f"""
+        SELECT rv.referrer_video_id AS related_videos__referrer_video_id,
+            SUM(rv.views) AS related_videos__views,
+            {joined_columns(Video, 'ref', REFERRER_VIDEO_FIELDS)}
+        FROM related_videos rv
+        JOIN videos v ON v.id = rv.target_video_id
+        LEFT JOIN videos ref ON ref.id = rv.referrer_video_id
+        WHERE {where} {own_sql}
+        GROUP BY rv.referrer_video_id, ref.title, ref.thumbnail_url, ref.own
+        ORDER BY related_videos__views DESC, rv.referrer_video_id ASC
+        {limit_sql}
+        """,
+        (*scope_params, *own_params, *limit_params),
+    )
+    return total, rows
+
+
 DESTINATION_VIDEO_FIELDS = ("title", "thumbnail_url", "content_type")
 
 
@@ -593,3 +643,19 @@ def related_video_destinations(
         """,
         (referrer_video_id, *params, *month_params, *limit_params),
     )
+
+
+def sync_batches(*, page: int, page_size: int) -> tuple[Query, Query]:
+    """Distinct batch count and one page of batches ordered newest first by their earliest stage start."""
+    count = Query("SELECT COUNT(DISTINCT batch_id) FROM sync_runs")
+    rows = Query(
+        """
+        SELECT batch_id, MIN(started_at) AS started_at
+        FROM sync_runs
+        GROUP BY batch_id
+        ORDER BY started_at DESC, batch_id DESC
+        LIMIT ? OFFSET ?
+        """,
+        (page_size, (page - 1) * page_size),
+    )
+    return count, rows

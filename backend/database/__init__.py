@@ -17,8 +17,6 @@ from .dataclasses import (
     VideoTrafficSource,
 )
 from .filters import NotExists
-from .related_videos import get_related_video_referrers
-from .sync_runs import get_sync_runs
 from .video_statistics import get_video_stats
 
 __all__ = [
@@ -37,8 +35,6 @@ __all__ = [
     "VideoTrafficSource",
     "filters",
     "get_connection",
-    "get_related_video_referrers",
-    "get_sync_runs",
     "get_video_stats",
     "init_db",
     "now",

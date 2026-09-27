@@ -90,7 +90,7 @@ indefinitely and are safe to delete between runs.
 | Path | Responsibility |
 |---|---|
 | `server.py` | FastAPI app construction, CORS, lifespan (`init_db` → stranded `sync_runs` sweep through `writer.update()`) |
-| `routes/videos.py`, `routes/playlists.py`, `routes/analytics.py`, `routes/comments.py`, `routes/synchronization.py`, `routes/metadata.py` | API route handlers, grouped by resource. They read through `database.reader` (directly, or with a `database.queries` specification) and serialize row dataclasses with `to_dict(fields=...)`, or call a `database` report function; `routes/__init__.py` aggregates them in a fixed order into one `router` |
+| `routes/videos.py`, `routes/playlists.py`, `routes/analytics.py`, `routes/comments.py`, `routes/synchronization.py`, `routes/metadata.py` | API route handlers, grouped by resource. They read through `database.reader` (directly, or with a `database.queries` specification) and serialize row dataclasses with `to_dict(fields=...)`, or call `database.get_video_stats()`; `routes/__init__.py` aggregates them in a fixed order into one `router` |
 | `routes/daily_series.py` | Shared daily-series route helpers: the analytics metric defaults and traffic-source `DateFill` passed to the reader, and the traffic-source row serializer; registers no routes |
 | `routes/video_scope.py` | Shared route helpers `require_owned_video()`, `require_playlist()` (404 existence checks through the reader), and `resolve_playlist_video_ids()` (playlist 404, then member IDs, for every playlist-scoped handler); registers no routes |
 | `sync/status.py` | Global sync-status lifecycle (`idle \| running \| stopping \| success \| failed \| cancelled`, plus message) behind one lock, with `try_begin_sync()`/`request_stop()` reservation primitives and the `raise_if_stopping()` cooperative-cancellation checkpoint |
@@ -113,7 +113,6 @@ indefinitely and are safe to delete between runs.
 | `database/writer.py` | Every insert/update/delete: `write()`/`write_many()` update-then-insert by key, leaving `None` fields untouched (`write()` can return persisted fields such as a generated ID); `update()` changes only the rows matching a required filter and never inserts; `delete()` removes the rows matching a required filter; each call runs in one committed transaction or a savepoint on a borrowed one |
 | `database/queries.py` | Non-executing `Query` specifications for joins, grouping, and ranking shared by routes and sync |
 | `database/video_statistics.py` | `get_video_stats()` Legacy/New report |
-| `database/sync_runs.py`, `database/related_videos.py` | The reports that do real calculation work (sync-batch assembly and status, referrer totals) |
 | `schema.sql` | SQLite schema definition (12 tables) — see `database.md` |
 | `scripts/issue-48-migration.py` | Standalone, one-time migration adding `videos.own` to a pre-existing database — not run by `init_db()` (see `database.md`) |
 | `scripts/issue-62-migration.py` | Standalone, one-time `sync_coverage` backfill for a pre-existing database — not run by `init_db()` (see `database.md`) |
@@ -203,7 +202,7 @@ backend/
     analytics_api.py
 
   database/
-    __init__.py              # re-exports row classes, reader, writer, queries, and report functions
+    __init__.py              # re-exports row classes, reader, writer, queries, and get_video_stats()
     connection.py
     tables.py                # shared registry: tables, keys, write rules
     filters.py               # shared WHERE compilation for reads and deletes
@@ -212,8 +211,6 @@ backend/
     queries.py               # non-executing query specifications
     video_statistics.py      # get_video_stats()
     dataclasses/             # one row dataclass per table, plus base.py (from_dict/to_dict)
-    sync_runs.py
-    related_videos.py
 
   scripts/
     issue-48-migration.py    # standalone one-time migration adding videos.own

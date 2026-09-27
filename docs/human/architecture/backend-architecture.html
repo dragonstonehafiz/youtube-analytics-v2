@@ -24,6 +24,7 @@
         <a href="backend-architecture.html" aria-current="page">Backend architecture</a>
         <a href="backend-reference.html">Backend reference</a>
         <a href="data-storage.html">Data storage and access</a>
+        <a href="reader-writer.html">Reader and writer</a>
         <a href="frontend-components.html">Frontend components</a>
       </div>
     </details>
@@ -61,16 +62,16 @@
     <section id="overview">
       <h2>What each part does</h2>
       <div class="card-grid">
-        <div class="card"><h3><span class="tag muted">server.py</span></h3><p>Starts the backend: creates the web server, plugs in the API routes, and prepares the database when the app launches, including marking any sync stage a stopped process left running as incomplete.</p></div>
-        <div class="card"><h3><span class="tag route">routes/</span></h3><p>The web API. Receives each request from the frontend, checks it, and answers with data from the database. One file per area: videos, playlists, analytics, comments, sync, metadata — plus <code>video_scope.py</code>, which returns 404 for a missing video or playlist and looks up a playlist's videos for the playlist handlers.</p></div>
-        <div class="card"><h3><span class="tag db">database/</span></h3><p>The only code that reads or writes SQLite. One small data class per table holds row values; <code>reader.py</code> runs every read, fills those classes, fills missing days in daily chart data, and groups ranked results; <code>queries.py</code> holds shared SQL for joined, grouped and daily reads; <code>writer.py</code> saves every row sync downloads, updates rows that match a condition, and deletes the rows sync removes; <code>filters.py</code> turns the conditions for reads, updates and deletes into SQL. The per-domain files hold the reports that need more than SQL.</p></div>
-        <div class="card"><h3><span class="tag sync">sync/</span></h3><p>The data importer. When you press <strong>Sync selected</strong>, it decides what to download, runs the steps in order, tracks progress, and lets you stop it.</p></div>
-        <div class="card"><h3><span class="tag yt">youtube/</span></h3><p>Talks to Google: signs in with OAuth and calls the YouTube Data and Analytics APIs. Only sync uses it.</p></div>
+        <div class="card"><h3><span class="tag muted">server.py</span></h3><p>Starts the web server, adds the routes, and prepares the database.</p></div>
+        <div class="card"><h3><span class="tag route">routes/</span></h3><p>The web API: one file per area, each answering frontend requests with data from the database.</p></div>
+        <div class="card"><h3><span class="tag db">database/</span></h3><p>The only code that touches SQLite: data classes, the reader, the writer, and shared SQL.</p></div>
+        <div class="card"><h3><span class="tag sync">sync/</span></h3><p>Downloads data from YouTube into the database when you run a sync.</p></div>
+        <div class="card"><h3><span class="tag yt">youtube/</span></h3><p>Signs in to Google and calls the YouTube APIs.</p></div>
         <div class="card"><h3><span class="tag muted">logging_config.py</span></h3><p>Writes the application and sync log files.</p></div>
-        <div class="card"><h3><span class="tag muted">schema.sql</span></h3><p>Defines the database tables. Run on every startup, creating only the tables that are missing.</p></div>
-        <div class="card"><h3><span class="tag muted">scripts/</span></h3><p>One-off migrations that bring an older database up to date. Run by hand, never by the app.</p></div>
+        <div class="card"><h3><span class="tag muted">schema.sql</span></h3><p>Defines the database tables.</p></div>
+        <div class="card"><h3><span class="tag muted">scripts/</span></h3><p>One-off migrations for older databases, run by hand.</p></div>
       </div>
-      <div class="note"><p><strong>How they fit:</strong> the frontend calls <code>routes/</code>, which reads from <code>database/</code>. Separately, <code>sync/</code> pulls data through <code>youtube/</code> and writes it into <code>database/</code>. <a href="backend-reference.html">Backend reference</a> describes every file individually.</p></div>
+      <div class="note"><p><strong>How they fit:</strong> the frontend calls <code>routes/</code>, which reads from <code>database/</code>. Separately, <code>sync/</code> pulls data through <code>youtube/</code> and writes it into <code>database/</code>.</p></div>
     </section>
 
     <section id="packages">
@@ -107,10 +108,10 @@
         </svg>
       </figure>
       <div class="card-grid">
-        <div class="card"><h3><span class="tag db">database/</span></h3><p>Imports no other application package — the shared bottom layer.</p></div>
-        <div class="card"><h3><span class="tag yt">youtube/</span></h3><p>Never touches the database. Only <code>sync/stages.py</code> moves API results into <code>database/</code>.</p></div>
-        <div class="card"><h3><span class="tag route">routes/</span></h3><p>Never calls <code>youtube/</code>. Reads through <code>database.reader</code> directly and turns the returned data classes into JSON.</p></div>
-        <div class="card"><h3><span class="tag sync">sync/</span></h3><p>The only package that calls <code>youtube/</code>, and the only caller of <code>database.writer</code> apart from <code>server.py</code>'s one startup update, including every delete and every <code>sync_runs</code> row. It turns each fetched dictionary into a row object before writing it. Only <code>routes/</code> imports it.</p></div>
+        <div class="card"><h3><span class="tag db">database/</span></h3><p>Imports no other application package.</p></div>
+        <div class="card"><h3><span class="tag yt">youtube/</span></h3><p>Never touches the database.</p></div>
+        <div class="card"><h3><span class="tag route">routes/</span></h3><p>Reads the database and never calls <code>youtube/</code>.</p></div>
+        <div class="card"><h3><span class="tag sync">sync/</span></h3><p>The only package that calls <code>youtube/</code> and writes to the database.</p></div>
       </div>
     </section>
 
@@ -120,27 +121,27 @@
       <div class="flow">
         <div class="flow-step"><strong>server.app</strong><small>includes <code>routes.router</code></small></div>
         <div class="flow-arrow" aria-hidden="true"></div>
-        <div class="flow-step route"><strong>Route handler</strong><small><code>routes/{domain}.py</code>; 404 guard via <code>require_owned_video</code>, <code>require_playlist</code>, or <code>resolve_playlist_video_ids</code></small></div>
+        <div class="flow-step route"><strong>Route handler</strong><small>Checks the video or playlist exists</small></div>
         <div class="flow-arrow" aria-hidden="true"></div>
-        <div class="flow-step db"><strong>Reader</strong><small><code>reader.select</code>, or <code>reader.fetch</code>/<code>fetch_joined</code> with a <code>queries.*</code> definition, optionally filling missing days or followed by <code>reader.group_by</code>; or a report function</small></div>
+        <div class="flow-step db"><strong>Reader</strong><small>Runs the SQL and returns data classes</small></div>
         <div class="flow-arrow" aria-hidden="true"></div>
         <div class="flow-step db"><strong>Connection</strong><small><code>connection.get_connection()</code> → SQLite</small></div>
         <div class="flow-arrow" aria-hidden="true"></div>
-        <div class="flow-step route"><strong>Response</strong><small>data classes → <code>to_dict(fields)</code> → JSON</small></div>
+        <div class="flow-step route"><strong>Response</strong><small>Data classes become JSON</small></div>
       </div>
-      <p>Playlist statistics and every playlist-scoped analytics handler call <code>resolve_playlist_video_ids()</code> in <code>routes/video_scope.py</code>. It checks the playlist exists with <code>require_playlist()</code>, loads its video IDs by running <code>queries.playlist_owned_video_ids</code> through the reader, and the handler passes those IDs to the same read the channel-wide handler uses — <code>get_video_stats()</code> for statistics.</p>
+      <p>Playlist handlers first load the playlist's video IDs, then run the same read as the channel-wide handler.</p>
 
       <h3>Sync</h3>
       <div class="flow">
-        <div class="flow-step route"><strong>trigger_sync</strong><small><code>plans.validate_plan</code>, <code>status.try_begin_sync</code>, <code>BackgroundTasks</code></small></div>
+        <div class="flow-step route"><strong>trigger_sync</strong><small>Validates the plan and starts it in the background</small></div>
         <div class="flow-arrow" aria-hidden="true"></div>
-        <div class="flow-step sync"><strong>execute_plan</strong><small><code>_pre_analytics_runner</code>, then <code>allocate_analytics_workers</code> → <code>_run_analytics_worker</code> ×2 threads</small></div>
+        <div class="flow-step sync"><strong>execute_plan</strong><small>Runs the serial stages, then the analytics stages on 2 threads</small></div>
         <div class="flow-arrow" aria-hidden="true"></div>
-        <div class="flow-step sync"><strong>_run_tracked_stage → _run_stage</strong><small><code>writer.write(SyncRun(…), returning=("id",))</code>, then <code>writer.update</code> to success, failed or cancelled</small></div>
+        <div class="flow-step sync"><strong>_run_tracked_stage → _run_stage</strong><small>Records each stage as a <code>sync_runs</code> row</small></div>
         <div class="flow-arrow" aria-hidden="true"></div>
-        <div class="flow-step sync"><strong>stages.sync_*</strong><small><code>status.raise_if_stopping</code> checkpoints</small></div>
+        <div class="flow-step sync"><strong>stages.sync_*</strong><small>Does the stage's work, checking for a stop</small></div>
         <div class="flow-arrow" aria-hidden="true"></div>
-        <div class="flow-step yt"><strong>youtube.fetch_* / iter_*</strong><small>then <code>Model.from_dict()</code> → <code>writer.write</code> / <code>write_many</code>, and <code>writer.delete</code></small></div>
+        <div class="flow-step yt"><strong>youtube.fetch_* / iter_*</strong><small>Fetches data, then saves it through the writer</small></div>
       </div>
       <div class="note warn"><p><code>sync.run_plan()</code> and <code>sync/scheduler.py</code> sit outside this path: nothing calls <code>start_background_scheduler()</code>, so neither runs.</p></div>
     </section>
@@ -148,9 +149,9 @@
     <section id="observations">
       <h2>Observations</h2>
       <div class="card-grid">
-        <div class="card"><h3>Broad modules</h3><p><code>sync/stages.py</code> holds all nine stage implementations plus their shared helpers. <code>database/queries.py</code> holds all 15 shared SQL definitions for routes and sync.</p></div>
+        <div class="card"><h3>Broad modules</h3><p><code>sync/stages.py</code> holds all nine stages; <code>database/queries.py</code> holds all 17 SQL definitions.</p></div>
         <div class="card"><h3>Unused at runtime</h3><p><code>start_background_scheduler()</code>, <code>synced_today()</code>, and <code>run_plan()</code>.</p></div>
-        <div class="card"><h3>Re-export files</h3><p>Three package <code>__init__.py</code> files re-export every public name (<code>database</code> 24, <code>sync</code> 31, <code>youtube</code> 15); <code>routes/__init__.py</code> combines the six routers.</p></div>
+        <div class="card"><h3>Re-export files</h3><p>The <code>database</code>, <code>sync</code> and <code>youtube</code> packages re-export every public name (22, 32 and 15).</p></div>
       </div>
     </section>
 

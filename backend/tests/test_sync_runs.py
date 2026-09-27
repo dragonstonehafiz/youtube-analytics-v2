@@ -1,11 +1,20 @@
 from __future__ import annotations
 
+import sqlite3
 import threading
 import unittest
+from unittest import mock
 
 import database
 from database import SyncRun, connection, writer
+from routes.synchronization import sync_runs
 from tests.support import IsolatedDatabaseTestCase
+
+
+def _history(page: int, page_size: int) -> tuple[list[dict], int]:
+    """Return the sync-history route's batches and total for one page."""
+    body = sync_runs(page=page, page_size=page_size)
+    return body["items"], body["total"]
 
 
 class SyncRunsTestCase(IsolatedDatabaseTestCase):
@@ -59,7 +68,7 @@ class GroupingTest(SyncRunsTestCase):
         self._seed("2024-05-01T10:01:00+00:00", "batch-a", "videos")
         self._seed("2024-05-01T10:02:00+00:00", "batch-a", "fx_rates")
 
-        items, total = database.get_sync_runs(1, 25)
+        items, total = _history(1, 25)
 
         self.assertEqual(total, 1)
         self.assertEqual(len(items), 1)
@@ -71,7 +80,7 @@ class GroupingTest(SyncRunsTestCase):
         self._seed("2024-05-01T09:00:00+00:00", "batch-a", "videos")
         self._seed("2024-05-01T18:00:00+00:00", "batch-b", "videos")
 
-        items, total = database.get_sync_runs(1, 25)
+        items, total = _history(1, 25)
 
         self.assertEqual(total, 2)
         self.assertEqual([g["batch_id"] for g in items], ["batch-b", "batch-a"])
@@ -81,7 +90,7 @@ class GroupingTest(SyncRunsTestCase):
         self._seed("2024-05-01T10:00:00+00:00", "batch-a", "playlists")
         self._seed("2024-05-01T10:09:00+00:00", "batch-a", "fx_rates")
 
-        items, _ = database.get_sync_runs(1, 25)
+        items, _ = _history(1, 25)
 
         self.assertEqual(items[0]["started_at"], "2024-05-01T10:00:00+00:00")
 
@@ -89,7 +98,7 @@ class GroupingTest(SyncRunsTestCase):
         self._seed("2024-05-01T23:50:00+00:00", "batch-a", "videos")
         self._seed("2024-05-02T00:10:00+00:00", "batch-a", "comments")
 
-        items, total = database.get_sync_runs(1, 25)
+        items, total = _history(1, 25)
 
         self.assertEqual(total, 1)
         self.assertEqual(items[0]["run_count"], 2)
@@ -100,7 +109,7 @@ class GroupingTest(SyncRunsTestCase):
         self._seed("2024-05-01T23:00:00+00:00", "batch-early", "fx_rates")
         self._seed("2024-05-01T09:00:00+00:00", "batch-later", "videos")
 
-        items, _ = database.get_sync_runs(1, 25)
+        items, _ = _history(1, 25)
 
         self.assertEqual([g["batch_id"] for g in items], ["batch-later", "batch-early"])
 
@@ -109,7 +118,7 @@ class GroupingTest(SyncRunsTestCase):
         self._seed("2024-05-01T10:00:00+00:00", "batch-b", "videos")
         self._seed("2024-05-01T10:00:00+00:00", "batch-c", "videos")
 
-        items, _ = database.get_sync_runs(1, 25)
+        items, _ = _history(1, 25)
 
         self.assertEqual([g["batch_id"] for g in items], ["batch-c", "batch-b", "batch-a"])
 
@@ -118,7 +127,7 @@ class GroupingTest(SyncRunsTestCase):
         self._seed("2024-05-01T10:01:00+00:00", "batch-a", "videos")
         self._seed("2024-05-01T10:02:00+00:00", "batch-a", "comments")
 
-        items, _ = database.get_sync_runs(1, 25)
+        items, _ = _history(1, 25)
 
         self.assertEqual(
             [r["sync_type"] for r in items[0]["runs"]], ["comments", "videos", "playlists"])
@@ -126,7 +135,7 @@ class GroupingTest(SyncRunsTestCase):
     def test_children_with_equal_timestamps_use_the_descending_id_tie_breaker(self) -> None:
         ids = [self._seed("2024-05-01T10:00:00+00:00", "batch-a") for _ in range(4)]
 
-        items, _ = database.get_sync_runs(1, 25)
+        items, _ = _history(1, 25)
 
         self.assertEqual([r["id"] for r in items[0]["runs"]], sorted(ids, reverse=True))
 
@@ -137,7 +146,7 @@ class RollupTest(SyncRunsTestCase):
         self._seed("2024-05-01T10:01:00+00:00", "batch-a", "comments", 7, 3, 0)
         self._seed("2024-05-01T10:02:00+00:00", "batch-a", "pruning", 0, 0, 4)
 
-        items, _ = database.get_sync_runs(1, 25)
+        items, _ = _history(1, 25)
 
         self.assertEqual(items[0]["rows_fetched"], 17)
         self.assertEqual(items[0]["rows_written"], 8)
@@ -147,7 +156,7 @@ class RollupTest(SyncRunsTestCase):
         self._seed("2024-05-01T10:00:00+00:00", "batch-a", "videos", 10, 5, 1)
         self._seed("2024-05-01T10:01:00+00:00", "batch-a", "comments", 7, 3, 2)
 
-        group = database.get_sync_runs(1, 25)[0][0]
+        group = _history(1, 25)[0][0]
 
         for key in ("rows_fetched", "rows_written", "rows_deleted"):
             self.assertEqual(group[key], sum(r[key] for r in group["runs"]))
@@ -157,7 +166,7 @@ class RollupTest(SyncRunsTestCase):
         self._seed("2024-05-01T10:01:00+00:00", "batch-a", "comments", 4, 2, 0)
         self._finish(run_id, "failed", 3, 1, 0, "quota exceeded")
 
-        items, _ = database.get_sync_runs(1, 25)
+        items, _ = _history(1, 25)
 
         self.assertEqual(items[0]["rows_fetched"], 7)
         self.assertEqual(items[0]["rows_written"], 3)
@@ -166,7 +175,7 @@ class RollupTest(SyncRunsTestCase):
         self._seed("2024-05-01T10:00:00+00:00", "batch-a", "videos", 10, 5, 1)
         self._seed("2024-05-02T10:00:00+00:00", "batch-b", "videos", 100, 50, 10)
 
-        items, _ = database.get_sync_runs(1, 25)
+        items, _ = _history(1, 25)
 
         by_id = {g["batch_id"]: g for g in items}
         self.assertEqual(by_id["batch-a"]["rows_fetched"], 10)
@@ -180,7 +189,7 @@ class BatchPaginationTest(SyncRunsTestCase):
                 self._seed(f"2024-05-{i + 1:02d}T{stage:02d}:00:00+00:00", f"batch-{i:02d}")
 
     def test_empty_history_returns_no_groups_and_a_zero_total(self) -> None:
-        items, total = database.get_sync_runs(1, 25)
+        items, total = _history(1, 25)
 
         self.assertEqual(items, [])
         self.assertEqual(total, 0)
@@ -188,14 +197,14 @@ class BatchPaginationTest(SyncRunsTestCase):
     def test_total_counts_distinct_batches_not_stage_rows(self) -> None:
         self._seed_batches(3, stages_each=7)
 
-        _, total = database.get_sync_runs(1, 25)
+        _, total = _history(1, 25)
 
         self.assertEqual(total, 3)
 
     def test_page_size_limits_batches_not_stage_rows(self) -> None:
         self._seed_batches(4, stages_each=5)
 
-        items, total = database.get_sync_runs(1, 2)
+        items, total = _history(1, 2)
 
         self.assertEqual(total, 4)
         self.assertEqual(len(items), 2)
@@ -204,8 +213,8 @@ class BatchPaginationTest(SyncRunsTestCase):
     def test_second_page_continues_without_overlapping_batches(self) -> None:
         self._seed_batches(30)
 
-        first, _ = database.get_sync_runs(1, 25)
-        second, total = database.get_sync_runs(2, 25)
+        first, _ = _history(1, 25)
+        second, total = _history(2, 25)
 
         self.assertEqual(total, 30)
         self.assertEqual(len(first), 25)
@@ -215,8 +224,8 @@ class BatchPaginationTest(SyncRunsTestCase):
     def test_a_multi_stage_batch_is_never_split_across_pages(self) -> None:
         self._seed_batches(4, stages_each=7)
 
-        first, _ = database.get_sync_runs(1, 2)
-        second, _ = database.get_sync_runs(2, 2)
+        first, _ = _history(1, 2)
+        second, _ = _history(2, 2)
 
         for group in first + second:
             self.assertEqual(group["run_count"], 7)
@@ -225,10 +234,25 @@ class BatchPaginationTest(SyncRunsTestCase):
     def test_page_beyond_the_end_is_empty_but_still_reports_the_total(self) -> None:
         self._seed_batches(3)
 
-        items, total = database.get_sync_runs(4, 25)
+        items, total = _history(4, 25)
 
         self.assertEqual(items, [])
         self.assertEqual(total, 3)
+
+    def test_a_page_reads_stages_in_one_query_regardless_of_batch_count(self) -> None:
+        self._seed_batches(5, stages_each=3)
+        statements: list[str] = []
+        open_connection = connection.get_connection
+
+        def traced() -> sqlite3.Connection:
+            conn = open_connection()
+            conn.set_trace_callback(statements.append)
+            return conn
+
+        with mock.patch("database.reader.get_connection", traced):
+            _history(1, 25)
+
+        self.assertEqual(len([sql for sql in statements if sql.lstrip().upper().startswith("SELECT")]), 3)
 
 
 class MarkIncompleteTest(SyncRunsTestCase):
@@ -286,7 +310,7 @@ class MarkIncompleteTest(SyncRunsTestCase):
 
 class BatchStatusTest(SyncRunsTestCase):
     def _status_of_only_batch(self) -> str:
-        items, _ = database.get_sync_runs(1, 25)
+        items, _ = _history(1, 25)
         return str(items[0]["status"])
 
     def test_all_successful_stages_report_success(self) -> None:
@@ -332,7 +356,7 @@ class BatchStatusTest(SyncRunsTestCase):
         broken = self._seed("2024-05-02T10:00:00+00:00", "batch-b")
         self._finish(broken, "failed", 0, 0, 0, "boom")
 
-        items, _ = database.get_sync_runs(1, 25)
+        items, _ = _history(1, 25)
 
         by_id = {g["batch_id"]: g["status"] for g in items}
         self.assertEqual(by_id, {"batch-a": "success", "batch-b": "failed"})
@@ -344,7 +368,7 @@ class CancelledStageTest(SyncRunsTestCase):
 
         self._finish(run_id, "cancelled", 5, 3, 1)
 
-        child = database.get_sync_runs(1, 25)[0][0]["runs"][0]
+        child = _history(1, 25)[0][0]["runs"][0]
         self.assertEqual(child["status"], "cancelled")
         self.assertIsNotNone(child["completed_at"])
         self.assertIsNone(child["error_message"])
@@ -354,7 +378,7 @@ class CancelledStageTest(SyncRunsTestCase):
 
 class BatchStatusCancelledPrecedenceTest(SyncRunsTestCase):
     def _status_of_only_batch(self) -> str:
-        items, _ = database.get_sync_runs(1, 25)
+        items, _ = _history(1, 25)
         return str(items[0]["status"])
 
     def test_a_cancelled_stage_alongside_successful_ones_reports_cancelled(self) -> None:
@@ -401,7 +425,7 @@ class ChildContentTest(SyncRunsTestCase):
     def test_children_keep_every_stored_field(self) -> None:
         self._seed("2024-05-01T10:00:00+00:00", "batch-a", "videos")
 
-        child = database.get_sync_runs(1, 25)[0][0]["runs"][0]
+        child = _history(1, 25)[0][0]["runs"][0]
 
         self.assertEqual(set(child), {
             "id", "batch_id", "sync_type", "scope", "year", "status", "started_at",
@@ -411,7 +435,7 @@ class ChildContentTest(SyncRunsTestCase):
     def test_a_running_child_keeps_a_null_completion_time(self) -> None:
         self._seed("2024-05-01T10:00:00+00:00", "batch-a")
 
-        child = database.get_sync_runs(1, 25)[0][0]["runs"][0]
+        child = _history(1, 25)[0][0]["runs"][0]
 
         self.assertEqual(child["status"], "running")
         self.assertIsNone(child["completed_at"])
@@ -420,7 +444,7 @@ class ChildContentTest(SyncRunsTestCase):
         run_id = self._seed("2024-05-01T10:00:00+00:00", "batch-a")
         self._finish(run_id, "success", 10, 7, 2)
 
-        child = database.get_sync_runs(1, 25)[0][0]["runs"][0]
+        child = _history(1, 25)[0][0]["runs"][0]
 
         self.assertEqual(child["status"], "success")
         self.assertIsNotNone(child["completed_at"])
@@ -431,7 +455,7 @@ class ChildContentTest(SyncRunsTestCase):
         run_id = self._seed("2024-05-01T10:00:00+00:00", "batch-a")
         self._finish(run_id, "failed", 3, 0, 0, "quota exceeded")
 
-        child = database.get_sync_runs(1, 25)[0][0]["runs"][0]
+        child = _history(1, 25)[0][0]["runs"][0]
 
         self.assertEqual(child["status"], "failed")
         self.assertEqual(child["error_message"], "quota exceeded")
@@ -467,7 +491,7 @@ class ConcurrentWorkerWritesTest(SyncRunsTestCase):
             t.join(timeout=10)
 
         self.assertEqual(errors, [])
-        items, total = database.get_sync_runs(1, 25)
+        items, total = _history(1, 25)
         self.assertEqual(total, 1)
         self.assertEqual(items[0]["run_count"], 2)
         self.assertEqual(
@@ -494,7 +518,7 @@ class ConcurrentWorkerWritesTest(SyncRunsTestCase):
         for t in threads:
             t.join(timeout=10)
 
-        items, _ = database.get_sync_runs(1, 25)
+        items, _ = _history(1, 25)
         by_stage = {r["sync_type"]: r for r in items[0]["runs"]}
         self.assertEqual((by_stage["video_analytics"]["scope"], by_stage["video_analytics"]["year"]), ("year", 2024))
         self.assertEqual((by_stage["video_traffic_sources"]["scope"], by_stage["video_traffic_sources"]["year"]), ("all", None))

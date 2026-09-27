@@ -25,6 +25,7 @@
         <a href="../architecture/backend-architecture.html">Backend architecture</a>
         <a href="../architecture/backend-reference.html">Backend reference</a>
         <a href="../architecture/data-storage.html">Data storage and access</a>
+        <a href="../architecture/reader-writer.html">Reader and writer</a>
         <a href="../architecture/frontend-components.html">Frontend components</a>
       </div>
     </details>
@@ -234,9 +235,9 @@
       <h2>Request-owning components</h2>
       <p>Three shared components fetch their own data instead of getting it from the page.</p>
       <div class="card-grid">
-        <div class="card"><h3>SyncStatus</h3><p><code>components/SyncStatus.tsx</code> calls <code>/sync/status</code> as soon as the app loads, then every 5 seconds. It sits in the top navigation, outside the page routes, so it keeps polling on every page for as long as the app is open, whether or not a sync is running.</p></div>
-        <div class="card"><h3>PeriodSelect</h3><p><code>components/PeriodSelect.tsx</code> calls <code>/meta/date-range</code> every time it appears, to build its year options. Nothing is cached, and errors are ignored. It appears on Videos (inside the video table), Analytics, VideoAnalytics and PlaylistAnalytics.</p></div>
-        <div class="card"><h3>CommentsPanel</h3><p><code>components/CommentsPanel.tsx</code> is the whole Comments tab. It calls <code>/comments</code> on Analytics, <code>/comments/videos/{id}</code> on VideoAnalytics and <code>/comments/playlists/{id}</code> on PlaylistAnalytics. It reloads when you change page, sort, dates or type; the comment, commenter and video title boxes wait for 300 ms of no typing, then reload together.</p></div>
+        <div class="card"><h3>SyncStatus</h3><p>Polls <code>/sync/status</code> every 5 seconds on every page.</p></div>
+        <div class="card"><h3>PeriodSelect</h3><p>Calls <code>/meta/date-range</code> every time it appears, to build its year options.</p></div>
+        <div class="card"><h3>CommentsPanel</h3><p>The Comments tab. It calls the channel, video or playlist comment route and reloads when a filter changes.</p></div>
       </div>
     </section>
 
@@ -345,11 +346,11 @@
     <section id="requests-that-may-run-unnecessarily">
       <h2>Requests that may run unnecessarily</h2>
       <div class="card-grid">
-        <div class="card"><h3>Hidden-tab requests</h3><p>On Analytics and PlaylistAnalytics, everything except the Related Videos requests loads whichever tab is open. Opening the page on the Comments tab still sends 13 analytics requests. Search-term requests load while other sub-tabs are showing, top videos per traffic source loads on the Analytics tab, and the sidebar and top videos table load on Traffic Sources. VideoAnalytics loads its chart, traffic and search requests on every tab, including Comments.</p></div>
-        <div class="card"><h3>Term videos load twice</h3><p>On Analytics and PlaylistAnalytics, a date, title or privacy change sends the "videos for the top search term" requests straight away with the old top term, then again when the new term lists arrive, even if the top term hasn't changed.</p></div>
-        <div class="card"><h3>Two status pollers on the Sync page</h3><p>The top navigation and the Sync page each request <code>/sync/status</code> every 5 seconds, so that page sends two per interval. The top navigation's poll runs on every page whether or not a sync is running.</p></div>
-        <div class="card"><h3>Date range on every appearance</h3><p>The period dropdown requests <code>/meta/date-range</code> every time it appears. Switching tabs brings it back and requests it again, PlaylistAnalytics has two of them on different tabs, and the Sync page requests the same thing separately.</p></div>
-        <div class="card"><h3>Unused API functions</h3><p><code>getPlaylistAggregatedAnalytics</code> duplicates <code>getPlaylistAnalytics</code> and has no caller. <code>getTopSearchTerms</code> and <code>getPlaylistTopSearchTerms</code> have no caller, so the two <code>…/search-insights/top</code> routes are never requested by the frontend.</p></div>
+        <div class="card"><h3>Hidden-tab requests</h3><p>The analytics pages load data for tabs that aren't open; the Comments tab alone still sends 13 analytics requests.</p></div>
+        <div class="card"><h3>Term videos load twice</h3><p>A filter change requests the top term's videos with the old term, then again with the new one.</p></div>
+        <div class="card"><h3>Two status pollers on the Sync page</h3><p>The top navigation and the Sync page each poll <code>/sync/status</code>, so that page sends two every 5 seconds.</p></div>
+        <div class="card"><h3>Date range on every appearance</h3><p>The period dropdown requests <code>/meta/date-range</code> again each time a tab switch shows it.</p></div>
+        <div class="card"><h3>Unused API functions</h3><p><code>getPlaylistAggregatedAnalytics</code>, <code>getTopSearchTerms</code> and <code>getPlaylistTopSearchTerms</code> have no caller.</p></div>
       </div>
     </section>
 

@@ -10,7 +10,7 @@ How data gets from the YouTube APIs into SQLite: plan validation, stage order, s
 - `backend/youtube/auth.py`, `backend/youtube/data_api.py`, `backend/youtube/analytics_api.py`
 - `backend/logging_config.py` (shared logging configuration used by `orchestration.py`, `stages.py`, `data_api.py`, `analytics_api.py`)
 - `backend/sync/write_preparation.py` (validation and aggregation of monthly insight payloads into row objects)
-- `backend/database/` (sync-facing parts only: `get_sync_runs` in `sync_runs.py`, the row dataclasses and `writer.py` for every insert/update — including `sync_runs` rows — and the reads sync makes through `reader.py` with `queries.owned_video_worklist()` — see `database.md`)
+- `backend/database/` (sync-facing parts only: the row dataclasses and `writer.py` for every insert/update — including `sync_runs` rows — and the reads sync makes through `reader.py` with `queries.owned_video_worklist()` — see `database.md`)
 
 ## Contents
 
@@ -119,6 +119,7 @@ Related-video metadata resolution stays inside `sync_related_video_insights()`'s
 - `POST /sync/trigger` (see `api.md`) is the only thing that starts a sync. `backend/server.py`'s lifespan starts none, and there is no recurring timer.
 - `start_background_scheduler()` (`sync/scheduler.py`) is defined and exported from `sync` but has no caller. If called, it would run **one** non-destructive incremental sync (`full_incremental_plan()`, which excludes `pruning`) on a daemon thread via `run_plan()`, unless `synced_today()` is already true. Pruning is never selected by it — pruning is manual-only.
 - `synced_today()` (`sync/scheduler.py`), used only by `start_background_scheduler()`, reads the latest successful `completed_at` (`reader.scalar(SyncRun, "MAX", "completed_at", where=[("status", "=", "success")])`) and compares its local calendar date against today. A missing or unparseable timestamp counts as not-synced. There is no separate persisted checkpoint — `sync_runs` is the sole source of truth: any single succeeded run qualifies, whatever its `sync_type`, scope, or `batch_id`, and failed, still-running, and startup-swept `incomplete` rows are ignored.
+- `batch_status(statuses)` (`sync/status.py`) is the stored-history rule `GET /sync/runs` uses for a batch's overall status: the worst of its stages' stored statuses, **failed > incomplete > running > cancelled > success**. It reads no live state.
 - `get_sync_status()` (`sync/status.py`) returns `{active, stop_requested, stages}` under a module-level `threading.Lock`; each stage has its own `pending | running | success | failed | cancelled` state and safe message.
 - `try_begin_sync(stage_keys)` atomically rejects an existing reservation or sets `active=true`, clears `stop_requested`, and seeds the selected keys as pending in canonical order. The manual trigger passes its validated stage list. A successful reservation replaces the prior plan's stage results.
 - `mark_stage_running(stage_key)` marks a selected stage running when orchestration dispatches it. `update_sync_progress(stage_key, message)` updates only its progress message. `complete_stage()`, `fail_stage()`, and `cancel_stage()` record its own outcome; none writes a whole-plan result. `finish_sync()` converts unstarted pending stages to cancelled when a stop was accepted, then releases the reservation while retaining every stage outcome.

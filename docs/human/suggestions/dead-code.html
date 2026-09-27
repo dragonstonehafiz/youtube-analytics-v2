@@ -24,6 +24,7 @@
         <a href="../architecture/backend-architecture.html">Backend architecture</a>
         <a href="../architecture/backend-reference.html">Backend reference</a>
         <a href="../architecture/data-storage.html">Data storage and access</a>
+        <a href="../architecture/reader-writer.html">Reader and writer</a>
         <a href="../architecture/frontend-components.html">Frontend components</a>
       </div>
     </details>
@@ -67,9 +68,9 @@
           <p>Serve only the ten biggest search terms instead of the whole list.</p>
           <dl>
             <dt>Where</dt><dd><code>GET /analytics/search-insights/top</code> (<code>get_top_search_terms</code>) and <code>GET /analytics/playlists/{playlist_id}/search-insights/top</code> (<code>get_playlist_top_search_terms</code>) in <code>routes/analytics.py</code></dd>
-            <dt>Does</dt><dd>Runs <code>queries.search_term_totals(…, limit=10)</code> through the reader with the usual date, type, privacy and title filters, channel-wide or for one playlist, and returns <code>{"items": [{search_term, views}, …]}</code>.</dd>
+            <dt>Does</dt><dd>The search terms list, capped at 10.</dd>
             <dt>Meant for</dt><dd>A “top search terms” view that needs only the leaders, without downloading every term.</dd>
-            <dt>Why dead</dt><dd>The pages call <code>…/search-insights</code> for the full list, because the donut's “Other” total and the term dropdown need every term. The frontend wrappers for these routes exist but are never called. The <code>/top</code> routes are the main routes with <code>limit=10</code> hard-coded; the main routes take no <code>limit</code> parameter, unlike <code>…/search-insights/videos</code>.</dd>
+            <dt>Why dead</dt><dd>The pages use the uncapped routes instead, so these are never called.</dd>
           </dl>
         </article>
 
@@ -118,9 +119,9 @@
           <p>Fetch helpers in <code>api.ts</code> for data the pages load another way.</p>
           <dl>
             <dt>Where</dt><dd><code>getTopSearchTerms</code>, <code>getPlaylistTopSearchTerms</code>, <code>getPlaylistAggregatedAnalytics</code> in <code>api.ts</code></dd>
-            <dt>Does</dt><dd>The first two call the two “top 10 search terms” routes and return <code>{items: SearchTermRow[]}</code>. The third calls <code>/analytics/playlists/{id}</code> and returns the playlist's daily analytics.</dd>
+            <dt>Does</dt><dd>Two call the top-10 search term routes; the third calls <code>/analytics/playlists/{id}</code>.</dd>
             <dt>Meant for</dt><dd>Loading only the top search terms for the channel or a playlist; loading a playlist's chart data.</dd>
-            <dt>Why dead</dt><dd>Pages use <code>getSearchTerms</code> / <code>getPlaylistSearchTerms</code> for the full term list. <code>getPlaylistAggregatedAnalytics</code> calls the same URL as <code>getPlaylistAnalytics</code>, which <code>PlaylistAnalytics</code> uses.</dd>
+            <dt>Why dead</dt><dd>Pages use other wrappers for the same data.</dd>
           </dl>
         </article>
 

@@ -25,6 +25,7 @@
         <a href="../architecture/backend-architecture.html">Backend architecture</a>
         <a href="../architecture/backend-reference.html">Backend reference</a>
         <a href="../architecture/data-storage.html">Data storage and access</a>
+        <a href="../architecture/reader-writer.html">Reader and writer</a>
         <a href="../architecture/frontend-components.html">Frontend components</a>
       </div>
     </details>
@@ -71,7 +72,7 @@
             <tr><td><span class="tag fe">Browser UI</span></td><td>React + TypeScript single-page app served by Vite on <code>http://localhost:5173</code></td><td><code>frontend/src/</code></td></tr>
             <tr><td><span class="tag fe">API client</span></td><td>Plain <code>fetch</code> wrappers calling <code>http://localhost:8000</code></td><td><code>frontend/src/api.ts</code></td></tr>
             <tr><td><span class="tag route">HTTP API</span></td><td>FastAPI app; CORS allows only <code>http://localhost:5173</code></td><td><code>backend/server.py</code>, <code>backend/routes/</code></td></tr>
-            <tr><td><span class="tag db">Query layer</span></td><td>One data class per table, a shared reader that runs every read, a shared writer for every insert, update and delete, shared SQL definitions, and a few per-domain reports. A read opens its own SQLite connection unless the caller passes one in.</td><td><code>backend/database/</code></td></tr>
+            <tr><td><span class="tag db">Query layer</span></td><td>Data classes, a shared reader and writer, and shared SQL</td><td><code>backend/database/</code></td></tr>
             <tr><td><span class="tag db">Storage</span></td><td>SQLite file <code>backend/data/youtube.db</code>, 12 tables</td><td><code>backend/schema.sql</code></td></tr>
             <tr><td><span class="tag sync">Sync engine</span></td><td>Stage plans on background threads inside the API process</td><td><code>backend/sync/</code></td></tr>
             <tr><td><span class="tag yt">External clients</span></td><td>YouTube Data API v3, YouTube Analytics API v2 (OAuth), Yahoo Finance via <code>yfinance</code></td><td><code>backend/youtube/</code>, <code>backend/sync/stages.py</code></td></tr>
@@ -139,17 +140,17 @@
     <section id="read-path">
       <h2>Path 1: user action → response</h2>
       <div class="flow">
-        <div class="flow-step fe"><strong>1 · User action</strong><small>Filter, tab, sort and page values are URL query params, written with <code>useReplaceSearchParams()</code>. Typed search commits after 300 ms idle.</small></div>
+        <div class="flow-step fe"><strong>1 · User action</strong><small>A filter, tab, sort or page change updates the URL.</small></div>
         <div class="flow-arrow" aria-hidden="true"></div>
-        <div class="flow-step fe"><strong>2 · Effect runs</strong><small>A <code>useEffect</code> whose dependencies changed calls <code>api.ts</code>. <code>track()</code> marks the card loading and drops superseded responses.</small></div>
+        <div class="flow-step fe"><strong>2 · Effect runs</strong><small>The card's <code>useEffect</code> re-runs and calls <code>api.ts</code>.</small></div>
         <div class="flow-arrow" aria-hidden="true"></div>
-        <div class="flow-step fe"><strong>3 · api.ts</strong><small>Builds <code>http://localhost:8000&lt;path&gt;?&lt;params&gt;</code>, omitting empty params.</small></div>
+        <div class="flow-step fe"><strong>3 · api.ts</strong><small>Sends the request to the backend.</small></div>
         <div class="flow-arrow" aria-hidden="true"></div>
-        <div class="flow-step route"><strong>4 · Route</strong><small>Checks a parent video/playlist exists (404), then reads through <code>database.reader</code> or calls a report function.</small></div>
+        <div class="flow-step route"><strong>4 · Route</strong><small>Checks the video or playlist exists, then asks the reader for data.</small></div>
         <div class="flow-arrow" aria-hidden="true"></div>
-        <div class="flow-step db"><strong>5 · Query</strong><small>The reader runs parameterized SQL that selects only the needed columns and returns data classes, filling missing days for daily charts; the route turns them into JSON with <code>to_dict()</code>. Reports return finished dicts.</small></div>
+        <div class="flow-step db"><strong>5 · Query</strong><small>The reader runs the SQL and returns rows as data classes.</small></div>
         <div class="flow-arrow" aria-hidden="true"></div>
-        <div class="flow-step fe"><strong>6 · Render</strong><small>JSON lands in the card's <code>RequestState</code>; the card re-renders.</small></div>
+        <div class="flow-step fe"><strong>6 · Render</strong><small>The card re-renders with the JSON.</small></div>
       </div>
       <p>Playlist-scoped analytics routes first resolve the playlist's member video IDs, then pass them to the same read the channel-wide route uses. Every trigger per page is in <a href="requests.html">Requests</a>.</p>
 
@@ -172,22 +173,22 @@
     <section id="write-path">
       <h2>Path 2: YouTube → database</h2>
       <div class="flow">
-        <div class="flow-step fe"><strong>1 · Plan</strong><small>Sync page builds a plan from checked stages and their period/scope selectors.</small></div>
+        <div class="flow-step fe"><strong>1 · Plan</strong><small>The Sync page builds a plan from the checked stages.</small></div>
         <div class="flow-arrow" aria-hidden="true"></div>
-        <div class="flow-step route"><strong>2 · Accept</strong><small><code>POST /sync/trigger</code>: <code>validate_plan</code> (400), <code>try_begin_sync</code> (409), schedule <code>execute_plan</code>, reply <code>{queued: true}</code>.</small></div>
+        <div class="flow-step route"><strong>2 · Accept</strong><small><code>POST /sync/trigger</code> validates the plan and starts it in the background.</small></div>
         <div class="flow-arrow" aria-hidden="true"></div>
-        <div class="flow-step sync"><strong>3 · Serial stages</strong><small>playlists → videos → pruning → comments → fx_rates, fail-fast.</small></div>
+        <div class="flow-step sync"><strong>3 · Serial stages</strong><small>playlists → videos → pruning → comments → fx_rates, stopping at the first failure.</small></div>
         <div class="flow-arrow" aria-hidden="true"></div>
-        <div class="flow-step sync"><strong>4 · Analytics workers</strong><small>video_analytics, video_traffic_sources, search_insights, related_video_insights on ≤ 2 threads.</small></div>
+        <div class="flow-step sync"><strong>4 · Analytics workers</strong><small>The four Analytics API stages run on up to 2 threads.</small></div>
         <div class="flow-arrow" aria-hidden="true"></div>
-        <div class="flow-step yt"><strong>5 · Fetch</strong><small>Data API v3, Analytics API v2, or <code>yfinance</code> for FX.</small></div>
+        <div class="flow-step yt"><strong>5 · Fetch</strong><small>Each stage calls YouTube or Yahoo Finance.</small></div>
         <div class="flow-arrow" aria-hidden="true"></div>
-        <div class="flow-step db"><strong>6 · Write</strong><small>Each fetched record becomes a data class and goes through <code>writer.write</code>/<code>write_many</code>, as do <code>sync_coverage</code> months; the playlists, comments and pruning stages remove rows with <code>writer.delete</code>; each started stage inserts one <code>sync_runs</code> row with <code>writer.write</code> and finishes it with <code>writer.update</code>.</small></div>
+        <div class="flow-step db"><strong>6 · Write</strong><small>Each fetched record becomes a data class and is saved through the writer.</small></div>
       </div>
       <div class="card-grid">
-        <div class="card"><h3>Live status</h3><p>Held in memory in <code>sync/status.py</code>, served by <code>GET /sync/status</code>, polled every 5 s by the top navigation and the Sync page.</p></div>
-        <div class="card"><h3>Stop</h3><p><code>POST /sync/stop</code> sets a flag checked at safe checkpoints; in-flight requests and writes finish first.</p></div>
-        <div class="card"><h3>History</h3><p>Finished stages are read back with <code>GET /sync/runs</code> on the Sync page's History tab.</p></div>
+        <div class="card"><h3>Live status</h3><p>Kept in memory and polled through <code>GET /sync/status</code>.</p></div>
+        <div class="card"><h3>Stop</h3><p><code>POST /sync/stop</code> stops the sync at the next safe point.</p></div>
+        <div class="card"><h3>History</h3><p>Past syncs are listed through <code>GET /sync/runs</code>.</p></div>
       </div>
       <p>Stage semantics, scopes, coverage, and failure handling: <code>docs/references/sync.md</code>.</p>
     </section>

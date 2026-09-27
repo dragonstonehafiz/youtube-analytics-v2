@@ -5,7 +5,6 @@ from typing import Literal
 
 from fastapi import APIRouter, Query
 
-import database
 from database import RelatedVideo, SearchTerm, Video, VideoAnalytics, VideoTrafficSource, queries, reader
 from .daily_series import ANALYTICS_METRIC_DEFAULTS, traffic_source_fill, traffic_source_items
 from .video_scope import require_owned_video, resolve_playlist_video_ids
@@ -113,6 +112,36 @@ def _destination_items(rows: list[reader.Joined]) -> list[dict]:
         }
         for row in rows
     ]
+
+
+def _related_video_referrers_response(
+    video_ids: Collection[str] | None = None,
+    *,
+    start_date: str | None,
+    end_date: str | None,
+    own: bool,
+    limit: int | None,
+    content_type: str | None = None,
+    privacy_status: str | None = None,
+    title: str | None = None,
+) -> dict:
+    """Return ranked Related Video referrers and the total named views for the scope."""
+    total_query, rows_query = queries.related_video_referrers(
+        start_date=start_date, end_date=end_date, content_type=content_type, privacy_status=privacy_status,
+        title=title, video_ids=video_ids, own=own, limit=limit,
+    )
+    with reader.connect() as conn:
+        total = reader.fetch_scalar(total_query, conn=conn)
+        rows = reader.fetch_joined(rows_query, (RelatedVideo, Video), conn=conn)
+    items = [
+        {
+            **row[RelatedVideo].to_dict(("referrer_video_id", "views")),
+            **row[Video].to_dict(("title", "thumbnail_url")),
+            "referrer_own": row[Video].own,
+        }
+        for row in rows
+    ]
+    return {"items": items, "total_named_views": total}
 
 
 @router.get("/analytics/videos")
@@ -378,8 +407,9 @@ def get_related_video_referrers(
     limit: int = Query(default=10),
 ) -> dict:
     """Return channel-wide Related Video referrers and total named views."""
-    return database.get_related_video_referrers(
-        start_date, end_date, content_type, privacy_status, title, own=own, limit=limit
+    return _related_video_referrers_response(
+        start_date=start_date, end_date=end_date, content_type=content_type,
+        privacy_status=privacy_status, title=title, own=own, limit=limit,
     )
 
 
@@ -410,8 +440,9 @@ def get_playlist_related_video_referrers(
 ) -> dict:
     """Return Related Video referrers for a playlist and total named views."""
     video_ids = resolve_playlist_video_ids(playlist_id)
-    return database.get_related_video_referrers(
-        start_date, end_date, content_type, privacy_status, title, video_ids=video_ids, own=own, limit=limit
+    return _related_video_referrers_response(
+        video_ids, start_date=start_date, end_date=end_date, content_type=content_type,
+        privacy_status=privacy_status, title=title, own=own, limit=limit,
     )
 
 
@@ -441,6 +472,6 @@ def get_video_related_video_referrers(
 ) -> dict:
     """Return Related Video referrers for one owned video."""
     require_owned_video(video_id)
-    return database.get_related_video_referrers(
-        start_date, end_date, video_ids=[video_id], own=own, limit=limit
+    return _related_video_referrers_response(
+        [video_id], start_date=start_date, end_date=end_date, own=own, limit=limit
     )

@@ -8,7 +8,9 @@ from fastapi import FastAPI
 from fastapi.testclient import TestClient
 
 import sync
+from database import SyncRun, queries, writer
 from routes.synchronization import router
+from tests.support import IsolatedDatabaseTestCase
 
 
 class SyncRoutesTestCase(unittest.TestCase):
@@ -319,93 +321,85 @@ class StatusRouteTest(SyncRoutesTestCase):
         )
 
 
+BATCH_RUNS: list[dict[str, Any]] = [
+    {
+        "id": 2, "batch_id": "batch-a", "sync_type": "comments", "scope": "incremental",
+        "year": None, "status": "success", "started_at": "2024-05-01T10:01:00+00:00",
+        "completed_at": "2024-05-01T10:02:00+00:00", "rows_fetched": 7,
+        "rows_written": 3, "rows_deleted": 0, "error_message": None,
+    },
+    {
+        "id": 1, "batch_id": "batch-a", "sync_type": "videos", "scope": "incremental",
+        "year": None, "status": "success", "started_at": "2024-05-01T10:00:00+00:00",
+        "completed_at": "2024-05-01T10:01:00+00:00", "rows_fetched": 10,
+        "rows_written": 5, "rows_deleted": 1, "error_message": None,
+    },
+]
+
 BATCH_GROUP = {
     "batch_id": "batch-a",
     "started_at": "2024-05-01T10:00:00+00:00",
-    "status": "success",
     "run_count": 2,
     "rows_fetched": 17,
     "rows_written": 8,
     "rows_deleted": 1,
-    "runs": [
-        {
-            "id": 2, "batch_id": "batch-a", "sync_type": "comments", "scope": "incremental",
-            "year": None, "status": "success", "started_at": "2024-05-01T10:01:00+00:00",
-            "completed_at": "2024-05-01T10:02:00+00:00", "rows_fetched": 7,
-            "rows_written": 3, "rows_deleted": 0, "error_message": None,
-        },
-        {
-            "id": 1, "batch_id": "batch-a", "sync_type": "videos", "scope": "incremental",
-            "year": None, "status": "success", "started_at": "2024-05-01T10:00:00+00:00",
-            "completed_at": "2024-05-01T10:01:00+00:00", "rows_fetched": 10,
-            "rows_written": 5, "rows_deleted": 1, "error_message": None,
-        },
-    ],
+    "runs": BATCH_RUNS,
+    "status": "success",
 }
 
 
-class RunsRouteTest(SyncRoutesTestCase):
-    """Covers the batch-paginated history contract with the database helper stubbed out."""
+class RunsRouteTest(IsolatedDatabaseTestCase):
+    """Covers the batch-paginated history contract against a throwaway database."""
 
     def setUp(self) -> None:
         super().setUp()
-        self.get_runs = self._patch(
-            "routes.synchronization.database.get_sync_runs",
-            return_value=([BATCH_GROUP], 42),
-        )
+        app = FastAPI()
+        app.include_router(router)
+        self.client = TestClient(app)
+        for run in reversed(BATCH_RUNS):
+            writer.write(SyncRun.from_dict(run))
+        self.sync_batches = mock.patch(
+            "routes.synchronization.queries.sync_batches", wraps=queries.sync_batches
+        ).start()
+        self.addCleanup(mock.patch.stopall)
 
     def test_defaults_to_the_first_page_of_twenty_five(self) -> None:
         response = self.client.get("/sync/runs")
 
         self.assertEqual(response.status_code, 200)
-        self.get_runs.assert_called_once_with(1, 25)
+        self.sync_batches.assert_called_once_with(page=1, page_size=25)
 
     def test_page_and_page_size_are_forwarded(self) -> None:
         self.client.get("/sync/runs", params={"page": 3, "page_size": 10})
 
-        self.get_runs.assert_called_once_with(3, 10)
+        self.sync_batches.assert_called_once_with(page=3, page_size=10)
 
     def test_response_carries_the_standard_pagination_metadata(self) -> None:
+        body = self.client.get("/sync/runs", params={"page": 1, "page_size": 5}).json()
+
+        self.assertEqual(body, {"items": [BATCH_GROUP], "total": 1, "page": 1, "page_size": 5})
+
+    def test_page_past_the_end_keeps_the_batch_total(self) -> None:
         body = self.client.get("/sync/runs", params={"page": 2, "page_size": 5}).json()
 
-        self.assertEqual(body, {
-            "items": [BATCH_GROUP],
-            "total": 42,
-            "page": 2,
-            "page_size": 5,
-        })
-
-    def test_batch_groups_survive_serialization_with_their_children(self) -> None:
-        group = self.client.get("/sync/runs").json()["items"][0]
-
-        self.assertEqual(group["batch_id"], "batch-a")
-        self.assertEqual(group["run_count"], 2)
-        self.assertEqual(group["started_at"], "2024-05-01T10:00:00+00:00")
-        self.assertEqual([r["sync_type"] for r in group["runs"]], ["comments", "videos"])
-        self.assertEqual(group["rows_fetched"], sum(r["rows_fetched"] for r in group["runs"]))
-
-    def test_total_reports_distinct_batches_rather_than_stage_rows(self) -> None:
-        body = self.client.get("/sync/runs").json()
-
-        self.assertEqual(body["total"], 42)
-        self.assertEqual(len(body["items"]), 1)
+        self.assertEqual(body, {"items": [], "total": 1, "page": 2, "page_size": 5})
 
     def test_page_below_one_is_unprocessable(self) -> None:
         self.assertEqual(self.client.get("/sync/runs", params={"page": 0}).status_code, 422)
-        self.get_runs.assert_not_called()
+        self.sync_batches.assert_not_called()
 
     def test_page_size_below_one_is_unprocessable(self) -> None:
         self.assertEqual(self.client.get("/sync/runs", params={"page_size": 0}).status_code, 422)
-        self.get_runs.assert_not_called()
+        self.sync_batches.assert_not_called()
 
     def test_page_size_above_the_maximum_is_unprocessable(self) -> None:
         self.assertEqual(self.client.get("/sync/runs", params={"page_size": 500}).status_code, 422)
-        self.get_runs.assert_not_called()
+        self.sync_batches.assert_not_called()
 
     def test_the_legacy_limit_parameter_no_longer_controls_paging(self) -> None:
         self.client.get("/sync/runs", params={"limit": 100})
 
-        self.get_runs.assert_called_once_with(1, 25)
+        self.sync_batches.assert_called_once_with(page=1, page_size=25)
 
 
 class StopRouteTest(SyncRoutesTestCase):

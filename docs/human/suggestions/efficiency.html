@@ -24,6 +24,7 @@
         <a href="../architecture/backend-architecture.html">Backend architecture</a>
         <a href="../architecture/backend-reference.html">Backend reference</a>
         <a href="../architecture/data-storage.html">Data storage and access</a>
+        <a href="../architecture/reader-writer.html">Reader and writer</a>
         <a href="../architecture/frontend-components.html">Frontend components</a>
       </div>
     </details>
@@ -63,19 +64,10 @@
 
         <article class="dup">
           <div class="dup-head"><h3>One connection and commit per row</h3><span class="dup-count">per row</span></div>
-          <p>Each <code>writer.write()</code> call opens a new SQLite connection, runs three <code>PRAGMA</code> statements, takes the write lock with <code>BEGIN IMMEDIATE</code>, runs an <code>UPDATE</code> (plus an <code>INSERT</code> when the row is new), and commits.</p>
+          <p>Each <code>writer.write()</code> call opens its own connection and commits.</p>
           <dl>
-            <dt>Where</dt><dd>Every streamed row in <code>sync/stages.py</code>: daily analytics, daily traffic sources, playlists and playlist items, videos and referrer videos, comment authors and comments (two calls per comment), and FX rates. Monthly search terms, referrers and coverage already go through one <code>write_many()</code> call per month.</dd>
-            <dt>Cost</dt><dd>A commit per row instead of per batch, and two statements for every row seen for the first time. The analytics stages run on concurrent workers, so each call also waits for SQLite's single write lock.</dd>
-          </dl>
-        </article>
-
-        <article class="dup">
-          <div class="dup-head"><h3>Connections closed by garbage collection</h3><span class="dup-count">every DB call</span></div>
-          <p><code>with get_connection() as conn</code> commits or rolls back on exit but does not close the connection. Reads through <code>database/reader.py</code> and writes, updates and deletes through <code>database/writer.py</code> close the connections they open, including the daily chart reads and every <code>sync_runs</code> write; the code below still uses the <code>with</code> form.</p>
-          <dl>
-            <dt>Where</dt><dd>The two reports that call <code>get_connection()</code> directly: <code>get_related_video_referrers</code> (<code>database/related_videos.py</code>) and <code>get_sync_runs</code> (<code>database/sync_runs.py</code>)</dd>
-            <dt>Cost</dt><dd>Closing depends on the connection object being freed, not on the <code>with</code> block ending.</dd>
+            <dt>Where</dt><dd>Every streamed row in <code>sync/stages.py</code>; monthly insights already batch per month.</dd>
+            <dt>Cost</dt><dd>A commit per row instead of per batch, each waiting for the write lock.</dd>
           </dl>
         </article>
 
@@ -88,10 +80,10 @@
 
         <article class="dup">
           <div class="dup-head"><h3>Lifetime earnings recomputed on every read</h3><span class="dup-count">per request</span></div>
-          <p>Lifetime SGD earnings are not stored. Each list and detail read sums every daily analytics row × that day's FX rate again. The 404 checks no longer do: <code>require_owned_video</code> and <code>require_playlist</code> select only the ID.</p>
+          <p>Lifetime earnings are not stored, so each list and detail read sums every daily analytics row again.</p>
           <dl>
             <dt>Where</dt><dd><code>queries.video_catalog</code> (video list, single video, playlist videos) and <code>queries.playlist_catalog</code> (playlist list, single playlist) in <code>database/queries.py</code></dd>
-            <dt>Cost</dt><dd>Work proportional to all analytics rows of the videos involved, on every request, for totals that change only after a sync. <code>queries.video_catalog</code> does it for every matching video before applying <code>LIMIT</code>, even when sorting by publish date.</dd>
+            <dt>Cost</dt><dd>Work that grows with all analytics rows, for totals that only change after a sync.</dd>
           </dl>
         </article>
 
@@ -108,8 +100,8 @@
           <div class="dup-head"><h3>Playlist lookup repeated per endpoint</h3><span class="dup-count">per request</span></div>
           <p>The playlist statistics route and each playlist analytics route check the playlist exists and load its video IDs before their own query.</p>
           <dl>
-            <dt>Where</dt><dd><code>resolve_playlist_video_ids</code> (<code>routes/video_scope.py</code>), called by the 9 playlist routes in <code>routes/analytics.py</code> the statistics and videos routes in <code>routes/playlists.py</code>, and <code>GET /videos/published</code> when given a playlist ID</dd>
-            <dt>Cost</dt><dd>Two extra queries per request. The existence check (<code>require_playlist</code>) is a single-row ID lookup with no totals. <code>PlaylistAnalytics</code> sends many of these requests together, each repeating both lookups.</dd>
+            <dt>Where</dt><dd><code>resolve_playlist_video_ids</code> (<code>routes/video_scope.py</code>), called by every playlist-scoped route</dd>
+            <dt>Cost</dt><dd>Two extra queries per request, repeated across the many requests a playlist page sends.</dd>
           </dl>
         </article>
 
@@ -117,7 +109,7 @@
           <div class="dup-head"><h3>Substring title search</h3><span class="dup-count">per filtered request</span></div>
           <p>The title filter is <code>v.title LIKE '%…%' OR v.id LIKE '%…%'</code>.</p>
           <dl>
-            <dt>Where</dt><dd>11 reads in <code>backend/database/</code>: 9 <code>queries.py</code> definitions through <code>_video_conditions()</code>, and 2 report functions</dd>
+            <dt>Where</dt><dd>11 reads in <code>backend/database/</code>: 10 <code>queries.py</code> definitions through <code>_video_conditions()</code>, and <code>get_video_stats</code></dd>
             <dt>Cost</dt><dd>A leading <code>%</code> cannot use an index, so every video row is scanned. Small at the current table size.</dd>
           </dl>
         </article>
@@ -149,7 +141,7 @@
 
         <article class="dup">
           <div class="dup-head"><h3>Term videos load twice</h3><span class="dup-count">per filter change</span></div>
-          <p>A date, title or privacy change sends the “videos for the top search term” requests straight away with the old top term, then again when the new term lists arrive.</p>
+          <p>A filter change requests the top term's videos with the old term, then again with the new one.</p>
           <dl>
             <dt>Where</dt><dd><code>Analytics</code>, <code>PlaylistAnalytics</code></dd>
             <dt>Cost</dt><dd>Two extra requests per change, even when the top term hasn't changed.</dd>

@@ -26,6 +26,23 @@ def _destinations(referrer_video_id: str, **filters: Any) -> list[dict]:
     ]
 
 
+def _related_video_referrers_response(**filters: Any) -> dict:
+    """Run the Related Video referrer specs and serialize the result as the API does."""
+    total_query, rows_query = queries.related_video_referrers(**filters)
+    rows = reader.fetch_joined(rows_query, (RelatedVideo, Video))
+    return {
+        "items": [
+            {
+                **row[RelatedVideo].to_dict(("referrer_video_id", "views")),
+                **row[Video].to_dict(("title", "thumbnail_url")),
+                "referrer_own": row[Video].own,
+            }
+            for row in rows
+        ],
+        "total_named_views": reader.fetch_scalar(total_query),
+    }
+
+
 def _last_month(target_video_id: str) -> str | None:
     """Return the latest stored Related Video month for a target."""
     return reader.scalar(RelatedVideo, "MAX", "month", where=[("target_video_id", "=", target_video_id)])
@@ -210,24 +227,24 @@ class GetRelatedVideoReferrersTest(IsolatedDatabaseTestCase):
     def test_sums_across_months_and_referrers(self) -> None:
         writer.write_many(related_video_rows("v-1", "2024-01", [make_related_referrer("ref-mine", views=5)], updated_at=FIXED_NOW))
         writer.write_many(related_video_rows("v-1", "2024-02", [make_related_referrer("ref-mine", views=7)], updated_at=FIXED_NOW))
-        result = database.get_related_video_referrers()
+        result = _related_video_referrers_response()
         self.assertEqual(result["items"][0]["referrer_video_id"], "ref-mine")
         self.assertEqual(result["items"][0]["views"], 12)
 
     def test_boundary_dates_include_the_whole_containing_month(self) -> None:
         writer.write_many(related_video_rows("v-1", "2024-01", [make_related_referrer("ref-mine", views=5)], updated_at=FIXED_NOW))
-        result = database.get_related_video_referrers(start_date="2024-01-20", end_date="2024-01-25")
+        result = _related_video_referrers_response(start_date="2024-01-20", end_date="2024-01-25")
         self.assertEqual(result["items"][0]["views"], 5)
 
     def test_missing_month_outside_bounds_is_excluded(self) -> None:
         writer.write_many(related_video_rows("v-1", "2024-01", [make_related_referrer("ref-mine", views=5)], updated_at=FIXED_NOW))
-        result = database.get_related_video_referrers(start_date="2024-02-01", end_date="2024-02-28")
+        result = _related_video_referrers_response(start_date="2024-02-01", end_date="2024-02-28")
         self.assertEqual(result["items"], [])
         self.assertEqual(result["total_named_views"], 0)
 
     def test_malformed_start_date_returns_no_rows_instead_of_a_broad_lexical_match(self) -> None:
         writer.write_many(related_video_rows("v-1", "2024-01", [make_related_referrer("ref-mine", views=5)], updated_at=FIXED_NOW))
-        result = database.get_related_video_referrers(start_date="2024", end_date="2024-12-31")
+        result = _related_video_referrers_response(start_date="2024", end_date="2024-12-31")
         self.assertEqual(result["items"], [])
         self.assertEqual(result["total_named_views"], 0)
 
@@ -237,7 +254,7 @@ class GetRelatedVideoReferrersTest(IsolatedDatabaseTestCase):
             make_related_referrer("ref-external", views=7),
             make_related_referrer("ref-unresolved", views=3),
         ], updated_at=FIXED_NOW))
-        result = database.get_related_video_referrers(own=True)
+        result = _related_video_referrers_response(own=True)
         self.assertEqual([r["referrer_video_id"] for r in result["items"]], ["ref-mine"])
 
     def test_own_false_includes_external_and_unresolved(self) -> None:
@@ -246,7 +263,7 @@ class GetRelatedVideoReferrersTest(IsolatedDatabaseTestCase):
             make_related_referrer("ref-external", views=7),
             make_related_referrer("ref-unresolved", views=3),
         ], updated_at=FIXED_NOW))
-        result = database.get_related_video_referrers(own=False)
+        result = _related_video_referrers_response(own=False)
         ids = {r["referrer_video_id"] for r in result["items"]}
         self.assertEqual(ids, {"ref-external", "ref-unresolved"})
 
@@ -256,7 +273,7 @@ class GetRelatedVideoReferrersTest(IsolatedDatabaseTestCase):
             make_related_referrer("ref-external", views=7),
             make_related_referrer("ref-unresolved", views=3),
         ], updated_at=FIXED_NOW))
-        result = database.get_related_video_referrers(own=None)
+        result = _related_video_referrers_response(own=None)
         ids = {r["referrer_video_id"] for r in result["items"]}
         self.assertEqual(ids, {"ref-mine", "ref-external", "ref-unresolved"})
 
@@ -266,9 +283,9 @@ class GetRelatedVideoReferrersTest(IsolatedDatabaseTestCase):
             make_related_referrer("ref-external", views=7),
             make_related_referrer("ref-unresolved", views=3),
         ], updated_at=FIXED_NOW))
-        own_true = database.get_related_video_referrers(own=True, limit=1)
-        own_false = database.get_related_video_referrers(own=False, limit=1)
-        own_none = database.get_related_video_referrers(own=None)
+        own_true = _related_video_referrers_response(own=True, limit=1)
+        own_false = _related_video_referrers_response(own=False, limit=1)
+        own_none = _related_video_referrers_response(own=None)
         self.assertEqual(own_true["total_named_views"], 15)
         self.assertEqual(own_false["total_named_views"], 15)
         self.assertEqual(own_none["total_named_views"], 15)
@@ -279,7 +296,7 @@ class GetRelatedVideoReferrersTest(IsolatedDatabaseTestCase):
             make_related_referrer("ref-external", views=7),
             make_related_referrer("ref-unresolved", views=3),
         ], updated_at=FIXED_NOW))
-        result = database.get_related_video_referrers(limit=2)
+        result = _related_video_referrers_response(limit=2)
         self.assertEqual(len(result["items"]), 2)
 
     def test_ordering_is_views_desc_then_referrer_id_asc(self) -> None:
@@ -288,36 +305,42 @@ class GetRelatedVideoReferrersTest(IsolatedDatabaseTestCase):
             make_related_referrer("ref-a", views=5),
             make_related_referrer("ref-mine", views=9),
         ], updated_at=FIXED_NOW))
-        result = database.get_related_video_referrers()
+        result = _related_video_referrers_response()
         ids = [r["referrer_video_id"] for r in result["items"]]
         self.assertEqual(ids, ["ref-mine", "ref-a", "ref-b"])
 
     def test_video_ids_none_covers_every_owned_target(self) -> None:
         writer.write_many(related_video_rows("v-1", "2024-01", [make_related_referrer("ref-mine", views=5)], updated_at=FIXED_NOW))
         writer.write_many(related_video_rows("v-2", "2024-01", [make_related_referrer("ref-mine", views=4)], updated_at=FIXED_NOW))
-        result = database.get_related_video_referrers(video_ids=None)
+        result = _related_video_referrers_response(video_ids=None)
         self.assertEqual(result["items"][0]["views"], 9)
 
     def test_video_ids_populated_scopes_to_those_targets(self) -> None:
         writer.write_many(related_video_rows("v-1", "2024-01", [make_related_referrer("ref-mine", views=5)], updated_at=FIXED_NOW))
         writer.write_many(related_video_rows("v-2", "2024-01", [make_related_referrer("ref-mine", views=4)], updated_at=FIXED_NOW))
-        result = database.get_related_video_referrers(video_ids=["v-1"])
+        result = _related_video_referrers_response(video_ids=["v-1"])
         self.assertEqual(result["items"][0]["views"], 5)
+
+    def test_duplicate_video_ids_count_each_target_once(self) -> None:
+        writer.write_many(related_video_rows("v-1", "2024-01", [make_related_referrer("ref-mine", views=5)], updated_at=FIXED_NOW))
+        result = _related_video_referrers_response(video_ids=["v-1", "v-1"])
+        self.assertEqual(result["items"][0]["views"], 5)
+        self.assertEqual(result["total_named_views"], 5)
 
     def test_video_ids_empty_returns_nothing(self) -> None:
         writer.write_many(related_video_rows("v-1", "2024-01", [make_related_referrer("ref-mine", views=5)], updated_at=FIXED_NOW))
-        result = database.get_related_video_referrers(video_ids=[])
+        result = _related_video_referrers_response(video_ids=[])
         self.assertEqual(result, {"items": [], "total_named_views": 0})
 
     def test_content_type_and_privacy_status_filter_the_target_side(self) -> None:
         writer.write_many(related_video_rows("v-1", "2024-01", [make_related_referrer("ref-mine", views=5)], updated_at=FIXED_NOW))
         writer.write_many(related_video_rows("v-2", "2024-01", [make_related_referrer("ref-mine", views=4)], updated_at=FIXED_NOW))
-        result = database.get_related_video_referrers(content_type="short", privacy_status="private")
+        result = _related_video_referrers_response(content_type="short", privacy_status="private")
         self.assertEqual(result["items"][0]["views"], 4)
 
     def test_unresolved_referrer_has_null_metadata_and_none_own(self) -> None:
         writer.write_many(related_video_rows("v-1", "2024-01", [make_related_referrer("ref-unresolved", views=3)], updated_at=FIXED_NOW))
-        result = database.get_related_video_referrers()
+        result = _related_video_referrers_response()
         item = result["items"][0]
         self.assertIsNone(item["title"])
         self.assertIsNone(item["thumbnail_url"])
@@ -326,13 +349,13 @@ class GetRelatedVideoReferrersTest(IsolatedDatabaseTestCase):
     def test_title_filter_matches_target_video_id(self) -> None:
         writer.write_many(related_video_rows("v-1", "2024-01", [make_related_referrer("ref-mine", views=5)], updated_at=FIXED_NOW))
         writer.write_many(related_video_rows("v-2", "2024-01", [make_related_referrer("ref-mine", views=4)], updated_at=FIXED_NOW))
-        result = database.get_related_video_referrers(title="v-1")
+        result = _related_video_referrers_response(title="v-1")
         self.assertEqual(result["items"][0]["views"], 5)
         self.assertEqual(result["total_named_views"], 5)
 
     def test_title_filter_does_not_match_a_referrer_id(self) -> None:
         writer.write_many(related_video_rows("v-1", "2024-01", [make_related_referrer("ref-mine", views=5)], updated_at=FIXED_NOW))
-        result = database.get_related_video_referrers(title="ref-mine")
+        result = _related_video_referrers_response(title="ref-mine")
         self.assertEqual(result["items"], [])
         self.assertEqual(result["total_named_views"], 0)
 
@@ -341,7 +364,7 @@ class GetRelatedVideoReferrersTest(IsolatedDatabaseTestCase):
             make_related_referrer("ref-mine", views=5),
             make_related_referrer("ref-external", views=7),
         ], updated_at=FIXED_NOW))
-        result = database.get_related_video_referrers()
+        result = _related_video_referrers_response()
         by_id = {r["referrer_video_id"]: r for r in result["items"]}
         self.assertIs(by_id["ref-mine"]["referrer_own"], True)
         self.assertIs(by_id["ref-external"]["referrer_own"], False)

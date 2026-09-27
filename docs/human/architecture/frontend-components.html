@@ -25,6 +25,7 @@
         <a href="backend-architecture.html">Backend architecture</a>
         <a href="backend-reference.html">Backend reference</a>
         <a href="data-storage.html">Data storage and access</a>
+        <a href="reader-writer.html">Reader and writer</a>
         <a href="frontend-components.html" aria-current="page">Frontend components</a>
       </div>
     </details>
@@ -71,9 +72,9 @@
     <section id="rules">
       <h2>Counting rules</h2>
       <div class="card-grid">
-        <div class="card"><h3>Direct render sites</h3><p>JSX elements <code>&lt;ComponentName …&gt;</code> written in source, per file. A <code>.map()</code> or tab-conditional render counts once per element, not per runtime render.</p></div>
-        <div class="card"><h3>Distinct pages</h3><p>Route pages whose tree includes the component, directly or through another component. <code>TopNav</code> and <code>SyncStatus</code> render outside <code>Routes</code>, so they count for all seven.</p></div>
-        <div class="card"><h3>Shared vs file-local</h3><p>Shared components live in <code>frontend/src/components/</code>. File-local ones are functions defined and used inside one file.</p></div>
+        <div class="card"><h3>Direct render sites</h3><p>Each <code>&lt;ComponentName …&gt;</code> written in source counts once.</p></div>
+        <div class="card"><h3>Distinct pages</h3><p>Pages that render the component, directly or inside another component.</p></div>
+        <div class="card"><h3>Shared vs file-local</h3><p>Shared components live in <code>frontend/src/components/</code>; file-local ones are used in one file.</p></div>
       </div>
     </section>
 
@@ -102,12 +103,12 @@
       <div class="card-grid">
         <div class="card component-card">
           <h4><code>AsyncCard</code></h4>
-          <p>The frame most data cards sit in. It shows a loading indicator, an error message or an empty message until the card's data arrives, and keeps the card in place while it reloads.</p>
+          <p>The frame most data cards sit in, showing loading, error and empty states.</p>
           <p class="meta"><strong>Used on:</strong> Every page, inside most other components</p>
         </div>
         <div class="card component-card">
           <h4><code>TopNav</code></h4>
-          <p>The bar across the top of every page: links to each section, a back button on video and playlist pages, and the sync status.</p>
+          <p>The bar across the top of every page, with section links and the sync status.</p>
           <p class="meta"><strong>Used on:</strong> Every page</p>
         </div>
         <div class="card component-card">
@@ -128,7 +129,7 @@
       <div class="card-grid">
         <div class="card component-card">
           <h4><code>VideoStatsBar</code></h4>
-          <p>The stats bar at the top of a page. It counts videos and Shorts published before the period (legacy) and during it (new), with their views and earnings for the period, plus comment totals and how many videos are public, private or unlisted.</p>
+          <p>The stats bar at the top of a page: legacy and new video counts, views and earnings.</p>
           <p class="meta"><strong>Used on:</strong> Videos, Analytics, PlaylistAnalytics</p>
         </div>
         <div class="card component-card">
@@ -143,7 +144,7 @@
         </div>
         <div class="card component-card">
           <h4><code>TopVideosList</code></h4>
-          <p>The Top Videos table on the Analytics tab. It can be ranked by watch time or views and shows each video's upload date and earnings.</p>
+          <p>The Top Videos table, ranked by views or watch time.</p>
           <p class="meta"><strong>Used on:</strong> Analytics, PlaylistAnalytics</p>
         </div>
         <div class="card component-card">
@@ -157,7 +158,7 @@
       <div class="card-grid">
         <div class="card component-card">
           <h4><code>AnalyticsChart</code></h4>
-          <p>The main chart. It plots views, watch time or earnings over time, split into videos and Shorts, per period or as a running total, in daily, weekly or monthly steps.</p>
+          <p>The main chart: views, watch time or earnings over time, split into videos and Shorts.</p>
           <p class="meta"><strong>Used on:</strong> Analytics, VideoAnalytics, PlaylistAnalytics</p>
         </div>
         <div class="card component-card">
@@ -209,12 +210,12 @@
       <div class="card-grid">
         <div class="card component-card">
           <h4><code>RelatedReferrerBreakdownCard</code></h4>
-          <p>A ranked list of the videos that sent viewers here, with each one's share. Pages show two side by side: one for this channel's own videos and one for other channels.</p>
+          <p>A ranked list of the videos that sent viewers here, with each one's share.</p>
           <p class="meta"><strong>Used on:</strong> Analytics, VideoAnalytics, PlaylistAnalytics</p>
         </div>
         <div class="card component-card">
           <h4><code>RelatedDestinationsByReferrerCard</code></h4>
-          <p>Pick a referring video to see which of this channel's videos it sent viewers to. On the video page it has no dropdown and shows where that video sends viewers.</p>
+          <p>Pick a referring video to see which of this channel's videos it sent viewers to.</p>
           <p class="meta"><strong>Used on:</strong> Analytics, VideoAnalytics, PlaylistAnalytics</p>
         </div>
       </div>
@@ -231,7 +232,7 @@
       <div class="card-grid">
         <div class="card component-card">
           <h4><code>SyncStatusBanner</code></h4>
-          <p>The strip at the top of the Sync page with one small card per stage that is running, has failed or has just finished.</p>
+          <p>The strip at the top of the Sync page with one card per active or finished stage.</p>
           <p class="meta"><strong>Used on:</strong> Sync</p>
         </div>
       </div>

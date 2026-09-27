@@ -73,8 +73,6 @@ backend/
     writer.py            # all inserts/updates (update-then-insert by key, None fields left untouched), filtered updates, and filtered deletes
     queries.py           # non-executing SQL specifications for joins and aggregates
     video_statistics.py  # Legacy/New video statistics report
-    related_videos.py
-    sync_runs.py
 
   sync/                # Sync plans, orchestration, and an uncalled freshness-check scheduler
     status.py

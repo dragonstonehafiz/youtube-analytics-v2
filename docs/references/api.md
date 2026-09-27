@@ -7,7 +7,7 @@ Public FastAPI contracts: every route, its parameters, defaults, and response sh
 ## Authoritative source files
 
 - `backend/routes/videos.py`, `backend/routes/playlists.py`, `backend/routes/analytics.py`, `backend/routes/comments.py`, `backend/routes/synchronization.py`, `backend/routes/metadata.py` (`backend/routes/__init__.py` aggregates these into one `router`, in that order)
-- `backend/database/` (the reader, `queries.py` specifications, and report functions that produce responses — see `database.md` for their internals)
+- `backend/database/` (the reader, `queries.py` specifications, and the `get_video_stats()` report — see `database.md` for their internals)
 
 ## Contents
 
@@ -162,7 +162,7 @@ GET  /analytics/playlists/{playlist_id}/traffic-sources/top
   Same explicit limit=10 note as the channel-wide equivalent above.
 ```
 
-Each of these four routes runs the *same* report function or `queries.py` specification as its
+Each of these four routes runs the *same* `get_video_stats()` report or `queries.py` specification as its
 channel-wide counterpart — there are no playlist-specific queries. Every playlist analytics handler,
 and `GET /playlists/{playlist_id}/videos/stats`, follows one flow, factored into
 `resolve_playlist_video_ids()` in `routes/video_scope.py`:
@@ -278,7 +278,7 @@ GET  /analytics/videos/{video_id}/related-videos/referrers
   destinations route with referrer_video_id fixed to this video's own ID.
 ```
 
-Backed by the report `database.get_related_video_referrers()` and the specification `queries.related_video_destinations()` (`database.md`) — no separate query per route. Like Search insights, no endpoint here returns a chart-shaped envelope: no coverage table, no persisted or read-time residual, no `period_start`/`period_end`. The only cross-bucket total is `total_named_views`, and it is a real stored-row sum, not a computed gap against aggregate Traffic Sources.
+Backed by the specifications `queries.related_video_referrers()` and `queries.related_video_destinations()` (`database.md`) — no separate query per route. Like Search insights, no endpoint here returns a chart-shaped envelope: no coverage table, no persisted or read-time residual, no `period_start`/`period_end`. The only cross-bucket total is `total_named_views`, and it is a real stored-row sum, not a computed gap against aggregate Traffic Sources.
 
 ## Comments
 
