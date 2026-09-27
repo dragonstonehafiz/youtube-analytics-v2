@@ -107,11 +107,12 @@ indefinitely and are safe to delete between runs.
 | `database/connection.py` | Connection setup, `init_db()`, `now()` (UTC timestamp), shared `_month_bound_conditions()` |
 | `database/dataclasses/` | One data-only row dataclass per table (`Video`, `Playlist`, …), every field defaulting to `None`, with shared `from_dict()`/`to_dict(fields=...)` conversion |
 | `database/tables.py` | Shared row-class → table registry, primary keys, generated-key and non-decreasing-column rules, used by both reader and writer |
+| `database/filters.py` | Shared validated `WHERE` compilation from tuple conditions and `NotExists` predicates, used by reader selects and writer deletes |
 | `database/reader.py` | All read execution: `select`/`select_one`/`scalar` for one table, `fetch`/`fetch_joined`/`fetch_scalar` for code-owned SQL, and connection borrowing |
-| `database/writer.py` | Every insert/update: `write()`/`write_many()` update-then-insert by key, leaving `None` fields untouched, in one committed transaction or a savepoint on a borrowed one |
+| `database/writer.py` | Every insert/update/delete: `write()`/`write_many()` update-then-insert by key, leaving `None` fields untouched, and `delete()` removes the rows matching a required filter; each call runs in one committed transaction or a savepoint on a borrowed one |
 | `database/queries.py` | Non-executing `Query` specifications for joins, grouping, and ranking shared by routes and sync |
 | `database/video_statistics.py` | `get_video_stats()` Legacy/New report |
-| `database/videos.py`, `database/playlists.py`, `database/analytics.py`, `database/traffic_sources.py`, `database/comments.py`, `database/sync_runs.py`, `database/related_videos.py` | Deletes and pruning, the sync-run lifecycle writes, and the reports that do real calculation work (zero-filling, per-source top-N, referrer totals, sync-batch assembly) |
+| `database/analytics.py`, `database/traffic_sources.py`, `database/sync_runs.py`, `database/related_videos.py` | The sync-run lifecycle writes and the reports that do real calculation work (zero-filling, per-source top-N, referrer totals, sync-batch assembly) |
 | `schema.sql` | SQLite schema definition (12 tables) — see `database.md` |
 | `scripts/issue-48-migration.py` | Standalone, one-time migration adding `videos.own` to a pre-existing database — not run by `init_db()` (see `database.md`) |
 | `scripts/issue-62-migration.py` | Standalone, one-time `sync_coverage` backfill for a pre-existing database — not run by `init_db()` (see `database.md`) |
@@ -203,16 +204,14 @@ backend/
     __init__.py              # re-exports row classes, reader, queries, writes, and report functions
     connection.py
     tables.py                # shared registry: tables, keys, write rules
+    filters.py               # shared WHERE compilation for reads and deletes
     reader.py                # read execution
-    writer.py                # insert/update execution
+    writer.py                # insert/update/delete execution
     queries.py               # non-executing query specifications
     video_statistics.py      # get_video_stats()
     dataclasses/             # one row dataclass per table, plus base.py (from_dict/to_dict)
-    videos.py
-    playlists.py
     analytics.py
     traffic_sources.py
-    comments.py
     sync_runs.py
     related_videos.py
 

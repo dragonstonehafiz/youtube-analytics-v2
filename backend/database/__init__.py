@@ -1,8 +1,7 @@
 from __future__ import annotations
 
-from . import queries, reader, tables, writer
+from . import filters, queries, reader, tables, writer
 from .analytics import get_aggregated_analytics, get_video_analytics
-from .comments import delete_orphan_comment_authors
 from .connection import get_connection, init_db, now
 from .dataclasses import (
     Comment,
@@ -18,7 +17,7 @@ from .dataclasses import (
     VideoAnalytics,
     VideoTrafficSource,
 )
-from .playlists import delete_playlist_items, delete_playlists_not_in
+from .filters import NotExists
 from .related_videos import get_related_video_referrers
 from .sync_runs import (
     cancel_sync_run,
@@ -34,12 +33,12 @@ from .traffic_sources import (
     get_video_traffic_sources,
 )
 from .video_statistics import get_video_stats
-from .videos import delete_videos_not_in
 
 __all__ = [
     "Comment",
     "CommentAuthor",
     "FxRate",
+    "NotExists",
     "Playlist",
     "PlaylistItem",
     "RelatedVideo",
@@ -52,11 +51,8 @@ __all__ = [
     "cancel_sync_run",
     "complete_sync_run",
     "create_sync_run",
-    "delete_orphan_comment_authors",
-    "delete_playlist_items",
-    "delete_playlists_not_in",
-    "delete_videos_not_in",
     "fail_sync_run",
+    "filters",
     "get_aggregated_analytics",
     "get_aggregated_traffic_sources",
     "get_connection",

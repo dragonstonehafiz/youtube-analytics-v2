@@ -12,6 +12,7 @@ from sync.write_preparation import related_video_rows
 from database import (
     Comment,
     CommentAuthor,
+    NotExists,
     PlaylistItem,
     RelatedVideo,
     SyncRun,
@@ -173,6 +174,57 @@ class SelectTest(ReaderTestCase):
         rows = reader.select(Video, ("id",), where=[("id", "IN", ["v-2", "missing", "v-1"])], order_by=("id",))
         self.assertEqual([v.id for v in rows], ["v-1", "v-2"])
         self.assertEqual(reader.select(Video, ("id",), where=[("id", "IN", [])]), [])
+
+    def test_not_in_excludes_members_and_empty_not_in_matches_everything(self) -> None:
+        rows = reader.select(Video, ("id",), where=[("id", "NOT IN", ["v-2", "v-2", "missing"])], order_by=("id",))
+        self.assertEqual([v.id for v in rows], ["ext-1", "v-1"])
+        rows = reader.select(Video, ("id",), where=[("id", "NOT IN", []), ("own", "=", True)], order_by=("id",))
+        self.assertEqual([v.id for v in rows], ["v-1", "v-2"])
+        self.assertEqual(reader.scalar(Video, "COUNT", "id", where=[("id", "NOT IN", ("v-1",))]), 2)
+
+    def test_membership_rejects_strings_and_not_in_rejects_none(self) -> None:
+        for operator in ("IN", "NOT IN"):
+            with self.assertRaises(ValueError):
+                reader.select(Video, ("id",), where=[("id", operator, "v-1")])
+        with self.assertRaises(ValueError):
+            reader.select(Video, ("id",), where=[("id", "NOT IN", ["v-1", None])])
+
+    def test_conditions_combine_with_and_across_operators(self) -> None:
+        where = [("own", "=", True), ("published_at", ">=", "2024-01-02"), ("title", "LIKE", "Beta%")]
+        self.assertEqual([v.id for v in reader.select(Video, ("id",), where=where)], ["v-2"])
+
+    def test_not_exists_selects_unreferenced_rows(self) -> None:
+        writer.write(make_comment_author("channel:kept", "Kept"))
+        writer.write(make_comment_author("channel:orphan", "Orphan"))
+        writer.write(make_comment("c-1", "v-1", "channel:kept"))
+        conn, statements = self._traced()
+
+        rows = reader.select(CommentAuthor, ("id",), where=[NotExists(Comment, (("author_id", "id"),))], conn=conn)
+
+        self.assertEqual([author.id for author in rows], ["channel:orphan"])
+        self.assertIn(
+            'NOT EXISTS (SELECT 1 FROM comments AS _inner0 WHERE _inner0."author_id" = comment_authors."id")',
+            statements[0],
+        )
+
+    def test_self_correlated_not_exists_keeps_inner_and_outer_rows_apart(self) -> None:
+        writer.write(make_video("v-3", "Child", channel_id="v-1"))
+        rows = reader.select(Video, ("id",), where=[NotExists(Video, (("id", "channel_id"),))], order_by=("id",))
+        self.assertEqual([v.id for v in rows], ["ext-1", "v-1", "v-2"])
+
+    def test_invalid_not_exists_is_rejected(self) -> None:
+        @dataclasses.dataclass
+        class Stray(Row):
+            id: str | None = None
+
+        for predicate in (
+            NotExists(Comment, ()),
+            NotExists(Comment, (("nope", "id"),)),
+            NotExists(Comment, (("author_id", "nope"),)),
+            NotExists(Stray, (("id", "id"),)),
+        ):
+            with self.assertRaises(ValueError):
+                reader.select(CommentAuthor, ("id",), where=[predicate])
 
     def test_ordering_limit_and_offset(self) -> None:
         rows = reader.select(Video, ("id",), order_by=("-id",), limit=1, offset=1)

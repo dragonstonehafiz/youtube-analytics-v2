@@ -180,7 +180,6 @@ class StageCheckpointWiringTest(unittest.TestCase):
             "sync.stages.youtube.fetch_playlist_items", return_value=([], False)
         ).start()
         patch_stage_writes()
-        mock.patch("sync.stages.database.delete_playlist_items", return_value=0).start()
 
         status.try_begin_sync(["playlists"])
         status.request_stop()
@@ -193,14 +192,14 @@ class StageCheckpointWiringTest(unittest.TestCase):
     def test_sync_pruning_checks_before_deleting(self) -> None:
         from sync import stages
 
-        delete = mock.patch("sync.stages.database.delete_videos_not_in").start()
+        writes = patch_stage_writes()
         status.try_begin_sync(["pruning"])
         status.request_stop()
 
         with self.assertRaises(status.SyncCancelled):
             stages.sync_pruning(SyncCounts(), {"v1"})
 
-        delete.assert_not_called()
+        self.assertEqual(writes.deletes, [])
 
     def test_sync_fx_rates_stops_between_days(self) -> None:
         from datetime import date, timedelta

@@ -229,7 +229,7 @@ class SyncRelatedVideoInsightsStageTest(unittest.TestCase):
             "sync.stages.youtube.fetch_video_related_videos",
             return_value=analytics_api.RelatedVideosResult(raw_row_count=0, referrers=[]),
         ).start()
-        traffic = mock.patch("sync.stages.database.get_video_traffic_sources").start()
+        traffic = mock.patch("database.get_video_traffic_sources").start()
 
         stages.sync_related_video_insights("incremental", None, SyncCounts())
 

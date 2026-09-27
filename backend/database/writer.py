@@ -1,11 +1,12 @@
 from __future__ import annotations
 
 import sqlite3
-from collections.abc import Iterable, Iterator
+from collections.abc import Iterable, Iterator, Sequence
 from contextlib import contextmanager
 
 from .connection import get_connection
 from .dataclasses import Row
+from .filters import Predicate, where_clause
 from .tables import GENERATED_KEYS, KEYS, NON_DECREASING, field_names, table_name
 
 
@@ -26,6 +27,15 @@ def write_many(rows: Iterable[Row], *, conn: sqlite3.Connection | None = None) -
         raise ValueError(f"write_many() needs one row class; got {model.__name__} and {mixed}")
     with _transaction(conn) as connection:
         return sum(_write_one(connection, row) for row in batch)
+
+
+def delete(model: type[Row], *, where: Sequence[Predicate], conn: sqlite3.Connection | None = None) -> int:
+    """Delete every row matching all predicates in one statement; return the direct count, excluding cascades."""
+    if not where:
+        raise ValueError("delete() needs at least one condition")
+    where_sql, params = where_clause(model, where)
+    with _transaction(conn) as connection:
+        return connection.execute(f"DELETE FROM {table_name(model)}{where_sql}", params).rowcount
 
 
 @contextmanager

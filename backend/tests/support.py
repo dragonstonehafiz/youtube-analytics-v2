@@ -5,7 +5,7 @@ from __future__ import annotations
 
 import tempfile
 import unittest
-from collections.abc import Callable, Generator, Iterable
+from collections.abc import Callable, Generator, Iterable, Sequence
 from contextlib import contextmanager
 from datetime import datetime, timezone
 from pathlib import Path
@@ -130,11 +130,13 @@ def patch_stage_reads() -> StageReads:
 
 
 class StageWrites:
-    """Records the rows sync stages send to the writer; install with patch_stage_writes()."""
+    """Records the rows and deletes sync stages send to the writer; install with patch_stage_writes()."""
 
     def __init__(self) -> None:
         self.rows: list[Row] = []
         self.fail: Callable[[Row], None] | None = None
+        self.deletes: list[tuple[type, list[object]]] = []
+        self.deleted: dict[type, int] = {}
 
     def write(self, row: Row, **kwargs: object) -> int:
         """Record one row, first letting `fail` raise for it."""
@@ -149,15 +151,24 @@ class StageWrites:
         self.rows.extend(batch)
         return len(batch)
 
+    def delete(self, model: type, *, where: Sequence[object], **kwargs: object) -> int:
+        """Record one filtered delete and return the count configured in `deleted` for its class."""
+        self.deletes.append((model, list(where)))
+        return self.deleted.get(model, 0)
+
     def of(self, model: type) -> list:
         """Return the recorded rows of one class, in write order."""
         return [row for row in self.rows if type(row) is model]
+
+    def deletes_of(self, model: type) -> list[list[object]]:
+        """Return the recorded delete predicates for one class, in call order."""
+        return [where for deleted, where in self.deletes if deleted is model]
 
 
 def patch_stage_writes() -> StageWrites:
     """Route sync.stages writer calls to a fresh StageWrites until mock.patch.stopall()."""
     writes = StageWrites()
-    for name in ("write", "write_many"):
+    for name in ("write", "write_many", "delete"):
         mock.patch(f"sync.stages.writer.{name}", side_effect=getattr(writes, name)).start()
     return writes
 

@@ -6,6 +6,8 @@ from pathlib import Path
 
 import database
 from database import writer
+from sync import stages
+from sync.stages import SyncCounts
 from sync.write_preparation import search_term_rows
 from database import SearchTerm, Video, queries, reader
 from routes import router
@@ -242,19 +244,29 @@ class OwnershipQueryBoundaryTest(IsolatedDatabaseTestCase):
         stats = database.get_video_stats()
         self.assertEqual(stats["total_public"], 1)
 
-    def test_delete_videos_not_in_never_deletes_external_rows(self) -> None:
-        deleted = database.delete_videos_not_in([])
-        self.assertEqual(deleted, 1)
+    def test_pruning_an_empty_owned_set_deletes_only_owned_rows(self) -> None:
+        counts = SyncCounts()
+        stages.sync_pruning(counts, set())
+        self.assertEqual(counts.rows_deleted, 1)
         with database.get_connection() as conn:
             remaining = {r["id"] for r in conn.execute("SELECT id FROM videos")}
         self.assertEqual(remaining, {"v-external"})
 
-    def test_delete_videos_not_in_with_populated_set_never_deletes_external_rows(self) -> None:
-        deleted = database.delete_videos_not_in(["some-other-owned-id"])
-        self.assertEqual(deleted, 1)
+    def test_pruning_a_populated_owned_set_never_deletes_external_rows(self) -> None:
+        counts = SyncCounts()
+        stages.sync_pruning(counts, {"some-other-owned-id"})
+        self.assertEqual(counts.rows_deleted, 1)
         with database.get_connection() as conn:
             remaining = {r["id"] for r in conn.execute("SELECT id FROM videos")}
         self.assertEqual(remaining, {"v-external"})
+
+    def test_pruning_keeps_retained_owned_rows(self) -> None:
+        counts = SyncCounts()
+        stages.sync_pruning(counts, {"v-owned"})
+        self.assertEqual(counts.rows_deleted, 0)
+        with database.get_connection() as conn:
+            remaining = {r["id"] for r in conn.execute("SELECT id FROM videos")}
+        self.assertEqual(remaining, {"v-owned", "v-external"})
 
     def test_playlist_aggregate_excludes_external_member(self) -> None:
         writer.write(make_playlist("p-1", "Mixed Playlist"))

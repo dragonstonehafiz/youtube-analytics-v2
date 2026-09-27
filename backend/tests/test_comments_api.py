@@ -4,7 +4,7 @@ import sqlite3
 import unittest
 
 import database
-from database import Comment, CommentAuthor, Playlist, PlaylistItem, Video, writer
+from database import Comment, CommentAuthor, NotExists, Playlist, PlaylistItem, Video, writer
 from database import Comment, connection, reader
 from routes.comments import router as comments_router
 from tests.support import FIXED_NOW, IsolatedDatabaseTestCase, create_test_client
@@ -85,7 +85,7 @@ class SchemaTest(CommentsTestCase):
         writer.write(Comment.from_dict({**_comment("c1", "v1", "channel:UC1"), "updated_at": FIXED_NOW}))
         writer.write(Comment.from_dict({**_comment("c2", "v2", "channel:UC1"), "updated_at": FIXED_NOW}))
 
-        database.delete_videos_not_in(["v2"])
+        writer.delete(Video, where=[("own", "=", True), ("id", "NOT IN", ["v2"])])
 
         items, total = self._comments()
         self.assertEqual(total, 1)
@@ -147,13 +147,19 @@ class AuthorIdentityTest(CommentsTestCase):
     def test_orphan_cleanup_removes_only_unreferenced_authors(self) -> None:
         writer.write(CommentAuthor.from_dict({**_author("channel:UC1", "Kept", "UC1"), "updated_at": FIXED_NOW}))
         writer.write(CommentAuthor.from_dict({**_author("channel:UC2", "Orphan", "UC2"), "updated_at": FIXED_NOW}))
+        writer.write(CommentAuthor.from_dict({**_author("channel:UC3", "Also kept", "UC3"), "updated_at": FIXED_NOW}))
+        writer.write(CommentAuthor.from_dict({**_author("comment:c9", "Another orphan"), "updated_at": FIXED_NOW}))
         writer.write(Comment.from_dict({**_comment("c1", "v1", "channel:UC1"), "updated_at": FIXED_NOW}))
+        writer.write(Comment.from_dict({**_comment("c2", "v1", "channel:UC1"), "updated_at": FIXED_NOW}))
+        writer.write(Comment.from_dict({**_comment("c3", "v1", "channel:UC3"), "updated_at": FIXED_NOW}))
 
-        deleted = database.delete_orphan_comment_authors()
+        deleted = writer.delete(CommentAuthor, where=[NotExists(Comment, (("author_id", "id"),))])
 
-        self.assertEqual(deleted, 1)
+        self.assertEqual(deleted, 2)
         items, _total = self._comments()
-        self.assertEqual(items[0]["author_display_name"], "Kept")
+        self.assertEqual({item["author_display_name"] for item in items}, {"Kept", "Also kept"})
+        remaining = {author.id for author in reader.select(CommentAuthor, ("id",))}
+        self.assertEqual(remaining, {"channel:UC1", "channel:UC3"})
 
     def test_known_comment_ids_are_scoped_to_one_video(self) -> None:
         writer.write(Video.from_dict({**_video("v2", "B"), "own": True, "updated_at": FIXED_NOW}))

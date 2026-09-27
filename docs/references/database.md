@@ -7,8 +7,8 @@ Persistence layer, schema, row dataclasses, the shared reader and writer, and qu
 ## Authoritative source files
 
 - `backend/schema.sql`
-- `backend/database/dataclasses/` (one row dataclass per table), `backend/database/tables.py`, `backend/database/reader.py`, `backend/database/writer.py`, `backend/database/queries.py`, `backend/database/video_statistics.py`
-- `backend/database/connection.py`, `backend/database/videos.py`, `backend/database/playlists.py`, `backend/database/analytics.py`, `backend/database/traffic_sources.py`, `backend/database/comments.py`, `backend/database/sync_runs.py`, `backend/database/related_videos.py`
+- `backend/database/dataclasses/` (one row dataclass per table), `backend/database/tables.py`, `backend/database/filters.py`, `backend/database/reader.py`, `backend/database/writer.py`, `backend/database/queries.py`, `backend/database/video_statistics.py`
+- `backend/database/connection.py`, `backend/database/analytics.py`, `backend/database/traffic_sources.py`, `backend/database/sync_runs.py`, `backend/database/related_videos.py`
 - `backend/scripts/issue-48-migration.py`, `backend/scripts/issue-62-migration.py` — standalone, one-time migrations for pre-existing databases (see [Compatibility constraints](#compatibility-constraints)); neither is run by `init_db()`
 
 ## Contents
@@ -90,7 +90,7 @@ There is no `sync_state` table — the scheduler derives its checkpoint from `sy
 
 ## Row dataclasses, reader, and writer
 
-Reads go through `database/reader.py` and inserts/updates through `database/writer.py`. Both use the table registry in `database/tables.py` and neither imports the other. Deletes, pruning, and the sync-run lifecycle functions (`create_sync_run`, `complete_sync_run`, `fail_sync_run`, `cancel_sync_run`, `mark_incomplete_sync_runs`) keep their own SQL in their domain modules.
+Reads go through `database/reader.py`; inserts, updates, and deletes go through `database/writer.py`. Both use the table registry in `database/tables.py` and the WHERE compiler in `database/filters.py`, and neither imports the other. The sync-run lifecycle functions (`create_sync_run`, `complete_sync_run`, `fail_sync_run`, `cancel_sync_run`, `mark_incomplete_sync_runs`) keep their own SQL in `database/sync_runs.py`.
 
 ### Row dataclasses
 
@@ -114,13 +114,29 @@ The same classes also hold grouped results when the aliases match their fields, 
 
 Column names come from the dataclass fields. `tests/test_database_reader.py` checks the table set and each class's fields against `PRAGMA table_info`, and `tests/test_database_writer.py` checks `KEYS` against each table's primary key.
 
+### Filters
+
+`database/filters.py::where_clause(Model, where)` builds the `WHERE` clause for `reader.select()`, `select_one()`, `scalar()`, and `writer.delete()`. `where` is a sequence of predicates combined with `AND`; an empty sequence produces no clause. Every column is qualified with the registry table name (`videos."id"`), every value is a bound parameter, and an unregistered class, unknown column, or unsupported operator raises `ValueError`.
+
+A predicate is either a tuple condition or a `NotExists` value (exported as `database.NotExists`):
+
+| Predicate | SQL |
+|---|---|
+| `(column, op, value)` with `=`, `!=`, `<`, `<=`, `>`, `>=`, `LIKE` | `table."column" op ?` |
+| `(column, "=", None)` / `(column, "!=", None)` | `IS NULL` / `IS NOT NULL`. This is a SQL `NULL` comparison, unrelated to the writer leaving `None` fields out of upserts. |
+| `(column, "IN", values)` | `IN (?, …)`; an empty collection becomes the always-false `0` |
+| `(column, "NOT IN", values)` | `NOT IN (?, …)`; an empty collection becomes the always-true `1`, and the other predicates still apply. A `None` member raises `ValueError`, since SQL `NOT IN` with a `NULL` member matches nothing. |
+| `NotExists(Inner, ((inner_column, outer_column), …))` | `NOT EXISTS (SELECT 1 FROM inner_table AS _innerN WHERE _innerN."inner_column" = table."outer_column" AND …)` |
+
+`IN`/`NOT IN` values must be a collection; a bare string raises `ValueError` instead of matching its characters. `NotExists` needs at least one correlation, validates each inner column against `Inner` and each outer column against the filtered class, and gives its subquery a compiler-generated alias, so a class can be correlated against its own table. There is no raw-SQL predicate.
+
 ### Reads
 
  Identifiers that reach SQL come from the registry or from code-owned SQL; request strings never do, and every value is a bound parameter. An unregistered class, unknown field, unsupported operator, or unsupported aggregate raises `ValueError`.
 
 | Call | Use |
 |---|---|
-| `select(Model, fields=None, *, where=(), order_by=(), limit=None, offset=None, distinct=False, conn=None) -> list[Model]` | One table. `SELECT` names only the requested columns; omitting `fields` selects all of them, and an empty tuple is rejected. `where` is a list of `(column, operator, value)` with operators `=`, `!=`, `<`, `<=`, `>`, `>=`, `LIKE`, `IN`. `=`/`!=` with `None` become `IS NULL`/`IS NOT NULL`, and an empty `IN` matches nothing. `order_by` takes field names, with a leading `-` for descending. |
+| `select(Model, fields=None, *, where=(), order_by=(), limit=None, offset=None, distinct=False, conn=None) -> list[Model]` | One table. `SELECT` names only the requested columns; omitting `fields` selects all of them, and an empty tuple is rejected. `where` takes the predicates described in [Filters](#filters). `order_by` takes field names, with a leading `-` for descending. |
 | `select_one(...) -> Model \| None` | `select()` with `LIMIT 1`. |
 | `scalar(Model, aggregate, column, *, where=(), conn=None)` | `MIN`/`MAX`/`SUM`/`COUNT` of one column; `None` when `MIN`/`MAX`/`SUM` see no rows. |
 | `fetch(Model, query, *, conn=None) -> list[Model]` | A code-owned `Query` whose result columns are all fields of one class. An alias that is not a field raises and names the alias. |
@@ -138,6 +154,7 @@ Connection ownership: a read given `conn=` uses it and never commits, rolls back
 |---|---|
 | `writer.write(row, *, conn=None) -> int` | `1` when the row was inserted or updated; `0` when a row holding only its key already exists |
 | `writer.write_many(rows, *, conn=None) -> int` | The number of rows processed. All rows must be one class; mixing classes raises `ValueError`. Empty input returns `0` without opening a connection |
+| `writer.delete(Model, *, where, conn=None) -> int` | The number of `Model` rows the one `DELETE` removed (`cursor.rowcount`), excluding rows removed by `ON DELETE CASCADE`; `0` when nothing matches |
 
 Each row is written by matching its `KEYS` columns:
 - **Update first:** an `UPDATE` sets every non-`None` field that is not a key. `Video.own` is set with `MAX(own, ?)`, so an owned video is never demoted. If no row matched, an `INSERT` follows with the same non-`None` fields.
@@ -149,7 +166,13 @@ Each row is written by matching its `KEYS` columns:
 - **Order:** rows in one `write_many()` are applied in input order, so two rows for the same key end with the later one's non-`None` fields.
 - **No `INSERT OR REPLACE`:** it would delete and re-insert the row and fire cascades.
 
-Transactions:
+Deletes:
+- **Filter required:** `where` is keyword-only and takes the predicates in [Filters](#filters). An empty `where` raises `ValueError` before any connection opens, even on an empty table; there is no delete-all call.
+- **One statement:** the matching set is removed by a single `DELETE FROM table WHERE …`, never by selecting IDs and deleting row by row.
+- **Constraints stay on:** foreign-key cascades run as the schema defines them, and a `RESTRICT` violation (a referenced `comment_authors` row) raises `sqlite3.IntegrityError` and deletes nothing in that call.
+- **Parameter limit:** an `IN`/`NOT IN` list longer than SQLite's bound-parameter limit fails with `sqlite3.OperationalError` and deletes nothing. The list is never split into several deletes, since splitting a `NOT IN` retention list would delete retained rows.
+
+Transactions (upserts and deletes alike):
 - **Owned connection (no `conn`):** each call opens a connection and starts `BEGIN IMMEDIATE`, so the update-or-insert decision holds the write lock and two writers can't both insert the same key. It commits on success, rolls back the whole call on any error, and closes the connection.
 - **Materialized batch:** `write_many()` reads its whole input before opening the connection. An error while producing the rows therefore writes nothing.
 - **Borrowed connection (`conn`):** the caller must already be inside a transaction (`ValueError` otherwise). The writer wraps its work in `SAVEPOINT writer`, rolls back to it on error, and never commits, rolls back, or closes the caller's transaction.
@@ -197,7 +220,7 @@ Owned-only reads:
   `published_through`, when given, is an inclusive date-only (`YYYY-MM-DD`) upper bound on `published_at`: a video published anywhere on that date or earlier is included. The comparison is a strictly-less-than bound against the *next* calendar day's midnight (`published_at < (published_through + 1 day) + "T00:00:00"`), not `<= published_through + "T23:59:59"` — the latter would wrongly exclude a same-day timestamp carrying a trailing `Z` (real `published_at` values from the YouTube API always do), since `"...T23:59:59Z"` sorts lexically after the literal string `"...T23:59:59"`. A video with no known `published_at` is always included regardless of this bound — a missing publish date is not evidence the video was uploaded after the range, so callers keep their own existing skip/fallback handling for it. Omitting the argument (the default) returns the complete owned worklist, unchanged — this is what Comments continues to use, since it has no period/year selection to bound against. The four period-aware sync stages (Video Analytics, Video Traffic Sources, Search Insights, Related Video Insights) pass their own effective range end here, before per-video progress or processing begins — see `sync.md`.
 - `reader.select(Video, ("id",))` in `sync/stages.py::_resolve_related_video_metadata()` — deliberately unfiltered by ownership. It only checks whether an ID is already known at all (owned or external) before fetching fresh metadata for it; it is never a sync worklist.
 
-Every other video-scoped read carries a `v.own = 1` (or joined-alias equivalent) condition: every `queries.py` video specification (through its shared `_video_conditions()`), the earliest-year `reader.scalar(Video, "MIN", "published_at", where=[("own", "=", True)])` in `routes/metadata.py` and `sync/plans.py`, `get_video_stats()`, and the reports in `database/analytics.py`, `database/traffic_sources.py`, and `database/related_videos.py`. As a result, so an external referrer's metadata row never leaks into channel-wide reporting. `delete_videos_not_in(ids)` (pruning) only ever deletes `own = 1` rows — an external row is never touched regardless of whether its ID appears in the retention set.
+Every other video-scoped read carries a `v.own = 1` (or joined-alias equivalent) condition: every `queries.py` video specification (through its shared `_video_conditions()`), the earliest-year `reader.scalar(Video, "MIN", "published_at", where=[("own", "=", True)])` in `routes/metadata.py` and `sync/plans.py`, `get_video_stats()`, and the reports in `database/analytics.py`, `database/traffic_sources.py`, and `database/related_videos.py`. As a result, so an external referrer's metadata row never leaks into channel-wide reporting. The `pruning` stage's delete carries `("own", "=", True)` alongside its `NOT IN` retention list, so it only ever deletes `own = 1` rows — an external row is never touched regardless of whether its ID appears in the retention set.
 
 ## Related Videos
 
@@ -238,11 +261,20 @@ The `sync_coverage` table persists, independently of any reporting table, which 
 - `comments.author_id → comment_authors.id` **ON DELETE RESTRICT** — a commenter row cannot be deleted while any comment still references it
 - Cascades only take effect because `PRAGMA foreign_keys = ON` is set on every connection
 
-Comments are never deleted to reflect their removal on YouTube. Both sync scopes only insert and update, so a comment deleted upstream keeps its stored row; the only comment deletions come from the cascade when the `pruning` stage removes its parent video. `delete_orphan_comment_authors()` (`database/comments.py`) is the one commenter-side delete: it removes only rows no comment references any more, which is how the authors left behind by that cascade are cleaned up on the next successful Comments run. Because `author_id` is `RESTRICT`, this can never orphan a live comment.
+Comments are never deleted to reflect their removal on YouTube. Both sync scopes only insert and update, so a comment deleted upstream keeps its stored row; the only comment deletions come from the cascade when the `pruning` stage removes its parent video. The Comments stage's `writer.delete(CommentAuthor, where=[NotExists(Comment, (("author_id", "id"),))])` is the one commenter-side delete: it removes only rows no comment references any more, which is how the authors left behind by that cascade are cleaned up on the next successful Comments run. Because `author_id` is `RESTRICT`, this can never orphan a live comment.
 
-Deletion helpers report only rows they directly deleted via `cursor.rowcount` — cascaded child-row deletes (e.g. `video_analytics` rows removed when their parent `videos` row is deleted) are **not** included in that count. See `delete_videos_not_in()` (`database/videos.py`), `delete_playlists_not_in()`, and `delete_playlist_items()` (`database/playlists.py`).
+`writer.delete()` reports only rows it directly deleted via `cursor.rowcount` — cascaded child-row deletes (e.g. `video_analytics` rows removed when their parent `videos` row is deleted) are **not** included in that count.
 
-`delete_videos_not_in(ids)` has **no empty-list guard**: an empty `ids` deletes every video, not zero. Its only caller is the `pruning` sync stage (`sync/stages.py::sync_pruning()`), which is opt-in and never runs automatically — see `sync.md` for how the caller is expected to only pass an empty list when that genuinely reflects a channel with zero owned videos.
+All application deletes are `writer.delete()` calls in `sync/stages.py`:
+
+| Stage | Delete | Empty retention list |
+|---|---|---|
+| `playlists` | `writer.delete(PlaylistItem, where=[("playlist_id", "=", id)])` per playlist before its items are re-written | — |
+| `playlists` | `writer.delete(Playlist, where=[("id", "NOT IN", ids)])` | skipped by the stage: an empty listing never clears stored playlists |
+| `comments` | `writer.delete(CommentAuthor, where=[NotExists(Comment, (("author_id", "id"),))])` | — |
+| `pruning` | `writer.delete(Video, where=[("own", "=", True), ("id", "NOT IN", ids)])` | runs: deletes every owned video, never an external one |
+
+The `pruning` delete has **no empty-list guard**. It is opt-in and never runs automatically — see `sync.md` for how the caller is expected to only pass an empty list when that genuinely reflects a channel with zero owned videos.
 
 ## Timestamp behavior
 
@@ -254,7 +286,7 @@ The writer never sets timestamps. Sync supplies `updated_at = now()` on every ro
 
 ## Query conventions
 
-- **Every** query uses parameterized `?` placeholders — never string-interpolated values. `f"..."` is used only to interpolate registry table and column names (reader and writer), `queries.py` SQL fragments, or `ORDER BY` fragments looked up from a fixed mapping, never raw user input.
+- **Every** query uses parameterized `?` placeholders — never string-interpolated values. `f"..."` is used only to interpolate registry table and column names (reader, writer, and `filters.py`), compiler-generated subquery aliases, `queries.py` SQL fragments, or `ORDER BY` fragments looked up from a fixed mapping, never raw user input.
 - Sort keys are looked up in explicit mappings in `database/queries.py` before being interpolated into `ORDER BY`:
   - `_VIDEO_SORT_COLUMNS` maps `published_at`, `view_count`, `comment_count`, `total_revenue_sgd` to `v.published_at`, `v.view_count`, `v.comment_count`, `total_revenue_sgd`; `video_catalog()` uses it for both the channel and playlist video lists.
   - `_PLAYLIST_SORT_COLUMNS` maps `published_at`/`item_count` to the aliased `playlists__published_at`/`playlists__item_count` result columns and `last_item_added`, `total_views`, `total_earnings_sgd` to themselves, since `playlist_catalog()` sorts the outer `SELECT * FROM (…)`.

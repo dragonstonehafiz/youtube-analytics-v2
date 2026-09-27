@@ -11,6 +11,9 @@ from database import (
     Comment,
     CommentAuthor,
     FxRate,
+    NotExists,
+    Playlist,
+    PlaylistItem,
     RelatedVideo,
     SearchTerm,
     SyncCoverage,
@@ -27,6 +30,8 @@ from tests.support import (
     IsolatedDatabaseTestCase,
     make_comment,
     make_comment_author,
+    make_playlist,
+    make_playlist_item,
     make_video,
     make_video_analytics,
 )
@@ -289,6 +294,131 @@ class BorrowedConnectionTest(IsolatedDatabaseTestCase):
         self.assertTrue(conn.in_transaction)
         conn.commit()
         self.assertEqual([row["id"] for row in _stored("SELECT id FROM videos")], ["v-1"])
+
+
+class DeleteTest(IsolatedDatabaseTestCase):
+    def setUp(self) -> None:
+        super().setUp()
+        writer.write_many([
+            make_video("v-1", "Alpha"),
+            make_video("v-2", "Beta 'quoted'"),
+            make_video("v-3", "Gamma", published_at=None),
+            make_video("ext-1", "External", own=False),
+        ])
+
+    def _ids(self) -> set[str]:
+        return {row["id"] for row in _stored("SELECT id FROM videos")}
+
+    def test_deletes_one_matching_row(self) -> None:
+        self.assertEqual(writer.delete(Video, where=[("title", "=", "Beta 'quoted'")]), 1)
+        self.assertEqual(self._ids(), {"v-1", "v-3", "ext-1"})
+
+    def test_deletes_a_set_in_one_bound_statement(self) -> None:
+        writer.write(make_video_analytics("v-2", "2024-01-01", views=1))
+        calls: list[tuple[str, object]] = []
+        original = database.get_connection
+
+        class Recording:
+            """Connection stand-in that records each execute() call."""
+
+            def __init__(self) -> None:
+                self.conn = original()
+
+            def execute(self, sql: str, params: object = ()) -> sqlite3.Cursor:
+                calls.append((sql, params))
+                return self.conn.execute(sql, params)  # type: ignore[arg-type]
+
+            def __getattr__(self, name: str) -> object:
+                return getattr(self.conn, name)
+
+        with mock.patch.object(writer, "get_connection", side_effect=Recording):
+            deleted = writer.delete(Video, where=[("own", "=", True), ("id", "NOT IN", ["v-1"])])
+
+        self.assertEqual(deleted, 2)
+        self.assertEqual(self._ids(), {"v-1", "ext-1"})
+        self.assertEqual(calls, [
+            ("BEGIN IMMEDIATE", ()),
+            ('DELETE FROM videos WHERE videos."own" = ? AND videos."id" NOT IN (?)', [True, "v-1"]),
+        ])
+
+    def test_no_match_returns_zero(self) -> None:
+        self.assertEqual(writer.delete(Video, where=[("id", "=", "missing")]), 0)
+        self.assertEqual(writer.delete(Video, where=[("id", "IN", [])]), 0)
+        self.assertEqual(len(self._ids()), 4)
+
+    def test_explicit_null_matches_null_columns(self) -> None:
+        self.assertEqual(writer.delete(Video, where=[("published_at", "=", None)]), 1)
+        self.assertNotIn("v-3", self._ids())
+
+    def test_empty_not_in_keeps_the_other_conditions(self) -> None:
+        self.assertEqual(writer.delete(Video, where=[("own", "=", True), ("id", "NOT IN", [])]), 3)
+        self.assertEqual(self._ids(), {"ext-1"})
+
+    def test_missing_or_invalid_filters_are_rejected_before_any_sql(self) -> None:
+        with mock.patch.object(writer, "get_connection") as get_connection:
+            for where in ([], [("nope", "=", 1)], [("id", "; DROP", 1)], [("id", "NOT IN", "v-1")]):
+                with self.assertRaises(ValueError):
+                    writer.delete(Video, where=where)  # type: ignore[arg-type]
+        get_connection.assert_not_called()
+        self.assertEqual(len(self._ids()), 4)
+
+    def test_not_exists_deletes_only_unreferenced_rows(self) -> None:
+        writer.write(make_comment_author("channel:kept", "Kept"))
+        writer.write(make_comment_author("channel:orphan", "Orphan"))
+        writer.write(make_comment("c-1", "v-1", "channel:kept"))
+
+        deleted = writer.delete(CommentAuthor, where=[NotExists(Comment, (("author_id", "id"),))])
+
+        self.assertEqual(deleted, 1)
+        self.assertEqual([row["id"] for row in _stored("SELECT id FROM comment_authors")], ["channel:kept"])
+
+    def test_counts_exclude_cascades_and_leave_logical_references(self) -> None:
+        writer.write(make_video_analytics("v-2", "2024-01-01", views=1))
+        writer.write(make_playlist("PL1"))
+        writer.write_many([make_playlist_item("i-1", "PL1", "v-2"), make_playlist_item("i-2", "PL1", "v-1", 1)])
+        writer.write(make_playlist("PL2"))
+        writer.write(make_playlist_item("i-3", "PL2", "v-2"))
+        writer.write(RelatedVideo(target_video_id="v-1", month="2024-01", referrer_video_id="v-2", views=1, updated_at=FIXED_NOW))
+
+        self.assertEqual(writer.delete(Video, where=[("id", "=", "v-2")]), 1)
+        self.assertEqual(_stored("SELECT video_id FROM video_analytics"), [])
+        self.assertEqual(len(_stored("SELECT id FROM playlist_items WHERE video_id = 'v-2'")), 2)
+        self.assertEqual(len(_stored("SELECT target_video_id FROM related_videos")), 1)
+
+        self.assertEqual(writer.delete(Playlist, where=[("id", "NOT IN", ["PL2"])]), 1)
+        self.assertEqual([row["id"] for row in _stored("SELECT id FROM playlist_items")], ["i-3"])
+
+        self.assertEqual(writer.delete(PlaylistItem, where=[("playlist_id", "=", "PL2")]), 1)
+        self.assertEqual([row["id"] for row in _stored("SELECT id FROM playlists")], ["PL2"])
+
+    def test_a_referenced_author_is_restricted_and_the_whole_delete_rolls_back(self) -> None:
+        writer.write(make_comment_author("channel:kept", "Kept"))
+        writer.write(make_comment_author("channel:orphan", "Orphan"))
+        writer.write(make_comment("c-1", "v-1", "channel:kept"))
+
+        with self.assertRaises(sqlite3.IntegrityError):
+            writer.delete(CommentAuthor, where=[("id", "IN", ["channel:kept", "channel:orphan"])])
+
+        self.assertEqual(len(_stored("SELECT id FROM comment_authors")), 2)
+
+    def test_joins_a_borrowed_transaction_and_rolls_back_only_its_own_failure(self) -> None:
+        writer.write(make_comment_author("channel:kept", "Kept"))
+        writer.write(make_comment("c-1", "v-1", "channel:kept"))
+        conn = database.get_connection()
+        self.addCleanup(conn.close)
+        with self.assertRaises(ValueError):
+            writer.delete(Video, where=[("id", "=", "v-2")], conn=conn)
+
+        conn.execute("BEGIN")
+        self.assertEqual(writer.delete(Video, where=[("id", "=", "v-2")], conn=conn), 1)
+        with self.assertRaises(sqlite3.IntegrityError):
+            writer.delete(CommentAuthor, where=[("id", "=", "channel:kept")], conn=conn)
+        self.assertTrue(conn.in_transaction)
+        self.assertEqual(len(_stored("SELECT id FROM videos")), 4)
+        conn.commit()
+
+        self.assertEqual(self._ids(), {"v-1", "v-3", "ext-1"})
+        self.assertEqual(len(_stored("SELECT id FROM comment_authors")), 1)
 
 
 class ConcurrentWriteTest(IsolatedDatabaseTestCase):

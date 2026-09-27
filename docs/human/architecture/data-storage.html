@@ -49,6 +49,7 @@
       <li><a href="#aggregates">Aggregates</a></li>
       <li><a href="#api-shape">From a stored row to JSON</a></li>
       <li><a href="#writes">Writing a row</a></li>
+      <li><a href="#deletes">Deleting rows</a></li>
       <li><a href="#boundaries">Who reads and writes the database</a></li>
       <li><a href="#connections">Database connections</a></li>
     </ol>
@@ -57,9 +58,9 @@
   <main>
     <header class="hero">
       <h1>Data storage and access</h1>
-      <p>This page shows where the data lives, how the backend reads it into Python objects and writes those objects back, and how read results become the JSON the frontend receives.</p>
+      <p>This page shows where the data lives, how the backend reads it into Python objects, writes those objects back and deletes rows, and how read results become the JSON the frontend receives.</p>
       <div class="meta-line">
-        <span>Source revision <code>a731fb1</code></span>
+        <span>Source revision <code>b2d6118</code></span>
       </div>
     </header>
 
@@ -198,11 +199,35 @@ KEYS = {Video: ("id",), VideoAnalytics: ("video_id", "date"), ..., SyncRun: ("id
         <div class="flow-arrow" aria-hidden="true"></div>
         <div class="flow-step db"><strong>Table</strong><small><code>TABLES[Video]</code> → <code>videos</code>; an unlisted class is an error</small></div>
         <div class="flow-arrow" aria-hidden="true"></div>
-        <div class="flow-step db"><strong>Check names</strong><small><code>id</code>, <code>title</code>, <code>own</code> must be fields of <code>Video</code>; the operator must be one of <code>= != &lt; &lt;= &gt; &gt;= LIKE IN</code></small></div>
+        <div class="flow-step db"><strong>Check names</strong><small><code>id</code>, <code>title</code>, <code>own</code> must be fields of <code>Video</code>; the operator must be one of <code>= != &lt; &lt;= &gt; &gt;= LIKE IN</code> or <code>NOT IN</code></small></div>
         <div class="flow-arrow" aria-hidden="true"></div>
-        <div class="flow-step db"><strong>Bind values</strong><small><code>SELECT "id", "title" FROM videos WHERE "own" = ?</code> with <code>True</code> bound to <code>?</code></small></div>
+        <div class="flow-step db"><strong>Bind values</strong><small><code>SELECT "id", "title" FROM videos WHERE videos."own" = ?</code> with <code>True</code> bound to <code>?</code></small></div>
       </div>
       <p>Column and table names in the SQL come only from these lists and the data class fields; a request string never becomes part of the SQL. Every value, including one with quotes in it, is passed separately as a bound parameter. Tests compare the lists and every class's fields with the real schema, including each table's primary key, so a missing or misspelled column fails the test suite.</p>
+
+      <h3>One filter for reads and deletes</h3>
+      <p><code>backend/database/filters.py</code> turns a <code>where</code> list into SQL. <code>reader.select</code>, <code>select_one</code> and <code>scalar</code> use it for reads, and <code>writer.delete</code> uses it for deletes, so the same list matches the same rows in both. Conditions are joined with <code>AND</code>, and every column is written with its table name in front.</p>
+<pre class="code"><code>where = [("own", "=", True), ("id", "NOT IN", ["v-1", "v-2"])]
+
+reader.select(Video, ("id",), where=where)   # SELECT "id" FROM videos WHERE videos."own" = ? AND videos."id" NOT IN (?, ?)
+writer.delete(Video, where=where)            # DELETE FROM videos WHERE videos."own" = ? AND videos."id" NOT IN (?, ?)</code></pre>
+      <div class="table-wrap fixed-table">
+        <table>
+          <caption>What each kind of condition becomes</caption>
+          <colgroup><col><col></colgroup>
+          <thead><tr><th>Condition</th><th>SQL</th></tr></thead>
+          <tbody>
+            <tr><td><code>("own", "=", True)</code></td><td><code>videos."own" = ?</code></td></tr>
+            <tr><td><code>("published_at", "=", None)</code></td><td><code>videos."published_at" IS NULL</code> — a stored NULL, not a skipped field</td></tr>
+            <tr><td><code>("id", "IN", [])</code></td><td><code>0</code> — matches no row</td></tr>
+            <tr><td><code>("id", "NOT IN", [])</code></td><td><code>1</code> — matches every row; the other conditions still apply</td></tr>
+            <tr><td><code>("id", "NOT IN", ["v-1", None])</code></td><td>Error: SQL's <code>NOT IN</code> with a NULL in the list would match nothing</td></tr>
+            <tr><td><code>("id", "IN", "v-1")</code></td><td>Error: a string is not a list of values</td></tr>
+            <tr><td><code>NotExists(Comment, (("author_id", "id"),))</code></td><td><code>NOT EXISTS (SELECT 1 FROM comments AS _inner0 WHERE _inner0."author_id" = comment_authors."id")</code></td></tr>
+          </tbody>
+        </table>
+      </div>
+      <p><code>NotExists</code> matches rows that no row of another table points at. Each pair names a column of that table and the column of the filtered table it must equal. The subquery gets its own generated name, so a table can even be checked against itself.</p>
     </section>
 
     <section id="aggregates">
@@ -308,13 +333,65 @@ written = writer.write_many(rows)   # rows processed, added to the stage's rows_
       </div>
     </section>
 
+    <section id="deletes">
+      <h2>Deleting rows</h2>
+      <p>Every delete is a call to <code>writer.delete(Model, where=...)</code> from a sync stage. It removes all the matching rows with one <code>DELETE</code> statement and returns how many rows of that table it removed. It uses the same connection and transaction handling as a write.</p>
+
+      <h3>Videos no longer on the channel</h3>
+      <p>The pruning stage passes the IDs the channel still has. Only owned videos can match, so another channel's video stored as a Related Video referrer is never deleted.</p>
+<pre class="code"><code>writer.delete(Video, where=[("own", "=", True), ("id", "NOT IN", ["v-1", "v-2"])])
+
+DELETE FROM videos WHERE videos."own" = ? AND videos."id" NOT IN (?, ?)</code></pre>
+      <div class="table-wrap fixed-table">
+        <table>
+          <caption>Stored videos before and after that call</caption>
+          <colgroup><col class="col-narrow"><col class="col-narrow"><col></colgroup>
+          <thead><tr><th>Video</th><th><code>own</code></th><th>Result</th></tr></thead>
+          <tbody>
+            <tr><td><code>v-1</code></td><td><code>1</code></td><td>Kept: its ID is in the list.</td></tr>
+            <tr><td><code>v-3</code></td><td><code>1</code></td><td>Deleted, and SQLite removes its analytics, traffic sources, search terms, related-video rows, comments and coverage with it.</td></tr>
+            <tr><td><code>ext-1</code></td><td><code>0</code></td><td>Kept: not an owned video.</td></tr>
+          </tbody>
+        </table>
+      </div>
+      <p>The call returns <code>1</code>. Only the <code>videos</code> row counts, not the rows SQLite removed along with it.</p>
+
+      <h3>Comment authors no comment uses</h3>
+      <p>At the end of the comments stage, authors left without a comment are removed. The condition looks for a matching comment instead of listing IDs.</p>
+<pre class="code"><code>writer.delete(CommentAuthor, where=[NotExists(Comment, (("author_id", "id"),))])
+
+DELETE FROM comment_authors WHERE NOT EXISTS (
+    SELECT 1 FROM comments AS _inner0 WHERE _inner0."author_id" = comment_authors."id")</code></pre>
+
+      <div class="table-wrap fixed-table">
+        <table>
+          <caption>Every delete sync makes</caption>
+          <colgroup><col class="col-narrow"><col><col class="col-mid"></colgroup>
+          <thead><tr><th>Stage</th><th>Deletes</th><th>When the ID list is empty</th></tr></thead>
+          <tbody>
+            <tr><td><code>playlists</code></td><td>A playlist's items, just before its current items are written again; skipped when its item list was cut short</td><td>—</td></tr>
+            <tr><td><code>playlists</code></td><td>Playlists missing from the listing; skipped when the listing was cut short</td><td>Skipped: no playlist is deleted</td></tr>
+            <tr><td><code>comments</code></td><td>Authors no comment uses</td><td>—</td></tr>
+            <tr><td><code>pruning</code></td><td>Owned videos missing from the channel's video IDs</td><td>Every owned video is deleted</td></tr>
+          </tbody>
+        </table>
+      </div>
+
+      <div class="card-grid">
+        <div class="card"><h3>A condition is required</h3><p>An empty <code>where</code> list is an error, even on an empty table. There is no call that empties a whole table.</p></div>
+        <div class="card"><h3>One statement</h3><p>The matching rows go in one <code>DELETE</code>, never one statement per row. A list too long for SQLite fails and deletes nothing; it is never split, because splitting a <code>NOT IN</code> list would delete rows it meant to keep.</p></div>
+        <div class="card"><h3>Dependent rows</h3><p>SQLite removes the rows that depend on a deleted row. The returned count covers only the table named in the call.</p></div>
+        <div class="card"><h3>Protected rows</h3><p>Deleting an author that a comment still uses fails, and nothing in that call is deleted.</p></div>
+      </div>
+    </section>
+
     <section id="boundaries">
       <h2>Who reads and writes the database</h2>
-      <p>Routes and sync don't run SQL themselves. Routes call the reader or a report function; sync calls the reader, the writer, and the delete and sync-run functions.</p>
+      <p>Routes and sync don't run SQL themselves. Routes call the reader or a report function; sync calls the reader, the writer, and the sync-run functions.</p>
       <figure class="diagram">
         <svg viewBox="0 0 900 470" role="img" aria-labelledby="bound-title bound-desc">
           <title id="bound-title">Who reads and writes the database</title>
-          <desc id="bound-desc">routes/ calls report functions, reader.py and queries.py. sync/ calls reader.py, queries.py, writer.py, and the delete and sync-run functions. Report functions, reader.py, writer.py, and the delete and sync-run functions read or write SQLite. queries.py only builds SQL and does not touch SQLite.</desc>
+          <desc id="bound-desc">routes/ calls report functions, reader.py and queries.py. sync/ calls reader.py, queries.py, writer.py, and the sync-run functions. Report functions, reader.py, writer.py, and the sync-run functions read or write SQLite. queries.py only builds SQL and does not touch SQLite.</desc>
           <defs>
             <marker id="arrow-route" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse">
               <path class="arrowhead route" d="M0,0 L10,5 L0,10 z"/>
@@ -333,8 +410,8 @@ written = writer.write_many(rows)   # rows processed, added to the stage's rows_
           <g class="node db"><rect x="330" y="20" width="200" height="56" rx="8"/><text class="title" x="430" y="44" text-anchor="middle">report functions</text><text class="sub" x="430" y="62" text-anchor="middle">finish totals in Python</text></g>
           <g class="node db"><rect x="330" y="100" width="200" height="56" rx="8"/><text class="title" x="430" y="124" text-anchor="middle">reader.py</text><text class="sub" x="430" y="142" text-anchor="middle">runs every read</text></g>
           <g class="node db"><rect x="330" y="180" width="200" height="56" rx="8"/><text class="title" x="430" y="204" text-anchor="middle">queries.py</text><text class="sub" x="430" y="222" text-anchor="middle">builds SQL, never runs it</text></g>
-          <g class="node db"><rect x="330" y="260" width="200" height="56" rx="8"/><text class="title" x="430" y="284" text-anchor="middle">writer.py</text><text class="sub" x="430" y="302" text-anchor="middle">every insert and update</text></g>
-          <g class="node db"><rect x="330" y="340" width="200" height="56" rx="8"/><text class="title" x="430" y="364" text-anchor="middle">deletes · sync-run log</text><text class="sub" x="430" y="382" text-anchor="middle">delete_* · *_sync_run</text></g>
+          <g class="node db"><rect x="330" y="260" width="200" height="56" rx="8"/><text class="title" x="430" y="284" text-anchor="middle">writer.py</text><text class="sub" x="430" y="302" text-anchor="middle">inserts, updates, deletes</text></g>
+          <g class="node db"><rect x="330" y="340" width="200" height="56" rx="8"/><text class="title" x="430" y="364" text-anchor="middle">sync-run log</text><text class="sub" x="430" y="382" text-anchor="middle">*_sync_run</text></g>
 
           <g class="node"><rect x="710" y="180" width="170" height="56" rx="8"/><text class="title" x="795" y="204" text-anchor="middle">SQLite</text><text class="sub" x="795" y="222" text-anchor="middle">data/youtube.db</text></g>
 
@@ -366,11 +443,12 @@ written = writer.write_many(rows)   # rows processed, added to the stage's rows_
       <div class="card-grid">
         <div class="card"><h3><span class="tag db">dataclasses/</span></h3><p>One class per table holding a row's values, plus <code>from_dict()</code> and <code>to_dict()</code>. They never run a query or open a connection.</p></div>
         <div class="card"><h3><span class="tag db">tables.py</span></h3><p>The class-to-table list, each table's key columns, and the two write rules: <code>SyncRun</code> ids are generated, and <code>Video.own</code> never goes down.</p></div>
+        <div class="card"><h3><span class="tag db">filters.py</span></h3><p>Turns a <code>where</code> list into SQL for reader selects and writer deletes: checks each column and operator, binds every value, and builds <code>NOT EXISTS</code> checks.</p></div>
         <div class="card"><h3><span class="tag db">reader.py</span></h3><p>Every read: <code>select</code>, <code>select_one</code> and <code>scalar</code> for one table, and <code>fetch</code>, <code>fetch_joined</code> and <code>fetch_scalar</code> for SQL from <code>queries.py</code>.</p></div>
         <div class="card"><h3><span class="tag db">queries.py</span></h3><p>10 shared SQL definitions for joined, grouped and ranked reads. Each returns a query that the caller passes to the reader.</p></div>
-        <div class="card"><h3><span class="tag db">writer.py</span></h3><p>Every insert and update: <code>write</code> for one row and <code>write_many</code> for a batch of one class. Only sync calls it.</p></div>
+        <div class="card"><h3><span class="tag db">writer.py</span></h3><p>Every insert, update and delete: <code>write</code> for one row, <code>write_many</code> for a batch of one class, and <code>delete</code> for the rows matching a condition. Only sync calls it.</p></div>
         <div class="card"><h3><span class="tag db">Report functions</span></h3><p>Legacy/New statistics, zero-filled daily charts, top videos per traffic source, referrer totals, and sync-history grouping. The statistics report runs its SQL through the reader; the others open their own connection.</p></div>
-        <div class="card"><h3><span class="tag db">Deletes and sync-run log</span></h3><p>The <code>delete_*</code> functions and the sync-run log functions, such as <code>create_sync_run</code> and <code>complete_sync_run</code>, keep their own SQL, each on its own connection.</p></div>
+        <div class="card"><h3><span class="tag db">Sync-run log</span></h3><p>The sync-run log functions, such as <code>create_sync_run</code> and <code>complete_sync_run</code>, keep their own SQL, each on its own connection.</p></div>
       </div>
     </section>
 
@@ -385,8 +463,8 @@ written = writer.write_many(rows)   # rows processed, added to the stage's rows_
             <tr><td>Read without <code>conn=</code></td><td>The reader opens one, runs the query, and closes it.</td></tr>
             <tr><td>Read with <code>conn=</code></td><td>The reader uses it and leaves it open. It never commits or rolls it back.</td></tr>
             <tr><td><code>with reader.connect() as conn</code></td><td>Opens one connection for several reads, such as a page and its total count, or the four statistics queries, and closes it at the end of the block.</td></tr>
-            <tr><td>Write without <code>conn=</code></td><td>The writer opens one, takes the write lock, commits the whole call or rolls it back, and closes it.</td></tr>
-            <tr><td>Write with <code>conn=</code></td><td>The caller must already be inside a transaction. The writer uses a savepoint, undoes only its own work on an error, and never commits, rolls back or closes the caller's transaction.</td></tr>
+            <tr><td>Write or delete without <code>conn=</code></td><td>The writer opens one, takes the write lock, commits the whole call or rolls it back, and closes it.</td></tr>
+            <tr><td>Write or delete with <code>conn=</code></td><td>The caller must already be inside a transaction. The writer uses a savepoint, undoes only its own work on an error, and never commits, rolls back or closes the caller's transaction.</td></tr>
           </tbody>
         </table>
       </div>

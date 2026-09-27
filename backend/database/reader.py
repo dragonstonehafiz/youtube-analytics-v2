@@ -2,12 +2,13 @@ from __future__ import annotations
 
 import dataclasses
 import sqlite3
-from collections.abc import Callable, Collection, Iterator, Sequence
+from collections.abc import Callable, Iterator, Sequence
 from contextlib import contextmanager
 from typing import Any, TypeVar, cast
 
 from .connection import get_connection
 from .dataclasses import Row, Video
+from .filters import Predicate, where_clause
 from .tables import TABLES, check_fields, field_names, table_name
 
 R = TypeVar("R", bound=Row)
@@ -17,11 +18,7 @@ _CONVERTERS: dict[type[Row], dict[str, Callable[[Any], Any]]] = {
     Video: {"own": bool},
 }
 
-_OPERATORS = {"=", "!=", "<", "<=", ">", ">=", "LIKE", "IN"}
 _AGGREGATES = {"MIN", "MAX", "SUM", "COUNT"}
-
-# (column, operator, value). "=" / "!=" with None become IS NULL / IS NOT NULL; an empty IN matches nothing.
-Condition = tuple[str, str, object]
 
 
 @dataclasses.dataclass(frozen=True)
@@ -74,29 +71,6 @@ def connect(conn: sqlite3.Connection | None = None) -> Iterator[sqlite3.Connecti
         owned.close()
 
 
-def _where(model: type[Row], where: Sequence[Condition]) -> tuple[str, list[object]]:
-    """Build a WHERE clause from validated column conditions."""
-    clauses: list[str] = []
-    params: list[object] = []
-    for column, operator, value in where:
-        check_fields(model, (column,))
-        if operator not in _OPERATORS:
-            raise ValueError(f"unsupported operator {operator!r}")
-        if operator == "IN":
-            values = list(cast(Collection[object], value))
-            if not values:
-                clauses.append("0")
-                continue
-            clauses.append(f'"{column}" IN ({",".join("?" * len(values))})')
-            params.extend(values)
-        elif value is None and operator in ("=", "!="):
-            clauses.append(f'"{column}" IS {"NOT " if operator == "!=" else ""}NULL')
-        else:
-            clauses.append(f'"{column}" {operator} ?')
-            params.append(value)
-    return (f" WHERE {' AND '.join(clauses)}" if clauses else ""), params
-
-
 def _order(model: type[Row], order_by: Sequence[str]) -> str:
     """Build an ORDER BY clause from field names, where a leading '-' means descending."""
     terms = []
@@ -111,7 +85,7 @@ def select(
     model: type[R],
     fields: Sequence[str] | None = None,
     *,
-    where: Sequence[Condition] = (),
+    where: Sequence[Predicate] = (),
     order_by: Sequence[str] = (),
     limit: int | None = None,
     offset: int | None = None,
@@ -123,7 +97,7 @@ def select(
     if not names:
         raise ValueError("fields must name at least one column")
     check_fields(model, names)
-    where_sql, params = _where(model, where)
+    where_sql, params = where_clause(model, where)
     column_list = ", ".join(f'"{name}"' for name in names)
     sql = f"SELECT {'DISTINCT ' if distinct else ''}{column_list} FROM {table_name(model)}{where_sql}"
     sql += _order(model, order_by)
@@ -142,7 +116,7 @@ def select_one(
     model: type[R],
     fields: Sequence[str] | None = None,
     *,
-    where: Sequence[Condition] = (),
+    where: Sequence[Predicate] = (),
     order_by: Sequence[str] = (),
     conn: sqlite3.Connection | None = None,
 ) -> R | None:
@@ -156,14 +130,14 @@ def scalar(
     aggregate: str,
     column: str,
     *,
-    where: Sequence[Condition] = (),
+    where: Sequence[Predicate] = (),
     conn: sqlite3.Connection | None = None,
 ) -> Any:
     """Return MIN/MAX/SUM/COUNT of one column over the matching rows."""
     if aggregate not in _AGGREGATES:
         raise ValueError(f"unsupported aggregate {aggregate!r}")
     check_fields(model, (column,))
-    where_sql, params = _where(model, where)
+    where_sql, params = where_clause(model, where)
     sql = f'SELECT {aggregate}("{column}") FROM {table_name(model)}{where_sql}'
     with connect(conn) as connection:
         return connection.execute(sql, params).fetchone()[0]

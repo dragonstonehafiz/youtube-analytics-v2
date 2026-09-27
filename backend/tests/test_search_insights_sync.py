@@ -277,7 +277,7 @@ class SyncSearchRelatedInsightsStageTest(unittest.TestCase):
             "sync.stages.youtube.fetch_video_search_terms",
             return_value=analytics_api.SearchTermsResult(raw_row_count=0, terms=[]),
         ).start()
-        traffic = mock.patch("sync.stages.database.get_video_traffic_sources").start()
+        traffic = mock.patch("database.get_video_traffic_sources").start()
 
         stages.sync_search_insights("incremental", None, SyncCounts())
 

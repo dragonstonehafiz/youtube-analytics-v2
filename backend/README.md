@@ -64,19 +64,17 @@ backend/
     synchronization.py
     metadata.py
 
-  database/            # DB connection, row dataclasses, the reader and writer, query specifications, deletes, and reports
+  database/            # DB connection, row dataclasses, shared filters, the reader and writer, query specifications, and reports
     connection.py
     dataclasses/         # one data-only row dataclass per table
     tables.py            # shared class-to-table registry, keys, and write rules
+    filters.py           # shared WHERE compilation for reader selects and writer deletes
     reader.py            # all read execution
-    writer.py            # all inserts/updates: update-then-insert by key, None fields left untouched
+    writer.py            # all inserts/updates (update-then-insert by key, None fields left untouched) and filtered deletes
     queries.py           # non-executing SQL specifications for joins and aggregates
     video_statistics.py  # Legacy/New video statistics report
-    videos.py
-    playlists.py
     analytics.py
     traffic_sources.py
-    comments.py
     related_videos.py
     sync_runs.py
 
@@ -245,8 +243,9 @@ convenience that populates every table with a small, fixed dataset. Sync-stage t
 should not touch a database install `patch_stage_reads()`, which routes `sync.stages`'
 reader calls to an in-memory `StageReads` holding typed rows (worklist videos, covered
 months, stored video and comment IDs, the latest FX rate), and `patch_stage_writes()`,
-which records the rows `sync.stages` sends to the writer in a `StageWrites` (and can be
-told to fail for chosen rows). `covered_periods()` reads stored `sync_coverage` months for
+which records the rows and filtered deletes `sync.stages` sends to the writer in a
+`StageWrites` (it can be told to fail for chosen rows and to return a chosen deleted
+count per row class). `covered_periods()` reads stored `sync_coverage` months for
 database-backed assertions.
 `create_test_app()`/`create_test_client()` build a lifespan-free FastAPI app from one or
 more routers for API contract tests, so — unlike a real request through `server.app` —

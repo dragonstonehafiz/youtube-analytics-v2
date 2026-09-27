@@ -3,12 +3,12 @@ from __future__ import annotations
 from dataclasses import dataclass
 from datetime import date, timedelta
 
-import database
 import youtube
 from database import (
     Comment,
     CommentAuthor,
     FxRate,
+    NotExists,
     Playlist,
     PlaylistItem,
     SyncCoverage,
@@ -191,7 +191,7 @@ def sync_playlists(counts: SyncCounts) -> set[str]:
                 playlist["id"], len(all_items[playlist["id"]]), playlist.get("title"),
             )
             continue
-        counts.rows_deleted += database.delete_playlist_items(playlist["id"])
+        counts.rows_deleted += writer.delete(PlaylistItem, where=[("playlist_id", "=", playlist["id"])])
         for item in all_items[playlist["id"]]:
             writer.write(PlaylistItem.from_dict({**item, "updated_at": now()}))
             counts.rows_written += 1
@@ -203,7 +203,10 @@ def sync_playlists(counts: SyncCounts) -> set[str]:
         return playlist_video_ids
 
     status.raise_if_stopping()
-    counts.rows_deleted += database.delete_playlists_not_in([p["id"] for p in playlists])
+    # An empty listing never clears stored playlists.
+    if playlists:
+        playlist_ids = [p["id"] for p in playlists]
+        counts.rows_deleted += writer.delete(Playlist, where=[("id", "NOT IN", playlist_ids)])
     return playlist_video_ids
 
 
@@ -271,13 +274,13 @@ def sync_comments(scope: str, counts: SyncCounts) -> None:
             counts.rows_written - written_before, title,
         )
 
-    counts.rows_deleted += database.delete_orphan_comment_authors()
+    counts.rows_deleted += writer.delete(CommentAuthor, where=[NotExists(Comment, (("author_id", "id"),))])
 
 
 def sync_pruning(counts: SyncCounts, channel_owned_ids: set[str]) -> None:
     """Delete database videos absent from the confirmed channel-owned IDs."""
     status.raise_if_stopping()
-    counts.rows_deleted += database.delete_videos_not_in(sorted(channel_owned_ids))
+    counts.rows_deleted += writer.delete(Video, where=[("own", "=", True), ("id", "NOT IN", sorted(channel_owned_ids))])
 
 
 def sync_video_analytics(scope: str, year: int | None, counts: SyncCounts) -> None:

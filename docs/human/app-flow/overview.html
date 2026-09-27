@@ -58,7 +58,7 @@
       <h1>Overview</h1>
       <p>This page shows how data moves from the browser to the database, and from YouTube into the database.</p>
       <div class="meta-line">
-        <span>Source revision <code>a731fb1</code></span>
+        <span>Source revision <code>b2d6118</code></span>
       </div>
     </header>
 
@@ -182,7 +182,7 @@
         <div class="flow-arrow" aria-hidden="true"></div>
         <div class="flow-step yt"><strong>5 · Fetch</strong><small>Data API v3, Analytics API v2, or <code>yfinance</code> for FX.</small></div>
         <div class="flow-arrow" aria-hidden="true"></div>
-        <div class="flow-step db"><strong>6 · Write</strong><small>Each fetched record becomes a data class and goes through <code>writer.write</code>/<code>write_many</code>, as do <code>sync_coverage</code> months; one <code>sync_runs</code> row per started stage.</small></div>
+        <div class="flow-step db"><strong>6 · Write</strong><small>Each fetched record becomes a data class and goes through <code>writer.write</code>/<code>write_many</code>, as do <code>sync_coverage</code> months; the playlists, comments and pruning stages remove rows with <code>writer.delete</code>; one <code>sync_runs</code> row per started stage.</small></div>
       </div>
       <div class="card-grid">
         <div class="card"><h3>Live status</h3><p>Held in memory in <code>sync/status.py</code>, served by <code>GET /sync/status</code>, polled every 5 s by the top navigation and the Sync page.</p></div>

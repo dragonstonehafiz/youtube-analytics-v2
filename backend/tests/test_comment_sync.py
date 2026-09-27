@@ -12,7 +12,7 @@ from googleapiclient.errors import HttpError
 from logging_config import configure_logging, reset_logging
 from sync import stages
 from sync.stages import COMMENT_INCREMENTAL_OVERLAP, SyncCounts
-from database import Comment, CommentAuthor
+from database import Comment, CommentAuthor, NotExists
 from tests.support import owned_videos, patch_stage_reads, patch_stage_writes
 from youtube import data_api
 
@@ -81,9 +81,6 @@ class CommentStageTestCase(unittest.TestCase):
         self.reads = patch_stage_reads()
         self.reads.videos = owned_videos("v1", title="A video")
         self.writes = patch_stage_writes()
-        self.cleanup = mock.patch(
-            "sync.stages.database.delete_orphan_comment_authors", return_value=0
-        ).start()
         self.iter_threads = mock.patch("sync.stages.youtube.iter_comment_threads").start()
 
     @property
@@ -195,12 +192,15 @@ class CommentStageBehaviourTest(CommentStageTestCase):
         self.assertEqual(counts.rows_written, 3)
 
     def test_orphan_author_cleanup_counts_as_deletions(self) -> None:
-        self.cleanup.return_value = 4
+        self.writes.deleted[CommentAuthor] = 4
         self.iter_threads.return_value = iter([])
         counts = SyncCounts()
 
         stages.sync_comments("incremental", counts)
 
+        self.assertEqual(
+            self.writes.deletes, [(CommentAuthor, [NotExists(Comment, (("author_id", "id"),))])]
+        )
         self.assertEqual(counts.rows_deleted, 4)
 
     def test_takes_its_worklist_from_the_database_only(self) -> None:
