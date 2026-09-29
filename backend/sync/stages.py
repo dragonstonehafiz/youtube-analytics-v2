@@ -16,10 +16,10 @@ from database import (
     VideoAnalytics,
     VideoTrafficSource,
     now,
-    queries,
     reader,
     writer,
 )
+from database.reports import catalog
 from logging_config import exception_context, get_logger
 
 from . import coverage, monthly_insights, status, write_preparation
@@ -218,7 +218,7 @@ def _comment_bootstrap_cutoff(today: date) -> str:
 def sync_comments(scope: str, counts: SyncCounts) -> None:
     """Sync top-level comments for every stored owned video."""
     cutoff = _comment_bootstrap_cutoff(date.today())
-    videos = reader.fetch(Video, queries.owned_video_worklist())
+    videos = catalog.owned_video_worklist()
     total = len(videos)
 
     for i, video in enumerate(videos, start=1):
@@ -289,7 +289,7 @@ def sync_video_analytics(scope: str, year: int | None, counts: SyncCounts) -> No
     effective_end = _effective_range_end(scope, year, today - timedelta(days=1))
     end_date = effective_end.isoformat()
 
-    videos = reader.fetch(Video, queries.owned_video_worklist(published_through=end_date))
+    videos = catalog.owned_video_worklist(published_through=end_date)
     total = len(videos)
     for i, video in enumerate(videos, start=1):
         if i > 1:
@@ -343,7 +343,7 @@ def sync_video_traffic_sources(scope: str, year: int | None, counts: SyncCounts)
     effective_end = _effective_range_end(scope, year, today - timedelta(days=1))
     end_date = effective_end.isoformat()
 
-    videos = reader.fetch(Video, queries.owned_video_worklist(published_through=end_date))
+    videos = catalog.owned_video_worklist(published_through=end_date)
     total = len(videos)
     for i, video in enumerate(videos, start=1):
         if i > 1:
@@ -399,7 +399,7 @@ def sync_search_insights(scope: str, year: int | None, counts: SyncCounts) -> No
     # Captured once so a midnight rollover mid-run cannot change the worklist. Used only
     # as the incremental fallback for a video with no publish date to compute a range from.
     incremental_windows = monthly_insights.monthly_search_windows(today)
-    videos = reader.fetch(Video, queries.owned_video_worklist(published_through=effective_end.isoformat()))
+    videos = catalog.owned_video_worklist(published_through=effective_end.isoformat())
     total = len(videos)
 
     for i, video in enumerate(videos, start=1):
@@ -457,7 +457,7 @@ def sync_related_video_insights(scope: str, year: int | None, counts: SyncCounts
     # Captured once so a midnight rollover mid-run cannot change the worklist. Used only
     # as the incremental fallback for a video with no publish date to compute a range from.
     incremental_windows = monthly_insights.monthly_search_windows(today)
-    videos = reader.fetch(Video, queries.owned_video_worklist(published_through=effective_end.isoformat()))
+    videos = catalog.owned_video_worklist(published_through=effective_end.isoformat())
     total = len(videos)
     newly_encountered_ids: set[str] = set()
 

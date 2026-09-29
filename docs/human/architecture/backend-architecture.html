@@ -55,7 +55,7 @@
       <h1>Backend architecture</h1>
       <p>This page shows what each part of the backend does and how the parts connect.</p>
       <div class="meta-line">
-        <span>Source revision <code>ab9b0f4</code></span>
+        <span>Source revision <code>53b29e4</code></span>
       </div>
     </header>
 
@@ -64,7 +64,7 @@
       <div class="card-grid">
         <div class="card"><h3><span class="tag muted">server.py</span></h3><p>Starts the web server, adds the routes, and prepares the database.</p></div>
         <div class="card"><h3><span class="tag route">routes/</span></h3><p>The web API: one file per area, each answering frontend requests with data from the database.</p></div>
-        <div class="card"><h3><span class="tag db">database/</span></h3><p>The only code that touches SQLite: data classes, the reader, the writer, and shared SQL.</p></div>
+        <div class="card"><h3><span class="tag db">database/</span></h3><p>The only code that touches SQLite: data classes, the reader, the writer, and the reports that run joined and grouped reads.</p></div>
         <div class="card"><h3><span class="tag sync">sync/</span></h3><p>Downloads data from YouTube into the database when you run a sync.</p></div>
         <div class="card"><h3><span class="tag yt">youtube/</span></h3><p>Signs in to Google and calls the YouTube APIs.</p></div>
         <div class="card"><h3><span class="tag muted">logging_config.py</span></h3><p>Writes the application and sync log files.</p></div>
@@ -87,7 +87,7 @@
           <g class="node"><rect x="360" y="20" width="180" height="56" rx="8"/><text class="title" x="450" y="44" text-anchor="middle">server.py</text><text class="sub" x="450" y="62" text-anchor="middle">ASGI entry</text></g>
           <g class="node route"><rect x="80" y="140" width="200" height="64" rx="8"/><text class="title" x="180" y="166" text-anchor="middle">routes/</text><text class="sub" x="180" y="186" text-anchor="middle">38 endpoints</text></g>
           <g class="node sync"><rect x="400" y="140" width="200" height="64" rx="8"/><text class="title" x="500" y="166" text-anchor="middle">sync/</text><text class="sub" x="500" y="186" text-anchor="middle">plans · stages · status</text></g>
-          <g class="node db"><rect x="80" y="290" width="200" height="64" rx="8"/><text class="title" x="180" y="316" text-anchor="middle">database/</text><text class="sub" x="180" y="336" text-anchor="middle">rows · reader · writer</text></g>
+          <g class="node db"><rect x="80" y="290" width="200" height="64" rx="8"/><text class="title" x="180" y="316" text-anchor="middle">database/</text><text class="sub" x="180" y="336" text-anchor="middle">rows · reader · writer · reports</text></g>
           <g class="node yt"><rect x="400" y="290" width="200" height="64" rx="8"/><text class="title" x="500" y="316" text-anchor="middle">youtube/</text><text class="sub" x="500" y="336" text-anchor="middle">API clients</text></g>
           <g class="node"><rect x="680" y="290" width="180" height="64" rx="8"/><text class="title" x="770" y="316" text-anchor="middle">logging_config.py</text><text class="sub" x="770" y="336" text-anchor="middle">shared logging</text></g>
 
@@ -123,13 +123,15 @@
         <div class="flow-arrow" aria-hidden="true"></div>
         <div class="flow-step route"><strong>Route handler</strong><small>Checks the video or playlist exists</small></div>
         <div class="flow-arrow" aria-hidden="true"></div>
+        <div class="flow-step db"><strong>Report</strong><small>Holds the SQL, fills missing days, and shapes the result</small></div>
+        <div class="flow-arrow" aria-hidden="true"></div>
         <div class="flow-step db"><strong>Reader</strong><small>Runs the SQL and returns data classes</small></div>
         <div class="flow-arrow" aria-hidden="true"></div>
         <div class="flow-step db"><strong>Connection</strong><small><code>connection.get_connection()</code> → SQLite</small></div>
         <div class="flow-arrow" aria-hidden="true"></div>
-        <div class="flow-step route"><strong>Response</strong><small>Data classes become JSON</small></div>
+        <div class="flow-step route"><strong>Response</strong><small>The report's result becomes JSON</small></div>
       </div>
-      <p>Playlist handlers first load the playlist's video IDs, then run the same read as the channel-wide handler.</p>
+      <p>Playlist handlers first load the playlist's video IDs, then call the same report as the channel-wide handler. Single-video handlers call it with that one video's ID.</p>
 
       <h3>Sync</h3>
       <div class="flow">
@@ -149,9 +151,9 @@
     <section id="observations">
       <h2>Observations</h2>
       <div class="card-grid">
-        <div class="card"><h3>Broad modules</h3><p><code>sync/stages.py</code> holds all nine stages; <code>database/queries.py</code> holds all 17 SQL definitions.</p></div>
+        <div class="card"><h3>Broad modules</h3><p><code>sync/stages.py</code> holds all nine stages.</p></div>
         <div class="card"><h3>Unused at runtime</h3><p><code>start_background_scheduler()</code>, <code>synced_today()</code>, and <code>run_plan()</code>.</p></div>
-        <div class="card"><h3>Re-export files</h3><p>The <code>database</code>, <code>sync</code> and <code>youtube</code> packages re-export every public name (22, 32 and 15).</p></div>
+        <div class="card"><h3>Re-export files</h3><p>The <code>database</code>, <code>sync</code> and <code>youtube</code> packages re-export their public names (20, 31 and 15). Report modules in <code>database/reports/</code> are imported directly instead.</p></div>
       </div>
     </section>
 

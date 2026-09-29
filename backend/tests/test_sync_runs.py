@@ -7,13 +7,13 @@ from unittest import mock
 
 import database
 from database import SyncRun, connection, writer
-from routes.synchronization import sync_runs
+from database.reports import sync_history
 from tests.support import IsolatedDatabaseTestCase
 
 
 def _history(page: int, page_size: int) -> tuple[list[dict], int]:
-    """Return the sync-history route's batches and total for one page."""
-    body = sync_runs(page=page, page_size=page_size)
+    """Return the sync-history report's batches and total for one page."""
+    body = sync_history.sync_batches(page=page, page_size=page_size)
     return body["items"], body["total"]
 
 
@@ -349,6 +349,20 @@ class BatchStatusTest(SyncRunsTestCase):
         self._seed("2024-05-01T10:01:00+00:00", "batch-a")
 
         self.assertEqual(self._status_of_only_batch(), "incomplete")
+
+    def test_only_unknown_statuses_never_report_success(self) -> None:
+        run_id = self._seed("2024-05-01T10:00:00+00:00", "batch-a")
+        self._finish(run_id, "mystery")
+
+        self.assertEqual(self._status_of_only_batch(), "mystery")
+
+    def test_a_known_status_outranks_an_unknown_one(self) -> None:
+        unknown = self._seed("2024-05-01T10:00:00+00:00", "batch-a")
+        self._finish(unknown, "mystery")
+        cancelled = self._seed("2024-05-01T10:01:00+00:00", "batch-a")
+        self._finish(cancelled, "cancelled")
+
+        self.assertEqual(self._status_of_only_batch(), "cancelled")
 
     def test_status_is_scoped_to_its_own_batch(self) -> None:
         healthy = self._seed("2024-05-01T10:00:00+00:00", "batch-a")

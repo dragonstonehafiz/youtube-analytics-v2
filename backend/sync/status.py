@@ -1,24 +1,10 @@
 from __future__ import annotations
 
 import threading
-from collections.abc import Iterable, Sequence
+from collections.abc import Sequence
 from typing import Literal, TypedDict
 
 SyncStageState = Literal["pending", "running", "success", "failed", "cancelled"]
-
-
-# Worst-first. A batch reports the most severe status among its stored stages.
-_BATCH_STATUS_PRECEDENCE = ("failed", "incomplete", "running", "cancelled", "success")
-
-
-def batch_status(statuses: Iterable[str]) -> str:
-    """Return a stored batch's overall status: failed > incomplete > running > cancelled > success."""
-    present = set(statuses)
-    for status in _BATCH_STATUS_PRECEDENCE:
-        if status in present:
-            return status
-    # An unrecognized stored status must never be reported as a success.
-    return next(iter(present), "success")
 
 
 class SyncStageStatus(TypedDict):

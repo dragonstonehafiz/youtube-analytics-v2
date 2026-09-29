@@ -90,8 +90,7 @@ indefinitely and are safe to delete between runs.
 | Path | Responsibility |
 |---|---|
 | `server.py` | FastAPI app construction, CORS, lifespan (`init_db` → stranded `sync_runs` sweep through `writer.update()`) |
-| `routes/videos.py`, `routes/playlists.py`, `routes/analytics.py`, `routes/comments.py`, `routes/synchronization.py`, `routes/metadata.py` | API route handlers, grouped by resource. They read through `database.reader` (directly, or with a `database.queries` specification) and serialize row dataclasses with `to_dict(fields=...)`, or call `database.get_video_stats()`; `routes/__init__.py` aggregates them in a fixed order into one `router` |
-| `routes/daily_series.py` | Shared daily-series route helpers: the analytics metric defaults and traffic-source `DateFill` passed to the reader, and the traffic-source row serializer; registers no routes |
+| `routes/videos.py`, `routes/playlists.py`, `routes/analytics.py`, `routes/comments.py`, `routes/synchronization.py`, `routes/metadata.py` | API route handlers, grouped by resource. They validate parameters, raise 404s, and return a `database.reports` function's finished result (adding an `{items: …}`/`{item: …}` envelope where needed); `routes/__init__.py` aggregates them in a fixed order into one `router` |
 | `routes/video_scope.py` | Shared route helpers `require_owned_video()`, `require_playlist()` (404 existence checks through the reader), and `resolve_playlist_video_ids()` (playlist 404, then member IDs, for every playlist-scoped handler); registers no routes |
 | `sync/status.py` | Global sync-status lifecycle (`idle \| running \| stopping \| success \| failed \| cancelled`, plus message) behind one lock, with `try_begin_sync()`/`request_stop()` reservation primitives and the `raise_if_stopping()` cooperative-cancellation checkpoint |
 | `sync/plans.py` | Plan types, canonical `STAGE_ORDER`, derived `FULL_SYNC_TYPES`, available years, `validate_plan()` |
@@ -105,19 +104,18 @@ indefinitely and are safe to delete between runs.
 | `youtube/data_api.py` | YouTube Data API v3 client, pagination, Shorts detection, video/playlist/comment-thread fetchers |
 | `youtube/analytics_api.py` | YouTube Analytics API v2 client, retry/backoff, date chunking, daily analytics/traffic-source generators |
 | `logging_config.py` | Shared logging configuration: `TimezoneAwareFormatter`, `configure_logging()`, `get_logger(area)`, `exception_context()` |
-| `database/connection.py` | Connection setup, `init_db()`, `now()` (UTC timestamp), shared `_month_bound_conditions()` |
+| `database/connection.py` | Connection setup, `init_db()`, `now()` (UTC timestamp) |
 | `database/dataclasses/` | One data-only row dataclass per table (`Video`, `Playlist`, …), every field defaulting to `None`, with shared `from_dict()`/`to_dict(fields=...)` conversion |
 | `database/tables.py` | Shared row-class → table registry, primary keys, generated-key and non-decreasing-column rules, used by both reader and writer |
 | `database/filters.py` | Shared validated `WHERE` compilation from tuple conditions and `NotExists` predicates, used by reader selects and writer updates and deletes |
 | `database/reader.py` | All read execution: `select`/`select_one`/`scalar` for one table, `fetch`/`fetch_joined`/`fetch_scalar` for code-owned SQL, optional daily date filling (`DateFill`), per-field grouping of results (`group_by`), and connection borrowing |
 | `database/writer.py` | Every insert/update/delete: `write()`/`write_many()` update-then-insert by key, leaving `None` fields untouched (`write()` can return persisted fields such as a generated ID); `update()` changes only the rows matching a required filter and never inserts; `delete()` removes the rows matching a required filter; each call runs in one committed transaction or a savepoint on a borrowed one |
-| `database/queries.py` | Non-executing `Query` specifications for joins, grouping, and ranking shared by routes and sync |
-| `database/video_statistics.py` | `get_video_stats()` Legacy/New report |
+| `database/reports/` | Purpose-based read functions that own their SQL, reader calls, date filling, grouping, and serialization and return finished results: `analytics.py`, `traffic.py`, `catalog.py`, `comments.py`, `video_statistics.py`, `sync_history.py`, plus shared SQL fragments in `_conditions.py` |
 | `schema.sql` | SQLite schema definition (12 tables) — see `database.md` |
 | `scripts/issue-48-migration.py` | Standalone, one-time migration adding `videos.own` to a pre-existing database — not run by `init_db()` (see `database.md`) |
 | `scripts/issue-62-migration.py` | Standalone, one-time `sync_coverage` backfill for a pre-existing database — not run by `init_db()` (see `database.md`) |
 
-Each of `routes/`, `sync/`, `youtube/`, and `database/` re-exports its public callables from its package `__init__.py`, so other modules keep importing them as `import database`, `import sync`, `import youtube`, `from routes import router` — the split is internal.
+Each of `routes/`, `sync/`, `youtube/`, and `database/` re-exports its public callables from its package `__init__.py`, so other modules keep importing them as `import database`, `import sync`, `import youtube`, `from routes import router` — the split is internal. The exception is `database/reports/`, whose modules callers import explicitly (`from database.reports import catalog`).
 
 ## Frontend structure
 
@@ -181,7 +179,6 @@ backend/
     synchronization.py
     metadata.py
     video_scope.py         # require_owned_video(), require_playlist(), resolve_playlist_video_ids()
-    daily_series.py        # daily analytics/traffic-source fill configuration and serializer
 
   sync/
     __init__.py            # re-exports the plan types/validation, status primitives,
@@ -202,14 +199,14 @@ backend/
     analytics_api.py
 
   database/
-    __init__.py              # re-exports row classes, reader, writer, queries, and get_video_stats()
+    __init__.py              # re-exports row classes, filters, reader, tables, and writer
     connection.py
     tables.py                # shared registry: tables, keys, write rules
     filters.py               # shared WHERE compilation for reads and deletes
     reader.py                # read execution
     writer.py                # insert/update/delete execution
-    queries.py               # non-executing query specifications
-    video_statistics.py      # get_video_stats()
+    reports/                 # purpose-based reports: analytics, traffic, catalog, comments,
+                             # video_statistics, sync_history, _conditions (shared SQL fragments)
     dataclasses/             # one row dataclass per table, plus base.py (from_dict/to_dict)
 
   scripts/

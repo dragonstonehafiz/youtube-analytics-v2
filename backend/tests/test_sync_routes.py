@@ -8,7 +8,8 @@ from fastapi import FastAPI
 from fastapi.testclient import TestClient
 
 import sync
-from database import SyncRun, queries, writer
+from database import SyncRun, writer
+from database.reports import sync_history
 from routes.synchronization import router
 from tests.support import IsolatedDatabaseTestCase
 
@@ -359,7 +360,7 @@ class RunsRouteTest(IsolatedDatabaseTestCase):
         for run in reversed(BATCH_RUNS):
             writer.write(SyncRun.from_dict(run))
         self.sync_batches = mock.patch(
-            "routes.synchronization.queries.sync_batches", wraps=queries.sync_batches
+            "routes.synchronization.sync_history.sync_batches", wraps=sync_history.sync_batches
         ).start()
         self.addCleanup(mock.patch.stopall)
 

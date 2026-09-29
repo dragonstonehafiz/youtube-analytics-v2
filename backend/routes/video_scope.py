@@ -2,7 +2,8 @@ from __future__ import annotations
 
 from fastapi import HTTPException
 
-from database import Playlist, Video, queries, reader
+from database import Playlist, Video, reader
+from database.reports import catalog
 
 
 def require_owned_video(video_id: str) -> None:
@@ -20,5 +21,4 @@ def require_playlist(playlist_id: str) -> None:
 def resolve_playlist_video_ids(playlist_id: str) -> list[str]:
     """Return valid playlist video IDs or raise 404 when the playlist is missing."""
     require_playlist(playlist_id)
-    videos = reader.fetch(Video, queries.playlist_owned_video_ids(playlist_id))
-    return [video.id for video in videos if video.id is not None]
+    return catalog.playlist_video_ids(playlist_id)

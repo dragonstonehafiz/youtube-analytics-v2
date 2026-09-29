@@ -12,7 +12,8 @@ import pandas as pd
 from googleapiclient.errors import HttpError
 
 from logging_config import configure_logging, reset_logging
-from database import FxRate, RelatedVideo, VideoAnalytics, VideoTrafficSource, queries
+from database import FxRate, RelatedVideo, VideoAnalytics, VideoTrafficSource
+from database.reports import catalog
 from sync import stages
 from sync.monthly_insights import MonthlyWindow
 from sync.stages import SyncCounts
@@ -333,7 +334,7 @@ class VideoAnalyticsStageDetailLoggingTest(unittest.TestCase):
 
     def test_a_video_published_after_the_effective_end_is_prefiltered_out(self) -> None:
         """Verify future videos are excluded before analytics processing."""
-        worklist = mock.patch("sync.stages.queries.owned_video_worklist", wraps=queries.owned_video_worklist).start()
+        worklist = mock.patch("sync.stages.catalog.owned_video_worklist", wraps=catalog.owned_video_worklist).start()
         fetch = mock.patch("sync.stages.youtube.iter_video_analytics").start()
         counts = SyncCounts()
 
@@ -346,7 +347,7 @@ class VideoAnalyticsStageDetailLoggingTest(unittest.TestCase):
         self.assertEqual(counts.rows_fetched, 0)
 
     def test_incremental_and_all_request_yesterday_as_the_effective_end(self) -> None:
-        worklist = mock.patch("sync.stages.queries.owned_video_worklist", wraps=queries.owned_video_worklist).start()
+        worklist = mock.patch("sync.stages.catalog.owned_video_worklist", wraps=catalog.owned_video_worklist).start()
         yesterday = (date.today() - timedelta(days=1)).isoformat()
 
         stages.sync_video_analytics("incremental", None, SyncCounts())
@@ -357,7 +358,7 @@ class VideoAnalyticsStageDetailLoggingTest(unittest.TestCase):
         worklist.assert_called_once_with(published_through=yesterday)
 
     def test_year_scope_clamps_the_effective_end_to_the_earlier_of_year_end_and_yesterday(self) -> None:
-        worklist = mock.patch("sync.stages.queries.owned_video_worklist", wraps=queries.owned_video_worklist).start()
+        worklist = mock.patch("sync.stages.catalog.owned_video_worklist", wraps=catalog.owned_video_worklist).start()
 
         stages.sync_video_analytics("year", 2020, SyncCounts())
         worklist.assert_called_once_with(published_through="2020-12-31")
@@ -441,7 +442,7 @@ class VideoTrafficSourcesStageDetailLoggingTest(unittest.TestCase):
         self.assertEqual(messages, ["video_traffic_sources 1/1 video=v1 skipped reason=no_publish_date title='No Publish Date'"])
 
     def test_a_video_published_after_the_effective_end_is_prefiltered_out(self) -> None:
-        worklist = mock.patch("sync.stages.queries.owned_video_worklist", wraps=queries.owned_video_worklist).start()
+        worklist = mock.patch("sync.stages.catalog.owned_video_worklist", wraps=catalog.owned_video_worklist).start()
         fetch = mock.patch("sync.stages.youtube.iter_video_traffic_sources").start()
         counts = SyncCounts()
 
@@ -454,7 +455,7 @@ class VideoTrafficSourcesStageDetailLoggingTest(unittest.TestCase):
         self.assertEqual(counts.rows_fetched, 0)
 
     def test_year_scope_clamps_the_effective_end_to_the_earlier_of_year_end_and_yesterday(self) -> None:
-        worklist = mock.patch("sync.stages.queries.owned_video_worklist", wraps=queries.owned_video_worklist).start()
+        worklist = mock.patch("sync.stages.catalog.owned_video_worklist", wraps=catalog.owned_video_worklist).start()
 
         stages.sync_video_traffic_sources("year", 2020, SyncCounts())
         worklist.assert_called_once_with(published_through="2020-12-31")
@@ -518,7 +519,7 @@ class RelatedVideoInsightsStageDetailLoggingTest(unittest.TestCase):
         self.assertEqual(counts.rows_fetched, 0)
 
     def test_a_video_published_after_the_effective_end_is_prefiltered_out(self) -> None:
-        worklist = mock.patch("sync.stages.queries.owned_video_worklist", wraps=queries.owned_video_worklist).start()
+        worklist = mock.patch("sync.stages.catalog.owned_video_worklist", wraps=catalog.owned_video_worklist).start()
         fetch = mock.patch("sync.stages.youtube.fetch_video_related_videos").start()
         counts = SyncCounts()
 
@@ -531,7 +532,7 @@ class RelatedVideoInsightsStageDetailLoggingTest(unittest.TestCase):
         self.assertEqual(counts.rows_fetched, 0)
 
     def test_year_scope_clamps_the_effective_end_to_the_earlier_of_year_end_and_yesterday(self) -> None:
-        worklist = mock.patch("sync.stages.queries.owned_video_worklist", wraps=queries.owned_video_worklist).start()
+        worklist = mock.patch("sync.stages.catalog.owned_video_worklist", wraps=catalog.owned_video_worklist).start()
 
         stages.sync_related_video_insights("year", 2020, SyncCounts())
         worklist.assert_called_once_with(published_through="2020-12-31")

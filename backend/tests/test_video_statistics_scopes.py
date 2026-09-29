@@ -5,6 +5,7 @@ import unittest
 import database
 from database import writer
 from database import Video, reader
+from database.reports import video_statistics
 from routes.playlists import router as playlists_router
 from routes.videos import router as videos_router
 from tests.support import (
@@ -243,32 +244,32 @@ class VideoStatisticsScopeTest(VideoStatisticsTestCase):
     PLAYLIST_MEMBERS = ["v-old", "v-new", "v-short", "v-hidden", "v-undated", "v-silent"]
 
     def test_omitted_scope_matches_channel(self) -> None:
-        self.assertEqual(database.get_video_stats(), self._channel())
+        self.assertEqual(video_statistics.get_video_stats(), self._channel())
 
     def test_empty_scope_returns_zeroed_statistics(self) -> None:
-        self.assertEqual(database.get_video_stats(video_ids=[]), EMPTY_STATS)
+        self.assertEqual(video_statistics.get_video_stats(video_ids=[]), EMPTY_STATS)
 
     def test_member_scope_matches_playlist_route(self) -> None:
-        self.assertEqual(database.get_video_stats(video_ids=self.PLAYLIST_MEMBERS), self._playlist())
+        self.assertEqual(video_statistics.get_video_stats(video_ids=self.PLAYLIST_MEMBERS), self._playlist())
 
     def test_duplicate_ids_do_not_multiply_results(self) -> None:
         self.assertEqual(
-            database.get_video_stats(video_ids=[*self.PLAYLIST_MEMBERS, "v-old", "v-hidden"]),
-            database.get_video_stats(video_ids=self.PLAYLIST_MEMBERS),
+            video_statistics.get_video_stats(video_ids=[*self.PLAYLIST_MEMBERS, "v-old", "v-hidden"]),
+            video_statistics.get_video_stats(video_ids=self.PLAYLIST_MEMBERS),
         )
 
     def test_external_and_nonexistent_ids_are_ignored(self) -> None:
         self.assertEqual(
-            database.get_video_stats(video_ids=[*self.PLAYLIST_MEMBERS, "v-external", "missing-video"]),
-            database.get_video_stats(video_ids=self.PLAYLIST_MEMBERS),
+            video_statistics.get_video_stats(video_ids=[*self.PLAYLIST_MEMBERS, "v-external", "missing-video"]),
+            video_statistics.get_video_stats(video_ids=self.PLAYLIST_MEMBERS),
         )
 
     def test_scope_of_only_external_and_nonexistent_ids_returns_zeroes(self) -> None:
-        self.assertEqual(database.get_video_stats(video_ids=["v-external", "missing-video"]), EMPTY_STATS)
+        self.assertEqual(video_statistics.get_video_stats(video_ids=["v-external", "missing-video"]), EMPTY_STATS)
 
     def test_restricted_scope_uses_its_own_analytics_range(self) -> None:
         """The scope's analytics start (2024-01-25) follows both publication dates, so both are Legacy."""
-        self.assertEqual(database.get_video_stats(video_ids=["v-short", "v-hidden"]), _stats(
+        self.assertEqual(video_statistics.get_video_stats(video_ids=["v-short", "v-hidden"]), _stats(
             legacy_video_count=1, legacy_video_views=100, legacy_video_earnings_sgd=10.0,
             legacy_short_count=1, legacy_short_views=60, legacy_short_earnings_sgd=2.0,
             total_comments=9, video_comments=7, short_comments=2, total_public=1, total_unlisted=1,
@@ -276,8 +277,8 @@ class VideoStatisticsScopeTest(VideoStatisticsTestCase):
 
     def test_scope_accepts_a_set(self) -> None:
         self.assertEqual(
-            database.get_video_stats(video_ids=set(self.PLAYLIST_MEMBERS)),
-            database.get_video_stats(video_ids=self.PLAYLIST_MEMBERS),
+            video_statistics.get_video_stats(video_ids=set(self.PLAYLIST_MEMBERS)),
+            video_statistics.get_video_stats(video_ids=self.PLAYLIST_MEMBERS),
         )
 
 

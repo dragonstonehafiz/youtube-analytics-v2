@@ -74,23 +74,6 @@ class PerStageStatusTest(SyncStatusTestCase):
         ])
 
 
-class BatchStatusTest(unittest.TestCase):
-    def test_reports_the_most_severe_status(self) -> None:
-        order = ["failed", "incomplete", "running", "cancelled", "success"]
-        for index, expected in enumerate(order):
-            for weaker in order[index:]:
-                self.assertEqual(status.batch_status([weaker, expected]), expected)
-
-    def test_empty_input_is_success(self) -> None:
-        self.assertEqual(status.batch_status([]), "success")
-
-    def test_only_unknown_statuses_never_report_success(self) -> None:
-        self.assertEqual(status.batch_status(["mystery"]), "mystery")
-
-    def test_known_status_outranks_unknown(self) -> None:
-        self.assertEqual(status.batch_status(["mystery", "cancelled"]), "cancelled")
-
-
 class StopRequestTest(SyncStatusTestCase):
     def test_stop_is_idempotent_and_checkpoint_raises(self) -> None:
         self.assertFalse(status.request_stop())

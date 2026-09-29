@@ -64,15 +64,14 @@ backend/
     synchronization.py
     metadata.py
 
-  database/            # DB connection, row dataclasses, shared filters, the reader and writer, query specifications, and reports
+  database/            # DB connection, row dataclasses, shared filters, the reader and writer, and purpose-based reports
     connection.py
     dataclasses/         # one data-only row dataclass per table
     tables.py            # shared class-to-table registry, keys, and write rules
     filters.py           # shared WHERE compilation for reader selects and writer updates/deletes
     reader.py            # all read execution, including daily date filling and result grouping
     writer.py            # all inserts/updates (update-then-insert by key, None fields left untouched), filtered updates, and filtered deletes
-    queries.py           # non-executing SQL specifications for joins and aggregates
-    video_statistics.py  # Legacy/New video statistics report
+    reports/             # finished-result reads: analytics, traffic, catalog, comments, video_statistics, sync_history
 
   sync/                # Sync plans, orchestration, and an uncalled freshness-check scheduler
     status.py
@@ -237,7 +236,7 @@ API-shaped dictionaries for `sync.write_preparation`. It also has a `freeze_now(
 manager that pins the timestamps `database.now()` generates, and a `seed_dataset()`
 convenience that populates every table with a small, fixed dataset. Sync-stage tests that
 should not touch a database install `patch_stage_reads()`, which routes `sync.stages`'
-reader calls to an in-memory `StageReads` holding typed rows (worklist videos, covered
+reader and owned-video worklist calls to an in-memory `StageReads` holding typed rows (worklist videos, covered
 months, stored video and comment IDs, the latest FX rate), and `patch_stage_writes()`,
 which records the rows and filtered deletes `sync.stages` sends to the writer in a
 `StageWrites` (it can be told to fail for chosen rows and to return a chosen deleted

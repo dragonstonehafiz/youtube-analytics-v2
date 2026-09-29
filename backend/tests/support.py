@@ -98,9 +98,8 @@ class StageReads:
         self.comment_ids: set[str] = set()
         self.last_fx_rate: FxRate | None = None
 
-    def fetch(self, model: type, query: reader.Query, **kwargs: object) -> list[Video]:
+    def worklist(self, published_through: str | None = None) -> list[Video]:
         """Return the owned-video worklist."""
-        assert model is Video, model
         return list(self.videos)
 
     def select(self, model: type, fields: object = None, **kwargs: object) -> list:
@@ -123,10 +122,11 @@ class StageReads:
 
 
 def patch_stage_reads() -> StageReads:
-    """Route sync.stages reader calls to a fresh StageReads until mock.patch.stopall()."""
+    """Route sync.stages reader and worklist calls to a fresh StageReads until mock.patch.stopall()."""
     reads = StageReads()
-    for name in ("fetch", "select", "select_one"):
+    for name in ("select", "select_one"):
         mock.patch(f"sync.stages.reader.{name}", side_effect=getattr(reads, name)).start()
+    mock.patch("sync.stages.catalog.owned_video_worklist", side_effect=reads.worklist).start()
     return reads
 
 

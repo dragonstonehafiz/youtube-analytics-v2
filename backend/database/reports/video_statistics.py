@@ -1,9 +1,11 @@
+"""Legacy/New video statistics for the channel or a video-ID scope."""
+
 from __future__ import annotations
 
 from collections.abc import Collection
 
-from . import reader
-from .reader import Query
+from .. import reader
+from ..reader import Query
 
 _CATALOG_VALUES = (
     "legacy_video_count", "legacy_short_count", "new_video_count", "new_short_count",

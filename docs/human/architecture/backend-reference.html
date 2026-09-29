@@ -55,7 +55,7 @@
       <h1>Backend reference</h1>
       <p>This page shows what each backend file does and which functions each API route calls.</p>
       <div class="meta-line">
-        <span>Source revision <code>ab9b0f4</code></span>
+        <span>Source revision <code>53b29e4</code></span>
       </div>
     </header>
 
@@ -80,7 +80,6 @@
         <dt><code>synchronization.py</code></dt><dd>Starts and stops syncs, reports progress, and returns sync history.</dd>
         <dt><code>metadata.py</code></dt><dd>Returns the earliest publish year for the year dropdowns.</dd>
         <dt><code>video_scope.py</code></dt><dd>Returns 404 for a missing video or playlist, and loads a playlist's video IDs. Defines no endpoints.</dd>
-        <dt><code>daily_series.py</code></dt><dd>Holds the settings for filling missing days in chart data. Defines no endpoints.</dd>
       </dl>
       </div>
       <div class="card file-group">
@@ -92,8 +91,7 @@
         <dt><code>filters.py</code></dt><dd>Turns a list of conditions into a SQL <code>WHERE</code>.</dd>
         <dt><code>reader.py</code></dt><dd>Runs every read and returns data classes.</dd>
         <dt><code>writer.py</code></dt><dd>Runs every insert, update and delete.</dd>
-        <dt><code>queries.py</code></dt><dd>Holds the SQL for joined, grouped and ranked reads.</dd>
-        <dt><code>video_statistics.py</code></dt><dd>Calculates the Legacy/New statistics shown in the stats bar.</dd>
+        <dt><code>reports/</code></dt><dd>Runs the joined, grouped, ranked and paged reads and returns finished results. One file per purpose: <code>analytics.py</code>, <code>traffic.py</code>, <code>catalog.py</code>, <code>comments.py</code>, <code>video_statistics.py</code> (the Legacy/New stats bar) and <code>sync_history.py</code>.</dd>
         <dt><code>connection.py</code></dt><dd>Opens database connections and creates the tables.</dd>
       </dl>
       </div>
@@ -133,15 +131,15 @@
 
     <section id="route-functions">
       <h2>Route functions</h2>
-      <p>What each read returns and which endpoints use it. <code>queries.</code> names are SQL in <code>database/queries.py</code>, run through the reader.</p>
+      <p>What each read returns and which endpoints use it. Names such as <code>catalog.video_listing</code> are report functions in <code>database/reports/</code>; each runs its SQL through the reader and returns the finished result.</p>
       <div class="card file-group">
         <h3>Videos</h3>
         <p>Handled in <code>routes/videos.py</code> and <code>routes/metadata.py</code>.</p>
         <dl class="returns-list">
           <dt class="col-head">Read</dt><dd class="col-head">Returns</dd><dd class="col-head">Used by</dd>
-          <dt><code>queries.video_catalog</code></dt><dd>One page of videos with their lifetime earnings and watch hours.</dd><dd class="used-by"><code>GET /videos</code><br><code>GET /videos/{id}</code> (that one video)<br><code>GET /playlists/{id}/videos</code> (the playlist's video IDs)</dd>
-          <dt><code>get_video_stats</code></dt><dd>The stats bar numbers: legacy and new video counts, views and earnings, plus comment and privacy totals.</dd><dd class="used-by"><code>GET /videos/stats</code><br><code>GET /playlists/{id}/videos/stats</code> (the playlist's video IDs)</dd>
-          <dt><code>queries.videos_published</code></dt><dd>Videos published in the date range, used to mark upload days on the charts.</dd><dd class="used-by"><code>GET /videos/published</code></dd>
+          <dt><code>catalog.video_listing</code></dt><dd>Videos as the chosen fields, by default every column plus lifetime earnings and watch hours, one page at a time or all at once.</dd><dd class="used-by"><code>GET /videos</code> (one page)<br><code>GET /playlists/{id}/videos</code> (the playlist's video IDs, one page)<br><code>GET /videos/published</code> (five fields, all matches, oldest first)</dd>
+          <dt><code>catalog.video_detail</code></dt><dd>One video with its lifetime earnings and watch hours.</dd><dd class="used-by"><code>GET /videos/{id}</code></dd>
+          <dt><code>video_statistics.get_video_stats</code></dt><dd>The stats bar numbers: legacy and new video counts, views and earnings, plus comment and privacy totals.</dd><dd class="used-by"><code>GET /videos/stats</code><br><code>GET /playlists/{id}/videos/stats</code> (the playlist's video IDs)</dd>
           <dt><code>require_owned_video</code></dt><dd>Returns 404 unless the video is one of this channel's.</dd><dd class="used-by">404 check: <code>GET /videos/{id}/analytics</code>, <code>/videos/{id}/traffic-sources</code>, <code>/analytics/videos/{id}/search-insights</code>, <code>/analytics/videos/{id}/related-videos/referrers</code>, <code>/comments/videos/{id}</code></dd>
           <dt><code>reader.scalar(Video, "MIN", "published_at")</code></dt><dd>The earliest publish year, for the year dropdowns.</dd><dd class="used-by"><code>GET /meta/date-range</code></dd>
         </dl>
@@ -151,63 +149,62 @@
         <p>Handled in <code>routes/playlists.py</code> and <code>routes/video_scope.py</code>.</p>
         <dl class="returns-list">
           <dt class="col-head">Read</dt><dd class="col-head">Returns</dd><dd class="col-head">Used by</dd>
-          <dt><code>queries.playlist_catalog</code></dt><dd>One page of playlists with their total views and earnings.</dd><dd class="used-by"><code>GET /playlists</code><br><code>GET /playlists/{id}</code> (that one playlist)</dd>
+          <dt><code>catalog.playlist_listing</code></dt><dd>One page of playlists with their total views and earnings.</dd><dd class="used-by"><code>GET /playlists</code></dd>
+          <dt><code>catalog.playlist_detail</code></dt><dd>One playlist with its total views and earnings.</dd><dd class="used-by"><code>GET /playlists/{id}</code></dd>
           <dt><code>require_playlist</code></dt><dd>Returns 404 if the playlist doesn't exist.</dd><dd class="used-by">404 check: <code>/comments/playlists/{id}</code>, and every endpoint that uses <code>resolve_playlist_video_ids</code></dd>
-          <dt><code>queries.playlist_owned_video_ids</code></dt><dd>The IDs of the channel's videos in a playlist.</dd><dd class="used-by"><code>GET /playlists/{id}/videos/stats</code><br><code>GET /playlists/{id}/videos</code><br>every <code>GET /analytics/playlists/{id}…</code> endpoint<br><code>GET /videos/published</code> with a playlist ID</dd>
+          <dt><code>catalog.playlist_video_ids</code></dt><dd>The IDs of the channel's videos in a playlist.</dd><dd class="used-by"><code>GET /playlists/{id}/videos/stats</code><br><code>GET /playlists/{id}/videos</code><br>every <code>GET /analytics/playlists/{id}…</code> endpoint<br><code>GET /videos/published</code> with a playlist ID</dd>
         </dl>
       </div>
       <div class="card file-group">
         <h3>Daily analytics</h3>
-        <p>Defined in <code>database/queries.py</code>.</p>
+        <p>Defined in <code>database/reports/analytics.py</code>.</p>
         <dl class="returns-list">
           <dt class="col-head">Read</dt><dd class="col-head">Returns</dd><dd class="col-head">Used by</dd>
-          <dt><code>queries.video_daily_analytics</code></dt><dd>One video's daily metrics, with missing days filled.</dd><dd class="used-by"><code>GET /videos/{id}/analytics</code></dd>
-          <dt><code>queries.daily_analytics_totals</code></dt><dd>Daily metrics summed across videos, one row per day for videos and for Shorts.</dd><dd class="used-by"><code>GET /analytics/videos</code><br><code>GET /analytics/playlists/{id}</code></dd>
-          <dt><code>queries.top_videos_by_views</code></dt><dd>The top videos for the date range by views or watch time.</dd><dd class="used-by"><code>GET /analytics/videos/top</code> (top 10)<br><code>GET /analytics/playlists/{id}/top</code> (top 10)</dd>
+          <dt><code>analytics.daily_analytics</code></dt><dd>Daily metrics summed across the chosen videos, one row per day for videos and for Shorts, with missing days filled. For one video, only its own type is filled.</dd><dd class="used-by"><code>GET /analytics/videos</code><br><code>GET /analytics/playlists/{id}</code> (the playlist's video IDs)<br><code>GET /videos/{id}/analytics</code> (that one video)</dd>
+          <dt><code>analytics.top_videos</code></dt><dd>The top videos for the date range by views or watch time.</dd><dd class="used-by"><code>GET /analytics/videos/top</code> (top 10)<br><code>GET /analytics/playlists/{id}/top</code> (top 10)</dd>
         </dl>
       </div>
       <div class="card file-group">
         <h3>Traffic sources</h3>
-        <p>Defined in <code>database/queries.py</code>.</p>
+        <p>Defined in <code>database/reports/traffic.py</code>.</p>
         <dl class="returns-list">
           <dt class="col-head">Read</dt><dd class="col-head">Returns</dd><dd class="col-head">Used by</dd>
-          <dt><code>queries.video_daily_traffic_sources</code></dt><dd>One video's daily views per traffic source.</dd><dd class="used-by"><code>GET /videos/{id}/traffic-sources</code></dd>
-          <dt><code>queries.daily_traffic_source_totals</code></dt><dd>Daily views per traffic source, summed across videos.</dd><dd class="used-by"><code>GET /analytics/traffic-sources</code><br><code>GET /analytics/playlists/{id}/traffic-sources</code></dd>
-          <dt><code>queries.traffic_source_video_totals</code></dt><dd>Each video's views per traffic source; the route keeps the top 10 per source.</dd><dd class="used-by"><code>GET /analytics/traffic-sources/top</code> (10 per source)<br><code>GET /analytics/playlists/{id}/traffic-sources/top</code> (10 per source)</dd>
+          <dt><code>traffic.daily_traffic_sources</code></dt><dd>Daily views per traffic source, summed across the chosen videos, with missing days filled.</dd><dd class="used-by"><code>GET /analytics/traffic-sources</code><br><code>GET /analytics/playlists/{id}/traffic-sources</code> (the playlist's video IDs)<br><code>GET /videos/{id}/traffic-sources</code> (that one video)</dd>
+          <dt><code>traffic.top_videos_by_traffic_source</code></dt><dd>The top 10 videos by views for each traffic source.</dd><dd class="used-by"><code>GET /analytics/traffic-sources/top</code> (10 per source)<br><code>GET /analytics/playlists/{id}/traffic-sources/top</code> (10 per source)</dd>
         </dl>
       </div>
       <div class="card file-group">
         <h3>Search terms</h3>
-        <p>Defined in <code>database/queries.py</code>. Dates are widened to whole months.</p>
+        <p>Defined in <code>database/reports/traffic.py</code>. Dates are widened to whole months.</p>
         <dl class="returns-list">
           <dt class="col-head">Read</dt><dd class="col-head">Returns</dd><dd class="col-head">Used by</dd>
-          <dt><code>queries.search_term_totals</code></dt><dd>Search terms that brought viewers, with views per term.</dd><dd class="used-by"><code>GET /analytics/search-insights</code><br><code>GET /analytics/search-insights/top</code> (first 10)<br><code>GET /analytics/playlists/{id}/search-insights</code><br><code>GET /analytics/playlists/{id}/search-insights/top</code> (first 10)<br><code>GET /analytics/videos/{id}/search-insights</code></dd>
-          <dt><code>queries.videos_by_search_term</code></dt><dd>The videos viewers found through one search term.</dd><dd class="used-by"><code>GET /analytics/search-insights/videos</code><br><code>GET /analytics/playlists/{id}/search-insights/videos</code></dd>
+          <dt><code>traffic.search_terms</code></dt><dd>Search terms that brought viewers, with views per term.</dd><dd class="used-by"><code>GET /analytics/search-insights</code><br><code>GET /analytics/search-insights/top</code> (first 10)<br><code>GET /analytics/playlists/{id}/search-insights</code><br><code>GET /analytics/playlists/{id}/search-insights/top</code> (first 10)<br><code>GET /analytics/videos/{id}/search-insights</code></dd>
+          <dt><code>traffic.videos_by_search_term</code></dt><dd>The videos viewers found through one search term.</dd><dd class="used-by"><code>GET /analytics/search-insights/videos</code><br><code>GET /analytics/playlists/{id}/search-insights/videos</code></dd>
         </dl>
       </div>
       <div class="card file-group">
         <h3>Related videos</h3>
-        <p>Defined in <code>database/queries.py</code>. Dates are widened to whole months.</p>
+        <p>Defined in <code>database/reports/traffic.py</code>. Dates are widened to whole months.</p>
         <dl class="returns-list">
           <dt class="col-head">Read</dt><dd class="col-head">Returns</dd><dd class="col-head">Used by</dd>
-          <dt><code>queries.related_video_referrers</code></dt><dd>The videos that sent viewers here through Related Videos, plus the total named views.</dd><dd class="used-by"><code>GET /analytics/related-videos/referrers</code><br><code>GET /analytics/playlists/{id}/related-videos/referrers</code><br><code>GET /analytics/videos/{id}/related-videos/referrers</code></dd>
-          <dt><code>queries.related_video_destinations</code></dt><dd>The channel's videos one referring video sent viewers to.</dd><dd class="used-by"><code>GET /analytics/related-videos/destinations</code><br><code>GET /analytics/playlists/{id}/related-videos/destinations</code></dd>
+          <dt><code>traffic.related_video_referrers</code></dt><dd>The videos that sent viewers here through Related Videos, plus the total named views.</dd><dd class="used-by"><code>GET /analytics/related-videos/referrers</code><br><code>GET /analytics/playlists/{id}/related-videos/referrers</code><br><code>GET /analytics/videos/{id}/related-videos/referrers</code></dd>
+          <dt><code>traffic.related_video_destinations</code></dt><dd>The channel's videos one referring video sent viewers to.</dd><dd class="used-by"><code>GET /analytics/related-videos/destinations</code><br><code>GET /analytics/playlists/{id}/related-videos/destinations</code></dd>
         </dl>
       </div>
       <div class="card file-group">
         <h3>Comments</h3>
-        <p>Defined in <code>database/queries.py</code>.</p>
+        <p>Defined in <code>database/reports/comments.py</code>.</p>
         <dl class="returns-list">
           <dt class="col-head">Read</dt><dd class="col-head">Returns</dd><dd class="col-head">Used by</dd>
-          <dt><code>queries.comment_feed</code></dt><dd>One page of comments with their author and video.</dd><dd class="used-by"><code>GET /comments</code><br><code>GET /comments/videos/{id}</code><br><code>GET /comments/playlists/{id}</code></dd>
+          <dt><code>comments.comment_feed</code></dt><dd>One page of comments with their author and video.</dd><dd class="used-by"><code>GET /comments</code><br><code>GET /comments/videos/{id}</code><br><code>GET /comments/playlists/{id}</code></dd>
         </dl>
       </div>
       <div class="card file-group">
         <h3>Sync</h3>
-        <p>Defined in <code>database/queries.py</code>, <code>routes/synchronization.py</code> and <code>sync/status.py</code>.</p>
+        <p>Defined in <code>database/reports/sync_history.py</code> and <code>sync/status.py</code>.</p>
         <dl class="returns-list">
           <dt class="col-head">Read</dt><dd class="col-head">Returns</dd><dd class="col-head">Used by</dd>
-          <dt><code>queries.sync_batches</code></dt><dd>One page of past syncs; the route adds each sync's stages and overall status.</dd><dd class="used-by"><code>GET /sync/runs</code></dd>
+          <dt><code>sync_history.sync_batches</code></dt><dd>One page of past syncs, each with its stages and overall status.</dd><dd class="used-by"><code>GET /sync/runs</code></dd>
           <dt><code>sync.get_sync_status</code></dt><dd>The live sync state, read from memory.</dd><dd class="used-by"><code>GET /sync/status</code></dd>
         </dl>
       </div>
@@ -219,60 +216,60 @@
       <div class="card file-group">
         <h3><code>routes/videos.py</code></h3>
         <ul class="route-lines">
-          <li><code>GET /videos</code> → <code>queries.video_catalog</code> (count and page on one connection)</li>
-          <li><code>GET /videos/stats</code> → <code>get_video_stats</code></li>
-          <li><code>GET /videos/published</code> → <code>resolve_playlist_video_ids</code> (only with a playlist ID): <code>require_playlist</code> (404 check) → <code>queries.playlist_owned_video_ids</code> → <code>queries.videos_published</code></li>
-          <li><code>GET /videos/{id}</code> → <code>queries.video_catalog</code> (that one video)</li>
-          <li><code>GET /videos/{id}/analytics</code> → <code>require_owned_video</code> (404 check) → <code>queries.video_daily_analytics</code> (filled)</li>
-          <li><code>GET /videos/{id}/traffic-sources</code> → <code>require_owned_video</code> (404 check) → <code>queries.video_daily_traffic_sources</code> (filled)</li>
+          <li><code>GET /videos</code> → <code>catalog.video_listing</code> (count and page on one connection)</li>
+          <li><code>GET /videos/stats</code> → <code>video_statistics.get_video_stats</code></li>
+          <li><code>GET /videos/published</code> → <code>resolve_playlist_video_ids</code> (only with a playlist ID): <code>require_playlist</code> (404 check) → <code>catalog.playlist_video_ids</code> → <code>catalog.video_listing</code> (five fields, no page)</li>
+          <li><code>GET /videos/{id}</code> → <code>catalog.video_detail</code></li>
+          <li><code>GET /videos/{id}/analytics</code> → <code>require_owned_video</code> (404 check) → <code>analytics.daily_analytics</code> (that one video, filled)</li>
+          <li><code>GET /videos/{id}/traffic-sources</code> → <code>require_owned_video</code> (404 check) → <code>traffic.daily_traffic_sources</code> (that one video, filled)</li>
         </ul>
       </div>
       <div class="card file-group">
         <h3><code>routes/playlists.py</code></h3>
         <ul class="route-lines">
-          <li><code>GET /playlists</code> → <code>queries.playlist_catalog</code> (count and page on one connection)</li>
-          <li><code>GET /playlists/{id}</code> → <code>queries.playlist_catalog</code> (that one playlist)</li>
-          <li><code>GET /playlists/{id}/videos/stats</code> → <code>resolve_playlist_video_ids</code>: <code>require_playlist</code> (404 check) → <code>queries.playlist_owned_video_ids</code> → <code>get_video_stats</code></li>
-          <li><code>GET /playlists/{id}/videos</code> → <code>resolve_playlist_video_ids</code>: <code>require_playlist</code> (404 check) → <code>queries.playlist_owned_video_ids</code> → <code>queries.video_catalog</code> (count and page on one connection)</li>
+          <li><code>GET /playlists</code> → <code>catalog.playlist_listing</code> (count and page on one connection)</li>
+          <li><code>GET /playlists/{id}</code> → <code>catalog.playlist_detail</code></li>
+          <li><code>GET /playlists/{id}/videos/stats</code> → <code>resolve_playlist_video_ids</code>: <code>require_playlist</code> (404 check) → <code>catalog.playlist_video_ids</code> → <code>video_statistics.get_video_stats</code></li>
+          <li><code>GET /playlists/{id}/videos</code> → <code>resolve_playlist_video_ids</code>: <code>require_playlist</code> (404 check) → <code>catalog.playlist_video_ids</code> → <code>catalog.video_listing</code> (count and page on one connection)</li>
         </ul>
       </div>
       <div class="card file-group">
         <h3><code>routes/analytics.py</code> — videos</h3>
         <ul class="route-lines">
-          <li><code>GET /analytics/videos</code> → <code>queries.daily_analytics_totals</code> (filled)</li>
-          <li><code>GET /analytics/videos/top</code> → <code>queries.top_videos_by_views</code></li>
-          <li><code>GET /analytics/traffic-sources</code> → <code>queries.daily_traffic_source_totals</code> (filled)</li>
-          <li><code>GET /analytics/traffic-sources/top</code> → <code>queries.traffic_source_video_totals</code> → <code>reader.group_by</code> (10 per source)</li>
-          <li><code>GET /analytics/search-insights</code> → <code>queries.search_term_totals</code></li>
-          <li><code>GET /analytics/search-insights/top</code> → <code>queries.search_term_totals</code> (top 10)</li>
-          <li><code>GET /analytics/search-insights/videos</code> → <code>queries.videos_by_search_term</code></li>
-          <li><code>GET /analytics/related-videos/referrers</code> → <code>queries.related_video_referrers</code></li>
-          <li><code>GET /analytics/related-videos/destinations</code> → <code>queries.related_video_destinations</code></li>
-          <li><code>GET /analytics/videos/{id}/search-insights</code> → <code>require_owned_video</code> (404 check) → <code>queries.search_term_totals</code> (that one video)</li>
-          <li><code>GET /analytics/videos/{id}/related-videos/referrers</code> → <code>require_owned_video</code> (404 check) → <code>queries.related_video_referrers</code> (that one video)</li>
+          <li><code>GET /analytics/videos</code> → <code>analytics.daily_analytics</code> (filled)</li>
+          <li><code>GET /analytics/videos/top</code> → <code>analytics.top_videos</code></li>
+          <li><code>GET /analytics/traffic-sources</code> → <code>traffic.daily_traffic_sources</code> (filled)</li>
+          <li><code>GET /analytics/traffic-sources/top</code> → <code>traffic.top_videos_by_traffic_source</code> (10 per source)</li>
+          <li><code>GET /analytics/search-insights</code> → <code>traffic.search_terms</code></li>
+          <li><code>GET /analytics/search-insights/top</code> → <code>traffic.search_terms</code> (top 10)</li>
+          <li><code>GET /analytics/search-insights/videos</code> → <code>traffic.videos_by_search_term</code></li>
+          <li><code>GET /analytics/related-videos/referrers</code> → <code>traffic.related_video_referrers</code></li>
+          <li><code>GET /analytics/related-videos/destinations</code> → <code>traffic.related_video_destinations</code></li>
+          <li><code>GET /analytics/videos/{id}/search-insights</code> → <code>require_owned_video</code> (404 check) → <code>traffic.search_terms</code> (that one video)</li>
+          <li><code>GET /analytics/videos/{id}/related-videos/referrers</code> → <code>require_owned_video</code> (404 check) → <code>traffic.related_video_referrers</code> (that one video)</li>
         </ul>
       </div>
       <div class="card file-group">
         <h3><code>routes/analytics.py</code> — playlists</h3>
-        <p>Every line starts with <code>resolve_playlist_video_ids</code>: <code>require_playlist</code> (404 check) → <code>queries.playlist_owned_video_ids</code>.</p>
+        <p>Every line starts with <code>resolve_playlist_video_ids</code>: <code>require_playlist</code> (404 check) → <code>catalog.playlist_video_ids</code>.</p>
         <ul class="route-lines">
-          <li><code>GET /analytics/playlists/{id}</code> → <code>queries.daily_analytics_totals</code> (filled)</li>
-          <li><code>GET /analytics/playlists/{id}/top</code> → <code>queries.top_videos_by_views</code></li>
-          <li><code>GET /analytics/playlists/{id}/traffic-sources</code> → <code>queries.daily_traffic_source_totals</code> (filled)</li>
-          <li><code>GET /analytics/playlists/{id}/traffic-sources/top</code> → <code>queries.traffic_source_video_totals</code> → <code>reader.group_by</code> (10 per source)</li>
-          <li><code>GET /analytics/playlists/{id}/search-insights</code> → <code>queries.search_term_totals</code></li>
-          <li><code>GET /analytics/playlists/{id}/search-insights/top</code> → <code>queries.search_term_totals</code> (top 10)</li>
-          <li><code>GET /analytics/playlists/{id}/search-insights/videos</code> → <code>queries.videos_by_search_term</code></li>
-          <li><code>GET /analytics/playlists/{id}/related-videos/referrers</code> → <code>queries.related_video_referrers</code></li>
-          <li><code>GET /analytics/playlists/{id}/related-videos/destinations</code> → <code>queries.related_video_destinations</code></li>
+          <li><code>GET /analytics/playlists/{id}</code> → <code>analytics.daily_analytics</code> (filled)</li>
+          <li><code>GET /analytics/playlists/{id}/top</code> → <code>analytics.top_videos</code></li>
+          <li><code>GET /analytics/playlists/{id}/traffic-sources</code> → <code>traffic.daily_traffic_sources</code> (filled)</li>
+          <li><code>GET /analytics/playlists/{id}/traffic-sources/top</code> → <code>traffic.top_videos_by_traffic_source</code> (10 per source)</li>
+          <li><code>GET /analytics/playlists/{id}/search-insights</code> → <code>traffic.search_terms</code></li>
+          <li><code>GET /analytics/playlists/{id}/search-insights/top</code> → <code>traffic.search_terms</code> (top 10)</li>
+          <li><code>GET /analytics/playlists/{id}/search-insights/videos</code> → <code>traffic.videos_by_search_term</code></li>
+          <li><code>GET /analytics/playlists/{id}/related-videos/referrers</code> → <code>traffic.related_video_referrers</code></li>
+          <li><code>GET /analytics/playlists/{id}/related-videos/destinations</code> → <code>traffic.related_video_destinations</code></li>
         </ul>
       </div>
       <div class="card file-group">
         <h3><code>routes/comments.py</code></h3>
         <ul class="route-lines">
-          <li><code>GET /comments</code> → <code>queries.comment_feed</code></li>
-          <li><code>GET /comments/videos/{id}</code> → <code>require_owned_video</code> (404 check) → <code>queries.comment_feed</code> (that video)</li>
-          <li><code>GET /comments/playlists/{id}</code> → <code>require_playlist</code> (404 check) → <code>queries.comment_feed</code> (that playlist)</li>
+          <li><code>GET /comments</code> → <code>comments.comment_feed</code></li>
+          <li><code>GET /comments/videos/{id}</code> → <code>require_owned_video</code> (404 check) → <code>comments.comment_feed</code> (that video)</li>
+          <li><code>GET /comments/playlists/{id}</code> → <code>require_playlist</code> (404 check) → <code>comments.comment_feed</code> (that playlist)</li>
         </ul>
       </div>
       <div class="card file-group">
@@ -287,7 +284,7 @@
           <li><code>GET /sync/status</code> → <code>sync.get_sync_status</code> (no database call)</li>
           <li><code>POST /sync/stop</code> → <code>sync.request_stop</code></li>
           <li><code>POST /sync/trigger</code> → <code>sync.validate_plan</code> → <code>sync.try_begin_sync</code> → <code>sync.execute_plan</code> (in the background)</li>
-          <li><code>GET /sync/runs</code> → <code>queries.sync_batches</code> → <code>reader.select(SyncRun)</code> for the page's stages → <code>reader.group_by</code></li>
+          <li><code>GET /sync/runs</code> → <code>sync_history.sync_batches</code> (count, page and the page's stages on one connection)</li>
         </ul>
       </div>
     </section>

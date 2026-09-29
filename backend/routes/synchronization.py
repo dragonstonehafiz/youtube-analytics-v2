@@ -6,7 +6,7 @@ from fastapi import APIRouter, BackgroundTasks, HTTPException, Query
 from pydantic import BaseModel, ConfigDict
 
 import sync
-from database import SyncRun, queries, reader
+from database.reports import sync_history
 
 router = APIRouter()
 
@@ -84,27 +84,4 @@ def sync_runs(
     page_size: int = Query(default=25, ge=1, le=200),
 ) -> dict:
     """Return a page of newest-first sync batches and the total batch count."""
-    count_query, page_query = queries.sync_batches(page=page, page_size=page_size)
-    with reader.connect() as conn:
-        total = reader.fetch_scalar(count_query, conn=conn)
-        batches = reader.fetch(SyncRun, page_query, conn=conn)
-        batch_ids = [batch.batch_id for batch in batches]
-        # An empty page skips the stage read.
-        runs = reader.select(
-            SyncRun, where=[("batch_id", "IN", batch_ids)], order_by=("-started_at", "-id"), conn=conn
-        ) if batch_ids else []
-    stages = reader.group_by(runs, "batch_id")
-    items = []
-    for batch in batches:
-        batch_runs = stages.get(batch.batch_id, [])
-        items.append({
-            "batch_id": batch.batch_id,
-            "started_at": batch.started_at,
-            "run_count": len(batch_runs),
-            "rows_fetched": sum(run.rows_fetched or 0 for run in batch_runs),
-            "rows_written": sum(run.rows_written or 0 for run in batch_runs),
-            "rows_deleted": sum(run.rows_deleted or 0 for run in batch_runs),
-            "runs": [run.to_dict() for run in batch_runs],
-            "status": sync.batch_status(run.status or "" for run in batch_runs),
-        })
-    return {"items": items, "total": total, "page": page, "page_size": page_size}
+    return sync_history.sync_batches(page=page, page_size=page_size)

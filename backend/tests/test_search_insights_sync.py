@@ -7,7 +7,8 @@ from unittest import mock
 
 from googleapiclient.errors import HttpError
 
-from database import SearchTerm, SyncCoverage, queries
+from database import SearchTerm, SyncCoverage
+from database.reports import catalog
 from sync import stages
 from sync.monthly_insights import MonthlyWindow, monthly_search_windows, monthly_windows_for_range
 from sync.stages import SyncCounts
@@ -278,8 +279,8 @@ class SyncSearchRelatedInsightsStageTest(unittest.TestCase):
             return_value=analytics_api.SearchTermsResult(raw_row_count=0, terms=[]),
         ).start()
         traffic = [
-            mock.patch(f"database.queries.{name}").start()
-            for name in ("video_daily_traffic_sources", "daily_traffic_source_totals", "traffic_source_video_totals")
+            mock.patch(f"database.reports.traffic.{name}").start()
+            for name in ("daily_traffic_sources", "top_videos_by_traffic_source")
         ]
 
         stages.sync_search_insights("incremental", None, SyncCounts())
@@ -394,7 +395,7 @@ class SyncSearchRelatedInsightsScopeTest(unittest.TestCase):
 
     def test_a_video_published_after_the_effective_end_is_prefiltered_out(self) -> None:
         """Verify future videos are excluded before Search Insights processing."""
-        worklist = mock.patch("sync.stages.queries.owned_video_worklist", wraps=queries.owned_video_worklist).start()
+        worklist = mock.patch("sync.stages.catalog.owned_video_worklist", wraps=catalog.owned_video_worklist).start()
         fetch = mock.patch("sync.stages.youtube.fetch_video_search_terms").start()
 
         stages.sync_search_insights("all", None, SyncCounts())
@@ -403,7 +404,7 @@ class SyncSearchRelatedInsightsScopeTest(unittest.TestCase):
         fetch.assert_not_called()
 
     def test_incremental_and_all_request_yesterday_as_the_effective_end(self) -> None:
-        worklist = mock.patch("sync.stages.queries.owned_video_worklist", wraps=queries.owned_video_worklist).start()
+        worklist = mock.patch("sync.stages.catalog.owned_video_worklist", wraps=catalog.owned_video_worklist).start()
 
         stages.sync_search_insights("incremental", None, SyncCounts())
         worklist.assert_called_once_with(published_through="2024-03-14")
@@ -413,7 +414,7 @@ class SyncSearchRelatedInsightsScopeTest(unittest.TestCase):
         worklist.assert_called_once_with(published_through="2024-03-14")
 
     def test_year_scope_clamps_the_effective_end_to_the_earlier_of_year_end_and_yesterday(self) -> None:
-        worklist = mock.patch("sync.stages.queries.owned_video_worklist", wraps=queries.owned_video_worklist).start()
+        worklist = mock.patch("sync.stages.catalog.owned_video_worklist", wraps=catalog.owned_video_worklist).start()
 
         stages.sync_search_insights("year", 2020, SyncCounts())
         worklist.assert_called_once_with(published_through="2020-12-31")

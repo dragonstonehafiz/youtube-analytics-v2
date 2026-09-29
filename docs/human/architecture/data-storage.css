@@ -39,9 +39,7 @@ pre.code code { background: none; padding: 0; font-size: inherit; overflow-wrap:
   color: var(--text-muted);
 }
 
-/* ---------- Diagram arrows coloured by caller ---------- */
+/* ---------- Diagram arrow labels ---------- */
 
-.diagram .edge.route { stroke: var(--route); }
-.diagram .edge.sync { stroke: var(--sync); }
-.diagram .arrowhead.route { fill: var(--route); }
-.diagram .arrowhead.sync { fill: var(--sync); }
+/* A background-coloured outline keeps a label readable where it crosses another arrow. */
+.diagram .edge-label.on-edge { paint-order: stroke; stroke: var(--surface); stroke-width: 4px; stroke-linejoin: round; }

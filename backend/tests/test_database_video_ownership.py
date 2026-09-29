@@ -9,9 +9,9 @@ from database import writer
 from sync import stages
 from sync.stages import SyncCounts
 from sync.write_preparation import search_term_rows
-from database import SearchTerm, Video, VideoAnalytics, VideoTrafficSource, queries, reader
+from database import Video, reader
+from database.reports import analytics, catalog, traffic, video_statistics
 from routes import router
-from routes.analytics import _analytics_totals, _traffic_source_top_videos, _traffic_source_totals
 from routes.video_scope import resolve_playlist_video_ids
 from tests.support import (
     FIXED_NOW,
@@ -46,7 +46,7 @@ def _get(path: str, **params: str) -> dict:
 
 def _worklist_ids(published_through: str | None = None) -> list[str | None]:
     """Return the sync stages' owned-video worklist IDs in processing order."""
-    return [video.id for video in reader.fetch(Video, queries.owned_video_worklist(published_through))]
+    return [video.id for video in catalog.owned_video_worklist(published_through)]
 
 
 class VideosOwnSchemaTest(IsolatedDatabaseTestCase):
@@ -242,7 +242,7 @@ class OwnershipQueryBoundaryTest(IsolatedDatabaseTestCase):
         self.assertIsNone(_get("/meta/date-range")["earliest_year"])
 
     def test_get_video_stats_excludes_external(self) -> None:
-        stats = database.get_video_stats()
+        stats = video_statistics.get_video_stats()
         self.assertEqual(stats["total_public"], 1)
 
     def test_pruning_an_empty_owned_set_deletes_only_owned_rows(self) -> None:
@@ -290,21 +290,17 @@ class OwnershipQueryBoundaryTest(IsolatedDatabaseTestCase):
         writer.write(make_playlist_item("pi-1", "p-1", "v-owned"))
         writer.write(make_playlist_item("pi-2", "p-1", "v-external"))
 
-        stats = database.get_video_stats(video_ids=resolve_playlist_video_ids("p-1"))
+        stats = video_statistics.get_video_stats(video_ids=resolve_playlist_video_ids("p-1"))
         self.assertEqual(stats["total_public"], 1)
 
     def test_video_analytics_excludes_external_video(self) -> None:
         writer.write(make_video_analytics("v-owned", "2024-01-05", views=10))
         writer.write(make_video_analytics("v-external", "2024-01-05", views=20))
 
-        def daily(video_id: str) -> list[reader.Joined]:
-            query = queries.video_daily_analytics(video_id)
-            return reader.fetch_joined(query, (VideoAnalytics, Video), queries.ANALYTICS_VALUES)
+        self.assertEqual(analytics.daily_analytics(video_ids=["v-external"], fill_content_types=None), [])
+        self.assertNotEqual(analytics.daily_analytics(video_ids=["v-owned"], fill_content_types=None), [])
 
-        self.assertEqual(daily("v-external"), [])
-        self.assertNotEqual(daily("v-owned"), [])
-
-        aggregated = _analytics_totals()
+        aggregated = analytics.daily_analytics()
         self.assertEqual(sum(r["views"] for r in aggregated), 10)
 
         top = _get("/analytics/videos/top")["items"]
@@ -314,13 +310,13 @@ class OwnershipQueryBoundaryTest(IsolatedDatabaseTestCase):
         writer.write(make_traffic_source("v-owned", "2024-01-05", views=10))
         writer.write(make_traffic_source("v-external", "2024-01-05", views=20))
 
-        self.assertEqual(reader.fetch(VideoTrafficSource, queries.video_daily_traffic_sources("v-external")), [])
-        self.assertNotEqual(reader.fetch(VideoTrafficSource, queries.video_daily_traffic_sources("v-owned")), [])
+        self.assertEqual(traffic.daily_traffic_sources(video_ids=["v-external"]), [])
+        self.assertNotEqual(traffic.daily_traffic_sources(video_ids=["v-owned"]), [])
 
-        aggregated = _traffic_source_totals()
+        aggregated = traffic.daily_traffic_sources()
         self.assertEqual(sum(r["views"] for r in aggregated), 10)
 
-        top = _traffic_source_top_videos()
+        top = traffic.top_videos_by_traffic_source()
         ids = {v["id"] for videos in top.values() for v in videos}
         self.assertEqual(ids, {"v-owned"})
 
@@ -328,8 +324,8 @@ class OwnershipQueryBoundaryTest(IsolatedDatabaseTestCase):
         writer.write_many(search_term_rows("v-owned", "2024-01", [make_search_term("cats", views=5)], updated_at=FIXED_NOW))
         writer.write_many(search_term_rows("v-external", "2024-01", [make_search_term("dogs", views=7)], updated_at=FIXED_NOW))
 
-        self.assertEqual(reader.fetch(SearchTerm, queries.search_term_totals(video_ids=["v-external"])), [])
-        self.assertNotEqual(reader.fetch(SearchTerm, queries.search_term_totals(video_ids=["v-owned"])), [])
+        self.assertEqual(traffic.search_terms(video_ids=["v-external"]), [])
+        self.assertNotEqual(traffic.search_terms(video_ids=["v-owned"]), [])
         self.assertEqual(_client.get("/analytics/videos/v-external/search-insights").status_code, 404)
 
         terms = _get("/analytics/search-insights")["items"]

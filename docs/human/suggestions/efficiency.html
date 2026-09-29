@@ -54,7 +54,7 @@
       <h1>Efficiency</h1>
       <p>This page shows code that does more work than it needs to.</p>
       <div class="meta-line">
-        <span>Source revision <code>ab9b0f4</code></span>
+        <span>Source revision <code>53b29e4</code></span>
       </div>
     </header>
 
@@ -80,18 +80,18 @@
 
         <article class="dup">
           <div class="dup-head"><h3>Lifetime earnings recomputed on every read</h3><span class="dup-count">per request</span></div>
-          <p>Lifetime earnings are not stored, so each list and detail read sums every daily analytics row again.</p>
+          <p>Lifetime earnings are not stored, so each list and detail read that returns or sorts by them sums every daily analytics row again.</p>
           <dl>
-            <dt>Where</dt><dd><code>queries.video_catalog</code> (video list, single video, playlist videos) and <code>queries.playlist_catalog</code> (playlist list, single playlist) in <code>database/queries.py</code></dd>
+            <dt>Where</dt><dd><code>video_listing</code> (video list, playlist videos), <code>video_detail</code>, <code>playlist_listing</code> and <code>playlist_detail</code> in <code>database/reports/catalog.py</code></dd>
             <dt>Cost</dt><dd>Work that grows with all analytics rows, for totals that only change after a sync.</dd>
           </dl>
         </article>
 
         <article class="dup">
           <div class="dup-head"><h3>Playlist list runs its aggregate twice</h3><span class="dup-count">per request</span></div>
-          <p><code>queries.playlist_catalog</code> puts the full grouped query inside both the <code>COUNT(*)</code> and the page query, and <code>GET /playlists</code> runs both on one connection.</p>
+          <p><code>catalog.playlist_listing</code> puts the full grouped query inside both the <code>COUNT(*)</code> and the page query, and runs both on one connection.</p>
           <dl>
-            <dt>Where</dt><dd><code>database/queries.py</code>, behind <code>GET /playlists</code></dd>
+            <dt>Where</dt><dd><code>database/reports/catalog.py</code>, behind <code>GET /playlists</code></dd>
             <dt>Cost</dt><dd>Every join and subquery in that query runs twice per request.</dd>
           </dl>
         </article>
@@ -109,7 +109,7 @@
           <div class="dup-head"><h3>Substring title search</h3><span class="dup-count">per filtered request</span></div>
           <p>The title filter is <code>v.title LIKE '%…%' OR v.id LIKE '%…%'</code>.</p>
           <dl>
-            <dt>Where</dt><dd>11 reads in <code>backend/database/</code>: 10 <code>queries.py</code> definitions through <code>_video_conditions()</code>, and <code>get_video_stats</code></dd>
+            <dt>Where</dt><dd>11 reads in <code>backend/database/reports/</code>: 10 report functions through <code>video_conditions()</code>, and <code>get_video_stats</code></dd>
             <dt>Cost</dt><dd>A leading <code>%</code> cannot use an index, so every video row is scanned. Small at the current table size.</dd>
           </dl>
         </article>
