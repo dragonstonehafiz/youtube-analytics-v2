@@ -1,10 +1,11 @@
-<svg xmlns="http://www.w3.org/2000/svg" width="343" height="134" viewBox="0 0 343 134" role="img" aria-label="Components on the Playlists page">
+<svg xmlns="http://www.w3.org/2000/svg" width="231" height="148" viewBox="0 0 231 148" role="img" aria-label="Components on the Playlists page">
 <title>Components on the Playlists page</title>
 
 <style>
   .bg { fill: #ffffff; }
   text { font-family: system-ui, -apple-system, "Segoe UI", Roboto, Arial, sans-serif; font-size: 13px; dominant-baseline: central; }
   .edge { fill: none; stroke: #9aa3b2; stroke-width: 1.5; }
+  .note { font-size: 12px; fill: #5b6475; }
   .page rect { fill: #fbe9e8; stroke: #c4302b; stroke-width: 1.5; }
   .page text { fill: #c4302b; font-weight: 700; }
   .tab rect { fill: #e6effa; stroke: #2f6fb3; stroke-width: 1.2; }
@@ -15,26 +16,27 @@
   .comp text { fill: #3f2a80; }
   .local rect { fill: #f0f2f5; stroke: #8a93a3; stroke-width: 1; stroke-dasharray: 4 3; }
   .local text { fill: #1c2330; font-style: italic; }
+  g rect.badge { fill: #ffffff; stroke: #9aa3b2; stroke-width: 1; stroke-dasharray: none; }
+  g text.badge-text { font-size: 10px; font-weight: 700; font-style: normal; fill: #5b6475; text-anchor: middle; }
+  .legend-text { font-size: 12px; fill: #5b6475; }
   @media (prefers-color-scheme: dark) {
     .bg { fill: #1a1f27; }
     .edge { stroke: #5b6475; }
+    .note, .legend-text { fill: #9aa3b2; }
     .page rect { fill: #3a1e1d; stroke: #ff6b63; } .page text { fill: #ff8a80; }
     .tab rect { fill: #1b2a3d; stroke: #7db3ef; } .tab text { fill: #a9cdf5; }
     .sub rect { fill: #17212e; stroke: #4f79a8; } .sub text { fill: #a9cdf5; }
     .comp rect { fill: #2a2340; stroke: #b9a2f5; } .comp text { fill: #d6c9fb; }
     .local rect { fill: #222833; stroke: #6b7486; } .local text { fill: #e6e9ef; }
+    g rect.badge { fill: #1a1f27; stroke: #5b6475; } g text.badge-text { fill: #9aa3b2; }
   }
-  .legend-text { font-size: 12px; fill: #5b6475; }
-  @media (prefers-color-scheme: dark) { .legend-text { fill: #9aa3b2; } }
 </style>
-<rect class="bg" width="343" height="134" rx="10"/>
-<path class="edge" d="M193.3,31.0 H215.3 V31.0 H237.3"/>
-<g class="comp"><rect x="237.3" y="16.0" width="89.7" height="30" rx="6"/><text x="249.3" y="31.0">AsyncCard</text></g>
-<g class="page"><rect x="16.0" y="16.0" width="177.3" height="30" rx="6"/><text x="28.0" y="31.0">Playlists  /playlists</text></g>
-<path class="edge" d="M16.0,89.0 H38.0"/>
-<text class="legend-text" x="44.0" y="89.0">contains</text>
-<g class="page"><rect x="117.6" y="82.0" width="22" height="14" rx="3"/></g>
-<text class="legend-text" x="145.6" y="89.0">Page</text>
-<g class="comp"><rect x="16.0" y="106.0" width="22" height="14" rx="3"/></g>
-<text class="legend-text" x="44.0" y="113.0">Shared component</text>
+<rect class="bg" width="231" height="148" rx="10"/>
+<path class="edge" d="M26.0,44.0 V68.0 H42.0"/>
+<g class="page"><rect x="16.0" y="16.0" width="130.3" height="28" rx="6"/><text x="28.0" y="30.0">Playlists page</text></g>
+<g class="local"><rect x="42.0" y="54.0" width="168.0" height="28" rx="6"/><text x="54.0" y="68.0">playlists-table-card</text></g>
+<g aria-hidden="true">
+<g class="local"><rect x="16.0" y="113" width="22" height="14" rx="3"/></g>
+<text class="legend-text" x="44.0" y="120">Defined in the page file</text>
+</g>
 </svg>

@@ -1,10 +1,11 @@
-<svg xmlns="http://www.w3.org/2000/svg" width="1070" height="670" viewBox="0 0 1070 670" role="img" aria-label="Components on the Analytics page">
-<title>Components on the Analytics page</title>
+<svg xmlns="http://www.w3.org/2000/svg" width="727" height="1554" viewBox="0 0 727 1554" role="img" aria-label="Components on the Analytics pages">
+<title>Components on the Analytics pages</title>
 
 <style>
   .bg { fill: #ffffff; }
   text { font-family: system-ui, -apple-system, "Segoe UI", Roboto, Arial, sans-serif; font-size: 13px; dominant-baseline: central; }
   .edge { fill: none; stroke: #9aa3b2; stroke-width: 1.5; }
+  .note { font-size: 12px; fill: #5b6475; }
   .page rect { fill: #fbe9e8; stroke: #c4302b; stroke-width: 1.5; }
   .page text { fill: #c4302b; font-weight: 700; }
   .tab rect { fill: #e6effa; stroke: #2f6fb3; stroke-width: 1.2; }
@@ -15,78 +16,124 @@
   .comp text { fill: #3f2a80; }
   .local rect { fill: #f0f2f5; stroke: #8a93a3; stroke-width: 1; stroke-dasharray: 4 3; }
   .local text { fill: #1c2330; font-style: italic; }
+  g rect.badge { fill: #ffffff; stroke: #9aa3b2; stroke-width: 1; stroke-dasharray: none; }
+  g text.badge-text { font-size: 10px; font-weight: 700; font-style: normal; fill: #5b6475; text-anchor: middle; }
+  .legend-text { font-size: 12px; fill: #5b6475; }
   @media (prefers-color-scheme: dark) {
     .bg { fill: #1a1f27; }
     .edge { stroke: #5b6475; }
+    .note, .legend-text { fill: #9aa3b2; }
     .page rect { fill: #3a1e1d; stroke: #ff6b63; } .page text { fill: #ff8a80; }
     .tab rect { fill: #1b2a3d; stroke: #7db3ef; } .tab text { fill: #a9cdf5; }
     .sub rect { fill: #17212e; stroke: #4f79a8; } .sub text { fill: #a9cdf5; }
     .comp rect { fill: #2a2340; stroke: #b9a2f5; } .comp text { fill: #d6c9fb; }
     .local rect { fill: #222833; stroke: #6b7486; } .local text { fill: #e6e9ef; }
+    g rect.badge { fill: #1a1f27; stroke: #5b6475; } g text.badge-text { fill: #9aa3b2; }
   }
-  .legend-text { font-size: 12px; fill: #5b6475; }
-  @media (prefers-color-scheme: dark) { .legend-text { fill: #9aa3b2; } }
 </style>
-<rect class="bg" width="1070" height="670" rx="10"/>
-<path class="edge" d="M509.5,31.0 H531.5 V31.0 H553.5"/>
-<path class="edge" d="M679.7,111.0 H701.7 V111.0 H767.5"/>
-<path class="edge" d="M356.2,151.0 H378.2 V71.0 H553.5"/>
-<path class="edge" d="M356.2,151.0 H378.2 V111.0 H553.5"/>
-<path class="edge" d="M356.2,151.0 H378.2 V151.0 H553.5"/>
-<path class="edge" d="M356.2,151.0 H378.2 V191.0 H553.5"/>
-<path class="edge" d="M356.2,151.0 H378.2 V231.0 H553.5"/>
-<path class="edge" d="M708.9,311.0 H730.9 V311.0 H767.5"/>
-<path class="edge" d="M628.6,351.0 H650.6 V351.0 H767.5"/>
-<path class="edge" d="M650.5,391.0 H672.5 V391.0 H767.5"/>
-<path class="edge" d="M621.3,451.0 H643.3 V431.0 H767.5"/>
-<path class="edge" d="M621.3,451.0 H643.3 V471.0 H767.5"/>
-<path class="edge" d="M628.6,531.0 H650.6 V511.0 H767.5"/>
-<path class="edge" d="M628.6,531.0 H650.6 V551.0 H767.5"/>
-<path class="edge" d="M400.0,401.0 H422.0 V271.0 H553.5"/>
-<path class="edge" d="M400.0,401.0 H422.0 V311.0 H553.5"/>
-<path class="edge" d="M400.0,401.0 H422.0 V351.0 H553.5"/>
-<path class="edge" d="M400.0,401.0 H422.0 V391.0 H553.5"/>
-<path class="edge" d="M400.0,401.0 H422.0 V451.0 H553.5"/>
-<path class="edge" d="M400.0,401.0 H422.0 V531.0 H553.5"/>
-<path class="edge" d="M348.9,591.0 H370.9 V591.0 H553.5"/>
-<path class="edge" d="M193.3,311.0 H215.3 V31.0 H237.3"/>
-<path class="edge" d="M193.3,311.0 H215.3 V151.0 H237.3"/>
-<path class="edge" d="M193.3,311.0 H215.3 V401.0 H237.3"/>
-<path class="edge" d="M193.3,311.0 H215.3 V591.0 H237.3"/>
-<g class="comp"><rect x="553.5" y="16.0" width="111.6" height="30" rx="6"/><text x="565.5" y="31.0">PeriodSelect</text></g>
-<g class="tab"><rect x="237.3" y="16.0" width="272.2" height="30" rx="6"/><text x="249.3" y="31.0">Analytics and Traffic Sources tabs</text></g>
-<g class="comp"><rect x="553.5" y="56.0" width="118.9" height="30" rx="6"/><text x="565.5" y="71.0">VideoStatsBar</text></g>
-<g class="comp"><rect x="767.5" y="96.0" width="104.3" height="30" rx="6"/><text x="779.5" y="111.0">UploadStrip</text></g>
-<g class="comp"><rect x="553.5" y="96.0" width="126.2" height="30" rx="6"/><text x="565.5" y="111.0">AnalyticsChart</text></g>
-<g class="comp"><rect x="553.5" y="136.0" width="118.9" height="30" rx="6"/><text x="565.5" y="151.0">TopVideosList</text></g>
-<g class="comp"><rect x="553.5" y="176.0" width="170.0" height="30" rx="6"/><text x="565.5" y="191.0">TopPerformersCard ×2</text></g>
-<g class="comp"><rect x="553.5" y="216.0" width="170.0" height="30" rx="6"/><text x="565.5" y="231.0">VideoCarouselCard ×2</text></g>
-<g class="tab"><rect x="237.3" y="136.0" width="118.9" height="30" rx="6"/><text x="249.3" y="151.0">Analytics tab</text></g>
-<g class="comp"><rect x="553.5" y="256.0" width="118.9" height="30" rx="6"/><text x="565.5" y="271.0">VideoStatsBar</text></g>
-<g class="comp"><rect x="767.5" y="296.0" width="104.3" height="30" rx="6"/><text x="779.5" y="311.0">UploadStrip</text></g>
-<g class="comp"><rect x="553.5" y="296.0" width="155.4" height="30" rx="6"/><text x="565.5" y="311.0">TrafficSourceChart</text></g>
-<g class="comp"><rect x="767.5" y="336.0" width="162.7" height="30" rx="6"/><text x="779.5" y="351.0">TrafficSourcesTable</text></g>
-<g class="sub"><rect x="553.5" y="336.0" width="75.1" height="30" rx="6"/><text x="565.5" y="351.0">Sources</text></g>
-<g class="comp"><rect x="767.5" y="376.0" width="221.1" height="30" rx="6"/><text x="779.5" y="391.0">TrafficSourceTopVideosPanel</text></g>
-<g class="sub"><rect x="553.5" y="376.0" width="97.0" height="30" rx="6"/><text x="565.5" y="391.0">Top videos</text></g>
-<g class="comp"><rect x="767.5" y="416.0" width="191.9" height="30" rx="6"/><text x="779.5" y="431.0">SearchTermsDonutCard ×3</text></g>
-<g class="comp"><rect x="767.5" y="456.0" width="228.4" height="30" rx="6"/><text x="779.5" y="471.0">SearchTermVideosDonutCard ×2</text></g>
-<g class="sub"><rect x="553.5" y="436.0" width="67.8" height="30" rx="6"/><text x="565.5" y="451.0">Search</text></g>
-<g class="comp"><rect x="767.5" y="496.0" width="250.3" height="30" rx="6"/><text x="779.5" y="511.0">RelatedReferrerBreakdownCard ×2</text></g>
-<g class="comp"><rect x="767.5" y="536.0" width="286.8" height="30" rx="6"/><text x="779.5" y="551.0">RelatedDestinationsByReferrerCard ×2</text></g>
-<g class="sub"><rect x="553.5" y="516.0" width="75.1" height="30" rx="6"/><text x="565.5" y="531.0">Related</text></g>
-<g class="tab"><rect x="237.3" y="386.0" width="162.7" height="30" rx="6"/><text x="249.3" y="401.0">Traffic Sources tab</text></g>
-<g class="comp"><rect x="553.5" y="576.0" width="118.9" height="30" rx="6"/><text x="565.5" y="591.0">CommentsPanel</text></g>
-<g class="tab"><rect x="237.3" y="576.0" width="111.6" height="30" rx="6"/><text x="249.3" y="591.0">Comments tab</text></g>
-<g class="page"><rect x="16.0" y="296.0" width="177.3" height="30" rx="6"/><text x="28.0" y="311.0">Analytics  /analytics</text></g>
-<path class="edge" d="M16.0,649.0 H38.0"/>
-<text class="legend-text" x="44.0" y="649.0">contains</text>
-<g class="page"><rect x="117.6" y="642.0" width="22" height="14" rx="3"/></g>
-<text class="legend-text" x="145.6" y="649.0">Page</text>
-<g class="tab"><rect x="192.4" y="642.0" width="22" height="14" rx="3"/></g>
-<text class="legend-text" x="220.4" y="649.0">Page section or tab</text>
-<g class="sub"><rect x="367.7" y="642.0" width="22" height="14" rx="3"/></g>
-<text class="legend-text" x="395.7" y="649.0">Sub-tab</text>
-<g class="comp"><rect x="462.6" y="642.0" width="22" height="14" rx="3"/></g>
-<text class="legend-text" x="490.6" y="649.0">Shared component</text>
+<rect class="bg" width="727" height="1554" rx="10"/>
+<path class="edge" d="M26.0,44.0 V68.0 H42.0"/>
+<path class="edge" d="M52.0,82.0 V106.0 H68.0"/>
+<path class="edge" d="M26.0,44.0 V144.0 H42.0"/>
+<path class="edge" d="M52.0,158.0 V182.0 H68.0"/>
+<path class="edge" d="M52.0,158.0 V220.0 H68.0"/>
+<path class="edge" d="M52.0,158.0 V258.0 H68.0"/>
+<path class="edge" d="M78.0,272.0 V296.0 H94.0"/>
+<path class="edge" d="M52.0,158.0 V334.0 H68.0"/>
+<path class="edge" d="M52.0,158.0 V372.0 H68.0"/>
+<path class="edge" d="M52.0,158.0 V410.0 H68.0"/>
+<path class="edge" d="M52.0,158.0 V448.0 H68.0"/>
+<path class="edge" d="M52.0,158.0 V486.0 H68.0"/>
+<path class="edge" d="M26.0,44.0 V524.0 H42.0"/>
+<path class="edge" d="M52.0,538.0 V562.0 H68.0"/>
+<path class="edge" d="M52.0,538.0 V600.0 H68.0"/>
+<path class="edge" d="M52.0,538.0 V638.0 H68.0"/>
+<path class="edge" d="M78.0,652.0 V676.0 H94.0"/>
+<path class="edge" d="M52.0,538.0 V714.0 H68.0"/>
+<path class="edge" d="M78.0,728.0 V752.0 H94.0"/>
+<path class="edge" d="M52.0,538.0 V790.0 H68.0"/>
+<path class="edge" d="M78.0,804.0 V828.0 H94.0"/>
+<path class="edge" d="M52.0,538.0 V866.0 H68.0"/>
+<path class="edge" d="M78.0,880.0 V904.0 H94.0"/>
+<path class="edge" d="M78.0,880.0 V942.0 H94.0"/>
+<path class="edge" d="M78.0,880.0 V980.0 H94.0"/>
+<path class="edge" d="M78.0,880.0 V1018.0 H94.0"/>
+<path class="edge" d="M78.0,880.0 V1056.0 H94.0"/>
+<path class="edge" d="M52.0,538.0 V1094.0 H68.0"/>
+<path class="edge" d="M78.0,1108.0 V1132.0 H94.0"/>
+<path class="edge" d="M78.0,1108.0 V1170.0 H94.0"/>
+<path class="edge" d="M78.0,1108.0 V1208.0 H94.0"/>
+<path class="edge" d="M78.0,1108.0 V1246.0 H94.0"/>
+<path class="edge" d="M78.0,1108.0 V1284.0 H94.0"/>
+<path class="edge" d="M26.0,44.0 V1322.0 H42.0"/>
+<path class="edge" d="M52.0,1336.0 V1360.0 H68.0"/>
+<path class="edge" d="M26.0,44.0 V1398.0 H42.0"/>
+<path class="edge" d="M52.0,1412.0 V1436.0 H68.0"/>
+<path class="edge" d="M78.0,1450.0 V1474.0 H94.0"/>
+<g class="page"><rect x="16.0" y="16.0" width="196.3" height="28" rx="6"/><text x="28.0" y="30.0">Analytics page</text><rect class="badge" x="150.3" y="22.0" width="16" height="16" rx="3"/><text class="badge-text" x="158.3" y="30.5">C</text><rect class="badge" x="170.3" y="22.0" width="16" height="16" rx="3"/><text class="badge-text" x="178.3" y="30.5">P</text><rect class="badge" x="190.3" y="22.0" width="16" height="16" rx="3"/><text class="badge-text" x="198.3" y="30.5">V</text></g>
+<g class="local"><rect x="42.0" y="54.0" width="177.5" height="28" rx="6"/><text x="54.0" y="68.0">video-meta-card</text><rect class="badge" x="177.5" y="60.0" width="16" height="16" rx="3"/><text class="badge-text" x="185.5" y="68.5">P</text><rect class="badge" x="197.5" y="60.0" width="16" height="16" rx="3"/><text class="badge-text" x="205.5" y="68.5">V</text></g>
+<g class="local"><rect x="68.0" y="92.0" width="164.8" height="28" rx="6"/><text x="80.0" y="106.0">DescriptionBlock</text><rect class="badge" x="210.8" y="98.0" width="16" height="16" rx="3"/><text class="badge-text" x="218.8" y="106.5">V</text></g>
+<g class="tab"><rect x="42.0" y="130.0" width="188.6" height="28" rx="6"/><text x="54.0" y="144.0">Analytics tab</text><rect class="badge" x="168.6" y="136.0" width="16" height="16" rx="3"/><text class="badge-text" x="176.6" y="144.5">C</text><rect class="badge" x="188.6" y="136.0" width="16" height="16" rx="3"/><text class="badge-text" x="196.6" y="144.5">P</text><rect class="badge" x="208.6" y="136.0" width="16" height="16" rx="3"/><text class="badge-text" x="216.6" y="144.5">V</text></g>
+<g class="comp"><rect x="68.0" y="168.0" width="175.6" height="28" rx="6"/><text x="80.0" y="182.0">PeriodSelect</text><rect class="badge" x="181.6" y="174.0" width="16" height="16" rx="3"/><text class="badge-text" x="189.6" y="182.5">C</text><rect class="badge" x="201.6" y="174.0" width="16" height="16" rx="3"/><text class="badge-text" x="209.6" y="182.5">P</text><rect class="badge" x="221.6" y="174.0" width="16" height="16" rx="3"/><text class="badge-text" x="229.6" y="182.5">V</text></g>
+<g class="comp"><rect x="68.0" y="206.0" width="162.9" height="28" rx="6"/><text x="80.0" y="220.0">VideoStatsBar</text><rect class="badge" x="188.9" y="212.0" width="16" height="16" rx="3"/><text class="badge-text" x="196.9" y="220.5">C</text><rect class="badge" x="208.9" y="212.0" width="16" height="16" rx="3"/><text class="badge-text" x="216.9" y="220.5">P</text></g>
+<g class="comp"><rect x="68.0" y="244.0" width="190.2" height="28" rx="6"/><text x="80.0" y="258.0">AnalyticsChart</text><rect class="badge" x="196.2" y="250.0" width="16" height="16" rx="3"/><text class="badge-text" x="204.2" y="258.5">C</text><rect class="badge" x="216.2" y="250.0" width="16" height="16" rx="3"/><text class="badge-text" x="224.2" y="258.5">P</text><rect class="badge" x="236.2" y="250.0" width="16" height="16" rx="3"/><text class="badge-text" x="244.2" y="258.5">V</text></g>
+<g class="comp"><rect x="94.0" y="282.0" width="168.3" height="28" rx="6"/><text x="106.0" y="296.0">UploadStrip</text><rect class="badge" x="200.3" y="288.0" width="16" height="16" rx="3"/><text class="badge-text" x="208.3" y="296.5">C</text><rect class="badge" x="220.3" y="288.0" width="16" height="16" rx="3"/><text class="badge-text" x="228.3" y="296.5">P</text><rect class="badge" x="240.3" y="288.0" width="16" height="16" rx="3"/><text class="badge-text" x="248.3" y="296.5">V</text></g>
+<g class="comp"><rect x="68.0" y="320.0" width="162.9" height="28" rx="6"/><text x="80.0" y="334.0">TopVideosList</text><rect class="badge" x="188.9" y="326.0" width="16" height="16" rx="3"/><text class="badge-text" x="196.9" y="334.5">C</text><rect class="badge" x="208.9" y="326.0" width="16" height="16" rx="3"/><text class="badge-text" x="216.9" y="334.5">P</text></g>
+<text class="note" x="426.9" y="334.0">Top 10 Videos by Watch Time / Views</text>
+<g class="comp"><rect x="68.0" y="358.0" width="192.1" height="28" rx="6"/><text x="80.0" y="372.0">TopPerformersCard</text><rect class="badge" x="218.1" y="364.0" width="16" height="16" rx="3"/><text class="badge-text" x="226.1" y="372.5">C</text><rect class="badge" x="238.1" y="364.0" width="16" height="16" rx="3"/><text class="badge-text" x="246.1" y="372.5">P</text></g>
+<text class="note" x="426.9" y="372.0">Top Videos (Last 7 Days)</text>
+<g class="comp"><rect x="68.0" y="396.0" width="192.1" height="28" rx="6"/><text x="80.0" y="410.0">TopPerformersCard</text><rect class="badge" x="218.1" y="402.0" width="16" height="16" rx="3"/><text class="badge-text" x="226.1" y="410.5">C</text><rect class="badge" x="238.1" y="402.0" width="16" height="16" rx="3"/><text class="badge-text" x="246.1" y="410.5">P</text></g>
+<text class="note" x="426.9" y="410.0">Top Shorts (Last 7 Days)</text>
+<g class="comp"><rect x="68.0" y="434.0" width="192.1" height="28" rx="6"/><text x="80.0" y="448.0">VideoCarouselCard</text><rect class="badge" x="218.1" y="440.0" width="16" height="16" rx="3"/><text class="badge-text" x="226.1" y="448.5">C</text><rect class="badge" x="238.1" y="440.0" width="16" height="16" rx="3"/><text class="badge-text" x="246.1" y="448.5">P</text></g>
+<text class="note" x="426.9" y="448.0">Latest Videos</text>
+<g class="comp"><rect x="68.0" y="472.0" width="192.1" height="28" rx="6"/><text x="80.0" y="486.0">VideoCarouselCard</text><rect class="badge" x="218.1" y="478.0" width="16" height="16" rx="3"/><text class="badge-text" x="226.1" y="486.5">C</text><rect class="badge" x="238.1" y="478.0" width="16" height="16" rx="3"/><text class="badge-text" x="246.1" y="486.5">P</text></g>
+<text class="note" x="426.9" y="486.0">Latest Shorts</text>
+<g class="tab"><rect x="42.0" y="510.0" width="235.0" height="28" rx="6"/><text x="54.0" y="524.0">Traffic Sources tab</text><rect class="badge" x="215.0" y="516.0" width="16" height="16" rx="3"/><text class="badge-text" x="223.0" y="524.5">C</text><rect class="badge" x="235.0" y="516.0" width="16" height="16" rx="3"/><text class="badge-text" x="243.0" y="524.5">P</text><rect class="badge" x="255.0" y="516.0" width="16" height="16" rx="3"/><text class="badge-text" x="263.0" y="524.5">V</text></g>
+<g class="comp"><rect x="68.0" y="548.0" width="175.6" height="28" rx="6"/><text x="80.0" y="562.0">PeriodSelect</text><rect class="badge" x="181.6" y="554.0" width="16" height="16" rx="3"/><text class="badge-text" x="189.6" y="562.5">C</text><rect class="badge" x="201.6" y="554.0" width="16" height="16" rx="3"/><text class="badge-text" x="209.6" y="562.5">P</text><rect class="badge" x="221.6" y="554.0" width="16" height="16" rx="3"/><text class="badge-text" x="229.6" y="562.5">V</text></g>
+<g class="comp"><rect x="68.0" y="586.0" width="162.9" height="28" rx="6"/><text x="80.0" y="600.0">VideoStatsBar</text><rect class="badge" x="188.9" y="592.0" width="16" height="16" rx="3"/><text class="badge-text" x="196.9" y="600.5">C</text><rect class="badge" x="208.9" y="592.0" width="16" height="16" rx="3"/><text class="badge-text" x="216.9" y="600.5">P</text></g>
+<g class="comp"><rect x="68.0" y="624.0" width="219.4" height="28" rx="6"/><text x="80.0" y="638.0">TrafficSourceChart</text><rect class="badge" x="225.4" y="630.0" width="16" height="16" rx="3"/><text class="badge-text" x="233.4" y="638.5">C</text><rect class="badge" x="245.4" y="630.0" width="16" height="16" rx="3"/><text class="badge-text" x="253.4" y="638.5">P</text><rect class="badge" x="265.4" y="630.0" width="16" height="16" rx="3"/><text class="badge-text" x="273.4" y="638.5">V</text></g>
+<g class="comp"><rect x="94.0" y="662.0" width="168.3" height="28" rx="6"/><text x="106.0" y="676.0">UploadStrip</text><rect class="badge" x="200.3" y="668.0" width="16" height="16" rx="3"/><text class="badge-text" x="208.3" y="676.5">C</text><rect class="badge" x="220.3" y="668.0" width="16" height="16" rx="3"/><text class="badge-text" x="228.3" y="676.5">P</text><rect class="badge" x="240.3" y="668.0" width="16" height="16" rx="3"/><text class="badge-text" x="248.3" y="676.5">V</text></g>
+<g class="sub"><rect x="68.0" y="700.0" width="255.9" height="28" rx="6"/><text x="80.0" y="714.0">Traffic Sources sub-tab</text><rect class="badge" x="261.9" y="706.0" width="16" height="16" rx="3"/><text class="badge-text" x="269.9" y="714.5">C</text><rect class="badge" x="281.9" y="706.0" width="16" height="16" rx="3"/><text class="badge-text" x="289.9" y="714.5">P</text><rect class="badge" x="301.9" y="706.0" width="16" height="16" rx="3"/><text class="badge-text" x="309.9" y="714.5">V</text></g>
+<g class="comp"><rect x="94.0" y="738.0" width="226.7" height="28" rx="6"/><text x="106.0" y="752.0">TrafficSourcesTable</text><rect class="badge" x="258.7" y="744.0" width="16" height="16" rx="3"/><text class="badge-text" x="266.7" y="752.5">C</text><rect class="badge" x="278.7" y="744.0" width="16" height="16" rx="3"/><text class="badge-text" x="286.7" y="752.5">P</text><rect class="badge" x="298.7" y="744.0" width="16" height="16" rx="3"/><text class="badge-text" x="306.7" y="752.5">V</text></g>
+<g class="sub"><rect x="68.0" y="776.0" width="330.8" height="28" rx="6"/><text x="80.0" y="790.0">Top Videos by Traffic Source sub-tab</text><rect class="badge" x="356.8" y="782.0" width="16" height="16" rx="3"/><text class="badge-text" x="364.8" y="790.5">C</text><rect class="badge" x="376.8" y="782.0" width="16" height="16" rx="3"/><text class="badge-text" x="384.8" y="790.5">P</text></g>
+<g class="comp"><rect x="94.0" y="814.0" width="265.1" height="28" rx="6"/><text x="106.0" y="828.0">TrafficSourceTopVideosPanel</text><rect class="badge" x="317.1" y="820.0" width="16" height="16" rx="3"/><text class="badge-text" x="325.1" y="828.5">C</text><rect class="badge" x="337.1" y="820.0" width="16" height="16" rx="3"/><text class="badge-text" x="345.1" y="828.5">P</text></g>
+<g class="sub"><rect x="68.0" y="852.0" width="255.9" height="28" rx="6"/><text x="80.0" y="866.0">Search Insights sub-tab</text><rect class="badge" x="261.9" y="858.0" width="16" height="16" rx="3"/><text class="badge-text" x="269.9" y="866.5">C</text><rect class="badge" x="281.9" y="858.0" width="16" height="16" rx="3"/><text class="badge-text" x="289.9" y="866.5">P</text><rect class="badge" x="301.9" y="858.0" width="16" height="16" rx="3"/><text class="badge-text" x="309.9" y="866.5">V</text></g>
+<g class="comp"><rect x="94.0" y="890.0" width="234.0" height="28" rx="6"/><text x="106.0" y="904.0">SearchTermsDonutCard</text><rect class="badge" x="266.0" y="896.0" width="16" height="16" rx="3"/><text class="badge-text" x="274.0" y="904.5">C</text><rect class="badge" x="286.0" y="896.0" width="16" height="16" rx="3"/><text class="badge-text" x="294.0" y="904.5">P</text><rect class="badge" x="306.0" y="896.0" width="16" height="16" rx="3"/><text class="badge-text" x="314.0" y="904.5">V</text></g>
+<text class="note" x="426.9" y="904.0">Top Search Terms</text>
+<g class="comp"><rect x="94.0" y="928.0" width="214.0" height="28" rx="6"/><text x="106.0" y="942.0">SearchTermsDonutCard</text><rect class="badge" x="266.0" y="934.0" width="16" height="16" rx="3"/><text class="badge-text" x="274.0" y="942.5">C</text><rect class="badge" x="286.0" y="934.0" width="16" height="16" rx="3"/><text class="badge-text" x="294.0" y="942.5">P</text></g>
+<text class="note" x="426.9" y="942.0">Top Search Terms — Videos</text>
+<g class="comp"><rect x="94.0" y="966.0" width="214.0" height="28" rx="6"/><text x="106.0" y="980.0">SearchTermsDonutCard</text><rect class="badge" x="266.0" y="972.0" width="16" height="16" rx="3"/><text class="badge-text" x="274.0" y="980.5">C</text><rect class="badge" x="286.0" y="972.0" width="16" height="16" rx="3"/><text class="badge-text" x="294.0" y="980.5">P</text></g>
+<text class="note" x="426.9" y="980.0">Top Search Terms — Shorts</text>
+<g class="comp"><rect x="94.0" y="1004.0" width="250.5" height="28" rx="6"/><text x="106.0" y="1018.0">SearchTermVideosDonutCard</text><rect class="badge" x="302.5" y="1010.0" width="16" height="16" rx="3"/><text class="badge-text" x="310.5" y="1018.5">C</text><rect class="badge" x="322.5" y="1010.0" width="16" height="16" rx="3"/><text class="badge-text" x="330.5" y="1018.5">P</text></g>
+<text class="note" x="426.9" y="1018.0">Top Videos by Search Term</text>
+<g class="comp"><rect x="94.0" y="1042.0" width="250.5" height="28" rx="6"/><text x="106.0" y="1056.0">SearchTermVideosDonutCard</text><rect class="badge" x="302.5" y="1048.0" width="16" height="16" rx="3"/><text class="badge-text" x="310.5" y="1056.5">C</text><rect class="badge" x="322.5" y="1048.0" width="16" height="16" rx="3"/><text class="badge-text" x="330.5" y="1056.5">P</text></g>
+<text class="note" x="426.9" y="1056.0">Top Shorts by Search Term</text>
+<g class="sub"><rect x="68.0" y="1080.0" width="248.6" height="28" rx="6"/><text x="80.0" y="1094.0">Related Videos sub-tab</text><rect class="badge" x="254.6" y="1086.0" width="16" height="16" rx="3"/><text class="badge-text" x="262.6" y="1094.5">C</text><rect class="badge" x="274.6" y="1086.0" width="16" height="16" rx="3"/><text class="badge-text" x="282.6" y="1094.5">P</text><rect class="badge" x="294.6" y="1086.0" width="16" height="16" rx="3"/><text class="badge-text" x="302.6" y="1094.5">V</text></g>
+<g class="comp"><rect x="94.0" y="1118.0" width="292.4" height="28" rx="6"/><text x="106.0" y="1132.0">RelatedReferrerBreakdownCard</text><rect class="badge" x="324.4" y="1124.0" width="16" height="16" rx="3"/><text class="badge-text" x="332.4" y="1132.5">C</text><rect class="badge" x="344.4" y="1124.0" width="16" height="16" rx="3"/><text class="badge-text" x="352.4" y="1132.5">P</text><rect class="badge" x="364.4" y="1124.0" width="16" height="16" rx="3"/><text class="badge-text" x="372.4" y="1132.5">V</text></g>
+<text class="note" x="426.9" y="1132.0">Related Traffic from My Channel</text>
+<g class="comp"><rect x="94.0" y="1156.0" width="292.4" height="28" rx="6"/><text x="106.0" y="1170.0">RelatedReferrerBreakdownCard</text><rect class="badge" x="324.4" y="1162.0" width="16" height="16" rx="3"/><text class="badge-text" x="332.4" y="1170.5">C</text><rect class="badge" x="344.4" y="1162.0" width="16" height="16" rx="3"/><text class="badge-text" x="352.4" y="1170.5">P</text><rect class="badge" x="364.4" y="1162.0" width="16" height="16" rx="3"/><text class="badge-text" x="372.4" y="1170.5">V</text></g>
+<text class="note" x="426.9" y="1170.0">Related Traffic from Other Channels</text>
+<g class="comp"><rect x="94.0" y="1194.0" width="308.9" height="28" rx="6"/><text x="106.0" y="1208.0">RelatedDestinationsByReferrerCard</text><rect class="badge" x="360.9" y="1200.0" width="16" height="16" rx="3"/><text class="badge-text" x="368.9" y="1208.5">C</text><rect class="badge" x="380.9" y="1200.0" width="16" height="16" rx="3"/><text class="badge-text" x="388.9" y="1208.5">P</text></g>
+<text class="note" x="426.9" y="1208.0">Top Destinations — My Channel</text>
+<g class="comp"><rect x="94.0" y="1232.0" width="308.9" height="28" rx="6"/><text x="106.0" y="1246.0">RelatedDestinationsByReferrerCard</text><rect class="badge" x="360.9" y="1238.0" width="16" height="16" rx="3"/><text class="badge-text" x="368.9" y="1246.5">C</text><rect class="badge" x="380.9" y="1238.0" width="16" height="16" rx="3"/><text class="badge-text" x="388.9" y="1246.5">P</text></g>
+<text class="note" x="426.9" y="1246.0">Top Destinations — Other Channels</text>
+<g class="comp"><rect x="94.0" y="1270.0" width="288.9" height="28" rx="6"/><text x="106.0" y="1284.0">RelatedDestinationsByReferrerCard</text><rect class="badge" x="360.9" y="1276.0" width="16" height="16" rx="3"/><text class="badge-text" x="368.9" y="1284.5">V</text></g>
+<text class="note" x="426.9" y="1284.0">Top Destinations From This Video</text>
+<g class="tab"><rect x="42.0" y="1308.0" width="180.9" height="28" rx="6"/><text x="54.0" y="1322.0">Comments tab</text><rect class="badge" x="160.9" y="1314.0" width="16" height="16" rx="3"/><text class="badge-text" x="168.9" y="1322.5">C</text><rect class="badge" x="180.9" y="1314.0" width="16" height="16" rx="3"/><text class="badge-text" x="188.9" y="1322.5">P</text><rect class="badge" x="200.9" y="1314.0" width="16" height="16" rx="3"/><text class="badge-text" x="208.9" y="1322.5">V</text></g>
+<g class="comp"><rect x="68.0" y="1346.0" width="182.9" height="28" rx="6"/><text x="80.0" y="1360.0">CommentsPanel</text><rect class="badge" x="188.9" y="1352.0" width="16" height="16" rx="3"/><text class="badge-text" x="196.9" y="1360.5">C</text><rect class="badge" x="208.9" y="1352.0" width="16" height="16" rx="3"/><text class="badge-text" x="216.9" y="1360.5">P</text><rect class="badge" x="228.9" y="1352.0" width="16" height="16" rx="3"/><text class="badge-text" x="236.9" y="1360.5">V</text></g>
+<g class="tab"><rect x="42.0" y="1384.0" width="125.4" height="28" rx="6"/><text x="54.0" y="1398.0">Videos tab</text><rect class="badge" x="145.4" y="1390.0" width="16" height="16" rx="3"/><text class="badge-text" x="153.4" y="1398.5">P</text></g>
+<g class="comp"><rect x="68.0" y="1422.0" width="121.0" height="28" rx="6"/><text x="80.0" y="1436.0">VideoTable</text><rect class="badge" x="167.0" y="1428.0" width="16" height="16" rx="3"/><text class="badge-text" x="175.0" y="1436.5">P</text></g>
+<g class="comp"><rect x="94.0" y="1460.0" width="135.6" height="28" rx="6"/><text x="106.0" y="1474.0">PeriodSelect</text><rect class="badge" x="207.6" y="1466.0" width="16" height="16" rx="3"/><text class="badge-text" x="215.6" y="1474.5">P</text></g>
+<g aria-hidden="true">
+<g class="comp"><rect x="16.0" y="1519" width="22" height="14" rx="3"/></g>
+<text class="legend-text" x="44.0" y="1526">Shared component</text>
+<g class="local"><rect x="169.5" y="1519" width="22" height="14" rx="3"/></g>
+<text class="legend-text" x="197.5" y="1526">Defined in the page file</text>
+<g><rect class="badge" x="376.6" y="1518.0" width="16" height="16" rx="3"/><text class="badge-text" x="384.6" y="1526.5">C</text></g>
+<text class="legend-text" x="398.6" y="1526">channel page</text>
+<g><rect class="badge" x="493.2" y="1518.0" width="16" height="16" rx="3"/><text class="badge-text" x="501.2" y="1526.5">P</text></g>
+<text class="legend-text" x="515.2" y="1526">playlist page</text>
+<g><rect class="badge" x="616.5" y="1518.0" width="16" height="16" rx="3"/><text class="badge-text" x="624.5" y="1526.5">V</text></g>
+<text class="legend-text" x="638.5" y="1526">video page</text>
+</g>
 </svg>

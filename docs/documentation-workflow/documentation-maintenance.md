@@ -72,7 +72,7 @@ Every fact should have exactly one canonical home. A file not in the ownership m
 When updating a page:
 
 1. Re-derive the affected facts from current source rather than editing numbers by hand from memory. Component counts are static JSX render sites; request maps describe source-defined triggers, not browser traffic.
-2. Update every table, diagram, and observation on the page that the change affects, including the matching SVG in the page's `figures/` folder; draw figures following [`svg-figures.md`](svg-figures.md).
+2. Update every table, diagram, and observation on the page that the change affects, including the matching SVG in the page's `figures/` folder and any inline SVG diagram on the page; draw figures following [`svg-figures.md`](svg-figures.md).
 3. Whenever any value on the page is re-measured, set its stated source revision to the commit the change is based on (`git rev-parse --short HEAD`).
 4. Link to `docs/references/` for contract detail instead of copying it into the page.
 5. Check the page locally (see [Verification](#verification)).

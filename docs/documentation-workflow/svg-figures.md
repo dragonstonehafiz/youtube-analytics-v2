@@ -2,13 +2,14 @@
 
 ## Purpose
 
-How to draw and update the SVG figures used by the `docs/human/` pages. Follow [`documentation-maintenance.md`](documentation-maintenance.md) for when a figure needs updating; this file covers what the figure looks like.
+How to draw and update the SVG figures used by the `docs/human/` pages. Follow [`documentation-maintenance.md`](documentation-maintenance.md) for when a figure needs updating; this file covers what a figure looks like.
 
 ## Contents
 
 - [Source of truth](#source-of-truth)
 - [Structure](#structure)
 - [Labels](#labels)
+- [Arrows](#arrows)
 - [Color](#color)
 - [Legend](#legend)
 - [Text around the figure](#text-around-the-figure)
@@ -17,59 +18,58 @@ How to draw and update the SVG figures used by the `docs/human/` pages. Follow [
 
 ## Source of truth
 
-- Derive every node from current source. Show what the code actually does, including requests that fire while their tab is hidden, not what it should do.
+- Derive every node and arrow from current source. Show what the code actually does, including paths that only run in some states (a request that fires while its tab is hidden), not what it should do.
 - Keep the diagram format. Do not replace a figure with a table, an interactive widget or a script-driven view.
 
 ## Structure
 
-- Organize a figure by page content: page → tab → sub-tab → card → the request or data behind that card. Never organize by user action or event ("change the dates", "switch tab"); timing goes in each request's note.
-- Draw one figure per page family, with every tab and sub-tab in it, so the whole page can be seen at once. Do not split it into one file per tab. When pages share a layout (channel, playlist and video Analytics), draw them once and mark scope with badges.
-- Include only real hierarchy levels: the page, its tabs, sub-tabs and cards. Do not add grouping boxes such as "page header" or "shared by both tabs".
-- One box per card actually rendered. Do not merge cards (four sidebar cards are four boxes, each with its own request).
-- Show a request once, under the card it feeds. Do not add boxes for "nothing sent" or "uses data already loaded".
-- Layout: the hierarchy is an indented outline on the left; requests sit in one column on the right, joined to their card. Keep figures readable at page width (about 1100 px wide at most).
+- Organize a figure by the structure of what it shows: page → tab → sub-tab → card or component; package → module; table → table. Never organize by user action or event ("change the dates", "switch tab"); when something happens goes in a note on the node it affects.
+- One figure per subject, showing all of it at once. Do not split a page into one figure per tab. When several subjects share a layout (channel, playlist and video Analytics), draw it once and mark which subject has each node with small scope badges (`C`, `P`, `V`).
+- Include only real levels of the structure. Do not add grouping boxes such as "page header" or "shared by both tabs"; a node used in several places appears under each.
+- One box per thing that exists. Do not merge repeated items into one box or write counts like `×2`.
+- Do not add boxes for absences ("nothing sent", "uses data already loaded").
+- Hierarchies read as an indented outline on the left; what each leaf uses or calls sits in a column on the right, joined to it. Graphs lay out so most arrows run one way.
+- Keep figures readable at page width (about 1100 px wide at most).
 
 ## Labels
 
-- Card boxes use the card's exact on-screen title; a button uses its label. When a card has no title, use its component name (`VideoStatsBar`, `PeriodSelect`), or its class name when it is inline markup (`sync-table`).
-- Request boxes show the route the request calls, in monospace (`/analytics/playlists/{id}/top`, `POST /sync/trigger`), not a restatement of the card name. When the same request calls a different route per scope, keep one box and list each route on its own line with that line's badges. For pages with one scope, leave out the badges.
-- Under each request, two short columns: `Sent:` on the left with what first sends it (`page open`, `tab shown`, `referrers arrive`), and `Reloads:` on the right with what re-sends it (`any filter`, `title, type, privacy`, `never`). A few words each, no sentences.
-- Every arrow carries a label saying what it is for (`terms arrive`). A request that waits for another gets an arrow from that request.
-- Mark which pages have a node with small `C`, `P`, `V` badges inside the box.
+- Use the exact name the reader will find: the on-screen title for a card or button, the component, module, package or table name in code, the route a request calls. Code names are monospace.
+- When a node has no on-screen title, use its component name, or its class name when it is inline markup.
+- A node may carry one short muted line under its name: its role, its row type, or when it runs (`Sent: tab shown · Reloads: any filter`). A few words, no sentences.
+
+## Arrows
+
+- Every arrow carries a label saying what it is for (`terms arrive`, `404 checks, first year`, `playlist_id`). A legend entry such as "contains" or "imports" does not replace the label.
+- In an outline, nesting shows containment; do not draw containment arrows.
+- Do not color arrows by caller. Solid versus dashed is the only arrow styling, and the legend says what each means.
+- Arrows and labels do not cross other labels or run through boxes.
 
 ## Color
 
-Color marks meaning, never depth in the hierarchy.
-
-| Element | Style |
-|---|---|
-| Tab | orange |
-| Card | blue |
-| Page, sub-tab | neutral outline |
-| Request sent when the tab is shown | purple |
-| Request sent when the page opens | grey |
-| Request sent by a button | green |
-| Request sent once an earlier one returns | dashed, in the color of the request it waits for |
+- Color marks the kind of node (tab, card, component defined in the page file, backend layer, how a request is triggered), never its depth in a hierarchy.
+- The same kind uses the same color in every figure on a page.
+- A node that follows from another (a request sent once an earlier one returns) is dashed, in the color of the node it waits for.
 
 ## Legend
 
-- List only what the reader needs to decode: `Card`, the request kinds, and the scope badges.
-- No legend entries for tab, sub-tab or page.
+- List only what the reader cannot decode from the labels: node kinds that color distinguishes, arrow styles and scope badges.
 - Name the meaning, not the styling: `From previous request`, not "Dashed: sent once the request above comes back".
-- Badge entries read `channel page`, `playlist page`, `video page`, with no prefix label.
+- Scope badge entries name the subject (`channel page`, `playlist page`, `video page`), with no prefix label.
 - Include only entries the figure uses.
 
 ## Text around the figure
 
-- No intro paragraph restating what the figure shows or how to read it.
+- A figure may have a short caption naming its subject (page name and route).
+- No intro paragraph restating what the figure shows or how to read it; the legend does that.
 - Below the figure, at most a few one-line bullets for facts the figure cannot show (debounce delay, a request sent twice, 404 behavior). Do not repeat anything the figure already says.
 
 ## SVG mechanics
 
-- Plain standalone `.svg` in the page's `figures/` folder, with `<title>`, `role="img"` and `aria-label`.
-- Styles inline in a `<style>` block, with a `@media (prefers-color-scheme: dark)` block redefining every color.
+- A figure is either a standalone `.svg` in the page's `figures/` folder, embedded with `<img>`, or an inline `<svg>` in the page HTML.
+- Standalone files have `<title>`, `role="img"` and `aria-label`, and their own `<style>` block with a `@media (prefers-color-scheme: dark)` block redefining every color.
+- Inline diagrams use `role="img"`, `aria-labelledby` pointing at a `<title>` and a `<desc>` that lists every node and arrow in words, and the shared diagram classes in `docs/human/human-docs.css`, which already have dark-mode colors. Give each inline diagram's marker `id`s that are unique within the page.
 - System font stack; monospace only for code.
 
 ## Verification
 
-Render each changed figure (for example with headless Chrome `--screenshot`) and inspect it before finishing. Check for overlapping text, arrows crossing labels, and boxes sized to their text. Check that it still reads in both light and dark color schemes.
+Render each changed figure (for example with headless Chrome `--screenshot` on the `.svg` file or on the page holding the inline diagram) and inspect it before finishing. Check for overlapping text, arrows crossing labels, and boxes sized to their text. Check that it still reads in both light and dark color schemes.
