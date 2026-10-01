@@ -72,7 +72,7 @@ Every fact should have exactly one canonical home. A file not in the ownership m
 When updating a page:
 
 1. Re-derive the affected facts from current source rather than editing numbers by hand from memory. Component counts are static JSX render sites; request maps describe source-defined triggers, not browser traffic.
-2. Update every table, diagram, and observation on the page that the change affects, including the matching SVG in `docs/human/architecture/figures/` when a page's components change.
+2. Update every table, diagram, and observation on the page that the change affects, including the matching SVG in the page's `figures/` folder; draw figures following [`svg-figures.md`](svg-figures.md).
 3. Whenever any value on the page is re-measured, set its stated source revision to the commit the change is based on (`git rev-parse --short HEAD`).
 4. Link to `docs/references/` for contract detail instead of copying it into the page.
 5. Check the page locally (see [Verification](#verification)).
@@ -89,7 +89,7 @@ Component behavior, endpoint details, schema descriptions, and page-specific con
 
 ### Task procedures
 
-`docs/programming-workflow/implementation-planning.md`, `docs/github-workflow/issue-authoring.md`, `docs/github-workflow/pull-request-authoring.md`, and this file own procedures: how to draft an issue, how to create an implementation plan, how to maintain documentation. They link to references instead of embedding detailed application knowledge.
+`docs/programming-workflow/implementation-planning.md`, `docs/github-workflow/issue-authoring.md`, `docs/github-workflow/pull-request-authoring.md`, `docs/documentation-workflow/svg-figures.md`, and this file own procedures: how to draft an issue, how to create an implementation plan, how to maintain documentation. They link to references instead of embedding detailed application knowledge.
 
 ### References
 

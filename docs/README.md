@@ -49,6 +49,7 @@ Load only the references relevant to the current task; expand to another referen
 | Issue-drafting procedure | [`issue-authoring.md`](github-workflow/issue-authoring.md) |
 | PR-drafting procedure | [`pull-request-authoring.md`](github-workflow/pull-request-authoring.md) |
 | Documentation maintenance procedure | [`documentation-maintenance.md`](documentation-workflow/documentation-maintenance.md) |
+| SVG figure procedure for `human/` pages | [`svg-figures.md`](documentation-workflow/svg-figures.md) |
 | Visual system data flow and wired sync triggers | [`human/app-flow/overview.html`](human/app-flow/overview.html) |
 | Backend part overview, package dependencies, call paths, and consolidation observations | [`human/architecture/backend-architecture.html`](human/architecture/backend-architecture.html) |
 | Per-file backend duties and route-to-database call chains | [`human/architecture/backend-reference.html`](human/architecture/backend-reference.html) |
@@ -71,5 +72,5 @@ Every fact has exactly one canonical home from this table. A file not listed her
 - Load only what the task requires — never all references by default.
 - Inspect current code before asserting behavior; do not draft from a reference alone.
 - Treat code as authoritative over any reference.
-- For writing or correcting documentation, follow [`documentation-maintenance.md`](documentation-workflow/documentation-maintenance.md).
+- For writing or correcting documentation, follow [`documentation-maintenance.md`](documentation-workflow/documentation-maintenance.md); for drawing or updating a `human/` figure, follow [`svg-figures.md`](documentation-workflow/svg-figures.md).
 - A code change that alters anything a `human/` page shows updates that page in the same change as the code and references.

@@ -1,0 +1,91 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="693" height="590" viewBox="0 0 693 590" role="img" aria-label="Requests behind the Sync page">
+<title>Requests behind the Sync page</title>
+
+<style>
+  .bg { fill: #ffffff; }
+  text { font-family: system-ui, -apple-system, "Segoe UI", Roboto, Arial, sans-serif; font-size: 13px; dominant-baseline: central; }
+  .mono { font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace; font-size: 12px; }
+  .edge { fill: none; stroke: #9aa3b2; stroke-width: 1.5; }
+  .follow { fill: none; stroke: #6a4bb3; stroke-width: 1.5; }
+  .follow-head { fill: #6a4bb3; }
+  .follow.quiet { stroke: #8a93a3; } .follow-head.quiet { fill: #8a93a3; }
+  .edge-label { font-size: 11.5px; font-style: italic; fill: #5b6475; }
+  .note { font-size: 11.5px; fill: #5b6475; }
+  .page rect, .sub rect { fill: #ffffff; stroke: #5b6475; stroke-width: 1.2; }
+  .page text, .sub text { fill: #1c2330; font-weight: 600; }
+  .card rect { fill: #e6effa; stroke: #2f6fb3; stroke-width: 1.2; } .card text { fill: #1f4f85; font-weight: 600; }
+  .tab rect { fill: #fff1e0; stroke: #d9730d; stroke-width: 1.5; } .tab text { fill: #9a4a00; font-weight: 700; }
+  .fire rect { fill: #efe9fa; stroke: #6a4bb3; stroke-width: 1.2; } .fire text { fill: #3f2a80; }
+  .fire-after rect { fill: #ffffff; stroke: #6a4bb3; stroke-width: 1.2; stroke-dasharray: 5 3; } .fire-after text { fill: #3f2a80; }
+  .press rect { fill: #e3f4ea; stroke: #2e8b57; stroke-width: 1.2; } .press text { fill: #1d5e3a; }
+  .press-after rect { fill: #ffffff; stroke: #2e8b57; stroke-width: 1.2; stroke-dasharray: 5 3; } .press-after text { fill: #1d5e3a; }
+  .follow.press { stroke: #2e8b57; } .follow-head.press { fill: #2e8b57; }
+  .eager rect { fill: #f3f4f6; stroke: #9aa3b2; stroke-width: 1.2; } .eager text { fill: #4a5263; }
+  .eager-after rect { fill: #ffffff; stroke: #9aa3b2; stroke-width: 1.2; stroke-dasharray: 5 3; } .eager-after text { fill: #4a5263; }
+  .after rect { fill: none; stroke: #9aa3b2; stroke-width: 1.2; stroke-dasharray: 5 3; }
+  g rect.badge { fill: #ffffff; stroke: #9aa3b2; stroke-width: 1; stroke-dasharray: none; }
+  g text.badge-text { font-size: 10px; font-weight: 700; font-style: normal; fill: #5b6475; text-anchor: middle; }
+  .legend-text { font-size: 12px; fill: #5b6475; }
+  @media (prefers-color-scheme: dark) {
+    .bg { fill: #1a1f27; } .edge { stroke: #5b6475; } .edge-label, .note, .legend-text { fill: #9aa3b2; }
+    .follow { stroke: #b9a2f5; } .follow-head { fill: #b9a2f5; }
+    .follow.quiet { stroke: #7a8394; } .follow-head.quiet { fill: #7a8394; }
+    .page rect, .sub rect { fill: #1a1f27; stroke: #9aa3b2; }
+    .page text, .sub text { fill: #e6e9ef; }
+    .card rect { fill: #1b2a3d; stroke: #7db3ef; } .card text { fill: #a9cdf5; }
+    .tab rect { fill: #3a2410; stroke: #f0a050; } .tab text { fill: #ffc58a; }
+    .fire rect { fill: #2a2340; stroke: #b9a2f5; } .fire text { fill: #d6c9fb; }
+    .fire-after rect { fill: #1a1f27; stroke: #b9a2f5; } .fire-after text { fill: #d6c9fb; }
+    .press rect { fill: #17301f; stroke: #6fcf97; } .press text { fill: #a8e6c1; }
+    .press-after rect { fill: #1a1f27; stroke: #6fcf97; } .press-after text { fill: #a8e6c1; }
+    .follow.press { stroke: #6fcf97; } .follow-head.press { fill: #6fcf97; }
+    .eager rect { fill: #232933; stroke: #5b6475; } .eager text { fill: #b4bccb; }
+    .eager-after rect { fill: #1a1f27; stroke: #5b6475; } .eager-after text { fill: #b4bccb; }
+    g rect.badge { fill: #1a1f27; stroke: #5b6475; } g text.badge-text { fill: #9aa3b2; }
+  }
+</style>
+<defs>
+  <marker id="follow" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto"><path class="follow-head" d="M0,0 L10,5 L0,10 z"/></marker>
+  <marker id="follow-press" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto"><path class="follow-head press" d="M0,0 L10,5 L0,10 z"/></marker>
+  <marker id="follow-quiet" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto"><path class="follow-head quiet" d="M0,0 L10,5 L0,10 z"/></marker>
+</defs>
+<rect class="bg" width="693" height="590" rx="10"/>
+<path class="edge" d="M26,46.0 V71.0 H38"/>
+<path class="edge" d="M26,46.0 V127.0 H38"/>
+<path class="edge" d="M26,46.0 V447.0 H38"/>
+<path class="edge" d="M170.8,71.0 H239.60000000000002 V71.0 H259.6"/>
+<path class="edge" d="M48,142.0 V167.0 H60"/>
+<path class="edge" d="M48,142.0 V223.0 H60"/>
+<path class="edge" d="M48,142.0 V335.0 H60"/>
+<path class="edge" d="M152.0,167.0 H239.60000000000002 V167.0 H259.6"/>
+<path class="edge" d="M172.4,223.0 H239.60000000000002 V223.0 H259.6"/>
+<path class="edge" d="M172.4,223.0 H239.60000000000002 V279.0 H259.6"/>
+<path class="edge" d="M145.2,335.0 H239.60000000000002 V335.0 H259.6"/>
+<path class="edge" d="M145.2,335.0 H239.60000000000002 V391.0 H259.6"/>
+<path class="edge" d="M48,462.0 V487.0 H60"/>
+<path class="edge" d="M199.6,487.0 H239.60000000000002 V487.0 H259.6"/>
+<path class="follow press" d="M415.0,223.0 H579.6 V279.0 H373.2" marker-end="url(#follow-press)"/>
+<text class="edge-label" x="593.6" y="279.0">sync accepted</text>
+<path class="follow press" d="M393.1,335.0 H579.6 V391.0 H373.2" marker-end="url(#follow-press)"/>
+<text class="edge-label" x="593.6" y="391.0">stop accepted</text>
+<g class="page"><rect x="16" y="16.0" width="85.2" height="30" rx="6"/><text x="28" y="31.0">Sync page</text></g>
+<g class="card"><rect x="38" y="56.0" width="132.8" height="30" rx="6"/><text x="50" y="71.0">SyncStatusBanner</text></g>
+<g class="eager"><rect x="259.6" y="56.0" width="111.6" height="30" rx="6"/><text class="mono" x="271.6" y="71.0">/sync/status</text></g><text class="note" x="263.6" y="95.0">Sent: page open</text><text class="note" x="453.6" y="95.0">Reloads: every 5 s</text>
+<g class="tab"><rect x="38" y="112.0" width="78.4" height="30" rx="6"/><text x="50" y="127.0">Sync tab</text></g>
+<g class="card"><rect x="60" y="152.0" width="92.0" height="30" rx="6"/><text x="72" y="167.0">sync-table</text></g>
+<g class="eager"><rect x="259.6" y="152.0" width="140.8" height="30" rx="6"/><text class="mono" x="271.6" y="167.0">/meta/date-range</text></g><text class="note" x="263.6" y="191.0">Sent: page open</text><text class="note" x="453.6" y="191.0">Reloads: never</text>
+<g class="card"><rect x="60" y="208.0" width="112.4" height="30" rx="6"/><text x="72" y="223.0">Sync selected</text></g>
+<g class="press"><rect x="259.6" y="208.0" width="155.4" height="30" rx="6"/><text class="mono" x="271.6" y="223.0">POST /sync/trigger</text></g><text class="note" x="263.6" y="247.0">Sent: button pressed</text><text class="note" x="453.6" y="247.0">Reloads: never</text>
+<g class="press-after"><rect x="259.6" y="264.0" width="111.6" height="30" rx="6"/><text class="mono" x="271.6" y="279.0">/sync/status</text></g><text class="note" x="263.6" y="303.0">Sent: sync accepted</text><text class="note" x="453.6" y="303.0">Reloads: never</text>
+<g class="card"><rect x="60" y="320.0" width="85.2" height="30" rx="6"/><text x="72" y="335.0">Stop sync</text></g>
+<g class="press"><rect x="259.6" y="320.0" width="133.5" height="30" rx="6"/><text class="mono" x="271.6" y="335.0">POST /sync/stop</text></g><text class="note" x="263.6" y="359.0">Sent: stop confirmed</text><text class="note" x="453.6" y="359.0">Reloads: never</text>
+<g class="press-after"><rect x="259.6" y="376.0" width="111.6" height="30" rx="6"/><text class="mono" x="271.6" y="391.0">/sync/status</text></g><text class="note" x="263.6" y="415.0">Sent: stop accepted</text><text class="note" x="453.6" y="415.0">Reloads: never</text>
+<g class="tab"><rect x="38" y="432.0" width="98.8" height="30" rx="6"/><text x="50" y="447.0">History tab</text></g>
+<g class="card"><rect x="60" y="472.0" width="139.6" height="30" rx="6"/><text x="72" y="487.0">sync-history-card</text></g>
+<g class="fire"><rect x="259.6" y="472.0" width="97.0" height="30" rx="6"/><text class="mono" x="271.6" y="487.0">/sync/runs</text></g><text class="note" x="263.6" y="511.0">Sent: tab shown</text><text class="note" x="453.6" y="511.0">Reloads: page</text>
+<g class="card"><rect x="16" y="534" width="22" height="14" rx="3"/></g><text class="legend-text" x="44" y="541">Card</text>
+<g class="fire"><rect x="94.4" y="534" width="22" height="14" rx="3"/></g><text class="legend-text" x="122.4" y="541">Request sent when this tab is shown</text>
+<g class="eager"><rect x="377.4" y="534" width="22" height="14" rx="3"/></g><text class="legend-text" x="405.4" y="541">Request sent when the page opens</text>
+<g class="press"><rect x="16" y="558" width="22" height="14" rx="3"/></g><text class="legend-text" x="44" y="565">Request sent by a button</text>
+<g class="after"><rect x="226.39999999999998" y="558" width="22" height="14" rx="3"/></g><text class="legend-text" x="254.39999999999998" y="565">From previous request</text>
+</svg>
