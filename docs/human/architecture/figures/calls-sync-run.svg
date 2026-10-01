@@ -1,0 +1,226 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1063" height="1172" viewBox="0 0 1063 1172" role="img" aria-label="Sync execution: sync/orchestration.py and sync/stages.py">
+<title>Sync execution: sync/orchestration.py and sync/stages.py</title>
+<desc>Lanes from left to right: Orchestration, Stages, External services, Writer, SQLite. YouTube Data API in External services. write in Writer. playlists in SQLite. delete in Writer. playlist_items in SQLite. write in Writer. playlist_items in SQLite. delete in Writer. playlists in SQLite. sync_playlists in Stages. YouTube Data API in External services. write in Writer. videos in SQLite. sync_videos in Stages. delete in Writer. videos in SQLite. sync_pruning in Stages. YouTube Data API in External services. write in Writer. comment_authors in SQLite. write in Writer. comments in SQLite. delete in Writer. comment_authors in SQLite. sync_comments in Stages. Yahoo Finance in External services. write in Writer. fx_rates in SQLite. sync_fx_rates in Stages. YouTube Analytics API in External services. write in Writer. video_analytics in SQLite. write_many in Writer. sync_coverage in SQLite. sync_video_analytics in Stages. YouTube Analytics API in External services. write in Writer. video_traffic_sources in SQLite. write_many in Writer. sync_coverage in SQLite. sync_video_traffic_sources in Stages. YouTube Analytics API in External services. write_many in Writer. search_terms in SQLite. write_many in Writer. sync_coverage in SQLite. sync_search_insights in Stages. YouTube Analytics API in External services. YouTube Data API in External services. write_many in Writer. related_videos in SQLite. write_many in Writer. sync_coverage in SQLite. write in Writer. videos in SQLite. sync_related_video_insights in Stages. write in Writer. sync_runs in SQLite. update in Writer. sync_runs in SQLite. execute_plan in Orchestration (background task). sync_playlists calls YouTube Data API: playlists. sync_playlists calls write: playlists. write writes playlists: upsert. sync_playlists calls delete: old items. delete writes playlist_items: DELETE. sync_playlists calls write: items. write writes playlist_items: upsert. sync_playlists calls delete: removed. delete writes playlists: DELETE. execute_plan calls sync_playlists: serial. sync_videos calls YouTube Data API: videos. sync_videos calls write: own videos. write writes videos: upsert. execute_plan calls sync_videos: serial. sync_pruning calls delete: not on channel. delete writes videos: DELETE. execute_plan calls sync_pruning: serial. sync_comments calls YouTube Data API: threads. sync_comments calls write: authors. write writes comment_authors: upsert. sync_comments calls write: comments. write writes comments: upsert. sync_comments calls delete: orphan authors. delete writes comment_authors: DELETE. execute_plan calls sync_comments: serial. sync_fx_rates calls Yahoo Finance: SGD rate. sync_fx_rates calls write: daily rates. write writes fx_rates: upsert. execute_plan calls sync_fx_rates: serial. sync_video_analytics calls YouTube Analytics API: metrics. sync_video_analytics calls write: daily rows. write writes video_analytics: upsert. sync_video_analytics calls write_many: months done. write_many writes sync_coverage: upsert. execute_plan calls sync_video_analytics: worker. sync_video_traffic_sources calls YouTube Analytics API: sources. sync_video_traffic_sources calls write: daily rows. write writes video_traffic_sources: upsert. sync_video_traffic_sources calls write_many: months done. write_many writes sync_coverage: upsert. execute_plan calls sync_video_traffic_sources: worker. sync_search_insights calls YouTube Analytics API: terms. sync_search_insights calls write_many: terms. write_many writes search_terms: upsert. sync_search_insights calls write_many: months done. write_many writes sync_coverage: upsert. execute_plan calls sync_search_insights: worker. sync_related_video_insights calls YouTube Analytics API: referrers. sync_related_video_insights calls YouTube Data API: details. sync_related_video_insights calls write_many: referrers. write_many writes related_videos: upsert. sync_related_video_insights calls write_many: months done. write_many writes sync_coverage: upsert. sync_related_video_insights calls write: new videos. write writes videos: upsert. execute_plan calls sync_related_video_insights: worker. execute_plan calls write: run started. write writes sync_runs: upsert. execute_plan calls update: run finished. update writes sync_runs: UPDATE.</desc>
+<style>
+  .bg { fill: #ffffff; }
+  text { font-family: system-ui, -apple-system, "Segoe UI", Roboto, Arial, sans-serif; font-size: 14px; fill: #1c2330; }
+  .code, .code-line { font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, "Liberation Mono", monospace; font-size: 11.5px; }
+  .code { font-weight: 600; }
+  .sub { font-size: 12px; fill: #5b6475; }
+  .lane rect { fill: #f0f2f5; stroke: #d9dee6; stroke-width: 1; }
+  .lane text { font-size: 12px; font-weight: 700; letter-spacing: 0.04em; fill: #5b6475; }
+  .node rect { stroke-width: 1.5; }
+  .fe rect { fill: #efe9fa; stroke: #6a4bb3; }
+  .route rect { fill: #e6effa; stroke: #2f6fb3; }
+  .db rect { fill: #e4f4ec; stroke: #2c8a5a; }
+  .sync rect { fill: #f8eedd; stroke: #8a5a14; }
+  .yt rect { fill: #fbe6e4; stroke: #b3261e; }
+  .edge { fill: none; stroke: #5b6475; stroke-width: 1.6; }
+  .edge.dashed { stroke-dasharray: 6 5; }
+  .edge-label { font-size: 12px; fill: #5b6475; }
+  .arrowhead { fill: #5b6475; }
+  @media (prefers-color-scheme: dark) {
+    .bg { fill: #1a1f27; }
+    text { fill: #e6e9ef; }
+    .sub, .edge-label, .lane text { fill: #9aa3b2; }
+    .lane rect { fill: #222833; stroke: #2f3744; }
+    .fe rect { fill: #2a2340; stroke: #b9a2f5; }
+    .route rect { fill: #1b2a3d; stroke: #7db3ef; }
+    .db rect { fill: #183126; stroke: #6fd3a0; }
+    .sync rect { fill: #342816; stroke: #e7b56a; }
+    .yt rect { fill: #3a1d1b; stroke: #ff8a80; }
+    .edge { stroke: #9aa3b2; }
+    .arrowhead { fill: #9aa3b2; }
+  }
+</style>
+<rect class="bg" width="1063" height="1172" rx="10"/>
+  <defs>
+    <marker id="arrow" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path class="arrowhead" d="M0,0 L10,5 L0,10 z"/></marker>
+  </defs>
+  <g class="lane"><rect x="12" y="8" width="132" height="1156" rx="8"/><text x="78" y="28" text-anchor="middle">Orchestration</text></g>
+  <g class="lane"><rect x="210" y="8" width="201" height="1156" rx="8"/><text x="310" y="28" text-anchor="middle">Stages</text></g>
+  <g class="lane"><rect x="477" y="8" width="185" height="1156" rx="8"/><text x="570" y="28" text-anchor="middle">External services</text></g>
+  <g class="lane"><rect x="728" y="8" width="94" height="1156" rx="8"/><text x="775" y="28" text-anchor="middle">Writer</text></g>
+  <g class="lane"><rect x="888" y="8" width="163" height="1156" rx="8"/><text x="970" y="28" text-anchor="middle">SQLite</text></g>
+  <g class="node yt"><rect x="484" y="50" width="171" height="28" rx="7"/><text x="570" y="68" text-anchor="middle">YouTube Data API</text></g>
+  <g class="node db"><rect x="735" y="84" width="80" height="26" rx="7"/><text class="code" x="775" y="102" text-anchor="middle">write</text></g>
+  <g class="node db"><rect x="895" y="84" width="149" height="26" rx="7"/><text class="code" x="970" y="102" text-anchor="middle">playlists</text></g>
+  <g class="node db"><rect x="735" y="116" width="80" height="26" rx="7"/><text class="code" x="775" y="134" text-anchor="middle">delete</text></g>
+  <g class="node db"><rect x="895" y="116" width="149" height="26" rx="7"/><text class="code" x="970" y="134" text-anchor="middle">playlist_items</text></g>
+  <g class="node db"><rect x="735" y="148" width="80" height="26" rx="7"/><text class="code" x="775" y="166" text-anchor="middle">write</text></g>
+  <g class="node db"><rect x="895" y="148" width="149" height="26" rx="7"/><text class="code" x="970" y="166" text-anchor="middle">playlist_items</text></g>
+  <g class="node db"><rect x="735" y="180" width="80" height="26" rx="7"/><text class="code" x="775" y="198" text-anchor="middle">delete</text></g>
+  <g class="node db"><rect x="895" y="180" width="149" height="26" rx="7"/><text class="code" x="970" y="198" text-anchor="middle">playlists</text></g>
+  <g class="node sync"><rect x="216" y="50" width="187" height="156" rx="7"/><text class="code" x="310" y="71" text-anchor="middle">sync_playlists</text></g>
+  <g class="node yt"><rect x="484" y="226" width="171" height="28" rx="7"/><text x="570" y="244" text-anchor="middle">YouTube Data API</text></g>
+  <g class="node db"><rect x="735" y="260" width="80" height="26" rx="7"/><text class="code" x="775" y="278" text-anchor="middle">write</text></g>
+  <g class="node db"><rect x="895" y="260" width="149" height="26" rx="7"/><text class="code" x="970" y="278" text-anchor="middle">videos</text></g>
+  <g class="node sync"><rect x="216" y="226" width="187" height="60" rx="7"/><text class="code" x="310" y="260" text-anchor="middle">sync_videos</text></g>
+  <g class="node db"><rect x="735" y="306" width="80" height="26" rx="7"/><text class="code" x="775" y="324" text-anchor="middle">delete</text></g>
+  <g class="node db"><rect x="895" y="306" width="149" height="26" rx="7"/><text class="code" x="970" y="324" text-anchor="middle">videos</text></g>
+  <g class="node sync"><rect x="216" y="306" width="187" height="26" rx="7"/><text class="code" x="310" y="324" text-anchor="middle">sync_pruning</text></g>
+  <g class="node yt"><rect x="484" y="352" width="171" height="28" rx="7"/><text x="570" y="370" text-anchor="middle">YouTube Data API</text></g>
+  <g class="node db"><rect x="735" y="386" width="80" height="26" rx="7"/><text class="code" x="775" y="404" text-anchor="middle">write</text></g>
+  <g class="node db"><rect x="895" y="386" width="149" height="26" rx="7"/><text class="code" x="970" y="404" text-anchor="middle">comment_authors</text></g>
+  <g class="node db"><rect x="735" y="418" width="80" height="26" rx="7"/><text class="code" x="775" y="436" text-anchor="middle">write</text></g>
+  <g class="node db"><rect x="895" y="418" width="149" height="26" rx="7"/><text class="code" x="970" y="436" text-anchor="middle">comments</text></g>
+  <g class="node db"><rect x="735" y="450" width="80" height="26" rx="7"/><text class="code" x="775" y="468" text-anchor="middle">delete</text></g>
+  <g class="node db"><rect x="895" y="450" width="149" height="26" rx="7"/><text class="code" x="970" y="468" text-anchor="middle">comment_authors</text></g>
+  <g class="node sync"><rect x="216" y="352" width="187" height="124" rx="7"/><text class="code" x="310" y="373" text-anchor="middle">sync_comments</text></g>
+  <g class="node yt"><rect x="484" y="496" width="171" height="28" rx="7"/><text x="570" y="514" text-anchor="middle">Yahoo Finance</text></g>
+  <g class="node db"><rect x="735" y="530" width="80" height="26" rx="7"/><text class="code" x="775" y="548" text-anchor="middle">write</text></g>
+  <g class="node db"><rect x="895" y="530" width="149" height="26" rx="7"/><text class="code" x="970" y="548" text-anchor="middle">fx_rates</text></g>
+  <g class="node sync"><rect x="216" y="496" width="187" height="60" rx="7"/><text class="code" x="310" y="530" text-anchor="middle">sync_fx_rates</text></g>
+  <g class="node yt"><rect x="484" y="576" width="171" height="28" rx="7"/><text x="570" y="594" text-anchor="middle">YouTube Analytics API</text></g>
+  <g class="node db"><rect x="735" y="610" width="80" height="26" rx="7"/><text class="code" x="775" y="628" text-anchor="middle">write</text></g>
+  <g class="node db"><rect x="895" y="610" width="149" height="26" rx="7"/><text class="code" x="970" y="628" text-anchor="middle">video_analytics</text></g>
+  <g class="node db"><rect x="735" y="642" width="80" height="26" rx="7"/><text class="code" x="775" y="660" text-anchor="middle">write_many</text></g>
+  <g class="node db"><rect x="895" y="642" width="149" height="26" rx="7"/><text class="code" x="970" y="660" text-anchor="middle">sync_coverage</text></g>
+  <g class="node sync"><rect x="216" y="576" width="187" height="92" rx="7"/><text class="code" x="310" y="597" text-anchor="middle">sync_video_analytics</text></g>
+  <g class="node yt"><rect x="484" y="688" width="171" height="28" rx="7"/><text x="570" y="706" text-anchor="middle">YouTube Analytics API</text></g>
+  <g class="node db"><rect x="735" y="722" width="80" height="26" rx="7"/><text class="code" x="775" y="740" text-anchor="middle">write</text></g>
+  <g class="node db"><rect x="895" y="722" width="149" height="26" rx="7"/><text class="code" x="970" y="740" text-anchor="middle">video_traffic_sources</text></g>
+  <g class="node db"><rect x="735" y="754" width="80" height="26" rx="7"/><text class="code" x="775" y="772" text-anchor="middle">write_many</text></g>
+  <g class="node db"><rect x="895" y="754" width="149" height="26" rx="7"/><text class="code" x="970" y="772" text-anchor="middle">sync_coverage</text></g>
+  <g class="node sync"><rect x="216" y="688" width="187" height="92" rx="7"/><text class="code" x="310" y="709" text-anchor="middle">sync_video_traffic_sources</text></g>
+  <g class="node yt"><rect x="484" y="800" width="171" height="28" rx="7"/><text x="570" y="818" text-anchor="middle">YouTube Analytics API</text></g>
+  <g class="node db"><rect x="735" y="834" width="80" height="26" rx="7"/><text class="code" x="775" y="852" text-anchor="middle">write_many</text></g>
+  <g class="node db"><rect x="895" y="834" width="149" height="26" rx="7"/><text class="code" x="970" y="852" text-anchor="middle">search_terms</text></g>
+  <g class="node db"><rect x="735" y="866" width="80" height="26" rx="7"/><text class="code" x="775" y="884" text-anchor="middle">write_many</text></g>
+  <g class="node db"><rect x="895" y="866" width="149" height="26" rx="7"/><text class="code" x="970" y="884" text-anchor="middle">sync_coverage</text></g>
+  <g class="node sync"><rect x="216" y="800" width="187" height="92" rx="7"/><text class="code" x="310" y="821" text-anchor="middle">sync_search_insights</text></g>
+  <g class="node yt"><rect x="484" y="912" width="171" height="28" rx="7"/><text x="570" y="930" text-anchor="middle">YouTube Analytics API</text></g>
+  <g class="node yt"><rect x="484" y="946" width="171" height="28" rx="7"/><text x="570" y="964" text-anchor="middle">YouTube Data API</text></g>
+  <g class="node db"><rect x="735" y="980" width="80" height="26" rx="7"/><text class="code" x="775" y="998" text-anchor="middle">write_many</text></g>
+  <g class="node db"><rect x="895" y="980" width="149" height="26" rx="7"/><text class="code" x="970" y="998" text-anchor="middle">related_videos</text></g>
+  <g class="node db"><rect x="735" y="1012" width="80" height="26" rx="7"/><text class="code" x="775" y="1030" text-anchor="middle">write_many</text></g>
+  <g class="node db"><rect x="895" y="1012" width="149" height="26" rx="7"/><text class="code" x="970" y="1030" text-anchor="middle">sync_coverage</text></g>
+  <g class="node db"><rect x="735" y="1044" width="80" height="26" rx="7"/><text class="code" x="775" y="1062" text-anchor="middle">write</text></g>
+  <g class="node db"><rect x="895" y="1044" width="149" height="26" rx="7"/><text class="code" x="970" y="1062" text-anchor="middle">videos</text></g>
+  <g class="node sync"><rect x="216" y="912" width="187" height="158" rx="7"/><text class="code" x="310" y="933" text-anchor="middle">sync_related_video_insights</text></g>
+  <g class="node db"><rect x="735" y="1090" width="80" height="26" rx="7"/><text class="code" x="775" y="1108" text-anchor="middle">write</text></g>
+  <g class="node db"><rect x="895" y="1090" width="149" height="26" rx="7"/><text class="code" x="970" y="1108" text-anchor="middle">sync_runs</text></g>
+  <g class="node db"><rect x="735" y="1122" width="80" height="26" rx="7"/><text class="code" x="775" y="1140" text-anchor="middle">update</text></g>
+  <g class="node db"><rect x="895" y="1122" width="149" height="26" rx="7"/><text class="code" x="970" y="1140" text-anchor="middle">sync_runs</text></g>
+  <g class="node sync"><rect x="19" y="50" width="118" height="1098" rx="7"/><text class="code" x="78" y="71" text-anchor="middle">execute_plan</text><text class="sub" x="78" y="86" text-anchor="middle">background task</text></g>
+  <path class="edge" d="M404,64 H483" marker-end="url(#arrow)"/>
+  <path class="edge" d="M404,97 H734" marker-end="url(#arrow)"/>
+  <path class="edge" d="M815,97 H894" marker-end="url(#arrow)"/>
+  <path class="edge" d="M404,129 H734" marker-end="url(#arrow)"/>
+  <path class="edge" d="M815,129 H894" marker-end="url(#arrow)"/>
+  <path class="edge" d="M404,161 H734" marker-end="url(#arrow)"/>
+  <path class="edge" d="M815,161 H894" marker-end="url(#arrow)"/>
+  <path class="edge" d="M404,193 H734" marker-end="url(#arrow)"/>
+  <path class="edge" d="M815,193 H894" marker-end="url(#arrow)"/>
+  <path class="edge" d="M136,128 H216" marker-end="url(#arrow)"/>
+  <path class="edge" d="M404,240 H483" marker-end="url(#arrow)"/>
+  <path class="edge" d="M404,273 H734" marker-end="url(#arrow)"/>
+  <path class="edge" d="M815,273 H894" marker-end="url(#arrow)"/>
+  <path class="edge" d="M136,256 H216" marker-end="url(#arrow)"/>
+  <path class="edge" d="M404,319 H734" marker-end="url(#arrow)"/>
+  <path class="edge" d="M815,319 H894" marker-end="url(#arrow)"/>
+  <path class="edge" d="M136,319 H216" marker-end="url(#arrow)"/>
+  <path class="edge" d="M404,366 H483" marker-end="url(#arrow)"/>
+  <path class="edge" d="M404,399 H734" marker-end="url(#arrow)"/>
+  <path class="edge" d="M815,399 H894" marker-end="url(#arrow)"/>
+  <path class="edge" d="M404,431 H734" marker-end="url(#arrow)"/>
+  <path class="edge" d="M815,431 H894" marker-end="url(#arrow)"/>
+  <path class="edge" d="M404,463 H734" marker-end="url(#arrow)"/>
+  <path class="edge" d="M815,463 H894" marker-end="url(#arrow)"/>
+  <path class="edge" d="M136,414 H216" marker-end="url(#arrow)"/>
+  <path class="edge" d="M404,510 H483" marker-end="url(#arrow)"/>
+  <path class="edge" d="M404,543 H734" marker-end="url(#arrow)"/>
+  <path class="edge" d="M815,543 H894" marker-end="url(#arrow)"/>
+  <path class="edge" d="M136,526 H216" marker-end="url(#arrow)"/>
+  <path class="edge" d="M404,590 H483" marker-end="url(#arrow)"/>
+  <path class="edge" d="M404,623 H734" marker-end="url(#arrow)"/>
+  <path class="edge" d="M815,623 H894" marker-end="url(#arrow)"/>
+  <path class="edge" d="M404,655 H734" marker-end="url(#arrow)"/>
+  <path class="edge" d="M815,655 H894" marker-end="url(#arrow)"/>
+  <path class="edge" d="M136,622 H216" marker-end="url(#arrow)"/>
+  <path class="edge" d="M404,702 H483" marker-end="url(#arrow)"/>
+  <path class="edge" d="M404,735 H734" marker-end="url(#arrow)"/>
+  <path class="edge" d="M815,735 H894" marker-end="url(#arrow)"/>
+  <path class="edge" d="M404,767 H734" marker-end="url(#arrow)"/>
+  <path class="edge" d="M815,767 H894" marker-end="url(#arrow)"/>
+  <path class="edge" d="M136,734 H216" marker-end="url(#arrow)"/>
+  <path class="edge" d="M404,814 H483" marker-end="url(#arrow)"/>
+  <path class="edge" d="M404,847 H734" marker-end="url(#arrow)"/>
+  <path class="edge" d="M815,847 H894" marker-end="url(#arrow)"/>
+  <path class="edge" d="M404,879 H734" marker-end="url(#arrow)"/>
+  <path class="edge" d="M815,879 H894" marker-end="url(#arrow)"/>
+  <path class="edge" d="M136,846 H216" marker-end="url(#arrow)"/>
+  <path class="edge" d="M404,926 H483" marker-end="url(#arrow)"/>
+  <path class="edge" d="M404,960 H483" marker-end="url(#arrow)"/>
+  <path class="edge" d="M404,993 H734" marker-end="url(#arrow)"/>
+  <path class="edge" d="M815,993 H894" marker-end="url(#arrow)"/>
+  <path class="edge" d="M404,1025 H734" marker-end="url(#arrow)"/>
+  <path class="edge" d="M815,1025 H894" marker-end="url(#arrow)"/>
+  <path class="edge" d="M404,1057 H734" marker-end="url(#arrow)"/>
+  <path class="edge" d="M815,1057 H894" marker-end="url(#arrow)"/>
+  <path class="edge" d="M136,991 H216" marker-end="url(#arrow)"/>
+  <path class="edge" d="M136,1103 H734" marker-end="url(#arrow)"/>
+  <path class="edge" d="M815,1103 H894" marker-end="url(#arrow)"/>
+  <path class="edge" d="M136,1135 H734" marker-end="url(#arrow)"/>
+  <path class="edge" d="M815,1135 H894" marker-end="url(#arrow)"/>
+  <text class="edge-label" x="443" y="59" text-anchor="middle">playlists</text>
+  <text class="edge-label" x="569" y="92" text-anchor="middle">playlists</text>
+  <text class="edge-label" x="854" y="92" text-anchor="middle">upsert</text>
+  <text class="edge-label" x="569" y="124" text-anchor="middle">old items</text>
+  <text class="edge-label" x="854" y="124" text-anchor="middle">DELETE</text>
+  <text class="edge-label" x="569" y="156" text-anchor="middle">items</text>
+  <text class="edge-label" x="854" y="156" text-anchor="middle">upsert</text>
+  <text class="edge-label" x="569" y="188" text-anchor="middle">removed</text>
+  <text class="edge-label" x="854" y="188" text-anchor="middle">DELETE</text>
+  <text class="edge-label" x="176" y="123" text-anchor="middle">serial</text>
+  <text class="edge-label" x="443" y="235" text-anchor="middle">videos</text>
+  <text class="edge-label" x="569" y="268" text-anchor="middle">own videos</text>
+  <text class="edge-label" x="854" y="268" text-anchor="middle">upsert</text>
+  <text class="edge-label" x="176" y="251" text-anchor="middle">serial</text>
+  <text class="edge-label" x="569" y="314" text-anchor="middle">not on channel</text>
+  <text class="edge-label" x="854" y="314" text-anchor="middle">DELETE</text>
+  <text class="edge-label" x="176" y="314" text-anchor="middle">serial</text>
+  <text class="edge-label" x="443" y="361" text-anchor="middle">threads</text>
+  <text class="edge-label" x="569" y="394" text-anchor="middle">authors</text>
+  <text class="edge-label" x="854" y="394" text-anchor="middle">upsert</text>
+  <text class="edge-label" x="569" y="426" text-anchor="middle">comments</text>
+  <text class="edge-label" x="854" y="426" text-anchor="middle">upsert</text>
+  <text class="edge-label" x="569" y="458" text-anchor="middle">orphan authors</text>
+  <text class="edge-label" x="854" y="458" text-anchor="middle">DELETE</text>
+  <text class="edge-label" x="176" y="409" text-anchor="middle">serial</text>
+  <text class="edge-label" x="443" y="505" text-anchor="middle">SGD rate</text>
+  <text class="edge-label" x="569" y="538" text-anchor="middle">daily rates</text>
+  <text class="edge-label" x="854" y="538" text-anchor="middle">upsert</text>
+  <text class="edge-label" x="176" y="521" text-anchor="middle">serial</text>
+  <text class="edge-label" x="443" y="585" text-anchor="middle">metrics</text>
+  <text class="edge-label" x="569" y="618" text-anchor="middle">daily rows</text>
+  <text class="edge-label" x="854" y="618" text-anchor="middle">upsert</text>
+  <text class="edge-label" x="569" y="650" text-anchor="middle">months done</text>
+  <text class="edge-label" x="854" y="650" text-anchor="middle">upsert</text>
+  <text class="edge-label" x="176" y="617" text-anchor="middle">worker</text>
+  <text class="edge-label" x="443" y="697" text-anchor="middle">sources</text>
+  <text class="edge-label" x="569" y="730" text-anchor="middle">daily rows</text>
+  <text class="edge-label" x="854" y="730" text-anchor="middle">upsert</text>
+  <text class="edge-label" x="569" y="762" text-anchor="middle">months done</text>
+  <text class="edge-label" x="854" y="762" text-anchor="middle">upsert</text>
+  <text class="edge-label" x="176" y="729" text-anchor="middle">worker</text>
+  <text class="edge-label" x="443" y="809" text-anchor="middle">terms</text>
+  <text class="edge-label" x="569" y="842" text-anchor="middle">terms</text>
+  <text class="edge-label" x="854" y="842" text-anchor="middle">upsert</text>
+  <text class="edge-label" x="569" y="874" text-anchor="middle">months done</text>
+  <text class="edge-label" x="854" y="874" text-anchor="middle">upsert</text>
+  <text class="edge-label" x="176" y="841" text-anchor="middle">worker</text>
+  <text class="edge-label" x="443" y="921" text-anchor="middle">referrers</text>
+  <text class="edge-label" x="443" y="955" text-anchor="middle">details</text>
+  <text class="edge-label" x="569" y="988" text-anchor="middle">referrers</text>
+  <text class="edge-label" x="854" y="988" text-anchor="middle">upsert</text>
+  <text class="edge-label" x="569" y="1020" text-anchor="middle">months done</text>
+  <text class="edge-label" x="854" y="1020" text-anchor="middle">upsert</text>
+  <text class="edge-label" x="569" y="1052" text-anchor="middle">new videos</text>
+  <text class="edge-label" x="854" y="1052" text-anchor="middle">upsert</text>
+  <text class="edge-label" x="176" y="986" text-anchor="middle">worker</text>
+  <text class="edge-label" x="435" y="1098" text-anchor="middle">run started</text>
+  <text class="edge-label" x="854" y="1098" text-anchor="middle">upsert</text>
+  <text class="edge-label" x="435" y="1130" text-anchor="middle">run finished</text>
+  <text class="edge-label" x="854" y="1130" text-anchor="middle">UPDATE</text>
+</svg>

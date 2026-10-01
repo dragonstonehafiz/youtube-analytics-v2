@@ -1,0 +1,110 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1001" height="446" viewBox="0 0 1001 446" role="img" aria-label="Comments and date range: routes/comments.py and routes/metadata.py">
+<title>Comments and date range: routes/comments.py and routes/metadata.py</title>
+<desc>Lanes from left to right: Frontend (api.ts), API routes, Reports, Reader, SQLite. GET /comments in API routes. getComments in Frontend (api.ts) (CommentsPanel). GET /comments/playlists/{id} in API routes. getPlaylistComments in Frontend (api.ts) (CommentsPanel). require_playlist in API routes. GET /comments/videos/{id} in API routes. getVideoComments in Frontend (api.ts) (CommentsPanel). require_owned_video in API routes. fetch_scalar in Reader. comments in SQLite. comment_authors in SQLite. videos in SQLite. playlist_items in SQLite. fetch_joined in Reader. comments in SQLite. comment_authors in SQLite. videos in SQLite. playlist_items in SQLite. comments.comment_feed in Reports (count + page). GET /meta/date-range in API routes. getDateRange in Frontend (api.ts) (PeriodSelect · Sync). scalar in Reader. videos in SQLite. getComments calls GET /comments: filters. getPlaylistComments calls GET /comments/playlists/{id}: id, filters. GET /comments/playlists/{id} calls require_playlist: playlist_id. getVideoComments calls GET /comments/videos/{id}: id, filters. GET /comments/videos/{id} calls require_owned_video: video_id. comments.comment_feed calls fetch_scalar: COUNT. fetch_scalar queries comments: comments. fetch_scalar queries comment_authors: authors. fetch_scalar queries videos: fields. fetch_scalar queries playlist_items: if playlist. comments.comment_feed calls fetch_joined: page rows. fetch_joined queries comments: comments. fetch_joined queries comment_authors: authors. fetch_joined queries videos: fields. fetch_joined queries playlist_items: if playlist. GET /comments calls comments.comment_feed: filters. GET /comments/playlists/{id} calls comments.comment_feed: playlist_id. GET /comments/videos/{id} calls comments.comment_feed: video_id. getDateRange calls GET /meta/date-range: on mount. GET /meta/date-range calls scalar: MIN published_at. scalar queries videos: earliest.</desc>
+<style>
+  .bg { fill: #ffffff; }
+  text { font-family: system-ui, -apple-system, "Segoe UI", Roboto, Arial, sans-serif; font-size: 14px; fill: #1c2330; }
+  .code, .code-line { font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, "Liberation Mono", monospace; font-size: 11.5px; }
+  .code { font-weight: 600; }
+  .sub { font-size: 12px; fill: #5b6475; }
+  .lane rect { fill: #f0f2f5; stroke: #d9dee6; stroke-width: 1; }
+  .lane text { font-size: 12px; font-weight: 700; letter-spacing: 0.04em; fill: #5b6475; }
+  .node rect { stroke-width: 1.5; }
+  .fe rect { fill: #efe9fa; stroke: #6a4bb3; }
+  .route rect { fill: #e6effa; stroke: #2f6fb3; }
+  .db rect { fill: #e4f4ec; stroke: #2c8a5a; }
+  .sync rect { fill: #f8eedd; stroke: #8a5a14; }
+  .yt rect { fill: #fbe6e4; stroke: #b3261e; }
+  .edge { fill: none; stroke: #5b6475; stroke-width: 1.6; }
+  .edge.dashed { stroke-dasharray: 6 5; }
+  .edge-label { font-size: 12px; fill: #5b6475; }
+  .arrowhead { fill: #5b6475; }
+  @media (prefers-color-scheme: dark) {
+    .bg { fill: #1a1f27; }
+    text { fill: #e6e9ef; }
+    .sub, .edge-label, .lane text { fill: #9aa3b2; }
+    .lane rect { fill: #222833; stroke: #2f3744; }
+    .fe rect { fill: #2a2340; stroke: #b9a2f5; }
+    .route rect { fill: #1b2a3d; stroke: #7db3ef; }
+    .db rect { fill: #183126; stroke: #6fd3a0; }
+    .sync rect { fill: #342816; stroke: #e7b56a; }
+    .yt rect { fill: #3a1d1b; stroke: #ff8a80; }
+    .edge { stroke: #9aa3b2; }
+    .arrowhead { fill: #9aa3b2; }
+  }
+</style>
+<rect class="bg" width="1001" height="446" rx="10"/>
+  <defs>
+    <marker id="arrow" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path class="arrowhead" d="M0,0 L10,5 L0,10 z"/></marker>
+  </defs>
+  <g class="lane"><rect x="12" y="8" width="162" height="430" rx="8"/><text x="93" y="28" text-anchor="middle">Frontend (api.ts)</text></g>
+  <g class="lane"><rect x="240" y="8" width="157" height="430" rx="8"/><text x="318" y="28" text-anchor="middle">API routes</text></g>
+  <g class="lane"><rect x="462" y="8" width="163" height="430" rx="8"/><text x="544" y="28" text-anchor="middle">Reports</text></g>
+  <g class="lane"><rect x="692" y="8" width="106" height="430" rx="8"/><text x="745" y="28" text-anchor="middle">Reader</text></g>
+  <g class="lane"><rect x="864" y="8" width="125" height="430" rx="8"/><text x="927" y="28" text-anchor="middle">SQLite</text></g>
+  <g class="node route"><rect x="246" y="50" width="143" height="48" rx="7"/><text class="code" x="318" y="78" text-anchor="middle">GET /comments</text></g>
+  <g class="node fe"><rect x="19" y="50" width="148" height="48" rx="7"/><text class="code" x="93" y="71" text-anchor="middle">getComments</text><text class="sub" x="93" y="86" text-anchor="middle">CommentsPanel</text></g>
+  <g class="node route"><rect x="246" y="112" width="143" height="49" rx="7"/><text class="code" x="318" y="133" text-anchor="middle">GET /comments/</text><text class="code" x="318" y="149" text-anchor="middle">playlists/{id}</text></g>
+  <g class="node fe"><rect x="19" y="112" width="148" height="49" rx="7"/><text class="code" x="93" y="134" text-anchor="middle">getPlaylistComments</text><text class="sub" x="93" y="148" text-anchor="middle">CommentsPanel</text></g>
+  <g class="node route"><rect x="246" y="191" width="143" height="33" rx="7"/><text class="code" x="318" y="212" text-anchor="middle">require_playlist</text></g>
+  <g class="node route"><rect x="246" y="238" width="143" height="49" rx="7"/><text class="code" x="318" y="259" text-anchor="middle">GET /comments/</text><text class="code" x="318" y="275" text-anchor="middle">videos/{id}</text></g>
+  <g class="node fe"><rect x="19" y="238" width="148" height="49" rx="7"/><text class="code" x="93" y="260" text-anchor="middle">getVideoComments</text><text class="sub" x="93" y="274" text-anchor="middle">CommentsPanel</text></g>
+  <g class="node route"><rect x="246" y="317" width="143" height="33" rx="7"/><text class="code" x="318" y="338" text-anchor="middle">require_owned_video</text></g>
+  <g class="node db"><rect x="699" y="50" width="92" height="122" rx="7"/><text class="code" x="745" y="71" text-anchor="middle">fetch_scalar</text></g>
+  <g class="node db"><rect x="871" y="50" width="111" height="26" rx="7"/><text class="code" x="927" y="68" text-anchor="middle">comments</text></g>
+  <g class="node db"><rect x="871" y="82" width="111" height="26" rx="7"/><text class="code" x="927" y="100" text-anchor="middle">comment_authors</text></g>
+  <g class="node db"><rect x="871" y="114" width="111" height="26" rx="7"/><text class="code" x="927" y="132" text-anchor="middle">videos</text></g>
+  <g class="node db"><rect x="871" y="146" width="111" height="26" rx="7"/><text class="code" x="927" y="164" text-anchor="middle">playlist_items</text></g>
+  <g class="node db"><rect x="699" y="182" width="92" height="122" rx="7"/><text class="code" x="745" y="203" text-anchor="middle">fetch_joined</text></g>
+  <g class="node db"><rect x="871" y="182" width="111" height="26" rx="7"/><text class="code" x="927" y="200" text-anchor="middle">comments</text></g>
+  <g class="node db"><rect x="871" y="214" width="111" height="26" rx="7"/><text class="code" x="927" y="232" text-anchor="middle">comment_authors</text></g>
+  <g class="node db"><rect x="871" y="246" width="111" height="26" rx="7"/><text class="code" x="927" y="264" text-anchor="middle">videos</text></g>
+  <g class="node db"><rect x="871" y="278" width="111" height="26" rx="7"/><text class="code" x="927" y="296" text-anchor="middle">playlist_items</text></g>
+  <g class="node db"><rect x="470" y="50" width="149" height="300" rx="7"/><text class="code" x="544" y="71" text-anchor="middle">comments.comment_feed</text><text class="sub" x="544" y="86" text-anchor="middle">count + page</text></g>
+  <g class="node route"><rect x="246" y="374" width="143" height="48" rx="7"/><text class="code" x="318" y="402" text-anchor="middle">GET /meta/date-range</text></g>
+  <g class="node fe"><rect x="19" y="374" width="148" height="48" rx="7"/><text class="code" x="93" y="395" text-anchor="middle">getDateRange</text><text class="sub" x="93" y="410" text-anchor="middle">PeriodSelect · Sync</text></g>
+  <g class="node db"><rect x="699" y="374" width="92" height="33" rx="7"/><text class="code" x="745" y="395" text-anchor="middle">scalar</text></g>
+  <g class="node db"><rect x="871" y="374" width="111" height="26" rx="7"/><text class="code" x="927" y="392" text-anchor="middle">videos</text></g>
+  <path class="edge" d="M166,74 H246" marker-end="url(#arrow)"/>
+  <path class="edge" d="M166,136 H246" marker-end="url(#arrow)"/>
+  <path class="edge" d="M274,161 V190" marker-end="url(#arrow)"/>
+  <path class="edge" d="M166,262 H246" marker-end="url(#arrow)"/>
+  <path class="edge" d="M274,287 V316" marker-end="url(#arrow)"/>
+  <path class="edge" d="M619,111 H698" marker-end="url(#arrow)"/>
+  <path class="edge" d="M791,63 H870" marker-end="url(#arrow)"/>
+  <path class="edge" d="M791,95 H870" marker-end="url(#arrow)"/>
+  <path class="edge" d="M791,127 H870" marker-end="url(#arrow)"/>
+  <path class="edge" d="M791,159 H870" marker-end="url(#arrow)"/>
+  <path class="edge" d="M619,243 H698" marker-end="url(#arrow)"/>
+  <path class="edge" d="M791,195 H870" marker-end="url(#arrow)"/>
+  <path class="edge" d="M791,227 H870" marker-end="url(#arrow)"/>
+  <path class="edge" d="M791,259 H870" marker-end="url(#arrow)"/>
+  <path class="edge" d="M791,291 H870" marker-end="url(#arrow)"/>
+  <path class="edge" d="M390,74 H468" marker-end="url(#arrow)"/>
+  <path class="edge" d="M390,136 H468" marker-end="url(#arrow)"/>
+  <path class="edge" d="M390,262 H468" marker-end="url(#arrow)"/>
+  <path class="edge" d="M166,398 H246" marker-end="url(#arrow)"/>
+  <path class="edge" d="M390,390 H698" marker-end="url(#arrow)"/>
+  <path class="edge" d="M791,387 H870" marker-end="url(#arrow)"/>
+  <text class="edge-label" x="206" y="69" text-anchor="middle">filters</text>
+  <text class="edge-label" x="206" y="132" text-anchor="middle">id, filters</text>
+  <text class="edge-label" x="282" y="180" text-anchor="start">playlist_id</text>
+  <text class="edge-label" x="206" y="258" text-anchor="middle">id, filters</text>
+  <text class="edge-label" x="282" y="306" text-anchor="start">video_id</text>
+  <text class="edge-label" x="658" y="106" text-anchor="middle">COUNT</text>
+  <text class="edge-label" x="831" y="58" text-anchor="middle">comments</text>
+  <text class="edge-label" x="831" y="90" text-anchor="middle">authors</text>
+  <text class="edge-label" x="831" y="122" text-anchor="middle">fields</text>
+  <text class="edge-label" x="831" y="154" text-anchor="middle">if playlist</text>
+  <text class="edge-label" x="658" y="238" text-anchor="middle">page rows</text>
+  <text class="edge-label" x="831" y="190" text-anchor="middle">comments</text>
+  <text class="edge-label" x="831" y="222" text-anchor="middle">authors</text>
+  <text class="edge-label" x="831" y="254" text-anchor="middle">fields</text>
+  <text class="edge-label" x="831" y="286" text-anchor="middle">if playlist</text>
+  <text class="edge-label" x="429" y="69" text-anchor="middle">filters</text>
+  <text class="edge-label" x="429" y="132" text-anchor="middle">playlist_id</text>
+  <text class="edge-label" x="429" y="258" text-anchor="middle">video_id</text>
+  <text class="edge-label" x="206" y="393" text-anchor="middle">on mount</text>
+  <text class="edge-label" x="544" y="386" text-anchor="middle">MIN published_at</text>
+  <text class="edge-label" x="831" y="382" text-anchor="middle">earliest</text>
+</svg>

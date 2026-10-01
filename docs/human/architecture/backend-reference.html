@@ -212,81 +212,46 @@
 
     <section id="call-chains">
       <h2>Call chains</h2>
-      <p>The functions each endpoint calls, in order. "Filled" means missing days are added.</p>
-      <div class="card file-group">
-        <h3><code>routes/videos.py</code></h3>
-        <ul class="route-lines">
-          <li><code>GET /videos</code> → <code>catalog.video_listing</code> (count and page on one connection)</li>
-          <li><code>GET /videos/stats</code> → <code>video_statistics.get_video_stats</code></li>
-          <li><code>GET /videos/published</code> → <code>resolve_playlist_video_ids</code> (only with a playlist ID): <code>require_playlist</code> (404 check) → <code>catalog.playlist_video_ids</code> → <code>catalog.video_listing</code> (five fields, no page)</li>
-          <li><code>GET /videos/{id}</code> → <code>catalog.video_detail</code></li>
-          <li><code>GET /videos/{id}/analytics</code> → <code>require_owned_video</code> (404 check) → <code>analytics.daily_analytics</code> (that one video, filled)</li>
-          <li><code>GET /videos/{id}/traffic-sources</code> → <code>require_owned_video</code> (404 check) → <code>traffic.daily_traffic_sources</code> (that one video, filled)</li>
-        </ul>
-      </div>
-      <div class="card file-group">
-        <h3><code>routes/playlists.py</code></h3>
-        <ul class="route-lines">
-          <li><code>GET /playlists</code> → <code>catalog.playlist_listing</code> (count and page on one connection)</li>
-          <li><code>GET /playlists/{id}</code> → <code>catalog.playlist_detail</code></li>
-          <li><code>GET /playlists/{id}/videos/stats</code> → <code>resolve_playlist_video_ids</code>: <code>require_playlist</code> (404 check) → <code>catalog.playlist_video_ids</code> → <code>video_statistics.get_video_stats</code></li>
-          <li><code>GET /playlists/{id}/videos</code> → <code>resolve_playlist_video_ids</code>: <code>require_playlist</code> (404 check) → <code>catalog.playlist_video_ids</code> → <code>catalog.video_listing</code> (count and page on one connection)</li>
-        </ul>
-      </div>
-      <div class="card file-group">
-        <h3><code>routes/analytics.py</code> — videos</h3>
-        <ul class="route-lines">
-          <li><code>GET /analytics/videos</code> → <code>analytics.daily_analytics</code> (filled)</li>
-          <li><code>GET /analytics/videos/top</code> → <code>analytics.top_videos</code></li>
-          <li><code>GET /analytics/traffic-sources</code> → <code>traffic.daily_traffic_sources</code> (filled)</li>
-          <li><code>GET /analytics/traffic-sources/top</code> → <code>traffic.top_videos_by_traffic_source</code> (10 per source)</li>
-          <li><code>GET /analytics/search-insights</code> → <code>traffic.search_terms</code></li>
-          <li><code>GET /analytics/search-insights/top</code> → <code>traffic.search_terms</code> (top 10)</li>
-          <li><code>GET /analytics/search-insights/videos</code> → <code>traffic.videos_by_search_term</code></li>
-          <li><code>GET /analytics/related-videos/referrers</code> → <code>traffic.related_video_referrers</code></li>
-          <li><code>GET /analytics/related-videos/destinations</code> → <code>traffic.related_video_destinations</code></li>
-          <li><code>GET /analytics/videos/{id}/search-insights</code> → <code>require_owned_video</code> (404 check) → <code>traffic.search_terms</code> (that one video)</li>
-          <li><code>GET /analytics/videos/{id}/related-videos/referrers</code> → <code>require_owned_video</code> (404 check) → <code>traffic.related_video_referrers</code> (that one video)</li>
-        </ul>
-      </div>
-      <div class="card file-group">
-        <h3><code>routes/analytics.py</code> — playlists</h3>
-        <p>Every line starts with <code>resolve_playlist_video_ids</code>: <code>require_playlist</code> (404 check) → <code>catalog.playlist_video_ids</code>.</p>
-        <ul class="route-lines">
-          <li><code>GET /analytics/playlists/{id}</code> → <code>analytics.daily_analytics</code> (filled)</li>
-          <li><code>GET /analytics/playlists/{id}/top</code> → <code>analytics.top_videos</code></li>
-          <li><code>GET /analytics/playlists/{id}/traffic-sources</code> → <code>traffic.daily_traffic_sources</code> (filled)</li>
-          <li><code>GET /analytics/playlists/{id}/traffic-sources/top</code> → <code>traffic.top_videos_by_traffic_source</code> (10 per source)</li>
-          <li><code>GET /analytics/playlists/{id}/search-insights</code> → <code>traffic.search_terms</code></li>
-          <li><code>GET /analytics/playlists/{id}/search-insights/top</code> → <code>traffic.search_terms</code> (top 10)</li>
-          <li><code>GET /analytics/playlists/{id}/search-insights/videos</code> → <code>traffic.videos_by_search_term</code></li>
-          <li><code>GET /analytics/playlists/{id}/related-videos/referrers</code> → <code>traffic.related_video_referrers</code></li>
-          <li><code>GET /analytics/playlists/{id}/related-videos/destinations</code> → <code>traffic.related_video_destinations</code></li>
-        </ul>
-      </div>
-      <div class="card file-group">
-        <h3><code>routes/comments.py</code></h3>
-        <ul class="route-lines">
-          <li><code>GET /comments</code> → <code>comments.comment_feed</code></li>
-          <li><code>GET /comments/videos/{id}</code> → <code>require_owned_video</code> (404 check) → <code>comments.comment_feed</code> (that video)</li>
-          <li><code>GET /comments/playlists/{id}</code> → <code>require_playlist</code> (404 check) → <code>comments.comment_feed</code> (that playlist)</li>
-        </ul>
-      </div>
-      <div class="card file-group">
-        <h3><code>routes/metadata.py</code></h3>
-        <ul class="route-lines">
-          <li><code>GET /meta/date-range</code> → <code>reader.scalar(Video, "MIN", "published_at")</code></li>
-        </ul>
-      </div>
-      <div class="card file-group">
-        <h3><code>routes/synchronization.py</code></h3>
-        <ul class="route-lines">
-          <li><code>GET /sync/status</code> → <code>sync.get_sync_status</code> (no database call)</li>
-          <li><code>POST /sync/stop</code> → <code>sync.request_stop</code></li>
-          <li><code>POST /sync/trigger</code> → <code>sync.validate_plan</code> → <code>sync.try_begin_sync</code> → <code>sync.execute_plan</code> (in the background)</li>
-          <li><code>GET /sync/runs</code> → <code>sync_history.sync_batches</code> (count, page and the page's stages on one connection)</li>
-        </ul>
-      </div>
+      <h3>Scope checks <small><code>routes/video_scope.py</code></small></h3>
+      <figure class="call-figure">
+        <img src="figures/calls-scope.svg" alt="Scope checks: routes/video_scope.py">
+      </figure>
+      <h3>Video and playlist catalog <small><code>routes/videos.py</code>, <code>routes/playlists.py</code></small></h3>
+      <figure class="call-figure">
+        <img src="figures/calls-catalog.svg" alt="Video and playlist catalog: routes/videos.py and routes/playlists.py">
+      </figure>
+      <h3>Analytics and video statistics <small><code>routes/analytics.py</code>, <code>routes/videos.py</code>, <code>routes/playlists.py</code></small></h3>
+      <figure class="call-figure">
+        <img src="figures/calls-analytics.svg" alt="Analytics and video statistics: routes/analytics.py, routes/videos.py, routes/playlists.py">
+      </figure>
+      <h3>Traffic sources <small><code>routes/analytics.py</code>, <code>routes/videos.py</code></small></h3>
+      <figure class="call-figure">
+        <img src="figures/calls-traffic.svg" alt="Traffic sources: routes/analytics.py and routes/videos.py">
+      </figure>
+      <h3>Search terms <small><code>routes/analytics.py</code></small></h3>
+      <figure class="call-figure">
+        <img src="figures/calls-search.svg" alt="Search terms: routes/analytics.py">
+      </figure>
+      <h3>Related videos <small><code>routes/analytics.py</code></small></h3>
+      <figure class="call-figure">
+        <img src="figures/calls-related.svg" alt="Related videos: routes/analytics.py">
+      </figure>
+      <h3>Comments and date range <small><code>routes/comments.py</code>, <code>routes/metadata.py</code></small></h3>
+      <figure class="call-figure">
+        <img src="figures/calls-comments.svg" alt="Comments and date range: routes/comments.py and routes/metadata.py">
+      </figure>
+      <h3>Sync history <small><code>routes/synchronization.py</code></small></h3>
+      <figure class="call-figure">
+        <img src="figures/calls-history.svg" alt="Sync history: routes/synchronization.py">
+      </figure>
+      <h3>Sync control <small><code>routes/synchronization.py</code></small></h3>
+      <figure class="call-figure">
+        <img src="figures/calls-sync-control.svg" alt="Sync control: routes/synchronization.py">
+      </figure>
+      <h3>Sync execution <small><code>sync/orchestration.py</code>, <code>sync/stages.py</code></small></h3>
+      <figure class="call-figure">
+        <img src="figures/calls-sync-run.svg" alt="Sync execution: sync/orchestration.py and sync/stages.py">
+      </figure>
     </section>
 
   </main>

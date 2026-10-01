@@ -1,0 +1,113 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1124" height="637" viewBox="0 0 1124 637" role="img" aria-label="Related videos: routes/analytics.py">
+<title>Related videos: routes/analytics.py</title>
+<desc>Lanes from left to right: Frontend (api.ts), API routes, Reports, Reader, SQLite. GET /analytics/related-videos/referrers in API routes. getRelatedVideoReferrers in Frontend (api.ts) (Analytics). GET /analytics/playlists/{id}/related-videos/referrers in API routes. getPlaylistRelatedVideoReferrers in Frontend (api.ts) (PlaylistAnalytics). resolve_playlist_video_ids in API routes. GET /analytics/videos/{id}/related-videos/referrers in API routes. getVideoRelatedVideoReferrers in Frontend (api.ts) (VideoAnalytics). require_owned_video in API routes. fetch_scalar in Reader. related_videos in SQLite. videos in SQLite. fetch_joined in Reader. related_videos in SQLite. videos in SQLite. traffic.related_video_referrers in Reports (total + list). GET /analytics/related-videos/destinations in API routes. getRelatedVideoDestinations in Frontend (api.ts) (Analytics · VideoAnalytics). GET /analytics/playlists/{id}/related-videos/destinations in API routes. getPlaylistRelatedVideoDestinations in Frontend (api.ts) (PlaylistAnalytics). resolve_playlist_video_ids in API routes. fetch_joined in Reader. related_videos in SQLite. videos in SQLite. traffic.related_video_destinations in Reports. getRelatedVideoReferrers calls GET /analytics/related-videos/referrers: own. getPlaylistRelatedVideoReferrers calls GET /analytics/playlists/{id}/related-videos/referrers: id, own. GET /analytics/playlists/{id}/related-videos/referrers calls resolve_playlist_video_ids: playlist_id. getVideoRelatedVideoReferrers calls GET /analytics/videos/{id}/related-videos/referrers: id, own. GET /analytics/videos/{id}/related-videos/referrers calls require_owned_video: video_id. traffic.related_video_referrers calls fetch_scalar: total views. fetch_scalar queries related_videos: views. fetch_scalar queries videos: owned targets. traffic.related_video_referrers calls fetch_joined: referrers. fetch_joined queries related_videos: referrers. fetch_joined queries videos: titles. GET /analytics/related-videos/referrers calls traffic.related_video_referrers: own. GET /analytics/playlists/{id}/related-videos/referrers calls traffic.related_video_referrers: video_ids. GET /analytics/videos/{id}/related-videos/referrers calls traffic.related_video_referrers: [video_id]. getRelatedVideoDestinations calls GET /analytics/related-videos/destinations: referrer. getPlaylistRelatedVideoDestinations calls GET /analytics/playlists/{id}/related-videos/destinations: referrer. GET /analytics/playlists/{id}/related-videos/destinations calls resolve_playlist_video_ids: playlist_id. traffic.related_video_destinations calls fetch_joined: destinations. fetch_joined queries related_videos: views. fetch_joined queries videos: owned targets. GET /analytics/related-videos/destinations calls traffic.related_video_destinations: referrer. GET /analytics/playlists/{id}/related-videos/destinations calls traffic.related_video_destinations: video_ids.</desc>
+<style>
+  .bg { fill: #ffffff; }
+  text { font-family: system-ui, -apple-system, "Segoe UI", Roboto, Arial, sans-serif; font-size: 14px; fill: #1c2330; }
+  .code, .code-line { font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, "Liberation Mono", monospace; font-size: 11.5px; }
+  .code { font-weight: 600; }
+  .sub { font-size: 12px; fill: #5b6475; }
+  .lane rect { fill: #f0f2f5; stroke: #d9dee6; stroke-width: 1; }
+  .lane text { font-size: 12px; font-weight: 700; letter-spacing: 0.04em; fill: #5b6475; }
+  .node rect { stroke-width: 1.5; }
+  .fe rect { fill: #efe9fa; stroke: #6a4bb3; }
+  .route rect { fill: #e6effa; stroke: #2f6fb3; }
+  .db rect { fill: #e4f4ec; stroke: #2c8a5a; }
+  .sync rect { fill: #f8eedd; stroke: #8a5a14; }
+  .yt rect { fill: #fbe6e4; stroke: #b3261e; }
+  .edge { fill: none; stroke: #5b6475; stroke-width: 1.6; }
+  .edge.dashed { stroke-dasharray: 6 5; }
+  .edge-label { font-size: 12px; fill: #5b6475; }
+  .arrowhead { fill: #5b6475; }
+  @media (prefers-color-scheme: dark) {
+    .bg { fill: #1a1f27; }
+    text { fill: #e6e9ef; }
+    .sub, .edge-label, .lane text { fill: #9aa3b2; }
+    .lane rect { fill: #222833; stroke: #2f3744; }
+    .fe rect { fill: #2a2340; stroke: #b9a2f5; }
+    .route rect { fill: #1b2a3d; stroke: #7db3ef; }
+    .db rect { fill: #183126; stroke: #6fd3a0; }
+    .sync rect { fill: #342816; stroke: #e7b56a; }
+    .yt rect { fill: #3a1d1b; stroke: #ff8a80; }
+    .edge { stroke: #9aa3b2; }
+    .arrowhead { fill: #9aa3b2; }
+  }
+</style>
+<rect class="bg" width="1124" height="637" rx="10"/>
+  <defs>
+    <marker id="arrow" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path class="arrowhead" d="M0,0 L10,5 L0,10 z"/></marker>
+  </defs>
+  <g class="lane"><rect x="12" y="8" width="189" height="621" rx="8"/><text x="106" y="28" text-anchor="middle">Frontend (api.ts)</text></g>
+  <g class="lane"><rect x="275" y="8" width="195" height="621" rx="8"/><text x="372" y="28" text-anchor="middle">API routes</text></g>
+  <g class="lane"><rect x="544" y="8" width="195" height="621" rx="8"/><text x="641" y="28" text-anchor="middle">Reports</text></g>
+  <g class="lane"><rect x="813" y="8" width="106" height="621" rx="8"/><text x="866" y="28" text-anchor="middle">Reader</text></g>
+  <g class="lane"><rect x="993" y="8" width="119" height="621" rx="8"/><text x="1052" y="28" text-anchor="middle">SQLite</text></g>
+  <g class="node route"><rect x="282" y="50" width="181" height="49" rx="7"/><text class="code" x="372" y="71" text-anchor="middle">GET /analytics/related-</text><text class="code" x="372" y="87" text-anchor="middle">videos/referrers</text></g>
+  <g class="node fe"><rect x="19" y="50" width="175" height="49" rx="7"/><text class="code" x="106" y="72" text-anchor="middle">getRelatedVideoReferrers</text><text class="sub" x="106" y="86" text-anchor="middle">Analytics</text></g>
+  <g class="node route"><rect x="282" y="113" width="181" height="65" rx="7"/><text class="code" x="372" y="134" text-anchor="middle">GET /analytics/playlists/</text><text class="code" x="372" y="150" text-anchor="middle">{id}/related-videos/</text><text class="code" x="372" y="166" text-anchor="middle">referrers</text></g>
+  <g class="node fe"><rect x="19" y="113" width="175" height="65" rx="7"/><text class="code" x="106" y="134" text-anchor="middle">getPlaylistRelated</text><text class="code" x="106" y="150" text-anchor="middle">VideoReferrers</text><text class="sub" x="106" y="166" text-anchor="middle">PlaylistAnalytics</text></g>
+  <g class="node route"><rect x="282" y="208" width="181" height="33" rx="7"/><text class="code" x="372" y="229" text-anchor="middle">resolve_playlist_video_ids</text></g>
+  <g class="node route"><rect x="282" y="255" width="181" height="65" rx="7"/><text class="code" x="372" y="276" text-anchor="middle">GET /analytics/videos/</text><text class="code" x="372" y="292" text-anchor="middle">{id}/related-videos/</text><text class="code" x="372" y="308" text-anchor="middle">referrers</text></g>
+  <g class="node fe"><rect x="19" y="255" width="175" height="65" rx="7"/><text class="code" x="106" y="276" text-anchor="middle">getVideoRelated</text><text class="code" x="106" y="292" text-anchor="middle">VideoReferrers</text><text class="sub" x="106" y="308" text-anchor="middle">VideoAnalytics</text></g>
+  <g class="node route"><rect x="282" y="350" width="181" height="33" rx="7"/><text class="code" x="372" y="371" text-anchor="middle">require_owned_video</text></g>
+  <g class="node db"><rect x="820" y="50" width="92" height="58" rx="7"/><text class="code" x="866" y="84" text-anchor="middle">fetch_scalar</text></g>
+  <g class="node db"><rect x="1000" y="50" width="105" height="26" rx="7"/><text class="code" x="1052" y="68" text-anchor="middle">related_videos</text></g>
+  <g class="node db"><rect x="1000" y="82" width="105" height="26" rx="7"/><text class="code" x="1052" y="100" text-anchor="middle">videos</text></g>
+  <g class="node db"><rect x="820" y="118" width="92" height="58" rx="7"/><text class="code" x="866" y="152" text-anchor="middle">fetch_joined</text></g>
+  <g class="node db"><rect x="1000" y="118" width="105" height="26" rx="7"/><text class="code" x="1052" y="136" text-anchor="middle">related_videos</text></g>
+  <g class="node db"><rect x="1000" y="150" width="105" height="26" rx="7"/><text class="code" x="1052" y="168" text-anchor="middle">videos</text></g>
+  <g class="node db"><rect x="551" y="50" width="181" height="333" rx="7"/><text class="code" x="641" y="71" text-anchor="middle">traffic.</text><text class="code" x="641" y="87" text-anchor="middle">related_video_referrers</text><text class="sub" x="641" y="102" text-anchor="middle">total + list</text></g>
+  <g class="node route"><rect x="282" y="407" width="181" height="64" rx="7"/><text class="code" x="372" y="436" text-anchor="middle">GET /analytics/related-</text><text class="code" x="372" y="452" text-anchor="middle">videos/destinations</text></g>
+  <g class="node fe"><rect x="19" y="407" width="175" height="64" rx="7"/><text class="code" x="106" y="428" text-anchor="middle">getRelatedVideo</text><text class="code" x="106" y="444" text-anchor="middle">Destinations</text><text class="sub" x="106" y="459" text-anchor="middle">Analytics · VideoAnalytics</text></g>
+  <g class="node route"><rect x="282" y="485" width="181" height="65" rx="7"/><text class="code" x="372" y="506" text-anchor="middle">GET /analytics/playlists/</text><text class="code" x="372" y="522" text-anchor="middle">{id}/related-videos/</text><text class="code" x="372" y="538" text-anchor="middle">destinations</text></g>
+  <g class="node fe"><rect x="19" y="485" width="175" height="65" rx="7"/><text class="code" x="106" y="506" text-anchor="middle">getPlaylistRelated</text><text class="code" x="106" y="522" text-anchor="middle">VideoDestinations</text><text class="sub" x="106" y="538" text-anchor="middle">PlaylistAnalytics</text></g>
+  <g class="node route"><rect x="282" y="580" width="181" height="33" rx="7"/><text class="code" x="372" y="601" text-anchor="middle">resolve_playlist_video_ids</text></g>
+  <g class="node db"><rect x="820" y="407" width="92" height="58" rx="7"/><text class="code" x="866" y="440" text-anchor="middle">fetch_joined</text></g>
+  <g class="node db"><rect x="1000" y="407" width="105" height="26" rx="7"/><text class="code" x="1052" y="424" text-anchor="middle">related_videos</text></g>
+  <g class="node db"><rect x="1000" y="439" width="105" height="26" rx="7"/><text class="code" x="1052" y="456" text-anchor="middle">videos</text></g>
+  <g class="node db"><rect x="551" y="407" width="181" height="206" rx="7"/><text class="code" x="641" y="428" text-anchor="middle">traffic.</text><text class="code" x="641" y="444" text-anchor="middle">related_video_destinations</text></g>
+  <path class="edge" d="M194,74 H281" marker-end="url(#arrow)"/>
+  <path class="edge" d="M194,146 H281" marker-end="url(#arrow)"/>
+  <path class="edge" d="M310,178 V207" marker-end="url(#arrow)"/>
+  <path class="edge" d="M194,288 H281" marker-end="url(#arrow)"/>
+  <path class="edge" d="M310,320 V349" marker-end="url(#arrow)"/>
+  <path class="edge" d="M732,79 H819" marker-end="url(#arrow)"/>
+  <path class="edge" d="M912,63 H999" marker-end="url(#arrow)"/>
+  <path class="edge" d="M912,95 H999" marker-end="url(#arrow)"/>
+  <path class="edge" d="M732,147 H819" marker-end="url(#arrow)"/>
+  <path class="edge" d="M912,131 H999" marker-end="url(#arrow)"/>
+  <path class="edge" d="M912,163 H999" marker-end="url(#arrow)"/>
+  <path class="edge" d="M463,74 H550" marker-end="url(#arrow)"/>
+  <path class="edge" d="M463,146 H550" marker-end="url(#arrow)"/>
+  <path class="edge" d="M463,288 H550" marker-end="url(#arrow)"/>
+  <path class="edge" d="M194,439 H281" marker-end="url(#arrow)"/>
+  <path class="edge" d="M194,518 H281" marker-end="url(#arrow)"/>
+  <path class="edge" d="M310,550 V579" marker-end="url(#arrow)"/>
+  <path class="edge" d="M732,436 H819" marker-end="url(#arrow)"/>
+  <path class="edge" d="M912,420 H999" marker-end="url(#arrow)"/>
+  <path class="edge" d="M912,452 H999" marker-end="url(#arrow)"/>
+  <path class="edge" d="M463,439 H550" marker-end="url(#arrow)"/>
+  <path class="edge" d="M463,518 H550" marker-end="url(#arrow)"/>
+  <text class="edge-label" x="237" y="70" text-anchor="middle">own</text>
+  <text class="edge-label" x="237" y="140" text-anchor="middle">id, own</text>
+  <text class="edge-label" x="318" y="196" text-anchor="start">playlist_id</text>
+  <text class="edge-label" x="237" y="282" text-anchor="middle">id, own</text>
+  <text class="edge-label" x="318" y="338" text-anchor="start">video_id</text>
+  <text class="edge-label" x="775" y="74" text-anchor="middle">total views</text>
+  <text class="edge-label" x="956" y="58" text-anchor="middle">views</text>
+  <text class="edge-label" x="956" y="90" text-anchor="middle">owned targets</text>
+  <text class="edge-label" x="775" y="142" text-anchor="middle">referrers</text>
+  <text class="edge-label" x="956" y="126" text-anchor="middle">referrers</text>
+  <text class="edge-label" x="956" y="158" text-anchor="middle">titles</text>
+  <text class="edge-label" x="506" y="70" text-anchor="middle">own</text>
+  <text class="edge-label" x="506" y="140" text-anchor="middle">video_ids</text>
+  <text class="edge-label" x="506" y="282" text-anchor="middle">[video_id]</text>
+  <text class="edge-label" x="237" y="434" text-anchor="middle">referrer</text>
+  <text class="edge-label" x="237" y="512" text-anchor="middle">referrer</text>
+  <text class="edge-label" x="318" y="568" text-anchor="start">playlist_id</text>
+  <text class="edge-label" x="775" y="431" text-anchor="middle">destinations</text>
+  <text class="edge-label" x="956" y="415" text-anchor="middle">views</text>
+  <text class="edge-label" x="956" y="447" text-anchor="middle">owned targets</text>
+  <text class="edge-label" x="506" y="434" text-anchor="middle">referrer</text>
+  <text class="edge-label" x="506" y="512" text-anchor="middle">video_ids</text>
+</svg>
