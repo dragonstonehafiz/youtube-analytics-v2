@@ -12,7 +12,6 @@ from sync.write_preparation import search_term_rows
 from database import Video, reader
 from database.reports import analytics, catalog, traffic, video_statistics
 from routes import router
-from routes.video_scope import resolve_playlist_video_ids
 from tests.support import (
     FIXED_NOW,
     IsolatedDatabaseTestCase,
@@ -277,7 +276,7 @@ class OwnershipQueryBoundaryTest(IsolatedDatabaseTestCase):
         playlist = _get("/playlists/p-1")["item"]
         self.assertEqual(playlist["total_views"], 100)
 
-        video_ids = resolve_playlist_video_ids("p-1")
+        video_ids = catalog.playlist_video_ids("p-1")
         self.assertEqual(video_ids, ["v-owned"])
 
         body = _get("/playlists/p-1/videos")
@@ -290,7 +289,7 @@ class OwnershipQueryBoundaryTest(IsolatedDatabaseTestCase):
         writer.write(make_playlist_item("pi-1", "p-1", "v-owned"))
         writer.write(make_playlist_item("pi-2", "p-1", "v-external"))
 
-        stats = video_statistics.get_video_stats(video_ids=resolve_playlist_video_ids("p-1"))
+        stats = video_statistics.get_video_stats(video_ids=catalog.playlist_video_ids("p-1"))
         self.assertEqual(stats["total_public"], 1)
 
     def test_video_analytics_excludes_external_video(self) -> None:

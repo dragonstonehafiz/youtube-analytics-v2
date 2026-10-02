@@ -73,13 +73,14 @@
       <h3><span class="tag route">routes/</span></h3>
       <p>The web API the frontend calls.</p>
       <dl class="file-list">
-        <dt><code>videos.py</code></dt><dd>Serves the Videos page and single-video data.</dd>
+        <dt><code>videos.py</code></dt><dd>Serves the Videos page, single-video data, and the video list and statistics for the channel or a playlist.</dd>
         <dt><code>playlists.py</code></dt><dd>Serves the Playlists page and single-playlist data.</dd>
         <dt><code>analytics.py</code></dt><dd>Serves the Analytics pages: charts, top videos, traffic sources, search terms, and related videos.</dd>
         <dt><code>comments.py</code></dt><dd>Serves the comment feeds for the channel, a video, or a playlist.</dd>
         <dt><code>synchronization.py</code></dt><dd>Starts and stops syncs, reports progress, and returns sync history.</dd>
         <dt><code>metadata.py</code></dt><dd>Returns the earliest publish year for the year dropdowns.</dd>
         <dt><code>video_scope.py</code></dt><dd>Returns 404 for a missing video or playlist, and loads a playlist's video IDs. Defines no endpoints.</dd>
+        <dt><code>_shared.py</code></dt><dd>Turns a missing lookup result into a 404 "not found" response. Defines no endpoints.</dd>
       </dl>
       </div>
       <div class="card file-group">
@@ -146,12 +147,12 @@
       </div>
       <div class="card file-group">
         <h3>Playlists</h3>
-        <p>Handled in <code>routes/playlists.py</code> and <code>routes/video_scope.py</code>.</p>
+        <p>Handled in <code>routes/playlists.py</code>, <code>routes/videos.py</code> and <code>routes/video_scope.py</code>.</p>
         <dl class="returns-list">
           <dt class="col-head">Read</dt><dd class="col-head">Returns</dd><dd class="col-head">Used by</dd>
           <dt><code>catalog.playlist_listing</code></dt><dd>One page of playlists with their total views and earnings.</dd><dd class="used-by"><code>GET /playlists</code></dd>
           <dt><code>catalog.playlist_detail</code></dt><dd>One playlist with its total views and earnings.</dd><dd class="used-by"><code>GET /playlists/{id}</code></dd>
-          <dt><code>require_playlist</code></dt><dd>Returns 404 if the playlist doesn't exist.</dd><dd class="used-by">404 check: <code>/comments/playlists/{id}</code>, and every endpoint that uses <code>resolve_playlist_video_ids</code></dd>
+          <dt><code>require_playlist</code></dt><dd>Returns 404 if the playlist doesn't exist.</dd><dd class="used-by">404 check: <code>/comments/playlists/{id}</code>, <code>/videos/published</code> with a playlist ID, and every playlist endpoint that uses <code>scope_video_ids</code></dd>
           <dt><code>catalog.playlist_video_ids</code></dt><dd>The IDs of the channel's videos in a playlist.</dd><dd class="used-by"><code>GET /playlists/{id}/videos/stats</code><br><code>GET /playlists/{id}/videos</code><br>every <code>GET /analytics/playlists/{id}…</code> endpoint<br><code>GET /videos/published</code> with a playlist ID</dd>
         </dl>
       </div>
@@ -220,9 +221,9 @@
       <figure class="call-figure">
         <img src="figures/calls-catalog.svg" alt="Video and playlist catalog: routes/videos.py and routes/playlists.py">
       </figure>
-      <h3>Analytics and video statistics <small><code>routes/analytics.py</code>, <code>routes/videos.py</code>, <code>routes/playlists.py</code></small></h3>
+      <h3>Analytics and video statistics <small><code>routes/analytics.py</code>, <code>routes/videos.py</code></small></h3>
       <figure class="call-figure">
-        <img src="figures/calls-analytics.svg" alt="Analytics and video statistics: routes/analytics.py, routes/videos.py, routes/playlists.py">
+        <img src="figures/calls-analytics.svg" alt="Analytics and video statistics: routes/analytics.py and routes/videos.py">
       </figure>
       <h3>Traffic sources <small><code>routes/analytics.py</code>, <code>routes/videos.py</code></small></h3>
       <figure class="call-figure">

@@ -131,7 +131,7 @@
         <div class="flow-arrow" aria-hidden="true"></div>
         <div class="flow-step route"><strong>Response</strong><small>The report's result becomes JSON</small></div>
       </div>
-      <p>Playlist handlers first load the playlist's video IDs, then call the same report as the channel-wide handler. Single-video handlers call it with that one video's ID.</p>
+      <p>A channel URL and its playlist URL share one handler. On the playlist URL, the handler first loads the playlist's video IDs and passes them to the report. Single-video handlers call the report with that one video's ID.</p>
 
       <h3>Sync</h3>
       <div class="flow">

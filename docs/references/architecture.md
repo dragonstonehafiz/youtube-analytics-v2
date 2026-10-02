@@ -91,7 +91,8 @@ indefinitely and are safe to delete between runs.
 |---|---|
 | `server.py` | FastAPI app construction, CORS, lifespan (`init_db` → stranded `sync_runs` sweep through `writer.update()`) |
 | `routes/videos.py`, `routes/playlists.py`, `routes/analytics.py`, `routes/comments.py`, `routes/synchronization.py`, `routes/metadata.py` | API route handlers, grouped by resource. They validate parameters, raise 404s, and return a `database.reports` function's finished result (adding an `{items: …}`/`{item: …}` envelope where needed); `routes/__init__.py` aggregates them in a fixed order into one `router` |
-| `routes/video_scope.py` | Shared route helpers `require_owned_video()`, `require_playlist()` (404 existence checks through the reader), and `resolve_playlist_video_ids()` (playlist 404, then member IDs, for every playlist-scoped handler); registers no routes |
+| `routes/_shared.py` | `require_found(item, resource)`: returns `item`, or raises `404 {"detail": "<resource> not found"}` when it is `None`; used by the detail endpoints and the `video_scope.py` checks |
+| `routes/video_scope.py` | Shared route helpers `require_owned_video()`, `require_playlist()` (404 existence checks through the reader), and the `scope_video_ids()` dependency (`None` on a channel route; on a route with a `playlist_id` path parameter, `require_playlist()` then the playlist's member IDs) |
 | `sync/status.py` | Global sync-status lifecycle (`idle \| running \| stopping \| success \| failed \| cancelled`, plus message) behind one lock, with `try_begin_sync()`/`request_stop()` reservation primitives and the `raise_if_stopping()` cooperative-cancellation checkpoint |
 | `sync/plans.py` | Plan types, canonical `STAGE_ORDER`, derived `FULL_SYNC_TYPES`, available years, `validate_plan()` |
 | `sync/orchestration.py` | `execute_plan()`/`run_plan()`, stage registry, selected-stage sequencing, `sync_runs` tracking through the writer |
@@ -178,7 +179,8 @@ backend/
     comments.py
     synchronization.py
     metadata.py
-    video_scope.py         # require_owned_video(), require_playlist(), resolve_playlist_video_ids()
+    video_scope.py         # require_owned_video(), require_playlist(), scope_video_ids()
+    _shared.py             # require_found(): None -> 404 "<resource> not found"
 
   sync/
     __init__.py            # re-exports the plan types/validation, status primitives,

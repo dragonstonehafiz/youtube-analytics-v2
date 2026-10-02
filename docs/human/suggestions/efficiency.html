@@ -100,7 +100,7 @@
           <div class="dup-head"><h3>Playlist lookup repeated per endpoint</h3><span class="dup-count">per request</span></div>
           <p>The playlist statistics route and each playlist analytics route check the playlist exists and load its video IDs before their own query.</p>
           <dl>
-            <dt>Where</dt><dd><code>resolve_playlist_video_ids</code> (<code>routes/video_scope.py</code>), called by every playlist-scoped route</dd>
+            <dt>Where</dt><dd><code>scope_video_ids</code> (<code>routes/video_scope.py</code>), run by every playlist-scoped route</dd>
             <dt>Cost</dt><dd>Two extra queries per request, repeated across the many requests a playlist page sends.</dd>
           </dl>
         </article>
@@ -109,7 +109,7 @@
           <div class="dup-head"><h3>Substring title search</h3><span class="dup-count">per filtered request</span></div>
           <p>The title filter is <code>v.title LIKE '%…%' OR v.id LIKE '%…%'</code>.</p>
           <dl>
-            <dt>Where</dt><dd>11 reads in <code>backend/database/reports/</code>: 10 report functions through <code>video_conditions()</code>, and <code>get_video_stats</code></dd>
+            <dt>Where</dt><dd>11 reads in <code>backend/database/reports/</code>, all through <code>video_conditions()</code></dd>
             <dt>Cost</dt><dd>A leading <code>%</code> cannot use an index, so every video row is scanned. Small at the current table size.</dd>
           </dl>
         </article>

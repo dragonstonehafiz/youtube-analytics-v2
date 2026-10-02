@@ -58,8 +58,9 @@ GET  /videos/published
   ?start_date, end_date, content_type, privacy_status, playlist_id, title
   → { items: PublishedVideo[] } | 404 if playlist_id is given and not found
   # items carry id, title, published_at, thumbnail_url, content_type only
-  Filters on published_at, not analytics date. No pagination. With playlist_id, scoped to the
-  members from resolve_playlist_video_ids() (see Analytics below).
+  Filters on published_at, not analytics date. No pagination. With playlist_id, the handler calls
+  require_playlist() then catalog.playlist_video_ids() (the same two steps as the Analytics flow below)
+  and scopes to those members; an empty playlist_id is ignored.
   MUST be declared before /videos/{id} in routes/videos.py (path-matching order) — see below.
 
 GET  /videos/{video_id}
@@ -99,8 +100,8 @@ GET  /playlists/{playlist_id}/videos/stats
   ?title, start_date, end_date, content_type, privacy_status
   → VideoStats | 404 if playlist not found
   Same semantics as GET /videos/stats, scoped to the playlist's member videos (deduplicated by video ID).
-  Resolves members through resolve_playlist_video_ids() (see Analytics below), then calls the same
-  get_video_stats() report as /videos/stats with video_ids=. Default dates come from the playlist's
+  Same handler as /videos/stats; members come from scope_video_ids() (see Analytics below) and
+  are passed to get_video_stats() as video_ids=. Default dates come from the playlist's
   own analytics range. An existing playlist with no valid members returns all-zero VideoStats.
 
 GET  /playlists/{playlist_id}/videos
@@ -108,8 +109,8 @@ GET  /playlists/{playlist_id}/videos
    title, start_date, end_date, content_type, privacy_status
   sort_by ∈ published_at | view_count | comment_count | total_revenue_sgd
   → { items: Video[], total, page, page_size } | 404 if playlist not found
-  Same query and fields as GET /videos, scoped to the members from resolve_playlist_video_ids()
-  (see Analytics below). A video listed more than once in the playlist appears and counts once.
+  Same handler, query, and fields as GET /videos, scoped to the members from
+  scope_video_ids() (see Analytics below). A video listed more than once in the playlist appears and counts once.
 ```
 
 ## Channel analytics
@@ -163,10 +164,15 @@ GET  /analytics/playlists/{playlist_id}/traffic-sources/top
   Same explicit limit=10 note as the channel-wide equivalent above.
 ```
 
-Each of these four routes calls the *same* `database/reports/` function as its
-channel-wide counterpart — there are no playlist-specific queries. Every playlist analytics handler,
-and `GET /playlists/{playlist_id}/videos/stats`, follows one flow, factored into
-`resolve_playlist_video_ids()` in `routes/video_scope.py`:
+Each playlist analytics route, `GET /playlists/{playlist_id}/videos/stats`, and
+`GET /playlists/{playlist_id}/videos` is the *same* handler as its channel-wide counterpart: the
+function carries two stacked `@router.get(..., name=...)` decorators, one per URL. The two catalog
+playlist URLs are therefore declared in `routes/videos.py`, not `routes/playlists.py`. There are no
+playlist-specific handlers or queries. The shared handler has no `playlist_id` argument, so the generated OpenAPI schema
+(`/docs`) does not list `playlist_id` on the playlist URLs.
+The handler's `scope_video_ids` dependency reads the matched route's path parameters: with no
+`playlist_id` it returns `None` (channel-wide, and a `playlist_id` query string is ignored); with one it
+runs these steps once per request:
 
 1. `require_playlist(playlist_id)` — the sole 404 boundary, raising `404 {"detail": "Playlist not found"}`.
    It is a bare `reader.select_one(Playlist, ("id",), ...)` existence lookup; no playlist aggregate statistics are computed.
@@ -263,7 +269,7 @@ GET  /analytics/related-videos/destinations
 GET  /analytics/playlists/{playlist_id}/related-videos/referrers
   Same query params as the channel-wide referrers route
   → { items: RelatedReferrerRow[], total_named_views: number } | 404 if playlist not found
-  Scoped to the playlist's member videos via the same resolve_playlist_video_ids() flow
+  Scoped to the playlist's member videos via the same scope_video_ids() flow
   as every other playlist-analytics route.
 
 GET  /analytics/playlists/{playlist_id}/related-videos/destinations
@@ -413,7 +419,7 @@ GET  /sync/runs
 
 ## Route-order and compatibility constraints
 
-- **`/videos/published` must be declared before `/videos/{video_id}`** in `routes/videos.py` — FastAPI matches routes in declaration order, and a literal path segment (`published`) would otherwise be captured by the `{video_id}` path parameter on an earlier-declared dynamic route. Confirmed current order in `routes/videos.py` has `/videos/published` (line 48) before `/videos/{video_id}` (line 65). `routes/__init__.py` includes the six sub-routers in a fixed order (videos, playlists, analytics, comments, synchronization, metadata), but that inter-file order carries no matching-order risk here since no two files declare overlapping path prefixes with the same ambiguity — only the intra-file `/videos/published` vs `/videos/{video_id}` ordering matters. The comments routes are likewise unambiguous: `/comments` has no dynamic sibling, and `/comments/videos/{id}` and `/comments/playlists/{id}` are distinguished by a literal second segment.
+- **`/videos/published` must be declared before `/videos/{video_id}`** in `routes/videos.py` — FastAPI matches routes in declaration order, and a literal path segment (`published`) would otherwise be captured by the `{video_id}` path parameter on an earlier-declared dynamic route. `routes/videos.py` declares `/videos` and `/videos/stats` first, then `/videos/published` before `/videos/{video_id}`. `routes/__init__.py` includes the six sub-routers in a fixed order (videos, playlists, analytics, comments, synchronization, metadata), but that inter-file order carries no matching-order risk here since no two files declare overlapping path prefixes with the same ambiguity — only the intra-file `/videos/published` vs `/videos/{video_id}` ordering matters. The comments routes are likewise unambiguous: `/comments` has no dynamic sibling, and `/comments/videos/{id}` and `/comments/playlists/{id}` are distinguished by a literal second segment.
 - Frontend's `api.ts` exposes two identically-implemented functions for the same endpoint — `getPlaylistAnalytics(id, params)` and `getPlaylistAggregatedAnalytics(id, params)` both call `GET /analytics/playlists/{id}` with no difference in behavior. Only `getPlaylistAnalytics` is actually used by `PlaylistAnalytics.tsx`; treat the other as a redundant alias, not a second endpoint.
 - Adding a new sortable column to any `sort_by` requires updating the backend's sort mapping (`database/reports/catalog.py`'s `_VIDEO_SORT_COLUMNS` / `_PLAYLIST_SORT_COLUMNS`, see `database.md`) — an unrecognized value is silently ignored (falls back to the default sort) rather than rejected with an error.
 - The Top Videos routes' `sort_by` is different: it's typed `Literal["views", "watch_time"]` in `routes/analytics.py`, so FastAPI rejects an invalid value with 422 instead of silently falling back. The report (`analytics.top_videos()`) still falls back to `"views"` if called directly with an unrecognized value — see `database.md`.

@@ -6,6 +6,7 @@ from collections.abc import Collection
 
 from .. import reader
 from ..reader import Query
+from ._conditions import video_conditions
 
 _CATALOG_VALUES = (
     "legacy_video_count", "legacy_short_count", "new_video_count", "new_short_count",
@@ -40,24 +41,10 @@ def get_video_stats(
     if scoped_ids is not None and not scoped_ids:
         return _empty_video_stats()
 
-    scope_conditions: list[str] = ["v.own = 1"]
-    scope_params: list[object] = []
-    if scoped_ids:
-        scope_conditions.append(f"v.id IN ({','.join('?' * len(scoped_ids))})")
-        scope_params.extend(scoped_ids)
-
-    conditions: list[str] = list(scope_conditions)
-    params: list[object] = list(scope_params)
-    if title:
-        conditions.append("(v.title LIKE ? OR v.id LIKE ?)")
-        params.append(f"%{title}%")
-        params.append(f"%{title}%")
-    if content_type:
-        conditions.append("v.content_type = ?")
-        params.append(content_type)
-    if privacy_status:
-        conditions.append("v.privacy_status = ?")
-        params.append(privacy_status)
+    scope_conditions, scope_params = video_conditions(video_ids=scoped_ids)
+    conditions, params = video_conditions(
+        video_ids=scoped_ids, title=title, content_type=content_type, privacy_status=privacy_status,
+    )
     where = f"WHERE {' AND '.join(conditions)}"
 
     with reader.connect() as conn:

@@ -67,7 +67,7 @@
           <div class="dup-head"><h3>“Top 10 search terms” routes</h3><span class="dup-count">2 routes</span></div>
           <p>Serve only the ten biggest search terms instead of the whole list.</p>
           <dl>
-            <dt>Where</dt><dd><code>GET /analytics/search-insights/top</code> (<code>get_top_search_terms</code>) and <code>GET /analytics/playlists/{playlist_id}/search-insights/top</code> (<code>get_playlist_top_search_terms</code>) in <code>routes/analytics.py</code></dd>
+            <dt>Where</dt><dd><code>GET /analytics/search-insights/top</code> and <code>GET /analytics/playlists/{playlist_id}/search-insights/top</code>, both served by <code>get_top_search_terms</code> in <code>routes/analytics.py</code></dd>
             <dt>Does</dt><dd>The search terms list, capped at 10.</dd>
             <dt>Meant for</dt><dd>A “top search terms” view that needs only the leaders, without downloading every term.</dd>
             <dt>Why dead</dt><dd>The pages use the uncapped routes instead, so these are never called.</dd>

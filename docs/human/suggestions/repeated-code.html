@@ -43,7 +43,6 @@
   <aside class="toc" aria-label="On this page">
     <h2>On this page</h2>
     <ol>
-      <li><a href="#backend">Backend</a></li>
       <li><a href="#frontend">Frontend code</a></li>
       <li><a href="#css">Frontend CSS</a></li>
     </ol>
@@ -52,82 +51,11 @@
   <main>
     <header class="hero">
       <h1>Repeated code</h1>
-      <p>This page shows code written more than once in the backend and frontend.</p>
+      <p>This page shows code written more than once in the frontend.</p>
       <div class="meta-line">
         <span>Source revision <code>53b29e4</code></span>
       </div>
     </header>
-
-    <section id="backend">
-      <h2>Backend</h2>
-      <div class="dup-list">
-
-        <article class="dup">
-          <div class="dup-head"><h3>Video filter conditions</h3><span class="dup-count">×2</span></div>
-          <p>Code that builds the same video filter conditions, one <code>if</code> per filter.</p>
-          <dl>
-            <dt>Where</dt><dd><code>database/reports/</code>: <code>_conditions.py</code> (<code>video_conditions</code>), <code>video_statistics.py</code></dd>
-            <dt>Differs</dt><dd><code>video_statistics.py</code> adds its own date conditions and keeps the video scope separate.</dd>
-          </dl>
-<pre><code>if content_type:
-    conditions.append("v.content_type = ?")
-    params.append(content_type)
-if privacy_status:
-    conditions.append("v.privacy_status = ?")
-    params.append(privacy_status)
-if title:
-    conditions.append("(v.title LIKE ? OR v.id LIKE ?)")
-    params.append(f"%{title}%")
-    params.append(f"%{title}%")</code></pre>
-        </article>
-
-        <article class="dup">
-          <div class="dup-head"><h3>Look up, then 404</h3><span class="dup-count">×4</span></div>
-          <p>Code that looks up a video or playlist and raises <code>HTTPException(404, "… not found")</code> when it is missing.</p>
-          <dl>
-            <dt>Where</dt><dd><code>routes/video_scope.py</code> (<code>require_owned_video</code>, <code>require_playlist</code>), <code>routes/videos.py</code>, <code>routes/playlists.py</code></dd>
-            <dt>Differs</dt><dd>The two detail endpoints check their own result query instead of a separate ID lookup; the message text.</dd>
-          </dl>
-        </article>
-
-        <article class="dup">
-          <div class="dup-head"><h3>Channel / playlist route twins</h3><span class="dup-count">×11 pairs</span></div>
-          <p>Each playlist endpoint copies its channel-wide endpoint and adds the playlist's video IDs.</p>
-          <dl>
-            <dt>Where</dt><dd><code>routes/analytics.py</code> (9 pairs), <code>routes/videos.py</code> / <code>routes/playlists.py</code> (2 pairs)</dd>
-            <dt>Differs</dt><dd>The <code>playlist_id</code> path parameter and the <code>video_ids</code> argument.</dd>
-          </dl>
-        </article>
-
-        <article class="dup">
-          <div class="dup-head"><h3>Daily per-video sync stages</h3><span class="dup-count">×2</span></div>
-          <p>Two stages are almost line for line the same.</p>
-          <dl>
-            <dt>Where</dt><dd><code>sync/stages.py</code>: <code>sync_video_analytics</code>, <code>sync_video_traffic_sources</code></dd>
-            <dt>Differs</dt><dd>The stage key, the <code>youtube.iter_*</code> fetcher, and the row class each fetched row becomes (<code>VideoAnalytics</code> or <code>VideoTrafficSource</code>).</dd>
-          </dl>
-        </article>
-
-        <article class="dup">
-          <div class="dup-head"><h3>Monthly per-video sync stages</h3><span class="dup-count">×2</span></div>
-          <p>Same shape as above for monthly data, including the identical <code>scope</code> year/all/incremental window logic.</p>
-          <dl>
-            <dt>Where</dt><dd><code>sync/stages.py</code>: <code>sync_search_insights</code>, <code>sync_related_video_insights</code></dd>
-            <dt>Differs</dt><dd>Fetcher, writer, and the related stage collects referrer IDs to resolve afterwards.</dd>
-          </dl>
-        </article>
-
-        <article class="dup">
-          <div class="dup-head"><h3>YouTube client helpers</h3><span class="dup-count">×2</span></div>
-          <p>Both API clients define their own <code>_noop_checkpoint()</code> (identical) and <code>_log_page()</code> (same owner/name log fields).</p>
-          <dl>
-            <dt>Where</dt><dd><code>youtube/data_api.py</code>, <code>youtube/analytics_api.py</code></dd>
-            <dt>Differs</dt><dd><code>_log_page</code> logs a page token and anomalies in one, a <code>start_index</code> in the other.</dd>
-          </dl>
-        </article>
-
-      </div>
-    </section>
 
     <section id="frontend">
       <h2>Frontend code</h2>

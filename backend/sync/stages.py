@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+from collections.abc import Callable, Iterable
 from dataclasses import dataclass
 from datetime import date, timedelta
 
@@ -283,8 +284,16 @@ def sync_pruning(counts: SyncCounts, channel_owned_ids: set[str]) -> None:
     counts.rows_deleted += writer.delete(Video, where=[("own", "=", True), ("id", "NOT IN", sorted(channel_owned_ids))])
 
 
-def sync_video_analytics(scope: str, year: int | None, counts: SyncCounts) -> None:
-    """Sync daily analytics for every eligible owned video."""
+def _sync_daily_stage(
+    collector: str,
+    progress_label: str,
+    fetch: Callable[..., Iterable[dict]],
+    row_class: type[VideoAnalytics] | type[VideoTrafficSource],
+    scope: str,
+    year: int | None,
+    counts: SyncCounts,
+) -> None:
+    """Sync one daily per-video Analytics collector for every eligible owned video."""
     today = date.today()
     effective_end = _effective_range_end(scope, year, today - timedelta(days=1))
     end_date = effective_end.isoformat()
@@ -294,23 +303,23 @@ def sync_video_analytics(scope: str, year: int | None, counts: SyncCounts) -> No
     for i, video in enumerate(videos, start=1):
         if i > 1:
             status.raise_if_stopping()
-        status.update_sync_progress("video_analytics", f"Syncing video analytics ({i}/{total})...")
+        status.update_sync_progress(collector, f"{progress_label} ({i}/{total})...")
         assert video.id is not None
         video_id = video.id
         title = video.title
         if not video.published_at:
             _logger.debug(
-                "video_analytics %d/%d video=%s skipped reason=no_publish_date title=%r",
-                i, total, video_id, title,
+                "%s %d/%d video=%s skipped reason=no_publish_date title=%r",
+                collector, i, total, video_id, title,
             )
             continue
         publish_date = video.published_at[:10]
 
-        requests = _video_period_requests("video_analytics", video_id, scope, year, today, end_date, publish_date)
+        requests = _video_period_requests(collector, video_id, scope, year, today, end_date, publish_date)
         if not requests:
             _logger.debug(
-                "video_analytics %d/%d video=%s skipped reason=empty_range title=%r",
-                i, total, video_id, title,
+                "%s %d/%d video=%s skipped reason=empty_range title=%r",
+                collector, i, total, video_id, title,
             )
             continue
 
@@ -319,7 +328,7 @@ def sync_video_analytics(scope: str, year: int | None, counts: SyncCounts) -> No
             if j > 0:
                 status.raise_if_stopping()
             first_row = True
-            for row in youtube.iter_video_analytics(
+            for row in fetch(
                 video_id, start, range_end, publish_date=publish_date, title=title,
                 checkpoint=status.raise_if_stopping,
             ):
@@ -327,68 +336,58 @@ def sync_video_analytics(scope: str, year: int | None, counts: SyncCounts) -> No
                     status.raise_if_stopping()
                 first_row = False
                 counts.rows_fetched += 1
-                writer.write(VideoAnalytics.from_dict({**row, "updated_at": now()}))
+                writer.write(row_class.from_dict({**row, "updated_at": now()}))
                 counts.rows_written += 1
             status.raise_if_stopping()
-            writer.write_many(_coverage_rows("video_analytics", video_id, months))
+            writer.write_many(_coverage_rows(collector, video_id, months))
         _logger.debug(
-            "video_analytics %d/%d video=%s rows=%d title=%r",
-            i, total, video_id, counts.rows_fetched - rows_before, title,
+            "%s %d/%d video=%s rows=%d title=%r",
+            collector, i, total, video_id, counts.rows_fetched - rows_before, title,
         )
+
+
+def sync_video_analytics(scope: str, year: int | None, counts: SyncCounts) -> None:
+    """Sync daily analytics for every eligible owned video."""
+    _sync_daily_stage(
+        "video_analytics", "Syncing video analytics", youtube.iter_video_analytics, VideoAnalytics,
+        scope, year, counts,
+    )
 
 
 def sync_video_traffic_sources(scope: str, year: int | None, counts: SyncCounts) -> None:
     """Sync daily traffic-source breakdowns for every eligible owned video."""
-    today = date.today()
-    effective_end = _effective_range_end(scope, year, today - timedelta(days=1))
-    end_date = effective_end.isoformat()
+    _sync_daily_stage(
+        "video_traffic_sources", "Syncing traffic sources", youtube.iter_video_traffic_sources,
+        VideoTrafficSource, scope, year, counts,
+    )
 
-    videos = catalog.owned_video_worklist(published_through=end_date)
-    total = len(videos)
-    for i, video in enumerate(videos, start=1):
-        if i > 1:
-            status.raise_if_stopping()
-        status.update_sync_progress("video_traffic_sources", f"Syncing traffic sources ({i}/{total})...")
-        assert video.id is not None
-        video_id = video.id
-        title = video.title
+
+def _monthly_windows(
+    collector: str,
+    video: Video,
+    scope: str,
+    year: int | None,
+    yesterday: date,
+    incremental_windows: list[monthly_insights.MonthlyWindow],
+) -> list[monthly_insights.MonthlyWindow] | None:
+    """Return the months to fetch for one video, or None when year/all has no publish date to range from."""
+    if scope in ("year", "all"):
         if not video.published_at:
-            _logger.debug(
-                "video_traffic_sources %d/%d video=%s skipped reason=no_publish_date title=%r",
-                i, total, video_id, title,
-            )
-            continue
-        publish_date = video.published_at[:10]
-
-        requests = _video_period_requests("video_traffic_sources", video_id, scope, year, today, end_date, publish_date)
-        if not requests:
-            _logger.debug(
-                "video_traffic_sources %d/%d video=%s skipped reason=empty_range title=%r",
-                i, total, video_id, title,
-            )
-            continue
-
-        rows_before = counts.rows_fetched
-        for j, (start, range_end, months) in enumerate(requests):
-            if j > 0:
-                status.raise_if_stopping()
-            first_row = True
-            for row in youtube.iter_video_traffic_sources(
-                video_id, start, range_end, publish_date=publish_date, title=title,
-                checkpoint=status.raise_if_stopping,
-            ):
-                if not first_row:
-                    status.raise_if_stopping()
-                first_row = False
-                counts.rows_fetched += 1
-                writer.write(VideoTrafficSource.from_dict({**row, "updated_at": now()}))
-                counts.rows_written += 1
-            status.raise_if_stopping()
-            writer.write_many(_coverage_rows("video_traffic_sources", video_id, months))
-        _logger.debug(
-            "video_traffic_sources %d/%d video=%s rows=%d title=%r",
-            i, total, video_id, counts.rows_fetched - rows_before, title,
-        )
+            return None
+        publish_date = date.fromisoformat(video.published_at[:10])
+        if scope == "year":
+            assert year is not None, "scope=year requires a year"
+            start = max(publish_date, date(year, 1, 1))
+            end = min(yesterday, date(year, 12, 31))
+        else:
+            start = publish_date
+            end = yesterday
+        return monthly_insights.monthly_windows_for_range(start, end)
+    if video.published_at:
+        publish_date = date.fromisoformat(video.published_at[:10])
+        assert video.id is not None
+        return _incremental_monthly_windows(collector, video.id, publish_date, yesterday, incremental_windows)
+    return incremental_windows
 
 
 def sync_search_insights(scope: str, year: int | None, counts: SyncCounts) -> None:
@@ -410,27 +409,13 @@ def sync_search_insights(scope: str, year: int | None, counts: SyncCounts) -> No
         title = video.title
         status.update_sync_progress("search_insights", f"Syncing search insights ({i}/{total})...")
 
-        if scope in ("year", "all"):
-            if not video.published_at:
-                _logger.debug(
-                    "search_insights %d/%d video=%s skipped reason=no_publish_date title=%r",
-                    i, total, video_id, title,
-                )
-                continue
-            publish_date = date.fromisoformat(video.published_at[:10])
-            if scope == "year":
-                assert year is not None, "scope=year requires a year"
-                start = max(publish_date, date(year, 1, 1))
-                end = min(yesterday, date(year, 12, 31))
-            else:
-                start = publish_date
-                end = yesterday
-            windows = monthly_insights.monthly_windows_for_range(start, end)
-        elif video.published_at:
-            publish_date = date.fromisoformat(video.published_at[:10])
-            windows = _incremental_monthly_windows("search_insights", video_id, publish_date, yesterday, incremental_windows)
-        else:
-            windows = incremental_windows
+        windows = _monthly_windows("search_insights", video, scope, year, yesterday, incremental_windows)
+        if windows is None:
+            _logger.debug(
+                "search_insights %d/%d video=%s skipped reason=no_publish_date title=%r",
+                i, total, video_id, title,
+            )
+            continue
 
         rows_before = counts.rows_fetched
         for j, window in enumerate(windows):
@@ -469,29 +454,13 @@ def sync_related_video_insights(scope: str, year: int | None, counts: SyncCounts
         title = video.title
         status.update_sync_progress("related_video_insights", f"Syncing related video insights ({i}/{total})...")
 
-        if scope in ("year", "all"):
-            if not video.published_at:
-                _logger.debug(
-                    "related_video_insights %d/%d video=%s skipped reason=no_publish_date title=%r",
-                    i, total, video_id, title,
-                )
-                continue
-            publish_date = date.fromisoformat(video.published_at[:10])
-            if scope == "year":
-                assert year is not None, "scope=year requires a year"
-                start = max(publish_date, date(year, 1, 1))
-                end = min(yesterday, date(year, 12, 31))
-            else:
-                start = publish_date
-                end = yesterday
-            windows = monthly_insights.monthly_windows_for_range(start, end)
-        elif video.published_at:
-            publish_date = date.fromisoformat(video.published_at[:10])
-            windows = _incremental_monthly_windows(
-                "related_video_insights", video_id, publish_date, yesterday, incremental_windows
+        windows = _monthly_windows("related_video_insights", video, scope, year, yesterday, incremental_windows)
+        if windows is None:
+            _logger.debug(
+                "related_video_insights %d/%d video=%s skipped reason=no_publish_date title=%r",
+                i, total, video_id, title,
             )
-        else:
-            windows = incremental_windows
+            continue
 
         rows_before = counts.rows_fetched
         for j, window in enumerate(windows):

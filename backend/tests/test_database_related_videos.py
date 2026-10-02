@@ -6,8 +6,7 @@ import database
 from database import writer
 from sync.write_preparation import related_video_rows
 from database import RelatedVideo, reader
-from database.reports import traffic
-from routes.video_scope import resolve_playlist_video_ids
+from database.reports import catalog, traffic
 from tests.support import FIXED_NOW, IsolatedDatabaseTestCase, make_playlist, make_playlist_item, make_related_referrer, make_video
 
 
@@ -388,7 +387,7 @@ class GetRelatedVideoDestinationsTest(IsolatedDatabaseTestCase):
         writer.write(make_playlist_item("pi-1", "p-1", "v-1", 0))
         writer.write(make_playlist_item("pi-2", "p-1", "v-1", 1))
         writer.write_many(related_video_rows("v-1", "2024-01", [make_related_referrer("ref-mine", views=5)], updated_at=FIXED_NOW))
-        playlist_video_ids = resolve_playlist_video_ids("p-1")
+        playlist_video_ids = catalog.playlist_video_ids("p-1")
         result = traffic.related_video_destinations("ref-mine", video_ids=playlist_video_ids)
         self.assertEqual(len(result), 1)
 

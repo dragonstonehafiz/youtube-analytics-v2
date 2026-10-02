@@ -225,7 +225,7 @@ Comments has no period or year selection from the user, so `sync_comments` calls
 
 ## Analytics synchronization
 
-`sync_video_analytics(scope, year, counts)` (`sync/stages.py`):
+`sync_video_analytics(scope, year, counts)` (`sync/stages.py`) calls `_sync_daily_stage()` with collector `video_analytics`, fetcher `iter_video_analytics()`, and row class `VideoAnalytics`. `_sync_daily_stage()`:
 
 - The owned-video worklist is prefiltered by this stage's effective range end before `total` is computed or any progress/per-video work begins — see [Prefiltered worklist (effective range end)](#prefiltered-worklist-effective-range-end).
 - Per video, `_video_period_requests("video_analytics", video_id, scope, year, today, end_date, publish_date)` (`sync/stages.py`) returns a list of `(start_date, end_date, months_to_mark)` requests:
@@ -237,14 +237,14 @@ Comments has no period or year selection from the user, so `sync_comments` calls
 
 ## Traffic-source synchronization
 
-`sync_video_traffic_sources(scope, year, counts)` (`sync/stages.py`):
+`sync_video_traffic_sources(scope, year, counts)` (`sync/stages.py`) runs the same `_sync_daily_stage()` loop with collector `video_traffic_sources`, fetcher `iter_video_traffic_sources()`, and row class `VideoTrafficSource`:
 
 - Same prefiltered-worklist behavior, same `_video_period_requests("video_traffic_sources", ...)` selection/coalescing, and the same per-request coverage-write-after-success behavior as analytics — see [Analytics synchronization](#analytics-synchronization) and [Shared monthly coverage selection](#shared-monthly-coverage-selection). The two stages track coverage under independent collector names (`video_analytics` vs. `video_traffic_sources`), so one's coverage can never hide the other's work.
 - Same per-video `DEBUG` detail records as analytics — see [Sync logging](#sync-logging).
 
 ## FX-rate synchronization
 
-`sync_fx_rates()` (`sync/stages.py:708-749`):
+`sync_fx_rates()` (`sync/stages.py:532-573`):
 
 - Incremental from the latest stored rate's date + 1 day (`reader.select_one(FxRate, ("date", "usd_to_sgd"), order_by=("-date",))`, whose `usd_to_sgd` also seeds the carried rate); first run starts `2015-01-01`.
 - Fetches `USDSGD=X` from Yahoo Finance via `yfinance` (imported **inside** the function, not at module scope).
@@ -253,7 +253,7 @@ Comments has no period or year selection from the user, so `sync_comments` calls
 
 ## Search insights synchronization
 
-`sync_search_insights(scope, year, counts)` (`sync/stages.py`) fetches and upserts monthly Search-source terms for every owned video, one API call per calendar month. It is period-aware, like `video_analytics`/`video_traffic_sources`.
+`sync_search_insights(scope, year, counts)` (`sync/stages.py`) fetches and upserts monthly Search-source terms for every owned video, one API call per calendar month. It is period-aware, like `video_analytics`/`video_traffic_sources`. Per video, `_monthly_windows("search_insights", video, scope, year, yesterday, incremental_windows)` (`sync/stages.py`) picks the months to fetch, returning `None` when the video must be skipped:
 
 - `scope="incremental"`, video has a `published_at`: `_incremental_monthly_windows("search_insights", video_id, publish_date, yesterday, incremental_windows)` (see [Shared monthly coverage selection](#shared-monthly-coverage-selection)) returns every uncovered month from `publish_date` through yesterday plus the previous/current pair, used directly as the month list — no coalescing, since each becomes its own API call regardless. A video whose history is fully covered collapses to exactly the previous+current pair, same as the original fixed behavior; a video whose backfill was interrupted partway (or that sat unsynced for a while) resumes filling every uncovered month in between rather than being wrongly treated as fully caught up just because it has *some* coverage.
 - `scope="incremental"`, video has no `published_at`: falls back to the fixed current+previous window via `monthly_insights.monthly_search_windows(today)` (`sync/monthly_insights.py`, captured once via `date.today()` at the start of the stage so a midnight rollover mid-run cannot change this part of the worklist), since there is no date to compute a resume-from point. Real calendar arithmetic, not a 30-day approximation, so it handles leap February and January-to-December rollover correctly.
@@ -265,7 +265,7 @@ Comments has no period or year selection from the user, so `sync_comments` calls
 
 ## Related video insights synchronization
 
-`sync_related_video_insights(scope, year, counts)` (`sync/stages.py`) fetches and upserts monthly Related Video referrers for every owned video, then resolves metadata for newly encountered referrer IDs. It shares `sync_search_insights`'s period-aware shape — `scope="incremental"` uses `_incremental_monthly_windows("related_video_insights", ...)` (every uncovered month from `publish_date` through yesterday plus the previous/current pair, or the fixed current+previous fallback for a video with no `published_at`); `scope="year"`/`"all"` refresh a wider range clamped per video to its own publish date — and the same one-call-per-calendar-month cadence, for the same 25-row-per-request reasoning (see [Search insights synchronization](#search-insights-synchronization) and `search-insights-api-findings.md`). This metadata-resolution logic lives only here, not in `sync_search_insights`. Coverage is tracked under its own `related_video_insights` collector name, independent of `search_insights`'s.
+`sync_related_video_insights(scope, year, counts)` (`sync/stages.py`) fetches and upserts monthly Related Video referrers for every owned video, then resolves metadata for newly encountered referrer IDs. It picks months with the same `_monthly_windows("related_video_insights", ...)` as `sync_search_insights`, under its own collector name — `scope="incremental"` uses `_incremental_monthly_windows("related_video_insights", ...)` (every uncovered month from `publish_date` through yesterday plus the previous/current pair, or the fixed current+previous fallback for a video with no `published_at`); `scope="year"`/`"all"` refresh a wider range clamped per video to its own publish date — and the same one-call-per-calendar-month cadence, for the same 25-row-per-request reasoning (see [Search insights synchronization](#search-insights-synchronization) and `search-insights-api-findings.md`). This metadata-resolution logic lives only here, not in `sync_search_insights`. Coverage is tracked under its own `related_video_insights` collector name, independent of `search_insights`'s.
 
 - The worklist is `catalog.owned_video_worklist(published_through=...)`, prefiltered by this stage's effective range end (see [Prefiltered worklist (effective range end)](#prefiltered-worklist-effective-range-end)) and, on top of that, still captured once at stage start — a referrer resolved into `videos` during this same run can never become a target within the same run.
 - Each `MonthlyWindow` calls `youtube.fetch_video_related_videos(video_id, window.start_date, window.end_date)` (`youtube/analytics_api.py`) exactly once — `dimensions=insightTrafficSourceDetail`, `metrics=views`, `filters=video==<id>;insightTrafficSourceType==RELATED_VIDEO`, `sort=-views`, `maxResults=25`, `startIndex` omitted entirely; parsing (header lookup, the 25-row cap check, malformed-row rejection, positive-views-only filtering) is a shared helper with Search's own parsing, since the two response shapes are identical apart from the traffic-source-type filter and what the detail value represents. The response's referrers become `RelatedVideo` rows through `write_preparation.related_video_rows(...)`. When that batch is not empty, the stage confirms with `reader.select_one(Video, ("id",), where=[id, own=True])` that the target is an owned video and raises `ValueError` otherwise, then writes the batch with one `writer.write_many()` call per month. Once that write succeeds, `writer.write_many(_coverage_rows("related_video_insights", video_id, [window.month]))` marks the month complete — before the best-effort referrer metadata resolution below runs, so a metadata lookup failure can never invalidate an already-successful month's coverage.
