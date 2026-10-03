@@ -1,7 +1,7 @@
 import { Link } from 'react-router-dom'
 import { PieChart, Pie, Cell, ResponsiveContainer, Tooltip } from 'recharts'
 import type { RelatedReferrerRow } from '@/types'
-import { categoricalColorClass, CATEGORICAL_OTHER_CLASS } from '@/lib/categoricalColors'
+import { categoricalColorClass, CATEGORICAL_OTHER_CLASS, CATEGORICAL_SLOT_COUNT } from '@/lib/categoricalColors'
 import AsyncCard from '@/components/AsyncCard'
 import '@/components/DonutCard.css'
 
@@ -13,7 +13,6 @@ interface Props {
   error?: string | null
 }
 
-const TOP_N = 6
 const OTHER_ITEMIZE_N = 3
 const OTHER_NAMED_KEY = '__other_named__'
 
@@ -41,8 +40,8 @@ function ReferrerThumb({ r }: { r: RelatedReferrerRow }) {
 }
 
 export default function RelatedReferrerBreakdownCard({ title, referrers, loading, error = null }: Props) {
-  const topReferrers = referrers.slice(0, TOP_N)
-  const otherReferrers = referrers.slice(TOP_N)
+  const topReferrers = referrers.slice(0, CATEGORICAL_SLOT_COUNT)
+  const otherReferrers = referrers.slice(CATEGORICAL_SLOT_COUNT)
   const otherViews = otherReferrers.reduce((s, r) => s + r.views, 0)
   const totalViews = referrers.reduce((s, r) => s + r.views, 0)
   const itemizedOtherReferrers = otherReferrers.slice(0, OTHER_ITEMIZE_N)

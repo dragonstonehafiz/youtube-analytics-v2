@@ -174,17 +174,11 @@ async function fetchJson<T>(path: string, query: Query): Promise<T> {
 export const getSearchTerms = (filters: CatalogFilters = {}): Promise<{ items: SearchTermRow[] }> =>
   fetchJson("/analytics/search-insights", filters)
 
-export const getTopSearchTerms = (filters: CatalogFilters = {}): Promise<{ items: SearchTermRow[] }> =>
-  fetchJson("/analytics/search-insights/top", filters)
-
 export const getVideosBySearchTerm = (query: SearchTermVideosQuery): Promise<{ items: SearchTermVideo[] }> =>
   fetchJson("/analytics/search-insights/videos", query)
 
 export const getPlaylistSearchTerms = (id: string, filters: CatalogFilters = {}): Promise<{ items: SearchTermRow[] }> =>
   fetchJson(`/analytics/playlists/${id}/search-insights`, filters)
-
-export const getPlaylistTopSearchTerms = (id: string, filters: CatalogFilters = {}): Promise<{ items: SearchTermRow[] }> =>
-  fetchJson(`/analytics/playlists/${id}/search-insights/top`, filters)
 
 export const getPlaylistVideosBySearchTerm = (id: string, query: SearchTermVideosQuery): Promise<{ items: SearchTermVideo[] }> =>
   fetchJson(`/analytics/playlists/${id}/search-insights/videos`, query)

@@ -55,7 +55,7 @@
       <h1>Backend reference</h1>
       <p>This page shows what each backend file does and which functions each API route calls.</p>
       <div class="meta-line">
-        <span>Source revision <code>53b29e4</code></span>
+        <span>Source revision <code>8b641a8</code></span>
       </div>
     </header>
 
@@ -179,7 +179,7 @@
         <p>Defined in <code>database/reports/traffic.py</code>. Dates are widened to whole months.</p>
         <dl class="returns-list">
           <dt class="col-head">Read</dt><dd class="col-head">Returns</dd><dd class="col-head">Used by</dd>
-          <dt><code>traffic.search_terms</code></dt><dd>Search terms that brought viewers, with views per term.</dd><dd class="used-by"><code>GET /analytics/search-insights</code><br><code>GET /analytics/search-insights/top</code> (first 10)<br><code>GET /analytics/playlists/{id}/search-insights</code><br><code>GET /analytics/playlists/{id}/search-insights/top</code> (first 10)<br><code>GET /analytics/videos/{id}/search-insights</code></dd>
+          <dt><code>traffic.search_terms</code></dt><dd>Search terms that brought viewers, with views per term.</dd><dd class="used-by"><code>GET /analytics/search-insights</code><br><code>GET /analytics/playlists/{id}/search-insights</code><br><code>GET /analytics/videos/{id}/search-insights</code></dd>
           <dt><code>traffic.videos_by_search_term</code></dt><dd>The videos viewers found through one search term.</dd><dd class="used-by"><code>GET /analytics/search-insights/videos</code><br><code>GET /analytics/playlists/{id}/search-insights/videos</code></dd>
         </dl>
       </div>

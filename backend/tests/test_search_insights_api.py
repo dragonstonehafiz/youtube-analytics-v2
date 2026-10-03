@@ -51,9 +51,10 @@ class ChannelSearchInsightsTest(SearchInsightsApiTestCase):
         self.assertEqual(by_term["cats"], 13)
         self.assertEqual(by_term["dogs"], 5)
 
-    def test_top_endpoint_caps_at_ten(self) -> None:
-        body = self._get("/analytics/search-insights/top", **self.DATE_RANGE)
-        self.assertLessEqual(len(body["items"]), 10)
+    def test_top_endpoints_are_not_registered(self) -> None:
+        for path in ("/analytics/search-insights/top", "/analytics/playlists/p1/search-insights/top"):
+            with self.subTest(path=path):
+                self.assertEqual(self.client.get(path, params=self.DATE_RANGE).status_code, 404)
 
     def test_videos_by_search_term_returns_only_matching_videos(self) -> None:
         body = self._get("/analytics/search-insights/videos", **self.DATE_RANGE, search_term="cats")

@@ -96,23 +96,6 @@ def get_search_terms(
     )}
 
 
-@router.get("/analytics/search-insights/top", name="get_top_search_terms")
-@router.get("/analytics/playlists/{playlist_id}/search-insights/top", name="get_playlist_top_search_terms")
-def get_top_search_terms(
-    start_date: str | None = Query(default=None),
-    end_date: str | None = Query(default=None),
-    content_type: str | None = Query(default=None),
-    privacy_status: str | None = Query(default=None),
-    title: str | None = Query(default=None),
-    video_ids: list[str] | None = Depends(scope_video_ids),
-) -> dict:
-    """Return the top 10 channel or playlist search terms by views."""
-    return {"items": traffic.search_terms(
-        start_date=start_date, end_date=end_date, content_type=content_type, privacy_status=privacy_status,
-        title=title, video_ids=video_ids, limit=10,
-    )}
-
-
 @router.get("/analytics/search-insights/videos", name="get_videos_by_search_term")
 @router.get("/analytics/playlists/{playlist_id}/search-insights/videos", name="get_playlist_videos_by_search_term")
 def get_videos_by_search_term(

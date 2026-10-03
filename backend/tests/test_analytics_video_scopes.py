@@ -381,7 +381,6 @@ PLAYLIST_ROUTE_PARAMS: tuple[tuple[str, dict[str, str]], ...] = (
     ("/traffic-sources", {}),
     ("/traffic-sources/top", {}),
     ("/search-insights", {}),
-    ("/search-insights/top", {}),
     ("/search-insights/videos", {"search_term": "cats"}),
     ("/related-videos/referrers", {"own": "true"}),
     ("/related-videos/destinations", {"referrer_video_id": "ref-1"}),

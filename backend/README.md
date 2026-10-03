@@ -259,4 +259,3 @@ and the logging tests redirect both log files to a `TemporaryDirectory`.
 - `google-api-python-client` — YouTube Data + Analytics API
 - `google-auth-oauthlib` — OAuth2 flow
 - `httpx2` — required by `starlette.testclient` for the test suite only
-- `pydantic-settings` — `.env` config management

@@ -1,6 +1,6 @@
 import { PieChart, Pie, Cell, ResponsiveContainer, Tooltip } from 'recharts'
 import type { SearchTermRow } from '@/types'
-import { categoricalColorClass, CATEGORICAL_OTHER_CLASS } from '@/lib/categoricalColors'
+import { categoricalColorClass, CATEGORICAL_OTHER_CLASS, CATEGORICAL_SLOT_COUNT } from '@/lib/categoricalColors'
 import AsyncCard from '@/components/AsyncCard'
 import '@/components/DonutCard.css'
 
@@ -11,14 +11,13 @@ interface Props {
   error?: string | null
 }
 
-const TOP_N = 6
 const OTHER_ITEMIZE_N = 3
 const OTHER_KEY = '__other__'
 
 export default function SearchTermsDonutCard({ title, rows, loading, error = null }: Props) {
   const totalViews = rows.reduce((s, r) => s + r.views, 0)
-  const topRows = rows.slice(0, TOP_N)
-  const otherRows = rows.slice(TOP_N)
+  const topRows = rows.slice(0, CATEGORICAL_SLOT_COUNT)
+  const otherRows = rows.slice(CATEGORICAL_SLOT_COUNT)
   const otherViews = otherRows.reduce((s, r) => s + r.views, 0)
   const itemizedOtherRows = otherRows.slice(0, OTHER_ITEMIZE_N)
   const remainderRows = otherRows.slice(OTHER_ITEMIZE_N)

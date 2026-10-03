@@ -1,7 +1,7 @@
 import { Link } from 'react-router-dom'
 import { PieChart, Pie, Cell, ResponsiveContainer, Tooltip } from 'recharts'
 import type { SearchTermRow, SearchTermVideo } from '@/types'
-import { categoricalColorClass, CATEGORICAL_OTHER_CLASS } from '@/lib/categoricalColors'
+import { categoricalColorClass, CATEGORICAL_OTHER_CLASS, CATEGORICAL_SLOT_COUNT } from '@/lib/categoricalColors'
 import AsyncCard from '@/components/AsyncCard'
 import '@/components/DonutCard.css'
 
@@ -18,7 +18,6 @@ interface Props {
   error?: string | null
 }
 
-const TOP_N = 6
 const OTHER_ITEMIZE_N = 3
 const OTHER_KEY = '__other__'
 
@@ -26,8 +25,8 @@ export default function SearchTermVideosDonutCard({
   title, terms, termsLoading, selectedTerm, onSelectTerm, videos, loading, error = null,
 }: Props) {
   const totalViews = videos.reduce((s, v) => s + v.views, 0)
-  const topVideos = videos.slice(0, TOP_N)
-  const otherVideos = videos.slice(TOP_N)
+  const topVideos = videos.slice(0, CATEGORICAL_SLOT_COUNT)
+  const otherVideos = videos.slice(CATEGORICAL_SLOT_COUNT)
   const otherViews = otherVideos.reduce((s, v) => s + v.views, 0)
   const itemizedOtherVideos = otherVideos.slice(0, OTHER_ITEMIZE_N)
   const remainderVideos = otherVideos.slice(OTHER_ITEMIZE_N)

@@ -35,7 +35,7 @@ class SharedScopeRouteSchemaTest(unittest.TestCase):
                 if isinstance(route, APIRoute):
                     endpoints.setdefault(route.endpoint, []).append(route.path)
         shared = [path for route_paths in endpoints.values() if len(route_paths) > 1 for path in route_paths]
-        self.assertEqual(len(shared), 22)
+        self.assertEqual(len(shared), 20)
         for path in shared:
             if "{playlist_id}" in path:
                 continue

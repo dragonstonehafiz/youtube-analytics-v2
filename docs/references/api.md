@@ -210,10 +210,6 @@ GET  /analytics/search-insights
   ?start_date, end_date, content_type, privacy_status, title
   → { items: SearchTermRow[] }   # every term, channel-wide, no cap — SearchTermRow = { search_term, views }
 
-GET  /analytics/search-insights/top
-  Same query params
-  → { items: SearchTermRow[] }   # same as above, capped to the top 10 by views
-
 GET  /analytics/search-insights/videos
   ?search_term (required), start_date, end_date, content_type, privacy_status, title
   → { items: SearchTermVideo[] }   # top 10 videos for that ONE term, channel-wide
@@ -224,10 +220,6 @@ GET  /analytics/playlists/{playlist_id}/search-insights
   Same query params as /analytics/search-insights
   → { items: SearchTermRow[] } | 404 if playlist not found
 
-GET  /analytics/playlists/{playlist_id}/search-insights/top
-  Same query params
-  → { items: SearchTermRow[] } | 404 if playlist not found   # capped to top 10
-
 GET  /analytics/playlists/{playlist_id}/search-insights/videos
   ?search_term (required), start_date, end_date, content_type, privacy_status, title
   → { items: SearchTermVideo[] } | 404 if playlist not found
@@ -237,7 +229,7 @@ GET  /analytics/videos/{video_id}/search-insights
   → { items: SearchTermRow[] } | 404 if video not found   # that video's own terms, no cap
 ```
 
-`traffic.search_terms()` (`database.md`) backs every term list — `/search-insights` and `/search-insights/top` are the *same* query with `limit=None` vs `limit=10`, and the video route passes `video_ids=[video_id]` after a 404 check; there is no separate "top" query. `/search-insights/videos` calls `traffic.videos_by_search_term()`, a single-term lookup, not a per-term-grouped query — the frontend requests it once per selected term, not once for every term that exists.
+`traffic.search_terms()` (`database.md`) backs every term list — the channel and playlist routes pass no limit, and the video route passes `video_ids=[video_id]` after a 404 check. `/search-insights/videos` calls `traffic.videos_by_search_term()`, a single-term lookup, not a per-term-grouped query — the frontend requests it once per selected term, not once for every term that exists.
 
 No endpoint here returns a chart-shaped envelope (no `donuts`, no `unattributed_views`, no coverage/residual fields) — these are plain aggregate rows, the same shape as every other aggregation endpoint above. A frontend chart that wants a read-time residual against traffic totals computes it itself from `/analytics/traffic-sources` (requesting the full calendar-month range) — the backend does not compute or store one.
 

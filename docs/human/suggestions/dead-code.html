@@ -45,8 +45,6 @@
     <ol>
       <li><a href="#backend">Backend</a></li>
       <li><a href="#frontend">Frontend code</a></li>
-      <li><a href="#css">Frontend CSS</a></li>
-      <li><a href="#dependencies">Dependencies</a></li>
     </ol>
   </aside>
 
@@ -55,7 +53,7 @@
       <h1>Dead code</h1>
       <p>This page shows code, styles and dependencies that nothing in the app uses.</p>
       <div class="meta-line">
-        <span>Source revision <code>ab9b0f4</code></span>
+        <span>Source revision <code>8b641a8</code></span>
       </div>
     </header>
 
@@ -64,24 +62,13 @@
       <div class="dup-list">
 
         <article class="dup">
-          <div class="dup-head"><h3>“Top 10 search terms” routes</h3><span class="dup-count">2 routes</span></div>
-          <p>Serve only the ten biggest search terms instead of the whole list.</p>
-          <dl>
-            <dt>Where</dt><dd><code>GET /analytics/search-insights/top</code> and <code>GET /analytics/playlists/{playlist_id}/search-insights/top</code>, both served by <code>get_top_search_terms</code> in <code>routes/analytics.py</code></dd>
-            <dt>Does</dt><dd>The search terms list, capped at 10.</dd>
-            <dt>Meant for</dt><dd>A “top search terms” view that needs only the leaders, without downloading every term.</dd>
-            <dt>Why dead</dt><dd>The pages use the uncapped routes instead, so these are never called.</dd>
-          </dl>
-        </article>
-
-        <article class="dup">
           <div class="dup-head"><h3>Writer feature with no production caller</h3><span class="dup-count">1 feature</span></div>
           <p>A part of <code>database/writer.py</code> only its tests use.</p>
           <dl>
             <dt>Where</dt><dd>The <code>conn=</code> argument of <code>writer.write()</code>, <code>write_many()</code>, <code>update()</code> and <code>delete()</code></dd>
             <dt>Does</dt><dd>Runs the call inside the caller's open transaction using a savepoint.</dd>
             <dt>Meant for</dt><dd>Writing several tables in one transaction.</dd>
-            <dt>Why dead</dt><dd>Every sync write, including each <code>sync_runs</code> insert and update, opens its own connection.</dd>
+            <dt>Why kept</dt><dd>It is intentionally retained for future use.</dd>
           </dl>
         </article>
 
@@ -93,126 +80,13 @@
       <div class="dup-list">
 
         <article class="dup">
-          <div class="dup-head"><h3><code>VideoListItem</code></h3><span class="dup-count">1 component</span></div>
-          <p>A compact, clickable row for one video.</p>
-          <dl>
-            <dt>Where</dt><dd><code>components/VideoListItem.tsx</code></dd>
-            <dt>Does</dt><dd>Renders the thumbnail (or a grey placeholder), title, publish date, a Video/Short badge and view count, linking to <code>/analytics/videos/:id</code>.</dd>
-            <dt>Meant for</dt><dd>Simple video lists where a full sortable table is too much.</dd>
-            <dt>Why dead</dt><dd>No file imports it. Video lists use <code>VideoTable</code> and the top-videos components.</dd>
-          </dl>
-        </article>
-
-        <article class="dup">
-          <div class="dup-head"><h3><code>NavBar</code></h3><span class="dup-count">1 component</span></div>
-          <p>A “← Back” button.</p>
-          <dl>
-            <dt>Where</dt><dd><code>components/NavBar.tsx</code></dd>
-            <dt>Does</dt><dd>Renders a <code>.btn-back</code> button that goes to a given path, or one step back in browser history when none is given.</dd>
-            <dt>Meant for</dt><dd>Returning from a detail page (a video or playlist) to the page you came from.</dd>
-            <dt>Why dead</dt><dd>No file imports it; navigation is done by <code>TopNav</code> and in-page links.</dd>
-          </dl>
-        </article>
-
-        <article class="dup">
-          <div class="dup-head"><h3>Uncalled API wrappers</h3><span class="dup-count">2 functions</span></div>
-          <p>Fetch helpers in <code>api.ts</code> for data the pages load another way.</p>
-          <dl>
-            <dt>Where</dt><dd><code>getTopSearchTerms</code>, <code>getPlaylistTopSearchTerms</code> in <code>api.ts</code></dd>
-            <dt>Does</dt><dd>Call the top-10 search term routes.</dd>
-            <dt>Meant for</dt><dd>Loading only the top search terms for the channel or a playlist.</dd>
-            <dt>Why dead</dt><dd>Pages load the full term lists and truncate them for display.</dd>
-          </dl>
-        </article>
-
-        <article class="dup">
-          <div class="dup-head"><h3><code>CATEGORICAL_SLOT_COUNT</code></h3><span class="dup-count">1 constant</span></div>
-          <p>The size of the ranked chart colour palette.</p>
-          <dl>
-            <dt>Where</dt><dd><code>lib/categoricalColors.ts</code> (value <code>6</code>)</dd>
-            <dt>Does</dt><dd>States how many ranked colours (<code>categorical-color-0</code> to <code>5</code>) exist before items fall into the grey “Other” colour.</dd>
-            <dt>Meant for</dt><dd>Letting charts know how many items can get their own colour.</dd>
-            <dt>Why dead</dt><dd>Each chart and donut card defines its own <code>TOP_N = 6</code> instead of reading this constant.</dd>
-          </dl>
-        </article>
-
-        <article class="dup">
           <div class="dup-head"><h3><code>SyncScope</code> type</h3><span class="dup-count">1 type</span></div>
           <p>The scopes a sync stage can run with.</p>
           <dl>
             <dt>Where</dt><dd><code>types/index.ts</code>: <code>'incremental' | 'year' | 'all'</code></dd>
             <dt>Does</dt><dd>Restricts a value to one of the three backend sync scopes.</dd>
             <dt>Meant for</dt><dd>Typing the scope chosen for each stage on the Sync page and sent in a sync request.</dd>
-            <dt>Why dead</dt><dd>The Sync page uses the narrower <code>ScopeAwareSyncScope</code> and <code>SyncPeriod</code> types instead.</dd>
-          </dl>
-        </article>
-
-      </div>
-    </section>
-
-    <section id="css">
-      <h2>Frontend CSS</h2>
-      <div class="dup-list">
-
-        <article class="dup">
-          <div class="dup-head"><h3><code>App.css</code></h3><span class="dup-count">1 file</span></div>
-          <p>Leftover styling from the Vite starter template.</p>
-          <dl>
-            <dt>Where</dt><dd><code>frontend/src/App.css</code></dd>
-            <dt>Does</dt><dd>Styles the template's demo page: <code>.counter</code> button, <code>.hero</code> logo stack, <code>#center</code>, <code>#next-steps</code>, <code>#docs</code>, <code>#spacer</code>, <code>.ticks</code>.</dd>
-            <dt>Meant for</dt><dd>The demo <code>App.tsx</code> that Vite generates for a new project.</dd>
-            <dt>Why dead</dt><dd><code>App.tsx</code> is now the router and no file imports <code>App.css</code>; <code>main.tsx</code> imports only <code>index.css</code>.</dd>
-          </dl>
-        </article>
-
-        <article class="dup">
-          <div class="dup-head"><h3>Video list rules</h3><span class="dup-count">8 rules</span></div>
-          <p>Styling for a card-style list of video rows.</p>
-          <dl>
-            <dt>Where</dt><dd><code>.video-list</code>, <code>.video-list-item</code> and its <code>-info</code>, <code>-title</code>, <code>-meta</code> parts in <code>index.css</code></dd>
-            <dt>Does</dt><dd>Sets the list container, row layout, 96×54&nbsp;px thumbnail, hover colour, ellipsis title and meta line.</dd>
-            <dt>Meant for</dt><dd>The rows rendered by <code>VideoListItem</code>.</dd>
-            <dt>Why dead</dt><dd><code>VideoListItem</code> is never rendered, and nothing else uses these classes.</dd>
-          </dl>
-        </article>
-
-        <article class="dup">
-          <div class="dup-head"><h3>Analytics table rules</h3><span class="dup-count">5 rules</span></div>
-          <p>Styling for a full-width analytics table.</p>
-          <dl>
-            <dt>Where</dt><dd><code>.analytics-table</code> and its <code>th</code>, <code>td</code> and row rules in <code>index.css</code></dd>
-            <dt>Does</dt><dd>Sets a bordered table surface, uppercase header cells, padded body cells and a row hover colour.</dd>
-            <dt>Meant for</dt><dd>Tables of analytics numbers.</dd>
-            <dt>Why dead</dt><dd>No component uses the class; tables use the <code>data-table</code> rules instead.</dd>
-          </dl>
-        </article>
-
-        <article class="dup">
-          <div class="dup-head"><h3>Back button rules</h3><span class="dup-count">2 rules</span></div>
-          <p>Styling for the “← Back” button.</p>
-          <dl>
-            <dt>Where</dt><dd><code>.btn-back</code> and <code>.btn-back:hover</code> in <code>index.css</code></dd>
-            <dt>Does</dt><dd>Sets an outlined inline button that turns blue on hover.</dd>
-            <dt>Meant for</dt><dd>The button rendered by <code>NavBar</code>.</dd>
-            <dt>Why dead</dt><dd><code>NavBar</code> is never rendered, and nothing else uses the class.</dd>
-          </dl>
-        </article>
-
-      </div>
-    </section>
-
-    <section id="dependencies">
-      <h2>Dependencies</h2>
-      <div class="dup-list">
-
-        <article class="dup">
-          <div class="dup-head"><h3><code>pydantic-settings</code></h3><span class="dup-count">1 package</span></div>
-          <p>A configuration-loading library.</p>
-          <dl>
-            <dt>Where</dt><dd><code>backend/requirements.txt</code></dd>
-            <dt>Does</dt><dd>Loads typed settings from environment variables and <code>.env</code> files into a <code>BaseSettings</code> class.</dd>
-            <dt>Meant for</dt><dd>Making backend settings (paths, ports, credential locations) configurable without code changes.</dd>
-            <dt>Why dead</dt><dd>No backend module imports <code>pydantic_settings</code>; paths and settings are module constants.</dd>
+            <dt>Why kept</dt><dd>It is intentionally disabled.</dd>
           </dl>
         </article>
 

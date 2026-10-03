@@ -1,7 +1,7 @@
 import { Link } from 'react-router-dom'
 import { PieChart, Pie, Cell, ResponsiveContainer, Tooltip } from 'recharts'
 import type { RelatedDestinationRow, RelatedReferrerRow } from '@/types'
-import { categoricalColorClass, CATEGORICAL_OTHER_CLASS } from '@/lib/categoricalColors'
+import { categoricalColorClass, CATEGORICAL_OTHER_CLASS, CATEGORICAL_SLOT_COUNT } from '@/lib/categoricalColors'
 import AsyncCard from '@/components/AsyncCard'
 import '@/components/DonutCard.css'
 import './RelatedDestinationsByReferrerCard.css'
@@ -22,7 +22,6 @@ interface Props {
   error?: string | null
 }
 
-const TOP_N = 6
 const OTHER_ITEMIZE_N = 3
 const OTHER_KEY = '__other__'
 
@@ -42,8 +41,8 @@ export default function RelatedDestinationsByReferrerCard({
 }: Props) {
   const selectedReferrer = referrerOptions?.find(r => r.referrer_video_id === selectedReferrerId) ?? null
   const totalViews = destinations.reduce((s, d) => s + d.views, 0)
-  const topDestinations = destinations.slice(0, TOP_N)
-  const otherDestinations = destinations.slice(TOP_N)
+  const topDestinations = destinations.slice(0, CATEGORICAL_SLOT_COUNT)
+  const otherDestinations = destinations.slice(CATEGORICAL_SLOT_COUNT)
   const otherViews = otherDestinations.reduce((s, d) => s + d.views, 0)
   const itemizedOtherDestinations = otherDestinations.slice(0, OTHER_ITEMIZE_N)
   const remainderDestinations = otherDestinations.slice(OTHER_ITEMIZE_N)
