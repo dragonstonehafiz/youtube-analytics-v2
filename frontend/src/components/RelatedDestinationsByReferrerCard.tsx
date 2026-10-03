@@ -3,6 +3,7 @@ import { PieChart, Pie, Cell, ResponsiveContainer, Tooltip } from 'recharts'
 import type { RelatedDestinationRow, RelatedReferrerRow } from '@/types'
 import { categoricalColorClass, CATEGORICAL_OTHER_CLASS } from '@/lib/categoricalColors'
 import AsyncCard from '@/components/AsyncCard'
+import '@/components/DonutCard.css'
 import './RelatedDestinationsByReferrerCard.css'
 
 interface Props {
@@ -59,13 +60,13 @@ export default function RelatedDestinationsByReferrerCard({
       error={error}
       empty={totalViews === 0}
       emptyMessage="No destinations for this referrer"
-      className="related-destinations"
+      className="related-destinations donut-card donut-card--picker"
       heading={
         onSelectReferrer ? (
-          <div className="related-destinations-heading">
+          <div className="donut-card-heading">
             <div className="section-header">{title}</div>
             <select
-              className="related-destinations-select"
+              className="form-control"
               aria-label={`${title} referrer`}
               value={selectedReferrerId ?? ''}
               onChange={e => onSelectReferrer(e.target.value)}
@@ -91,7 +92,7 @@ export default function RelatedDestinationsByReferrerCard({
         )
       }
     >
-      <div className="related-destinations-chart-wrap">
+      <div className="donut-chart-wrap">
         <ResponsiveContainer width="100%" height={180}>
           <PieChart>
             <Pie data={slices} dataKey="views" nameKey="label" innerRadius="65%" outerRadius="100%" paddingAngle={1} stroke="none">
@@ -104,43 +105,43 @@ export default function RelatedDestinationsByReferrerCard({
             />
           </PieChart>
         </ResponsiveContainer>
-        <div className="related-destinations-center">
-          <span className="related-destinations-center-value">{totalViews.toLocaleString()}</span>
-          <span className="related-destinations-center-label">Views</span>
+        <div className="donut-center">
+          <span className="donut-center-value">{totalViews.toLocaleString()}</span>
+          <span className="donut-center-label">Views</span>
         </div>
       </div>
 
-      <div className="related-destinations-legend">
+      <div className="donut-legend">
         {topDestinations.map((d, i) => (
-          <div key={d.target_video_id} className="related-destinations-legend-item">
+          <div key={d.target_video_id} className="donut-legend-item">
             {d.thumbnail_url
-              ? <img src={d.thumbnail_url} alt="" className="related-destinations-thumb" />
-              : <div className="related-destinations-thumb related-destinations-thumb--placeholder" />}
-            <span className={`related-destinations-legend-swatch ${categoricalColorClass(i)}`} />
-            <span className="related-destinations-legend-label"><Link to={`/analytics/videos/${d.target_video_id}`}>{d.title}</Link></span>
-            <span className="related-destinations-legend-views">{d.views.toLocaleString()}</span>
+              ? <img src={d.thumbnail_url} alt="" className="thumb-small" />
+              : <div className="thumb-small thumb-placeholder" />}
+            <span className={`legend-swatch ${categoricalColorClass(i)}`} />
+            <span className="donut-legend-label"><Link to={`/analytics/videos/${d.target_video_id}`}>{d.title}</Link></span>
+            <span className="donut-legend-value">{d.views.toLocaleString()}</span>
           </div>
         ))}
 
         {otherDestinations.length > 0 && (
           <>
-            <div className="related-destinations-legend-divider">Other includes:</div>
+            <div className="donut-legend-divider">Other includes:</div>
             {itemizedOtherDestinations.map(d => (
-              <div key={d.target_video_id} className="related-destinations-legend-item related-destinations-legend-item--sub">
+              <div key={d.target_video_id} className="donut-legend-item donut-legend-item--sub">
                 {d.thumbnail_url
-                  ? <img src={d.thumbnail_url} alt="" className="related-destinations-thumb" />
-                  : <div className="related-destinations-thumb related-destinations-thumb--placeholder" />}
-                <span className={`related-destinations-legend-swatch ${CATEGORICAL_OTHER_CLASS}`} />
-                <span className="related-destinations-legend-label"><Link to={`/analytics/videos/${d.target_video_id}`}>{d.title}</Link></span>
-                <span className="related-destinations-legend-views">{d.views.toLocaleString()}</span>
+                  ? <img src={d.thumbnail_url} alt="" className="thumb-small" />
+                  : <div className="thumb-small thumb-placeholder" />}
+                <span className={`legend-swatch ${CATEGORICAL_OTHER_CLASS}`} />
+                <span className="donut-legend-label"><Link to={`/analytics/videos/${d.target_video_id}`}>{d.title}</Link></span>
+                <span className="donut-legend-value">{d.views.toLocaleString()}</span>
               </div>
             ))}
             {remainderDestinations.length > 0 && (
-              <div className="related-destinations-legend-item related-destinations-legend-item--sub">
-                <div className="related-destinations-thumb related-destinations-thumb--placeholder" />
-                <span className={`related-destinations-legend-swatch ${CATEGORICAL_OTHER_CLASS}`} />
-                <span className="related-destinations-legend-label">{remainderDestinations.length} more videos</span>
-                <span className="related-destinations-legend-views">{remainderViews.toLocaleString()}</span>
+              <div className="donut-legend-item donut-legend-item--sub">
+                <div className="thumb-small thumb-placeholder" />
+                <span className={`legend-swatch ${CATEGORICAL_OTHER_CLASS}`} />
+                <span className="donut-legend-label">{remainderDestinations.length} more videos</span>
+                <span className="donut-legend-value">{remainderViews.toLocaleString()}</span>
               </div>
             )}
           </>

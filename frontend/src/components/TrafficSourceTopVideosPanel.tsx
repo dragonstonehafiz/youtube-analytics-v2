@@ -38,7 +38,7 @@ export default function TrafficSourceTopVideosPanel({ rows, bySource, loading, e
               className={`traffic-source-top-videos-tab${type === activeType ? ' active' : ''}`}
               onClick={() => setSelected(type)}
             >
-              <span className="traffic-source-top-videos-swatch" style={{ background: getTrafficSourceColor(type) }} />
+              <span className="legend-swatch" style={{ background: getTrafficSourceColor(type) }} />
               {formatTrafficSource(type)}
             </button>
           ))}
@@ -70,11 +70,11 @@ export default function TrafficSourceTopVideosPanel({ rows, bySource, loading, e
                     <td className="traffic-source-top-videos-rank">{i + 1}</td>
                     <td>
                       {v.thumbnail_url
-                        ? <img src={v.thumbnail_url} alt="" className="traffic-source-top-videos-thumb" />
-                        : <div className="traffic-source-top-videos-thumb traffic-source-top-videos-thumb--placeholder" />
+                        ? <img src={v.thumbnail_url} alt="" className="thumb-large" />
+                        : <div className="thumb-large thumb-placeholder" />
                       }
                     </td>
-                    <td className="traffic-source-top-videos-title"><Link to={`/analytics/videos/${v.id}`}>{v.title}</Link></td>
+                    <td className="cell-title"><Link to={`/analytics/videos/${v.id}`}>{v.title}</Link></td>
                     <td>{v.views.toLocaleString()}</td>
                     <td>{(v.watch_time_minutes / 60).toLocaleString(undefined, { maximumFractionDigits: 1 })}h</td>
                   </tr>

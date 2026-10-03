@@ -40,120 +40,18 @@
 </nav>
 
 <div class="page">
-  <aside class="toc" aria-label="On this page">
-    <h2>On this page</h2>
-    <ol>
-      <li><a href="#css">Frontend CSS</a></li>
-    </ol>
-  </aside>
+  <aside class="toc" aria-label="On this page"></aside>
 
   <main>
     <header class="hero">
       <h1>Repeated code</h1>
-      <p>This page shows code written more than once in the frontend.</p>
+      <p>This page shows code written more than once in the backend or frontend.</p>
       <div class="meta-line">
         <span>Source revision <code>53b29e4</code></span>
       </div>
     </header>
 
-    <section id="css">
-      <h2>Frontend CSS</h2>
-      <p class="section-note">Rules with the same declarations under a different class name in each component's <code>.css</code> file.</p>
-      <div class="dup-list">
-
-        <article class="dup">
-          <div class="dup-head"><h3>Legend colour dot</h3><span class="dup-count">×6</span></div>
-          <p>An 8&nbsp;px round swatch next to a legend label.</p>
-          <dl>
-            <dt>Where</dt><dd><code>TrafficSourceDonutCard</code>, <code>SearchTermsDonutCard</code>, <code>SearchTermVideosDonutCard</code>, <code>RelatedReferrerBreakdownCard</code>, <code>RelatedDestinationsByReferrerCard</code>, <code>TrafficSourceTopVideosPanel</code></dd>
-            <dt>Differs</dt><dd>Only the class name.</dd>
-          </dl>
-<pre><code>.traffic-donut-legend-swatch { width: 8px; height: 8px; border-radius: 50%; flex-shrink: 0; }</code></pre>
-        </article>
-
-        <article class="dup">
-          <div class="dup-head"><h3>Donut centre overlay</h3><span class="dup-count">×5</span></div>
-          <p>Absolutely positioned, centred column over the donut hole.</p>
-          <dl>
-            <dt>Where</dt><dd>The five donut cards (<code>*-center</code>)</dd>
-            <dt>Differs</dt><dd>Only the class name. The value text inside is 18&nbsp;px in three cards and 16&nbsp;px in two.</dd>
-          </dl>
-        </article>
-
-        <article class="dup">
-          <div class="dup-head"><h3>Donut legend rows and divider</h3><span class="dup-count">×5</span></div>
-          <p>Legend item (flex row, 12&nbsp;px) and the small uppercase divider above the “Other” rows.</p>
-          <dl>
-            <dt>Where</dt><dd>The five donut cards (<code>*-legend-item</code>, <code>*-legend-divider</code>); legend container, label and views rules repeat in 3–5 of them</dd>
-            <dt>Differs</dt><dd>Only the class name.</dd>
-          </dl>
-        </article>
-
-        <article class="dup">
-          <div class="dup-head"><h3>Small video thumbnail</h3><span class="dup-count">×4</span></div>
-          <p>A 40×24&nbsp;px cover-cropped thumbnail.</p>
-          <dl>
-            <dt>Where</dt><dd><code>RelatedDestinationsByReferrerCard</code>, <code>RelatedReferrerBreakdownCard</code>, <code>SearchTermVideosDonutCard</code>, <code>TopPerformersCard</code></dd>
-            <dt>Differs</dt><dd>Only the class name.</dd>
-          </dl>
-        </article>
-
-        <article class="dup">
-          <div class="dup-head"><h3>Form control look</h3><span class="dup-count">×4</span></div>
-          <p>Same border, radius, padding, font size and focus transition for inputs and selects.</p>
-          <dl>
-            <dt>Where</dt><dd><code>.filter-bar</code> controls in <code>index.css</code>, <code>.sync-period-select</code> in <code>Sync.css</code>, the selects in <code>SearchTermVideosDonutCard</code> and <code>RelatedDestinationsByReferrerCard</code></dd>
-            <dt>Differs</dt><dd>The two card selects add <code>width: 100%</code>.</dd>
-          </dl>
-        </article>
-
-        <article class="dup">
-          <div class="dup-head"><h3>Chart legend</h3><span class="dup-count">×2</span></div>
-          <p>Wrapping legend row, legend item, and 10&nbsp;px round swatch above a line chart.</p>
-          <dl>
-            <dt>Where</dt><dd><code>AnalyticsChart.css</code>, <code>TrafficSourceChart.css</code></dd>
-            <dt>Differs</dt><dd>Only the class names.</dd>
-          </dl>
-        </article>
-
-        <article class="dup">
-          <div class="dup-head"><h3>Video picker card layout</h3><span class="dup-count">×2</span></div>
-          <p>Card padding, body column, heading column, legend column and label ellipsis.</p>
-          <dl>
-            <dt>Where</dt><dd><code>SearchTermVideosDonutCard.css</code>, <code>RelatedDestinationsByReferrerCard.css</code></dd>
-            <dt>Differs</dt><dd>Only the class names.</dd>
-          </dl>
-        </article>
-
-        <article class="dup">
-          <div class="dup-head"><h3>Top-video list row</h3><span class="dup-count">×2</span></div>
-          <p>A 120×68&nbsp;px thumbnail and a single-line ellipsis title cell.</p>
-          <dl>
-            <dt>Where</dt><dd><code>TopVideosList.css</code>, <code>TrafficSourceTopVideosPanel.css</code></dd>
-            <dt>Differs</dt><dd>Only the class names.</dd>
-          </dl>
-        </article>
-
-        <article class="dup">
-          <div class="dup-head"><h3>Page container</h3><span class="dup-count">×2</span></div>
-          <p>Centred 80%-wide container with 2&nbsp;rem padding.</p>
-          <dl>
-            <dt>Where</dt><dd><code>.page</code> in <code>index.css</code>, <code>.home</code> in <code>Home.css</code></dd>
-            <dt>Differs</dt><dd>Nothing.</dd>
-          </dl>
-        </article>
-
-        <article class="dup">
-          <div class="dup-head"><h3>Blue button hover</h3><span class="dup-count">×2</span></div>
-          <p>Light-blue background, mid-blue border, blue text on hover.</p>
-          <dl>
-            <dt>Where</dt><dd><code>.btn-back:hover</code> in <code>index.css</code>, <code>.video-carousel-arrow:hover</code> in <code>VideoCarouselCard.css</code></dd>
-            <dt>Differs</dt><dd>The carousel arrow skips disabled buttons.</dd>
-          </dl>
-        </article>
-
-      </div>
-    </section>
+    <p>There are no repeated-code suggestions.</p>
 
   </main>
 </div>

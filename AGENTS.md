@@ -9,6 +9,7 @@ Read [`docs/repository-rules.md`](docs/repository-rules.md) first — it holds t
 - Implementation planning: [`docs/programming-workflow/implementation-planning.md`](docs/programming-workflow/implementation-planning.md).
 - Issue drafting: [`docs/github-workflow/issue-authoring.md`](docs/github-workflow/issue-authoring.md).
 - Pull request drafting: [`docs/github-workflow/pull-request-authoring.md`](docs/github-workflow/pull-request-authoring.md).
+- Commit message drafting: [`docs/github-workflow/commit-message-authoring.md`](docs/github-workflow/commit-message-authoring.md).
 - Documentation writing and maintenance: [`docs/documentation-workflow/documentation-maintenance.md`](docs/documentation-workflow/documentation-maintenance.md).
 - SVG figures for `docs/human/` pages: [`docs/documentation-workflow/svg-figures.md`](docs/documentation-workflow/svg-figures.md).
 - YouTube Analytics codebase discovery (architecture, database, sync, API, frontend, verification references): [`docs/README.md`](docs/README.md).

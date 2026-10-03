@@ -112,7 +112,7 @@ interface PeriodSelectProps {
 function StagePeriodSelect({ stage, label, value, years, disabled, onChange }: PeriodSelectProps) {
   return (
     <select
-      className="sync-period-select"
+      className="sync-period-select form-control"
       aria-label={`${label} period`}
       value={value}
       disabled={disabled}
@@ -143,7 +143,7 @@ interface ScopeSelectProps {
 function StageScopeSelect({ stage, label, value, disabled, onChange }: ScopeSelectProps) {
   return (
     <select
-      className="sync-period-select"
+      className="sync-period-select form-control"
       aria-label={`${label} scope`}
       value={value}
       disabled={disabled}

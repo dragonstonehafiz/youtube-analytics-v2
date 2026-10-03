@@ -2,7 +2,7 @@ import { PieChart, Pie, Cell, ResponsiveContainer, Tooltip } from 'recharts'
 import type { SearchTermRow } from '@/types'
 import { categoricalColorClass, CATEGORICAL_OTHER_CLASS } from '@/lib/categoricalColors'
 import AsyncCard from '@/components/AsyncCard'
-import './SearchTermsDonutCard.css'
+import '@/components/DonutCard.css'
 
 interface Props {
   title: string
@@ -35,10 +35,10 @@ export default function SearchTermsDonutCard({ title, rows, loading, error = nul
       error={error}
       empty={rows.length === 0 || totalViews === 0}
       emptyMessage="No search traffic for this period"
-      className="search-terms-donut"
+      className="search-terms-donut donut-card"
       heading={<div className="section-header">{title}</div>}
     >
-      <div className="search-terms-donut-chart-wrap">
+      <div className="donut-chart-wrap">
         <ResponsiveContainer width="100%" height={180}>
           <PieChart>
             <Pie data={slices} dataKey="views" nameKey="label" innerRadius="65%" outerRadius="100%" paddingAngle={1} stroke="none">
@@ -51,36 +51,36 @@ export default function SearchTermsDonutCard({ title, rows, loading, error = nul
             />
           </PieChart>
         </ResponsiveContainer>
-        <div className="search-terms-donut-center">
-          <span className="search-terms-donut-center-value">{totalViews.toLocaleString()}</span>
-          <span className="search-terms-donut-center-label">Views</span>
+        <div className="donut-center">
+          <span className="donut-center-value">{totalViews.toLocaleString()}</span>
+          <span className="donut-center-label">Views</span>
         </div>
       </div>
 
-      <div className="search-terms-donut-legend">
+      <div className="donut-legend">
         {topRows.map((r, i) => (
-          <div key={r.search_term} className="search-terms-donut-legend-item">
-            <span className={`search-terms-donut-legend-swatch ${categoricalColorClass(i)}`} />
-            <span className="search-terms-donut-legend-label">{r.search_term}</span>
-            <span className="search-terms-donut-legend-views">{r.views.toLocaleString()}</span>
+          <div key={r.search_term} className="donut-legend-item">
+            <span className={`legend-swatch ${categoricalColorClass(i)}`} />
+            <span className="donut-legend-label">{r.search_term}</span>
+            <span className="donut-legend-value">{r.views.toLocaleString()}</span>
           </div>
         ))}
 
         {otherRows.length > 0 && (
           <>
-            <div className="search-terms-donut-legend-divider">Other includes:</div>
+            <div className="donut-legend-divider">Other includes:</div>
             {itemizedOtherRows.map(r => (
-              <div key={r.search_term} className="search-terms-donut-legend-item search-terms-donut-legend-item--sub">
-                <span className={`search-terms-donut-legend-swatch ${CATEGORICAL_OTHER_CLASS}`} />
-                <span className="search-terms-donut-legend-label">{r.search_term}</span>
-                <span className="search-terms-donut-legend-views">{r.views.toLocaleString()}</span>
+              <div key={r.search_term} className="donut-legend-item donut-legend-item--sub">
+                <span className={`legend-swatch ${CATEGORICAL_OTHER_CLASS}`} />
+                <span className="donut-legend-label">{r.search_term}</span>
+                <span className="donut-legend-value">{r.views.toLocaleString()}</span>
               </div>
             ))}
             {remainderRows.length > 0 && (
-              <div className="search-terms-donut-legend-item search-terms-donut-legend-item--sub">
-                <span className={`search-terms-donut-legend-swatch ${CATEGORICAL_OTHER_CLASS}`} />
-                <span className="search-terms-donut-legend-label">{remainderRows.length} more terms</span>
-                <span className="search-terms-donut-legend-views">{remainderViews.toLocaleString()}</span>
+              <div className="donut-legend-item donut-legend-item--sub">
+                <span className={`legend-swatch ${CATEGORICAL_OTHER_CLASS}`} />
+                <span className="donut-legend-label">{remainderRows.length} more terms</span>
+                <span className="donut-legend-value">{remainderViews.toLocaleString()}</span>
               </div>
             )}
           </>

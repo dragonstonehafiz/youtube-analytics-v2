@@ -48,6 +48,7 @@ Load only the references relevant to the current task; expand to another referen
 | Implementation-planning procedure | [`implementation-planning.md`](programming-workflow/implementation-planning.md) |
 | Issue-drafting procedure | [`issue-authoring.md`](github-workflow/issue-authoring.md) |
 | PR-drafting procedure | [`pull-request-authoring.md`](github-workflow/pull-request-authoring.md) |
+| Commit-message drafting procedure | [`commit-message-authoring.md`](github-workflow/commit-message-authoring.md) |
 | Documentation maintenance procedure | [`documentation-maintenance.md`](documentation-workflow/documentation-maintenance.md) |
 | SVG figure procedure for `human/` pages | [`svg-figures.md`](documentation-workflow/svg-figures.md) |
 | Visual system data flow and wired sync triggers | [`human/app-flow/overview.html`](human/app-flow/overview.html) |

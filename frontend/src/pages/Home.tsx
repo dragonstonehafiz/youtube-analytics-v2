@@ -76,7 +76,7 @@ export default function Home() {
   }, [videoTerm, searchTerms.data])
 
   return (
-    <div className="home">
+    <div className="page">
       <div className="page-header">
         <h1>Dashboard</h1>
       </div>

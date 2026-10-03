@@ -43,21 +43,6 @@
   color: var(--text-secondary);
 }
 
-.sync-period-select {
-  border: 1.5px solid var(--border);
-  border-radius: var(--radius-sm);
-  padding: 0.35rem 0.6rem;
-  font-size: 13px;
-  color: var(--text);
-  background: var(--surface);
-  outline: none;
-  transition: border-color 0.15s;
-}
-
-.sync-period-select:focus {
-  border-color: var(--blue);
-}
-
 .sync-period-select:disabled {
   color: var(--text-secondary);
   background: var(--bg);

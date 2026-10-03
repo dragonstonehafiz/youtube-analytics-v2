@@ -89,7 +89,7 @@ Component behavior, endpoint details, schema descriptions, and page-specific con
 
 ### Task procedures
 
-`docs/programming-workflow/implementation-planning.md`, `docs/github-workflow/issue-authoring.md`, `docs/github-workflow/pull-request-authoring.md`, `docs/documentation-workflow/svg-figures.md`, and this file own procedures: how to draft an issue, how to create an implementation plan, how to maintain documentation. They link to references instead of embedding detailed application knowledge.
+`docs/programming-workflow/implementation-planning.md`, `docs/github-workflow/issue-authoring.md`, `docs/github-workflow/pull-request-authoring.md`, `docs/github-workflow/commit-message-authoring.md`, `docs/documentation-workflow/svg-figures.md`, and this file own procedures: how to draft an issue, how to create an implementation plan, how to maintain documentation. They link to references instead of embedding detailed application knowledge.
 
 ### References
 

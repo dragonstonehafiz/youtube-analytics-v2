@@ -3,7 +3,7 @@ import { PieChart, Pie, Cell, ResponsiveContainer, Tooltip } from 'recharts'
 import type { TrafficSourceRow } from '@/types'
 import { formatTrafficSource, aggregateTrafficSourceTotals, getTrafficSourceColor, TRAFFIC_SOURCE_OTHER_COLOR } from '@/lib/trafficSources'
 import AsyncCard from '@/components/AsyncCard'
-import './TrafficSourceDonutCard.css'
+import '@/components/DonutCard.css'
 
 interface Props {
   title: string
@@ -40,10 +40,10 @@ export default function TrafficSourceDonutCard({ title, rows, loading, error = n
       error={error}
       empty={rows.length === 0 || totalViews === 0}
       emptyMessage="No traffic for this period"
-      className="traffic-donut"
+      className="traffic-donut donut-card"
       heading={<div className="section-header">{title}</div>}
     >
-      <div className="traffic-donut-chart-wrap">
+      <div className="donut-chart-wrap">
         <ResponsiveContainer width="100%" height={180}>
           <PieChart>
             <Pie
@@ -67,29 +67,29 @@ export default function TrafficSourceDonutCard({ title, rows, loading, error = n
             />
           </PieChart>
         </ResponsiveContainer>
-        <div className="traffic-donut-center">
-          <span className="traffic-donut-center-value">{totalViews.toLocaleString()}</span>
-          <span className="traffic-donut-center-label">Views</span>
+        <div className="donut-center">
+          <span className="donut-center-value">{totalViews.toLocaleString()}</span>
+          <span className="donut-center-label">Views</span>
         </div>
       </div>
 
-      <div className="traffic-donut-legend">
+      <div className="donut-legend">
         {topTotals.map(t => (
-          <div key={t.traffic_source_type} className="traffic-donut-legend-item">
-            <span className="traffic-donut-legend-swatch" style={{ background: getTrafficSourceColor(t.traffic_source_type) }} />
-            <span className="traffic-donut-legend-label">{formatTrafficSource(t.traffic_source_type)}</span>
-            <span className="traffic-donut-legend-pct">{t.views.toLocaleString()}</span>
+          <div key={t.traffic_source_type} className="donut-legend-item">
+            <span className="legend-swatch" style={{ background: getTrafficSourceColor(t.traffic_source_type) }} />
+            <span className="donut-legend-label">{formatTrafficSource(t.traffic_source_type)}</span>
+            <span className="donut-legend-value">{t.views.toLocaleString()}</span>
           </div>
         ))}
 
         {otherTotals.length > 0 && (
           <>
-            <div className="traffic-donut-legend-divider">Other includes:</div>
+            <div className="donut-legend-divider">Other includes:</div>
             {otherTotals.map(t => (
-              <div key={t.traffic_source_type} className="traffic-donut-legend-item traffic-donut-legend-item--sub">
-                <span className="traffic-donut-legend-swatch" style={{ background: TRAFFIC_SOURCE_OTHER_COLOR }} />
-                <span className="traffic-donut-legend-label">{formatTrafficSource(t.traffic_source_type)}</span>
-                <span className="traffic-donut-legend-pct">{t.views.toLocaleString()}</span>
+              <div key={t.traffic_source_type} className="donut-legend-item donut-legend-item--sub">
+                <span className="legend-swatch" style={{ background: TRAFFIC_SOURCE_OTHER_COLOR }} />
+                <span className="donut-legend-label">{formatTrafficSource(t.traffic_source_type)}</span>
+                <span className="donut-legend-value">{t.views.toLocaleString()}</span>
               </div>
             ))}
           </>

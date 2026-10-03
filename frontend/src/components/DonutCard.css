@@ -1,17 +1,43 @@
-.related-referrer-breakdown {
+/* Shared layout of the donut cards: a donut with its total in the centre, then a legend. */
+.donut-card {
   padding: 1.25rem 1.5rem;
 }
 
-.related-referrer-breakdown-chart-wrap {
+/* A card with a dropdown above the chart: heading, chart, and legend stack with even gaps. */
+.donut-card--picker {
+  display: flex;
+  flex-direction: column;
+  gap: 0.75rem;
+}
+
+.donut-card--picker > .async-card-body {
+  display: flex;
+  flex-direction: column;
+  gap: 0.75rem;
+}
+
+.donut-card-heading {
+  display: flex;
+  flex-direction: column;
+  gap: 0.5rem;
+}
+
+/* The dropdown fills the card. */
+.donut-card--picker .form-control {
+  width: 100%;
+}
+
+.donut-chart-wrap {
   position: relative;
   width: 100%;
 }
 
-.related-referrer-breakdown-chart-wrap .recharts-tooltip-wrapper {
+/* Keeps the hover tooltip above the centre total. */
+.donut-chart-wrap .recharts-tooltip-wrapper {
   z-index: 1;
 }
 
-.related-referrer-breakdown-center {
+.donut-center {
   position: absolute;
   top: 50%;
   left: 50%;
@@ -22,56 +48,44 @@
   pointer-events: none;
 }
 
-.related-referrer-breakdown-center-value {
+.donut-center-value {
   font-size: 18px;
   font-weight: 700;
   color: var(--text-heading);
 }
 
-.related-referrer-breakdown-center-label {
+.donut-card--picker .donut-center-value {
+  font-size: 16px;
+}
+
+.donut-center-label {
   font-size: 11px;
   color: var(--text-secondary);
 }
 
-.related-referrer-breakdown-legend {
+.donut-legend {
   margin-top: 0.75rem;
   display: flex;
   flex-direction: column;
   gap: 0.4rem;
 }
 
-.related-referrer-breakdown-legend-item {
+.donut-card--picker .donut-legend {
+  margin-top: 0;
+}
+
+.donut-legend-item {
   display: flex;
   align-items: center;
   gap: 0.5rem;
   font-size: 12px;
 }
 
-.related-referrer-breakdown-legend-item--sub {
+.donut-legend-item--sub {
   padding-left: 0.75rem;
 }
 
-.related-referrer-thumb {
-  width: 40px;
-  height: 24px;
-  object-fit: cover;
-  border-radius: 3px;
-  flex-shrink: 0;
-  display: block;
-}
-
-.related-referrer-thumb--placeholder {
-  background: var(--border);
-}
-
-.related-referrer-breakdown-legend-swatch {
-  width: 8px;
-  height: 8px;
-  border-radius: 50%;
-  flex-shrink: 0;
-}
-
-.related-referrer-breakdown-legend-label {
+.donut-legend-label {
   flex: 1;
   min-width: 0;
   color: var(--text);
@@ -80,13 +94,13 @@
   white-space: nowrap;
 }
 
-.related-referrer-breakdown-legend-views {
+.donut-legend-value {
   color: var(--text-secondary);
   font-weight: 600;
   flex-shrink: 0;
 }
 
-.related-referrer-breakdown-legend-divider {
+.donut-legend-divider {
   margin-top: 0.15rem;
   font-size: 11px;
   font-weight: 600;
