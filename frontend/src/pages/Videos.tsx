@@ -14,7 +14,7 @@ interface VideoPage {
 }
 
 export default function Videos() {
-  const [searchParams, setSearchParams] = useReplaceSearchParams()
+  const [searchParams, setParams] = useReplaceSearchParams()
   const page = Math.max(1, Number(searchParams.get('page') ?? 1))
   const sortKey = (searchParams.get('sort_by') as SortKey) ?? 'published_at'
   const sortDir = (searchParams.get('sort_dir') as SortDir) ?? 'desc'
@@ -30,7 +30,7 @@ export default function Videos() {
   useEffect(() => {
     let active = true
     track(
-      getVideos(page, PAGE_SIZE, sortKey, sortDir, title || undefined, startDate || undefined, endDate || undefined, contentType || undefined, privacyStatus || undefined)
+      getVideos({ page, pageSize: PAGE_SIZE, sortBy: sortKey, sortDir, title, startDate, endDate, contentType, privacyStatus })
         .then((data: { items: Video[]; total: number }) => ({ items: data.items ?? [], total: data.total ?? 0 })),
       setListing,
       () => active,
@@ -43,7 +43,7 @@ export default function Videos() {
   useEffect(() => {
     let active = true
     track(
-      getVideoStats(title || undefined, startDate || undefined, endDate || undefined, contentType || undefined, privacyStatus || undefined)
+      getVideoStats({ title, startDate, endDate, contentType, privacyStatus })
         .then((data: VideoStats) => data),
       setStats,
       () => active,
@@ -52,38 +52,22 @@ export default function Videos() {
     return () => { active = false }
   }, [title, startDate, endDate, contentType, privacyStatus])
 
-  const setPage = (p: number) => {
-    setSearchParams(prev => {
-      const next = new URLSearchParams(prev)
-      next.set('page', String(p))
-      return next
-    })
-  }
+  const setPage = (p: number) => setParams({ page: String(p) })
 
-  const handleSort = (key: SortKey) => {
-    setSearchParams(prev => {
-      const next = new URLSearchParams(prev)
-      const currentDir = (prev.get('sort_dir') as SortDir) ?? 'desc'
-      const currentKey = prev.get('sort_by') ?? 'published_at'
-      next.set('sort_by', key)
-      next.set('sort_dir', currentKey === key && currentDir === 'desc' ? 'asc' : 'desc')
-      next.set('page', '1')
-      return next
-    })
-  }
+  const handleSort = (key: SortKey) => setParams({
+    sort_by: key,
+    sort_dir: sortKey === key && sortDir === 'desc' ? 'asc' : 'desc',
+    page: '1',
+  })
 
-  const handleFilterChange = (t: string, sd: string, ed: string, ct: string, ps: string) => {
-    setSearchParams(prev => {
-      const next = new URLSearchParams(prev)
-      t ? next.set('title', t) : next.delete('title')
-      sd ? next.set('start_date', sd) : next.delete('start_date')
-      ed ? next.set('end_date', ed) : next.delete('end_date')
-      ct ? next.set('content_type', ct) : next.delete('content_type')
-      ps ? next.set('privacy_status', ps) : next.delete('privacy_status')
-      next.set('page', '1')
-      return next
-    })
-  }
+  const handleFilterChange = (t: string, sd: string, ed: string, ct: string, ps: string) => setParams({
+    title: t || null,
+    start_date: sd || null,
+    end_date: ed || null,
+    content_type: ct || null,
+    privacy_status: ps || null,
+    page: '1',
+  })
 
   return (
     <div className="page">

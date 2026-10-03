@@ -123,12 +123,12 @@ afterEach(() => {
 
 /** Sidebar Top-card calls always sort by views; the main table call uses the page's own sort. */
 function sidebarTopCalls() {
-  return mockGetPlaylistTopVideosByViews.mock.calls.filter(call => call[1] === 'views')
+  return mockGetPlaylistTopVideosByViews.mock.calls.filter(call => call[1].sortBy === 'views')
 }
 
 /** Sidebar Recent-card calls always request page 1 at the fixed recent count. */
 function sidebarRecentCalls() {
-  return mockGetPlaylistVideos.mock.calls.filter(call => call[2] === 10)
+  return mockGetPlaylistVideos.mock.calls.filter(call => call[1].pageSize === 10)
 }
 
 describe('playlist sidebar cards', () => {
@@ -139,31 +139,31 @@ describe('playlist sidebar cards', () => {
     )
 
     await waitFor(() => expect(sidebarRecentCalls()).toHaveLength(2))
-    for (const call of sidebarRecentCalls()) {
-      expect(call[0]).toBe('pl1')
-      expect(call[5]).toBe('foo')
-      expect(call[6]).toBeUndefined()
-      expect(call[7]).toBeUndefined()
-      expect(call[9]).toBe('private')
+    for (const [id, query] of sidebarRecentCalls()) {
+      expect(id).toBe('pl1')
+      expect(query.title).toBe('foo')
+      expect(query.startDate).toBeUndefined()
+      expect(query.endDate).toBeUndefined()
+      expect(query.privacyStatus).toBe('private')
     }
-    expect(sidebarRecentCalls().map(c => c[8]).sort()).toEqual(['short', 'video'])
+    expect(sidebarRecentCalls().map(c => c[1].contentType).sort()).toEqual(['short', 'video'])
 
     await waitFor(() => expect(sidebarTopCalls()).toHaveLength(2))
-    for (const call of sidebarTopCalls()) {
-      expect(call[0]).toBe('pl1')
-      expect(call[5]).toBe('private')
-      expect(call[6]).toBe('foo')
+    for (const [id, query] of sidebarTopCalls()) {
+      expect(id).toBe('pl1')
+      expect(query.privacyStatus).toBe('private')
+      expect(query.title).toBe('foo')
     }
-    expect(sidebarTopCalls().map(c => c[4]).sort()).toEqual(['short', 'video'])
+    expect(sidebarTopCalls().map(c => c[1].contentType).sort()).toEqual(['short', 'video'])
   })
 
   it('resolves the opposite type empty without requesting it when analytics_content_type=video', async () => {
     renderPlaylistAnalytics('/playlists/pl1?tab=analytics&analytics_content_type=video')
 
     await waitFor(() => expect(sidebarRecentCalls()).toHaveLength(1))
-    expect(sidebarRecentCalls()[0][8]).toBe('video')
+    expect(sidebarRecentCalls()[0][1].contentType).toBe('video')
     await waitFor(() => expect(sidebarTopCalls()).toHaveLength(1))
-    expect(sidebarTopCalls()[0][4]).toBe('video')
+    expect(sidebarTopCalls()[0][1].contentType).toBe('video')
 
     const shortsHeading = await screen.findByText('Top Shorts (Last 7 Days)')
     expect(shortsHeading.closest('.async-card')?.textContent).toContain('No videos for this period')
@@ -171,8 +171,8 @@ describe('playlist sidebar cards', () => {
     const latestShortsHeading = screen.getByText('Latest Shorts')
     expect(latestShortsHeading.closest('.async-card')?.textContent).toContain('No videos for this period')
 
-    expect(sidebarRecentCalls().some(c => c[8] === 'short')).toBe(false)
-    expect(sidebarTopCalls().some(c => c[4] === 'short')).toBe(false)
+    expect(sidebarRecentCalls().some(c => c[1].contentType === 'short')).toBe(false)
+    expect(sidebarTopCalls().some(c => c[1].contentType === 'short')).toBe(false)
   })
 })
 
@@ -211,7 +211,7 @@ describe('Traffic Sources sub-tabs (Search Insights)', () => {
     for (const call of mockGetPlaylistVideosBySearchTerm.mock.calls) {
       expect(call[0]).toBe('pl1')
     }
-    const contentTypes = mockGetPlaylistVideosBySearchTerm.mock.calls.map(call => call[2]?.contentType)
+    const contentTypes = mockGetPlaylistVideosBySearchTerm.mock.calls.map(call => call[1].contentType)
     expect(contentTypes).toContain('video')
     expect(contentTypes).toContain('short')
   })
@@ -228,10 +228,10 @@ describe('Traffic Sources sub-tabs (Search Insights)', () => {
     fireEvent.change(videoSelect, { target: { value: 'dogs' } })
 
     await waitFor(() => expect(mockGetPlaylistVideosBySearchTerm).toHaveBeenCalledWith(
-      'pl1', 'dogs', expect.objectContaining({ contentType: 'video' }), expect.any(Number),
+      'pl1', expect.objectContaining({ searchTerm: 'dogs', contentType: 'video', limit: expect.any(Number) }),
     ))
     expect(mockGetPlaylistVideosBySearchTerm.mock.calls.some(
-      call => call[1] === 'dogs' && call[2]?.contentType === 'short',
+      call => call[1].searchTerm === 'dogs' && call[1].contentType === 'short',
     )).toBe(false)
   })
 
@@ -251,7 +251,7 @@ describe('Related Videos sub-tab', () => {
   const externalRow = { referrer_video_id: 'ref-ext', title: 'External Video', thumbnail_url: null, referrer_own: false, views: 30 }
 
   beforeEach(() => {
-    mockGetPlaylistRelatedVideoReferrers.mockImplementation(async (_id: string, own: boolean) =>
+    mockGetPlaylistRelatedVideoReferrers.mockImplementation(async (_id, { own }) =>
       own
         ? { items: [mineRow], total_named_views: 80 }
         : { items: [externalRow], total_named_views: 80 })
@@ -285,7 +285,7 @@ describe('Related Videos sub-tab', () => {
     for (const call of mockGetPlaylistRelatedVideoDestinations.mock.calls) {
       expect(call[0]).toBe('pl1')
     }
-    expect(mockGetPlaylistRelatedVideoDestinations.mock.calls.map(c => c[1]).sort()).toEqual(['ref-ext', 'ref-mine'])
+    expect(mockGetPlaylistRelatedVideoDestinations.mock.calls.map(c => c[1].referrerVideoId).sort()).toEqual(['ref-ext', 'ref-mine'])
   })
 
   it('forwards the analytics_* filters, not the Videos tab namespace', async () => {
@@ -294,7 +294,7 @@ describe('Related Videos sub-tab', () => {
     )
     await waitFor(() => expect(mockGetPlaylistRelatedVideoReferrers).toHaveBeenCalledTimes(2))
     for (const call of mockGetPlaylistRelatedVideoReferrers.mock.calls) {
-      expect(call[2]).toEqual(expect.objectContaining({ title: 'foo', privacyStatus: 'private' }))
+      expect(call[1]).toEqual(expect.objectContaining({ title: 'foo', privacyStatus: 'private' }))
     }
   })
 })
@@ -327,6 +327,6 @@ describe('Analytics Title search debounce', () => {
     expect(params.get('analytics_title')).toBe('foo')
     expect(params.get('title')).toBe('videostab')
     await waitFor(() => expect(mockGetPlaylistAnalytics).toHaveBeenCalled())
-    expect(mockGetPlaylistVideoStats.mock.calls.some(c => c[1] === 'foo')).toBe(true)
+    expect(mockGetPlaylistVideoStats.mock.calls.some(c => c[1]?.title === 'foo')).toBe(true)
   })
 })

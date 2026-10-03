@@ -11,7 +11,7 @@ vi.mock('@/api', () => ({
 }))
 
 import { getComments, getVideoComments } from '@/api'
-import CommentsPanel from '@/components/CommentsPanel'
+import CommentsTab from '@/components/CommentsTab'
 
 const mockGetComments = vi.mocked(getComments)
 const mockGetVideoComments = vi.mocked(getVideoComments)
@@ -22,23 +22,23 @@ function LocationProbe({ onLocation }: { onLocation: (search: string) => void })
   return null
 }
 
-function renderChannelPanel(route = '/analytics?tab=comments') {
+function renderChannelTab(route = '/analytics?tab=comments') {
   let search = ''
   const utils = render(
     <MemoryRouter initialEntries={[route]}>
       <LocationProbe onLocation={s => { search = s }} />
-      <CommentsPanel scope={{ kind: 'channel' }} />
+      <CommentsTab scope={{ kind: 'channel' }} />
     </MemoryRouter>,
   )
   return { ...utils, getSearch: () => search }
 }
 
-function renderVideoPanel(route = '/analytics/videos/v1?tab=comments') {
+function renderVideoTab(route = '/analytics/videos/v1?tab=comments') {
   let search = ''
   const utils = render(
     <MemoryRouter initialEntries={[route]}>
       <LocationProbe onLocation={s => { search = s }} />
-      <CommentsPanel scope={{ kind: 'video', videoId: 'v1' }} />
+      <CommentsTab scope={{ kind: 'video', videoId: 'v1' }} />
     </MemoryRouter>,
   )
   return { ...utils, getSearch: () => search }
@@ -58,7 +58,7 @@ afterEach(() => {
 
 describe('channel/playlist scope debounce', () => {
   it('reflects each field immediately but does not refetch until the user pauses typing', async () => {
-    const { getSearch } = renderChannelPanel()
+    const { getSearch } = renderChannelTab()
     const commentInput = await screen.findByLabelText('Comment') as HTMLInputElement
     const commenterInput = screen.getByLabelText('Commenter') as HTMLInputElement
     const videoInput = screen.getByLabelText('Video') as HTMLInputElement
@@ -91,7 +91,7 @@ describe('channel/playlist scope debounce', () => {
   })
 
   it('shares one timer across all three fields: a keystroke in any field restarts the single pending commit', async () => {
-    const { getSearch } = renderChannelPanel()
+    const { getSearch } = renderChannelTab()
     const commentInput = await screen.findByLabelText('Comment')
     const commenterInput = screen.getByLabelText('Commenter')
     const videoInput = screen.getByLabelText('Video')
@@ -119,7 +119,7 @@ describe('channel/playlist scope debounce', () => {
   })
 
   it('deletes comments_page once a settled search commits', async () => {
-    const { getSearch } = renderChannelPanel('/analytics?tab=comments&comments_page=3')
+    const { getSearch } = renderChannelTab('/analytics?tab=comments&comments_page=3')
     const commentInput = await screen.findByLabelText('Comment')
 
     fireEvent.change(commentInput, { target: { value: 'foo' } })
@@ -130,7 +130,7 @@ describe('channel/playlist scope debounce', () => {
   })
 
   it('preserves other comment params when one search commits', async () => {
-    const { getSearch } = renderChannelPanel('/analytics?tab=comments&comments_author=kept&comments_sort_by=likes')
+    const { getSearch } = renderChannelTab('/analytics?tab=comments&comments_author=kept&comments_sort_by=likes')
     const commentInput = await screen.findByLabelText('Comment')
 
     fireEvent.change(commentInput, { target: { value: 'foo' } })
@@ -145,7 +145,7 @@ describe('channel/playlist scope debounce', () => {
 
 describe('video scope', () => {
   it('debounces Comment and Commenter but has no Video search field', async () => {
-    const { getSearch } = renderVideoPanel()
+    const { getSearch } = renderVideoTab()
     const commentInput = await screen.findByLabelText('Comment') as HTMLInputElement
     expect(screen.getByLabelText('Commenter')).toBeDefined()
     expect(screen.queryByLabelText('Video')).toBeNull()

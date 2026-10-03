@@ -43,7 +43,6 @@
   <aside class="toc" aria-label="On this page">
     <h2>On this page</h2>
     <ol>
-      <li><a href="#frontend">Frontend code</a></li>
       <li><a href="#css">Frontend CSS</a></li>
     </ol>
   </aside>
@@ -56,114 +55,6 @@
         <span>Source revision <code>53b29e4</code></span>
       </div>
     </header>
-
-    <section id="frontend">
-      <h2>Frontend code</h2>
-      <div class="dup-list">
-
-        <article class="dup">
-          <div class="dup-head"><h3>Optional query parameters in <code>api.ts</code></h3><span class="dup-count">×14</span></div>
-          <p>Wrappers spell out each optional filter as a spread so empty values are left out, even though <code>buildUrl</code> already skips empty values.</p>
-          <dl>
-            <dt>Where</dt><dd><code>api.ts</code>: <code>start_date</code>/<code>end_date</code> spread in 14 wrappers, <code>title</code> in 8, <code>content_type</code> and <code>privacy_status</code> in 7. Most playlist wrappers also mirror a channel wrapper.</dd>
-            <dt>Differs</dt><dd>Which filters a wrapper accepts. Newer wrappers take a query object instead.</dd>
-          </dl>
-<pre><code>...(startDate && { start_date: startDate }), ...(endDate && { end_date: endDate }),
-...(contentType && { content_type: contentType }), ...(privacyStatus && { privacy_status: privacyStatus })</code></pre>
-        </article>
-
-        <article class="dup">
-          <div class="dup-head"><h3>Inline filter bars</h3><span class="dup-count">×6</span></div>
-          <p>Each page writes its own <code>filter-bar</code> markup: labels, inputs and selects wired to URL params.</p>
-          <dl>
-            <dt>Where</dt><dd><code>Analytics</code>, <code>PlaylistAnalytics</code>, <code>VideoAnalytics</code>, <code>Playlists</code>, <code>VideoTable</code>, <code>CommentsPanel</code></dd>
-            <dt>Differs</dt><dd>Which fields appear. The three Analytics pages and <code>VideoTable</code> share <code>PeriodSelect</code>; the rest is repeated.</dd>
-          </dl>
-        </article>
-
-        <article class="dup">
-          <div class="dup-head"><h3>Inline pagination bar</h3><span class="dup-count">×4</span></div>
-          <p>The same Previous / “Page x of y” / Next markup.</p>
-          <dl>
-            <dt>Where</dt><dd><code>Playlists</code>, <code>Sync</code>, <code>CommentsPanel</code>, <code>VideoTable</code></dd>
-            <dt>Differs</dt><dd>The page state variable names.</dd>
-          </dl>
-        </article>
-
-        <article class="dup">
-          <div class="dup-head"><h3>Tab bars and <code>handleTabChange</code></h3><span class="dup-count">×4</span></div>
-          <p>Each page writes its own <code>tabs</code> row of buttons and a <code>handleTabChange</code> that sets <code>?tab=</code> in the URL.</p>
-          <dl>
-            <dt>Where</dt><dd><code>Analytics</code>, <code>VideoAnalytics</code>, <code>PlaylistAnalytics</code>, <code>Sync</code></dd>
-            <dt>Differs</dt><dd>The tab list.</dd>
-          </dl>
-        </article>
-
-        <article class="dup">
-          <div class="dup-head"><h3>Traffic Sources sub-tabs</h3><span class="dup-count">×3</span></div>
-          <p>The <code>TrafficSourcesSubTab</code> type, <code>toTrafficSourcesSubTab()</code> and the <code>ts-subtabs</code> button row are defined in each analytics page.</p>
-          <dl>
-            <dt>Where</dt><dd><code>Analytics</code>, <code>VideoAnalytics</code>, <code>PlaylistAnalytics</code></dd>
-            <dt>Differs</dt><dd><code>VideoAnalytics</code> has three sub-tabs instead of four.</dd>
-          </dl>
-        </article>
-
-        <article class="dup">
-          <div class="dup-head"><h3>Redefined page constants</h3><span class="dup-count">×3</span></div>
-          <p>Limits are declared at the top of each page instead of once.</p>
-          <dl>
-            <dt>Where</dt><dd><code>RECENT_COUNT</code> and <code>ALL_VIDEOS_FOR_TERM_LIMIT</code> in <code>Home</code>, <code>Analytics</code>, <code>PlaylistAnalytics</code>. <code>RELATED_VIDEOS_FETCH_LIMIT</code> in the three Analytics pages.</dd>
-            <dt>Differs</dt><dd>Nothing; the values match.</dd>
-          </dl>
-        </article>
-
-        <article class="dup">
-          <div class="dup-head"><h3>URL list handlers</h3><span class="dup-count">×3</span></div>
-          <p><code>setPage</code>, <code>handleSort</code> and <code>handleFilterChange</code> update the same URL params the same way.</p>
-          <dl>
-            <dt>Where</dt><dd><code>Videos</code>, <code>Playlists</code>, <code>PlaylistAnalytics</code></dd>
-            <dt>Differs</dt><dd>The fields <code>handleFilterChange</code> takes.</dd>
-          </dl>
-        </article>
-
-        <article class="dup">
-          <div class="dup-head"><h3>Mirrored analytics pages</h3><span class="dup-count">×2</span></div>
-          <p><code>Analytics</code> and <code>PlaylistAnalytics</code> render the same Analytics tab and Traffic Sources sub-tabs with the same cards. <code>VideoAnalytics</code> repeats part of it.</p>
-          <dl>
-            <dt>Where</dt><dd><code>pages/Analytics.tsx</code>, <code>pages/PlaylistAnalytics.tsx</code> (<code>pages/VideoAnalytics.tsx</code> partly)</dd>
-            <dt>Differs</dt><dd><code>api.ts</code> wrappers, URL param names, the playlist header and Videos tab.</dd>
-          </dl>
-        </article>
-
-        <article class="dup">
-          <div class="dup-head"><h3>Helper copies in <code>Home</code></h3><span class="dup-count">×2</span></div>
-          <p><code>Home.tsx</code> defines its own <code>last28Dates()</code> and <code>toTopVideoShape()</code>.</p>
-          <dl>
-            <dt>Where</dt><dd><code>pages/Home.tsx</code>; shared versions in <code>components/PeriodSelect.tsx</code> and <code>lib/topVideos.ts</code></dd>
-            <dt>Differs</dt><dd><code>toTopVideoShape</code> is identical. <code>last28Dates</code> computes the same range without <code>lastNDates</code>.</dd>
-          </dl>
-        </article>
-
-        <article class="dup">
-          <div class="dup-head"><h3>Year option list</h3><span class="dup-count">×2</span></div>
-          <p>Both fetch <code>GET /meta/date-range</code> and build a newest-first list of years.</p>
-          <dl>
-            <dt>Where</dt><dd><code>components/PeriodSelect.tsx</code>, <code>pages/Sync.tsx</code></dd>
-            <dt>Differs</dt><dd><code>Sync</code> catches a failed request; <code>PeriodSelect</code> does not.</dd>
-          </dl>
-        </article>
-
-        <article class="dup">
-          <div class="dup-head"><h3>Video / playlist header card</h3><span class="dup-count">×2</span></div>
-          <p>Both detail pages build an <code>AsyncCard</code> with <code>video-meta-*</code> markup styled by <code>VideoMetaCard.css</code>.</p>
-          <dl>
-            <dt>Where</dt><dd><code>pages/VideoAnalytics.tsx</code>, <code>pages/PlaylistAnalytics.tsx</code></dd>
-            <dt>Differs</dt><dd>The fields shown.</dd>
-          </dl>
-        </article>
-
-      </div>
-    </section>
 
     <section id="css">
       <h2>Frontend CSS</h2>

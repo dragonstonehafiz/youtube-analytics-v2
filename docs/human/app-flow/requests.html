@@ -129,7 +129,7 @@
       <div class="card-grid">
         <div class="card"><h3>SyncStatus</h3><p>Polls <code>/sync/status</code> every 5 seconds on every page.</p></div>
         <div class="card"><h3>PeriodSelect</h3><p>Calls <code>/meta/date-range</code> every time it appears, to build its year options.</p></div>
-        <div class="card"><h3>CommentsPanel</h3><p>The Comments tab. It calls the channel, video or playlist comment route and reloads when a filter changes.</p></div>
+        <div class="card"><h3>CommentsTab</h3><p>The Comments tab. It calls the channel, video or playlist comment route and reloads when a filter changes.</p></div>
       </div>
     </section>
 
@@ -175,7 +175,6 @@
           <dt><code>getChannelAnalytics</code></dt><dd><code>/analytics/videos</code></dd><dd class="used-by">Analytics</dd>
           <dt><code>getTopVideosByViews</code></dt><dd><code>/analytics/videos/top</code></dd><dd class="used-by">Home, Analytics</dd>
           <dt><code>getPlaylistAnalytics</code></dt><dd><code>/analytics/playlists/{id}</code></dd><dd class="used-by">PlaylistAnalytics</dd>
-          <dt><code>getPlaylistAggregatedAnalytics</code></dt><dd><code>/analytics/playlists/{id}</code></dd><dd class="used-by">nothing (duplicate of getPlaylistAnalytics)</dd>
           <dt><code>getPlaylistTopVideosByViews</code></dt><dd><code>/analytics/playlists/{id}/top</code></dd><dd class="used-by">PlaylistAnalytics</dd>
         </dl>
       </div>
@@ -217,9 +216,9 @@
         <h3>Comments</h3>
         <dl class="returns-list">
           <dt class="col-head">Function</dt><dd class="col-head">Route</dd><dd class="col-head">Used by</dd>
-          <dt><code>getComments</code></dt><dd><code>/comments</code></dd><dd class="used-by">CommentsPanel</dd>
-          <dt><code>getVideoComments</code></dt><dd><code>/comments/videos/{id}</code></dd><dd class="used-by">CommentsPanel</dd>
-          <dt><code>getPlaylistComments</code></dt><dd><code>/comments/playlists/{id}</code></dd><dd class="used-by">CommentsPanel</dd>
+          <dt><code>getComments</code></dt><dd><code>/comments</code></dd><dd class="used-by">CommentsTab</dd>
+          <dt><code>getVideoComments</code></dt><dd><code>/comments/videos/{id}</code></dd><dd class="used-by">CommentsTab</dd>
+          <dt><code>getPlaylistComments</code></dt><dd><code>/comments/playlists/{id}</code></dd><dd class="used-by">CommentsTab</dd>
         </dl>
       </div>
       <div class="card file-group">
@@ -230,7 +229,7 @@
           <dt><code>triggerSync</code></dt><dd><code>POST /sync/trigger</code></dd><dd class="used-by">Sync</dd>
           <dt><code>stopSync</code></dt><dd><code>POST /sync/stop</code></dd><dd class="used-by">Sync</dd>
           <dt><code>getSyncRuns</code></dt><dd><code>/sync/runs</code></dd><dd class="used-by">Sync</dd>
-          <dt><code>getDateRange</code></dt><dd><code>/meta/date-range</code></dd><dd class="used-by">PeriodSelect, Sync</dd>
+          <dt><code>getDateRange</code></dt><dd><code>/meta/date-range</code></dd><dd class="used-by">useAvailableYears (PeriodSelect, Sync)</dd>
         </dl>
       </div>
     </section>
@@ -242,7 +241,7 @@
         <div class="card"><h3>Term videos load twice</h3><p>A filter change requests the top term's videos with the old term, then again with the new one.</p></div>
         <div class="card"><h3>Two status pollers on the Sync page</h3><p>The top navigation and the Sync page each poll <code>/sync/status</code>, so that page sends two every 5 seconds.</p></div>
         <div class="card"><h3>Date range on every appearance</h3><p>The period dropdown requests <code>/meta/date-range</code> again each time a tab switch shows it.</p></div>
-        <div class="card"><h3>Unused API functions</h3><p><code>getPlaylistAggregatedAnalytics</code>, <code>getTopSearchTerms</code> and <code>getPlaylistTopSearchTerms</code> have no caller.</p></div>
+        <div class="card"><h3>Unused API functions</h3><p><code>getTopSearchTerms</code> and <code>getPlaylistTopSearchTerms</code> have no caller.</p></div>
       </div>
     </section>
 

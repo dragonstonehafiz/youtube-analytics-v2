@@ -92,7 +92,7 @@ describe('Traffic Sources sub-tabs (Search Insights)', () => {
   it('scopes the Search Insights fetch to this video id and the shared date filters', async () => {
     renderVideoAnalytics('/analytics/videos/v1?tab=traffic-sources&start_date=2024-01-01&end_date=2024-01-31')
 
-    await waitFor(() => expect(mockGetVideoSearchTerms).toHaveBeenCalledWith('v1', '2024-01-01', '2024-01-31'))
+    await waitFor(() => expect(mockGetVideoSearchTerms).toHaveBeenCalledWith('v1', { startDate: '2024-01-01', endDate: '2024-01-31' }))
   })
 
   it('a date-filter change refetches the Search Insights donut, not just the traffic chart', async () => {
@@ -104,7 +104,7 @@ describe('Traffic Sources sub-tabs (Search Insights)', () => {
     fireEvent.change(startInput, { target: { value: '2024-02-01' } })
 
     await waitFor(() => expect(mockGetVideoSearchTerms).toHaveBeenCalledWith(
-      'v1', '2024-02-01', expect.any(String),
+      'v1', { startDate: '2024-02-01', endDate: expect.any(String) },
     ))
   })
 
@@ -125,6 +125,16 @@ describe('Traffic Sources sub-tabs (Search Insights)', () => {
     expect(sourcesTab.className).toContain('active')
     expect(screen.queryByText('Top Search Terms')).toBeNull()
   })
+
+  it('treats ts_tab=top-videos as unrecognized, since a single video has no such sub-tab', async () => {
+    const { container } = renderVideoAnalytics('/analytics/videos/v1?tab=traffic-sources&ts_tab=top-videos')
+    await waitFor(() => expect(mockGetVideoTrafficSources).toHaveBeenCalled())
+
+    const tabStrips = container.querySelectorAll('.tabs')
+    const subTabStrip = tabStrips[tabStrips.length - 1] as HTMLElement
+    expect(within(subTabStrip).getByRole('button', { name: 'Traffic Sources' }).className).toContain('active')
+    expect(within(subTabStrip).queryByRole('button', { name: 'Top Videos by Traffic Source' })).toBeNull()
+  })
 })
 
 describe('Related Videos sub-tab', () => {
@@ -132,7 +142,7 @@ describe('Related Videos sub-tab', () => {
   const externalRow = { referrer_video_id: 'ref-ext', title: 'External Video', thumbnail_url: null, referrer_own: false, views: 30 }
 
   beforeEach(() => {
-    mockGetVideoRelatedVideoReferrers.mockImplementation(async (_id: string, own: boolean) =>
+    mockGetVideoRelatedVideoReferrers.mockImplementation(async (_id, { own }) =>
       own
         ? { items: [mineRow], total_named_views: 80 }
         : { items: [externalRow], total_named_views: 80 })
@@ -162,17 +172,17 @@ describe('Related Videos sub-tab', () => {
     renderVideoAnalytics('/analytics/videos/v1?tab=traffic-sources&ts_tab=related&start_date=2024-01-01&end_date=2024-01-31')
 
     await waitFor(() => expect(mockGetVideoRelatedVideoReferrers).toHaveBeenCalledTimes(2))
-    for (const call of mockGetVideoRelatedVideoReferrers.mock.calls) {
-      expect(call[0]).toBe('v1')
-      expect(call[2]).toBe('2024-01-01')
-      expect(call[3]).toBe('2024-01-31')
+    for (const [id, query] of mockGetVideoRelatedVideoReferrers.mock.calls) {
+      expect(id).toBe('v1')
+      expect(query.startDate).toBe('2024-01-01')
+      expect(query.endDate).toBe('2024-01-31')
     }
-    expect(mockGetVideoRelatedVideoReferrers.mock.calls.map(c => c[1]).sort()).toEqual([false, true])
+    expect(mockGetVideoRelatedVideoReferrers.mock.calls.map(c => c[1].own).sort()).toEqual([false, true])
   })
 
   it("calls the channel-scoped destinations endpoint with this video's own ID as the referrer, not a video-scoped route", async () => {
     renderVideoAnalytics('/analytics/videos/v1?tab=traffic-sources&ts_tab=related&start_date=2024-01-01&end_date=2024-01-31')
 
-    await waitFor(() => expect(mockGetRelatedVideoDestinations).toHaveBeenCalledWith('v1', '2024-01-01', '2024-01-31', 1000))
+    await waitFor(() => expect(mockGetRelatedVideoDestinations).toHaveBeenCalledWith({ referrerVideoId: 'v1', startDate: '2024-01-01', endDate: '2024-01-31', limit: 1000 }))
   })
 })

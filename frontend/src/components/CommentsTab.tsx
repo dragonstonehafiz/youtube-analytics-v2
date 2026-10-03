@@ -6,13 +6,15 @@ import type { Comment, CommentSort, CommentsResponse } from '@/types'
 import { useReplaceSearchParams } from '@/hooks/useReplaceSearchParams'
 import { useDebouncedFields } from '@/hooks/useDebouncedInput'
 import AsyncCard from '@/components/AsyncCard'
-import '@/components/CommentsPanel.css'
+import Pagination from '@/components/Pagination'
+import FilterBar, { ContentTypeSelect } from '@/components/FilterBar'
+import '@/components/CommentsTab.css'
 
 export const PAGE_SIZE = 25
 
 /**
- * Which comments the panel shows. The owning Analytics page fixes this; every other piece
- * of the panel's state lives in the URL.
+ * Which comments the tab shows. The owning Analytics page fixes this; every other piece
+ * of the tab's state lives in the URL.
  *
  * Unlike the other Analytics tab components, this one fetches its own data. The three
  * pages that host it share no comment state to hand down, so keeping the request, the
@@ -49,7 +51,7 @@ function isCommentSort(value: string | null): value is CommentSort {
   return value === 'newest' || value === 'oldest' || value === 'likes'
 }
 
-/** Fetch one page from whichever endpoint matches the panel's scope. */
+/** Fetch one page from whichever endpoint matches the tab's scope. */
 function fetchForScope(scope: CommentsScope, query: CommentQuery): Promise<CommentsResponse> {
   if (scope.kind === 'video') return getVideoComments(scope.videoId, query)
   if (scope.kind === 'playlist') return getPlaylistComments(scope.playlistId, query)
@@ -158,12 +160,12 @@ function CommentRow({ comment }: { comment: Comment }) {
   )
 }
 
-interface CommentsPanelProps {
+interface CommentsTabProps {
   scope: CommentsScope
 }
 
-export default function CommentsPanel({ scope }: CommentsPanelProps) {
-  const [searchParams, setSearchParams] = useReplaceSearchParams()
+export default function CommentsTab({ scope }: CommentsTabProps) {
+  const [searchParams, setParams] = useReplaceSearchParams()
   const [comments, setComments] = useState<Comment[]>([])
   const [total, setTotal] = useState(0)
   const [loading, setLoading] = useState(true)
@@ -193,12 +195,12 @@ export default function CommentsPanel({ scope }: CommentsPanelProps) {
       page,
       pageSize: PAGE_SIZE,
       sortBy,
-      text: text || undefined,
-      videoTitle: scopedToOneVideo ? undefined : videoTitle || undefined,
-      author: author || undefined,
-      startDate: startDate || undefined,
-      endDate: endDate || undefined,
-      contentType: scopedToOneVideo ? undefined : contentType || undefined,
+      text,
+      videoTitle: scopedToOneVideo ? undefined : videoTitle,
+      author,
+      startDate,
+      endDate,
+      contentType: scopedToOneVideo ? undefined : contentType,
     })
       .then(data => {
         if (!active) return
@@ -226,20 +228,10 @@ export default function CommentsPanel({ scope }: CommentsPanelProps) {
   ])
 
   /** Apply filter or sort changes, always returning to the first page of the new result. */
-  const updateFilter = (updates: Record<string, string>) => {
-    setSearchParams(prev => {
-      const next = new URLSearchParams(prev)
-      for (const [key, value] of Object.entries(updates)) {
-        if (value) {
-          next.set(key, value)
-        } else {
-          next.delete(key)
-        }
-      }
-      next.delete(PARAM.page)
-      return next
-    })
-  }
+  const updateFilter = (updates: Record<string, string>) => setParams({
+    ...Object.fromEntries(Object.entries(updates).map(([key, value]) => [key, value || null])),
+    [PARAM.page]: null,
+  })
 
   const [searchDrafts, setSearchDraft] = useDebouncedFields(
     { text, author, videoTitle },
@@ -250,17 +242,7 @@ export default function CommentsPanel({ scope }: CommentsPanelProps) {
     }),
   )
 
-  const goToPage = (nextPage: number) => {
-    setSearchParams(prev => {
-      const next = new URLSearchParams(prev)
-      if (nextPage <= 1) {
-        next.delete(PARAM.page)
-      } else {
-        next.set(PARAM.page, String(nextPage))
-      }
-      return next
-    })
-  }
+  const goToPage = (nextPage: number) => setParams({ [PARAM.page]: nextPage > 1 ? String(nextPage) : null })
 
   const totalPages = Math.ceil(total / PAGE_SIZE)
   // A video scope has exactly one parent video, so grouping there would add a heading
@@ -268,25 +250,13 @@ export default function CommentsPanel({ scope }: CommentsPanelProps) {
   const groups = scopedToOneVideo ? [] : groupByVideo(comments)
 
   return (
-    <div className="comments-panel">
-      <div className="filter-bar">
-        <label>
-          From
-          <input
-            type="date"
-            value={startDate}
-            onChange={e => updateFilter({ [PARAM.startDate]: e.target.value })}
-          />
-        </label>
-        <label>
-          To
-          <input
-            type="date"
-            value={endDate}
-            onChange={e => updateFilter({ [PARAM.endDate]: e.target.value })}
-          />
-        </label>
-        <div className="filter-bar-sep" />
+    <div className="comments-tab">
+      <FilterBar
+        dates={{
+          startDate: { value: startDate, onChange: v => updateFilter({ [PARAM.startDate]: v }) },
+          endDate: { value: endDate, onChange: v => updateFilter({ [PARAM.endDate]: v }) },
+        }}
+      >
         <label>
           Comment
           <input
@@ -317,17 +287,7 @@ export default function CommentsPanel({ scope }: CommentsPanelProps) {
               />
             </label>
             <div className="filter-bar-sep" />
-            <label>
-              Type
-              <select
-                value={contentType}
-                onChange={e => updateFilter({ [PARAM.contentType]: e.target.value })}
-              >
-                <option value="">All</option>
-                <option value="video">Video</option>
-                <option value="short">Short</option>
-              </select>
-            </label>
+            <ContentTypeSelect value={contentType} onChange={v => updateFilter({ [PARAM.contentType]: v })} />
           </>
         )}
         <div className="filter-bar-sep" />
@@ -339,7 +299,7 @@ export default function CommentsPanel({ scope }: CommentsPanelProps) {
             ))}
           </select>
         </label>
-      </div>
+      </FilterBar>
 
       {/* The results are one request-backed surface: a plain shell, because what it
           resolves to is itself a stack of cards. Its own states carry the card surface. */}
@@ -383,25 +343,7 @@ export default function CommentsPanel({ scope }: CommentsPanelProps) {
           ))
         )}
         {totalPages > 1 && (
-          <div className="pagination">
-            <button
-              type="button"
-              className="btn-ghost"
-              onClick={() => goToPage(page - 1)}
-              disabled={page <= 1}
-            >
-              Previous
-            </button>
-            <span className="pagination-info">Page {page} of {totalPages}</span>
-            <button
-              type="button"
-              className="btn-ghost"
-              onClick={() => goToPage(page + 1)}
-              disabled={page >= totalPages}
-            >
-              Next
-            </button>
-          </div>
+          <Pagination page={page} totalPages={totalPages} onChange={goToPage} />
         )}
       </AsyncCard>
     </div>

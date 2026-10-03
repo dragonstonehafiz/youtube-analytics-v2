@@ -60,7 +60,7 @@ describe('Playlists Title search debounce', () => {
     const params = new URLSearchParams(getSearch())
     expect(params.get('title')).toBe('foo')
     expect(params.get('page')).toBe('1')
-    expect(mockGetPlaylists.mock.calls.some(c => c[4] === 'foo')).toBe(true)
+    expect(mockGetPlaylists.mock.calls.some(c => c[0].title === 'foo')).toBe(true)
   })
 
   it('resets to page 1 only once the search commits', async () => {
@@ -97,9 +97,24 @@ describe('Playlists Title search debounce', () => {
     await act(async () => { vi.advanceTimersByTime(SEARCH_DEBOUNCE_MS - 50) })
     fireEvent.change(input, { target: { value: 'second' } })
     await act(async () => { vi.advanceTimersByTime(SEARCH_DEBOUNCE_MS - 50) })
-    expect(mockGetPlaylists.mock.calls.some(c => c[4] === 'first')).toBe(false)
+    expect(mockGetPlaylists.mock.calls.some(c => c[0].title === 'first')).toBe(false)
 
     await act(async () => { vi.advanceTimersByTime(50) })
-    expect(mockGetPlaylists.mock.calls.some(c => c[4] === 'second')).toBe(true)
+    expect(mockGetPlaylists.mock.calls.some(c => c[0].title === 'second')).toBe(true)
+  })
+})
+
+describe('Playlists sorting', () => {
+  it('toggles the default Last Added sort to ascending on the first click of a bare URL', async () => {
+    const { getSearch } = renderPlaylists('/playlists')
+    const header = await screen.findByText(/Last Added/)
+    expect(header.textContent).toBe('Last Added ↓')
+
+    fireEvent.click(header)
+
+    const params = new URLSearchParams(getSearch())
+    expect(params.get('sort_by')).toBe('last_item_added')
+    expect(params.get('sort_dir')).toBe('asc')
+    expect(params.get('page')).toBe('1')
   })
 })

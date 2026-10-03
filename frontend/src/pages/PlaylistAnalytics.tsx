@@ -1,45 +1,26 @@
 import { useEffect, useState } from 'react'
 import { useParams } from 'react-router-dom'
-import { getPlaylist, getPlaylistVideos, getPlaylistVideoStats, getPlaylistAnalytics, getPlaylistTopVideosByViews, getVideosPublished, getPlaylistTrafficSources, getPlaylistTopVideosByTrafficSource, getPlaylistSearchTerms, getPlaylistVideosBySearchTerm, getPlaylistRelatedVideoReferrers, getPlaylistRelatedVideoDestinations } from '@/api'
-import type { Video, VideoStats, AnalyticsRow, Playlist, TopVideo, TopVideoSortBy, PublishedVideo, TrafficSourceRow, TrafficSourceTopVideo, SearchTermRow, SearchTermVideo, RelatedReferrersResponse, RelatedDestinationRow } from '@/types'
+import { getPlaylist, getPlaylistVideos } from '@/api'
+import type { Video, Playlist, TopVideoSortBy } from '@/types'
 import { useReplaceSearchParams } from '@/hooks/useReplaceSearchParams'
-import VideoStatsBar from '@/components/VideoStatsBar'
 import VideoTable, { PAGE_SIZE } from '@/components/VideoTable'
 import type { SortKey, SortDir } from '@/components/VideoTable'
-import PeriodSelect, { last28Dates } from '@/components/PeriodSelect'
-import { toTopVideoShape, last7Dates } from '@/lib/topVideos'
+import Tabs from '@/components/Tabs'
+import type { TabOption } from '@/components/Tabs'
+import FilterBar from '@/components/FilterBar'
+import DetailHeader from '@/components/DetailHeader'
+import AnalyticsTab from '@/components/AnalyticsTab'
+import TrafficSourcesTab from '@/components/TrafficSourcesTab'
+import CommentsTab from '@/components/CommentsTab'
+import { TRAFFIC_SOURCES_SUB_TABS, toTrafficSourcesSubTab } from '@/lib/trafficSources'
+import { lastNDates } from '@/lib/dates'
 import type { RequestState } from '@/lib/requestState'
 import { pending, track } from '@/lib/requestState'
-import { useReconciledSelection } from '@/hooks/useReconciledSelection'
-import AsyncCard from '@/components/AsyncCard'
-import AnalyticsChart from '@/components/AnalyticsChart'
-import TopVideosList from '@/components/TopVideosList'
-import VideoCarouselCard from '@/components/VideoCarouselCard'
-import TopPerformersCard from '@/components/TopPerformersCard'
-import TrafficSourceChart from '@/components/TrafficSourceChart'
-import TrafficSourcesTable from '@/components/TrafficSourcesTable'
-import TrafficSourceTopVideosPanel from '@/components/TrafficSourceTopVideosPanel'
-import SearchTermsDonutCard from '@/components/SearchTermsDonutCard'
-import SearchTermVideosDonutCard from '@/components/SearchTermVideosDonutCard'
-import RelatedReferrerBreakdownCard from '@/components/RelatedReferrerBreakdownCard'
-import RelatedDestinationsByReferrerCard from '@/components/RelatedDestinationsByReferrerCard'
-import CommentsPanel from '@/components/CommentsPanel'
+import { useCollectionAnalytics } from '@/hooks/useCollectionAnalytics'
 import { useDebouncedInput } from '@/hooks/useDebouncedInput'
-import '@/components/VideoMetaCard.css'
 import './Analytics.css'
 
-const RECENT_COUNT = 10
-// Show every video with views for the selected term, not just a "top" handful.
-const ALL_VIDEOS_FOR_TERM_LIMIT = 1000
-const RELATED_VIDEOS_FETCH_LIMIT = 1000
-const EMPTY_RELATED_REFERRERS: RelatedReferrersResponse = { items: [], total_named_views: 0 }
-
 type Tab = 'analytics' | 'traffic-sources' | 'comments' | 'videos'
-type TrafficSourcesSubTab = 'sources' | 'top-videos' | 'search' | 'related'
-
-function toTrafficSourcesSubTab(value: string | null): TrafficSourcesSubTab {
-  return value === 'top-videos' || value === 'search' || value === 'related' ? value : 'sources'
-}
 
 interface VideoPage {
   items: Video[]
@@ -48,8 +29,10 @@ interface VideoPage {
 
 export default function PlaylistAnalytics() {
   const { id } = useParams<{ id: string }>()
-  const [searchParams, setSearchParams] = useReplaceSearchParams()
+  const [searchParams, setParams] = useReplaceSearchParams()
   const tab = (searchParams.get('tab') as Tab) ?? 'analytics'
+
+  // The Videos tab's own listing params.
   const page = Math.max(1, Number(searchParams.get('page') ?? 1))
   const sortKey = (searchParams.get('sort_by') as SortKey) ?? 'published_at'
   const sortDir = (searchParams.get('sort_dir') as SortDir) ?? 'desc'
@@ -59,46 +42,31 @@ export default function PlaylistAnalytics() {
   const contentType = searchParams.get('content_type') ?? ''
   const privacyStatus = searchParams.get('privacy_status') ?? ''
 
-  const [playlist, setPlaylist] = useState<RequestState<Playlist | null>>(pending(null))
-  const [listing, setListing] = useState<RequestState<VideoPage>>(pending({ items: [], total: 0 }))
-  const [stats, setStats] = useState<RequestState<VideoStats | null>>(pending(null))
-  const analyticsStartDate = searchParams.has('analytics_start_date') ? searchParams.get('analytics_start_date')! : last28Dates()[0]
-  const analyticsEndDate = searchParams.has('analytics_end_date') ? searchParams.get('analytics_end_date')! : last28Dates()[1]
+  // The Analytics and Traffic Sources tabs' filters, prefixed so they don't collide with the Videos tab's.
+  const analyticsStartDate = searchParams.has('analytics_start_date') ? searchParams.get('analytics_start_date')! : lastNDates(28)[0]
+  const analyticsEndDate = searchParams.has('analytics_end_date') ? searchParams.get('analytics_end_date')! : lastNDates(28)[1]
   const analyticsTitle = searchParams.get('analytics_title') ?? ''
   const analyticsContentType = searchParams.get('analytics_content_type') ?? ''
   const analyticsPrivacyStatus = searchParams.get('analytics_privacy_status') ?? ''
   const rawTopVideosSortBy = searchParams.get('top_videos_sort_by')
   const topVideosSortBy: TopVideoSortBy = rawTopVideosSortBy === 'views' ? 'views' : 'watch_time'
-  const [rows, setRows] = useState<RequestState<AnalyticsRow[]>>(pending([]))
-  const [topVideos, setTopVideos] = useState<RequestState<TopVideo[]>>(pending([]))
-  const [publishedVideos, setPublishedVideos] = useState<RequestState<PublishedVideo[]>>(pending([]))
-  const [trafficSources, setTrafficSources] = useState<RequestState<TrafficSourceRow[]>>(pending([]))
-  const [topVideosBySource, setTopVideosBySource] = useState<RequestState<Record<string, TrafficSourceTopVideo[]>>>(pending({}))
-  const tsTab = toTrafficSourcesSubTab(searchParams.get('ts_tab'))
-  const relatedTabVisible = tab === 'traffic-sources' && tsTab === 'related'
-  const [videoTerm, setVideoTerm] = useState<string | null>(null)
-  const [shortTerm, setShortTerm] = useState<string | null>(null)
-  const [searchTerms, setSearchTerms] = useState<RequestState<SearchTermRow[]>>(pending([]))
-  const [searchTermsByVideo, setSearchTermsByVideo] = useState<RequestState<SearchTermRow[]>>(pending([]))
-  const [searchTermsByShort, setSearchTermsByShort] = useState<RequestState<SearchTermRow[]>>(pending([]))
-  const [videosForVideoTerm, setVideosForVideoTerm] = useState<RequestState<SearchTermVideo[]>>(pending([]))
-  const [videosForShortTerm, setVideosForShortTerm] = useState<RequestState<SearchTermVideo[]>>(pending([]))
-  const [recentVideos, setRecentVideos] = useState<RequestState<TopVideo[]>>(pending([]))
-  const [recentShorts, setRecentShorts] = useState<RequestState<TopVideo[]>>(pending([]))
-  const [topPerformingVideos, setTopPerformingVideos] = useState<RequestState<TopVideo[]>>(pending([]))
-  const [topPerformingShorts, setTopPerformingShorts] = useState<RequestState<TopVideo[]>>(pending([]))
-  const [relatedReferrersMine, setRelatedReferrersMine] = useState<RequestState<RelatedReferrersResponse>>(pending(EMPTY_RELATED_REFERRERS))
-  const [relatedReferrersOther, setRelatedReferrersOther] = useState<RequestState<RelatedReferrersResponse>>(pending(EMPTY_RELATED_REFERRERS))
-  const [relatedDestinationsMine, setRelatedDestinationsMine] = useState<RequestState<RelatedDestinationRow[]>>(pending([]))
-  const [relatedDestinationsOther, setRelatedDestinationsOther] = useState<RequestState<RelatedDestinationRow[]>>(pending([]))
-  const [mineReferrerSelected, setMineReferrerSelected] = useReconciledSelection(
-    relatedReferrersMine.data.items.map(r => r.referrer_video_id),
+  const tsTab = toTrafficSourcesSubTab(searchParams.get('ts_tab'), TRAFFIC_SOURCES_SUB_TABS)
+
+  const [playlist, setPlaylist] = useState<RequestState<Playlist | null>>(pending(null))
+  const [listing, setListing] = useState<RequestState<VideoPage>>(pending({ items: [], total: 0 }))
+
+  const data = useCollectionAnalytics(
+    { kind: 'playlist', id: id! },
+    {
+      startDate: analyticsStartDate,
+      endDate: analyticsEndDate,
+      title: analyticsTitle,
+      contentType: analyticsContentType,
+      privacyStatus: analyticsPrivacyStatus,
+    },
+    topVideosSortBy,
+    tab === 'traffic-sources' && tsTab === 'related',
   )
-  const [otherReferrerSelected, setOtherReferrerSelected] = useReconciledSelection(
-    relatedReferrersOther.data.items.map(r => r.referrer_video_id),
-  )
-  const mineReferrerId = mineReferrerSelected ?? relatedReferrersMine.data.items[0]?.referrer_video_id ?? null
-  const otherReferrerId = otherReferrerSelected ?? relatedReferrersOther.data.items[0]?.referrer_video_id ?? null
 
   useEffect(() => {
     if (!id) return
@@ -108,42 +76,11 @@ export default function PlaylistAnalytics() {
     return () => { active = false }
   }, [id])
 
-  // The four sidebar cards keep their fixed periods (no date filter for Latest, last-7-days for Top)
-  // but otherwise track the analytics title/type/privacy filters, with each card kept to its Video/Short identity.
-  useEffect(() => {
-    if (!id) return
-    let active = true
-    const tt = analyticsTitle || undefined
-    const ps = analyticsPrivacyStatus || undefined
-    const emptyResolved = { data: [], loading: false, error: null }
-    if (analyticsContentType === 'short') {
-      setRecentVideos(emptyResolved)
-      setTopPerformingVideos(emptyResolved)
-    } else {
-      track(getPlaylistVideos(id, 1, RECENT_COUNT, 'published_at', 'desc', tt, undefined, undefined, 'video', ps)
-        .then((data: { items: Video[] }) => (data.items ?? []).map(toTopVideoShape)), setRecentVideos, () => active)
-      const [sevenStart, sevenEnd] = last7Dates()
-      track(getPlaylistTopVideosByViews(id, 'views', sevenStart, sevenEnd, 'video', ps, tt)
-        .then((data: { items: TopVideo[] }) => data.items ?? []), setTopPerformingVideos, () => active)
-    }
-    if (analyticsContentType === 'video') {
-      setRecentShorts(emptyResolved)
-      setTopPerformingShorts(emptyResolved)
-    } else {
-      track(getPlaylistVideos(id, 1, RECENT_COUNT, 'published_at', 'desc', tt, undefined, undefined, 'short', ps)
-        .then((data: { items: Video[] }) => (data.items ?? []).map(toTopVideoShape)), setRecentShorts, () => active)
-      const [sevenStart, sevenEnd] = last7Dates()
-      track(getPlaylistTopVideosByViews(id, 'views', sevenStart, sevenEnd, 'short', ps, tt)
-        .then((data: { items: TopVideo[] }) => data.items ?? []), setTopPerformingShorts, () => active)
-    }
-    return () => { active = false }
-  }, [id, analyticsContentType, analyticsPrivacyStatus, analyticsTitle])
-
   useEffect(() => {
     if (!id) return
     let active = true
     track(
-      getPlaylistVideos(id, page, PAGE_SIZE, sortKey, sortDir, title || undefined, startDate || undefined, endDate || undefined, contentType || undefined, privacyStatus || undefined)
+      getPlaylistVideos(id, { page, pageSize: PAGE_SIZE, sortBy: sortKey, sortDir, title, startDate, endDate, contentType, privacyStatus })
         .then((data: { items: Video[]; total: number }) => ({ items: data.items ?? [], total: data.total ?? 0 })),
       setListing,
       () => active,
@@ -152,287 +89,64 @@ export default function PlaylistAnalytics() {
     return () => { active = false }
   }, [id, page, sortKey, sortDir, title, startDate, endDate, contentType, privacyStatus])
 
-  // One filter change starts five requests, each owning the state of the card it feeds.
-  useEffect(() => {
-    if (!id) return
-    let active = true
-    const params: Record<string, string> = {}
-    if (analyticsStartDate) params.start_date = analyticsStartDate
-    if (analyticsEndDate) params.end_date = analyticsEndDate
-    if (analyticsContentType) params.content_type = analyticsContentType
-    if (analyticsPrivacyStatus) params.privacy_status = analyticsPrivacyStatus
-    if (analyticsTitle) params.title = analyticsTitle
-    const sd = analyticsStartDate || undefined
-    const ed = analyticsEndDate || undefined
-    const ct = analyticsContentType || undefined
-    const ps = analyticsPrivacyStatus || undefined
-    const tt = analyticsTitle || undefined
-    track(getPlaylistVideoStats(id, tt, sd, ed, ct, ps)
-      .then((data: VideoStats) => data), setStats, () => active, 'Could not load statistics')
-    track(getPlaylistAnalytics(id, params)
-      .then((data: { items: AnalyticsRow[] }) => data.items ?? []), setRows, () => active, 'Could not load analytics')
-    track(getVideosPublished(sd, ed, ct, ps, id, tt)
-      .then((data: { items: PublishedVideo[] }) => data.items ?? []), setPublishedVideos, () => active, 'Could not load uploads')
-    track(getPlaylistTrafficSources(id, params)
-      .then((data: { items: TrafficSourceRow[] }) => data.items ?? []), setTrafficSources, () => active, 'Could not load traffic sources')
-    track(getPlaylistTopVideosByTrafficSource(id, params)
-      .then((data: { items: Record<string, TrafficSourceTopVideo[]> }) => data.items ?? {}), setTopVideosBySource, () => active, 'Could not load traffic sources')
-    return () => { active = false }
-  }, [id, analyticsStartDate, analyticsEndDate, analyticsContentType, analyticsPrivacyStatus, analyticsTitle])
+  const setPage = (p: number) => setParams({ page: String(p) })
 
-  // Search Insights ignores the page's own content_type filter — these three columns
-  // always show the All/Video/Short split regardless of it, since that split is the point.
-  useEffect(() => {
-    if (!id) return
-    let active = true
-    const query = { startDate: analyticsStartDate || undefined, endDate: analyticsEndDate || undefined, title: analyticsTitle || undefined, privacyStatus: analyticsPrivacyStatus || undefined }
-    track(getPlaylistSearchTerms(id, query)
-      .then((data: { items: SearchTermRow[] }) => data.items ?? []), setSearchTerms, () => active, 'Could not load search terms')
-    track(getPlaylistSearchTerms(id, { ...query, contentType: 'video' })
-      .then((data: { items: SearchTermRow[] }) => data.items ?? []), setSearchTermsByVideo, () => active, 'Could not load search terms')
-    track(getPlaylistSearchTerms(id, { ...query, contentType: 'short' })
-      .then((data: { items: SearchTermRow[] }) => data.items ?? []), setSearchTermsByShort, () => active, 'Could not load search terms')
-    return () => { active = false }
-  }, [id, analyticsStartDate, analyticsEndDate, analyticsTitle, analyticsPrivacyStatus])
+  const handleSort = (key: SortKey) => setParams({
+    sort_by: key,
+    sort_dir: sortKey === key && sortDir === 'desc' ? 'asc' : 'desc',
+    page: '1',
+  })
 
-  // Each Search Insights video card owns its own term selection independently.
-  useEffect(() => {
-    if (!id) return
-    let active = true
-    const term = videoTerm || searchTermsByVideo.data[0]?.search_term
-    if (!term) { setVideosForVideoTerm({ data: [], loading: false, error: null }); return }
-    track(getPlaylistVideosBySearchTerm(id, term, { startDate: analyticsStartDate || undefined, endDate: analyticsEndDate || undefined, title: analyticsTitle || undefined, privacyStatus: analyticsPrivacyStatus || undefined, contentType: 'video' }, ALL_VIDEOS_FOR_TERM_LIMIT)
-      .then((data: { items: SearchTermVideo[] }) => data.items ?? []), setVideosForVideoTerm, () => active, 'Could not load videos')
-    return () => { active = false }
-  }, [id, videoTerm, searchTermsByVideo.data, analyticsStartDate, analyticsEndDate, analyticsTitle, analyticsPrivacyStatus])
-
-  useEffect(() => {
-    if (!id) return
-    let active = true
-    const term = shortTerm || searchTermsByShort.data[0]?.search_term
-    if (!term) { setVideosForShortTerm({ data: [], loading: false, error: null }); return }
-    track(getPlaylistVideosBySearchTerm(id, term, { startDate: analyticsStartDate || undefined, endDate: analyticsEndDate || undefined, title: analyticsTitle || undefined, privacyStatus: analyticsPrivacyStatus || undefined, contentType: 'short' }, ALL_VIDEOS_FOR_TERM_LIMIT)
-      .then((data: { items: SearchTermVideo[] }) => data.items ?? []), setVideosForShortTerm, () => active, 'Could not load videos')
-    return () => { active = false }
-  }, [id, shortTerm, searchTermsByShort.data, analyticsStartDate, analyticsEndDate, analyticsTitle, analyticsPrivacyStatus])
-
-  // The two referrer-breakdown cards each own one own-filtered referrers call. Deferred
-  // until the Related Videos sub-tab is actually visible, and refetched whenever the
-  // filters change while it's visible — switching into the sub-tab fetches fresh data
-  // rather than relying on whatever was current the last time it was open.
-  useEffect(() => {
-    if (!id || !relatedTabVisible) return
-    let active = true
-    const query = { startDate: analyticsStartDate || undefined, endDate: analyticsEndDate || undefined, title: analyticsTitle || undefined, contentType: analyticsContentType || undefined, privacyStatus: analyticsPrivacyStatus || undefined }
-    track(getPlaylistRelatedVideoReferrers(id, true, query, RELATED_VIDEOS_FETCH_LIMIT)
-      .then((data: RelatedReferrersResponse) => data), setRelatedReferrersMine, () => active, 'Could not load Related Video referrers')
-    track(getPlaylistRelatedVideoReferrers(id, false, query, RELATED_VIDEOS_FETCH_LIMIT)
-      .then((data: RelatedReferrersResponse) => data), setRelatedReferrersOther, () => active, 'Could not load Related Video referrers')
-    return () => { active = false }
-  }, [id, relatedTabVisible, analyticsStartDate, analyticsEndDate, analyticsContentType, analyticsPrivacyStatus, analyticsTitle])
-
-  // Each destination-drill-down card owns its own referrer selection independently,
-  // deferred the same way as the referrer-breakdown cards above.
-  useEffect(() => {
-    if (!id || !relatedTabVisible) return
-    let active = true
-    if (!mineReferrerId) { setRelatedDestinationsMine({ data: [], loading: false, error: null }); return }
-    track(getPlaylistRelatedVideoDestinations(id, mineReferrerId, analyticsStartDate || undefined, analyticsEndDate || undefined, RELATED_VIDEOS_FETCH_LIMIT)
-      .then((data: { items: RelatedDestinationRow[] }) => data.items ?? []), setRelatedDestinationsMine, () => active, 'Could not load destinations')
-    return () => { active = false }
-  }, [id, relatedTabVisible, mineReferrerId, analyticsStartDate, analyticsEndDate])
-
-  useEffect(() => {
-    if (!id || !relatedTabVisible) return
-    let active = true
-    if (!otherReferrerId) { setRelatedDestinationsOther({ data: [], loading: false, error: null }); return }
-    track(getPlaylistRelatedVideoDestinations(id, otherReferrerId, analyticsStartDate || undefined, analyticsEndDate || undefined, RELATED_VIDEOS_FETCH_LIMIT)
-      .then((data: { items: RelatedDestinationRow[] }) => data.items ?? []), setRelatedDestinationsOther, () => active, 'Could not load destinations')
-    return () => { active = false }
-  }, [id, relatedTabVisible, otherReferrerId, analyticsStartDate, analyticsEndDate])
-
-  // The sortable top-video table reloads on its own sort change, and on nothing else's.
-  useEffect(() => {
-    if (!id) return
-    let active = true
-    const sd = analyticsStartDate || undefined
-    const ed = analyticsEndDate || undefined
-    const ct = analyticsContentType || undefined
-    const ps = analyticsPrivacyStatus || undefined
-    const tt = analyticsTitle || undefined
-    track(getPlaylistTopVideosByViews(id, topVideosSortBy, sd, ed, ct, ps, tt)
-      .then((data: { items: TopVideo[] }) => data.items ?? []), setTopVideos, () => active, 'Could not load top videos')
-    return () => { active = false }
-  }, [id, analyticsStartDate, analyticsEndDate, analyticsContentType, analyticsPrivacyStatus, topVideosSortBy, analyticsTitle])
-
-  const setPage = (p: number) => {
-    setSearchParams(prev => {
-      const next = new URLSearchParams(prev)
-      next.set('page', String(p))
-      return next
-    })
-  }
-
-  const handleSort = (key: SortKey) => {
-    setSearchParams(prev => {
-      const next = new URLSearchParams(prev)
-      const currentDir = (prev.get('sort_dir') as SortDir) ?? 'desc'
-      const currentKey = prev.get('sort_by') ?? 'published_at'
-      next.set('sort_by', key)
-      next.set('sort_dir', currentKey === key && currentDir === 'desc' ? 'asc' : 'desc')
-      next.set('page', '1')
-      return next
-    })
-  }
-
-  const handleFilterChange = (t: string, sd: string, ed: string, ct: string, ps: string) => {
-    setSearchParams(prev => {
-      const next = new URLSearchParams(prev)
-      t ? next.set('title', t) : next.delete('title')
-      sd ? next.set('start_date', sd) : next.delete('start_date')
-      ed ? next.set('end_date', ed) : next.delete('end_date')
-      ct ? next.set('content_type', ct) : next.delete('content_type')
-      ps ? next.set('privacy_status', ps) : next.delete('privacy_status')
-      next.set('page', '1')
-      return next
-    })
-  }
-
-  const updateAnalyticsParams = (updates: Record<string, string>) => {
-    setSearchParams(prev => {
-      const next = new URLSearchParams(prev)
-      for (const [key, value] of Object.entries(updates)) {
-        value ? next.set(key, value) : next.delete(key)
-      }
-      return next
-    })
-  }
-
-  const updateAnalyticsDateParams = (updates: Record<string, string>) => {
-    setSearchParams(prev => {
-      const next = new URLSearchParams(prev)
-      for (const [key, value] of Object.entries(updates)) {
-        next.set(key, value)
-      }
-      return next
-    })
-  }
+  const handleFilterChange = (t: string, sd: string, ed: string, ct: string, ps: string) => setParams({
+    title: t || null,
+    start_date: sd || null,
+    end_date: ed || null,
+    content_type: ct || null,
+    privacy_status: ps || null,
+    page: '1',
+  })
 
   const [analyticsTitleDraft, setAnalyticsTitleDraft] = useDebouncedInput(
     analyticsTitle,
-    t => updateAnalyticsParams({ analytics_title: t }),
+    t => setParams({ analytics_title: t || null }),
   )
 
   const handleTopVideosSort = (sortBy: TopVideoSortBy) => {
-    if (sortBy === topVideosSortBy) return
-    setSearchParams(prev => {
-      const next = new URLSearchParams(prev)
-      next.set('top_videos_sort_by', sortBy)
-      return next
-    })
+    if (sortBy !== topVideosSortBy) setParams({ top_videos_sort_by: sortBy })
   }
 
-  const handleTsTabChange = (t: TrafficSourcesSubTab) => {
-    setSearchParams(prev => {
-      const next = new URLSearchParams(prev)
-      next.set('ts_tab', t)
-      return next
-    })
-  }
+  const tabs: readonly TabOption<Tab>[] = [
+    { value: 'analytics', label: 'Analytics' },
+    { value: 'traffic-sources', label: 'Traffic Sources' },
+    { value: 'comments', label: 'Comments' },
+    { value: 'videos', label: listing.data.total > 0 ? `Videos (${listing.data.total})` : 'Videos' },
+  ]
 
-  const handleTabChange = (t: Tab) => {
-    setSearchParams(prev => {
-      const next = new URLSearchParams(prev)
-      next.set('tab', t)
-      return next
-    })
-  }
+  const playlistData = playlist.data
 
   return (
     <div className="page analytics-page">
-      <AsyncCard
+      <DetailHeader
         loading={playlist.loading}
         error={playlist.error}
-        empty={!playlist.data}
         emptyMessage="Playlist not found."
-        className="video-meta-card"
-        bodyClassName="video-meta-card-body"
-      >
-        {playlist.data && (
-          <>
-            <div className="video-meta-thumb-wrap">
-              {playlist.data.thumbnail_url
-                ? <img src={playlist.data.thumbnail_url} alt="" className="video-meta-thumb" />
-                : <div className="video-meta-thumb video-meta-thumb-placeholder" />}
-            </div>
-            <div className="video-meta-info">
-              <div className="video-meta-title-row">
-                <h1 className="video-meta-title">{playlist.data.title}</h1>
-              </div>
-              <div className="video-meta-stats">
-                <div className="video-meta-stat">
-                  <span className="video-meta-stat-value">{playlist.data.total_views.toLocaleString()}</span>
-                  <span className="video-meta-stat-label">Views</span>
-                </div>
-                <div className="video-meta-stat-divider" />
-                <div className="video-meta-stat">
-                  <span className="video-meta-stat-value">S${playlist.data.total_earnings_sgd.toLocaleString('en-SG', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</span>
-                  <span className="video-meta-stat-label">Earnings</span>
-                </div>
-                <div className="video-meta-stat-divider" />
-                <div className="video-meta-stat">
-                  <span className="video-meta-stat-value">{playlist.data.item_count}</span>
-                  <span className="video-meta-stat-label">Videos</span>
-                </div>
-                <div className="video-meta-stat-divider" />
-                <div className="video-meta-stat">
-                  <span className="video-meta-stat-value">{playlist.data.last_item_added?.slice(0, 10) ?? '—'}</span>
-                  <span className="video-meta-stat-label">Last Added</span>
-                </div>
-                <div className="video-meta-stat-divider" />
-                <div className="video-meta-stat">
-                  <span className="video-meta-stat-value">{playlist.data.published_at?.slice(0, 10)}</span>
-                  <span className="video-meta-stat-label">Created</span>
-                </div>
-              </div>
-            </div>
-          </>
-        )}
-      </AsyncCard>
+        content={playlistData && {
+          thumbnailUrl: playlistData.thumbnail_url,
+          title: playlistData.title,
+          stats: [
+            { label: 'Views', value: playlistData.total_views.toLocaleString() },
+            { label: 'Earnings', value: `S$${playlistData.total_earnings_sgd.toLocaleString('en-SG', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}` },
+            { label: 'Videos', value: String(playlistData.item_count) },
+            { label: 'Last Added', value: playlistData.last_item_added?.slice(0, 10) ?? '—' },
+            { label: 'Created', value: playlistData.published_at?.slice(0, 10) ?? '' },
+          ],
+        }}
+      />
 
-      <div className="tabs">
-        <button
-          type="button"
-          className={`tab${tab === 'analytics' ? ' active' : ''}`}
-          onClick={() => handleTabChange('analytics')}
-        >
-          Analytics
-        </button>
-        <button
-          type="button"
-          className={`tab${tab === 'traffic-sources' ? ' active' : ''}`}
-          onClick={() => handleTabChange('traffic-sources')}
-        >
-          Traffic Sources
-        </button>
-        <button
-          type="button"
-          className={`tab${tab === 'comments' ? ' active' : ''}`}
-          onClick={() => handleTabChange('comments')}
-        >
-          Comments
-        </button>
-        <button
-          type="button"
-          className={`tab${tab === 'videos' ? ' active' : ''}`}
-          onClick={() => handleTabChange('videos')}
-        >
-          Videos {listing.data.total > 0 && `(${listing.data.total})`}
-        </button>
-      </div>
+      <Tabs options={tabs} value={tab} onChange={t => setParams({ tab: t })} />
 
       {tab === 'comments' ? (
-        <CommentsPanel scope={{ kind: 'playlist', playlistId: id! }} />
+        <CommentsTab scope={{ kind: 'playlist', playlistId: id! }} />
       ) : tab === 'videos' ? (
         <VideoTable
           videos={listing.data.items}
@@ -453,236 +167,20 @@ export default function PlaylistAnalytics() {
         />
       ) : (
         <>
-          <div className="filter-bar">
-            <PeriodSelect
-              startDate={analyticsStartDate}
-              endDate={analyticsEndDate}
-              onChange={(sd, ed) => updateAnalyticsDateParams({ analytics_start_date: sd, analytics_end_date: ed })}
-            />
-            <label>
-              Start
-              <input type="date" value={analyticsStartDate} onChange={e => updateAnalyticsDateParams({ analytics_start_date: e.target.value })} />
-            </label>
-            <label>
-              End
-              <input type="date" value={analyticsEndDate} onChange={e => updateAnalyticsDateParams({ analytics_end_date: e.target.value })} />
-            </label>
-            <div className="filter-bar-sep" />
-            <label>
-              Title
-              <input
-                type="text"
-                placeholder="Search…"
-                value={analyticsTitleDraft}
-                onChange={e => setAnalyticsTitleDraft(e.target.value)}
-              />
-            </label>
-            <div className="filter-bar-sep" />
-            <label>
-              Type
-              <select value={analyticsContentType} onChange={e => updateAnalyticsParams({ analytics_content_type: e.target.value })}>
-                <option value="">All</option>
-                <option value="video">Video</option>
-                <option value="short">Short</option>
-              </select>
-            </label>
-            <div className="filter-bar-sep" />
-            <label>
-              Privacy
-              <select value={analyticsPrivacyStatus} onChange={e => updateAnalyticsParams({ analytics_privacy_status: e.target.value })}>
-                <option value="">All</option>
-                <option value="public">Public</option>
-                <option value="private">Private</option>
-                <option value="unlisted">Unlisted</option>
-              </select>
-            </label>
-          </div>
-
+          <FilterBar
+            dates={{
+              startDate: { value: analyticsStartDate, onChange: v => setParams({ analytics_start_date: v }) },
+              endDate: { value: analyticsEndDate, onChange: v => setParams({ analytics_end_date: v }) },
+              onPeriodChange: (sd, ed) => setParams({ analytics_start_date: sd, analytics_end_date: ed }),
+            }}
+            title={{ value: analyticsTitleDraft, onChange: setAnalyticsTitleDraft }}
+            contentType={{ value: analyticsContentType, onChange: v => setParams({ analytics_content_type: v || null }) }}
+            privacyStatus={{ value: analyticsPrivacyStatus, onChange: v => setParams({ analytics_privacy_status: v || null }) }}
+          />
           {tab === 'analytics' ? (
-            <>
-              <VideoStatsBar stats={stats.data} loading={stats.loading} error={stats.error} />
-              <AnalyticsChart
-                rows={rows.data}
-                uploadedVideos={publishedVideos.data}
-                loading={rows.loading || publishedVideos.loading}
-                error={rows.error ?? publishedVideos.error}
-              />
-              <div className="analytics-layout">
-                <div className="analytics-main">
-                  <TopVideosList
-                    videos={topVideos.data}
-                    sortBy={topVideosSortBy}
-                    onSort={handleTopVideosSort}
-                    loading={topVideos.loading}
-                    error={topVideos.error}
-                  />
-                </div>
-                <div className="analytics-sidebar">
-                  <TopPerformersCard
-                    title="Top Videos (Last 7 Days)"
-                    videos={topPerformingVideos.data}
-                    loading={topPerformingVideos.loading}
-                    error={topPerformingVideos.error}
-                  />
-                  <TopPerformersCard
-                    title="Top Shorts (Last 7 Days)"
-                    videos={topPerformingShorts.data}
-                    loading={topPerformingShorts.loading}
-                    error={topPerformingShorts.error}
-                  />
-                  <VideoCarouselCard
-                    title="Latest Videos"
-                    videos={recentVideos.data}
-                    loading={recentVideos.loading}
-                    error={recentVideos.error}
-                  />
-                  <VideoCarouselCard
-                    title="Latest Shorts"
-                    videos={recentShorts.data}
-                    loading={recentShorts.loading}
-                    error={recentShorts.error}
-                  />
-                </div>
-              </div>
-            </>
+            <AnalyticsTab data={data} topVideosSortBy={topVideosSortBy} onTopVideosSort={handleTopVideosSort} />
           ) : (
-            <>
-              <VideoStatsBar stats={stats.data} loading={stats.loading} error={stats.error} />
-              <TrafficSourceChart
-                rows={trafficSources.data}
-                uploadedVideos={publishedVideos.data}
-                loading={trafficSources.loading || publishedVideos.loading}
-                error={trafficSources.error ?? publishedVideos.error}
-              />
-              <div className="tabs ts-subtabs">
-                <button
-                  type="button"
-                  className={`tab${tsTab === 'sources' ? ' active' : ''}`}
-                  onClick={() => handleTsTabChange('sources')}
-                >
-                  Traffic Sources
-                </button>
-                <button
-                  type="button"
-                  className={`tab${tsTab === 'top-videos' ? ' active' : ''}`}
-                  onClick={() => handleTsTabChange('top-videos')}
-                >
-                  Top Videos by Traffic Source
-                </button>
-                <button
-                  type="button"
-                  className={`tab${tsTab === 'search' ? ' active' : ''}`}
-                  onClick={() => handleTsTabChange('search')}
-                >
-                  Search Insights
-                </button>
-                <button
-                  type="button"
-                  className={`tab${tsTab === 'related' ? ' active' : ''}`}
-                  onClick={() => handleTsTabChange('related')}
-                >
-                  Related Videos
-                </button>
-              </div>
-              {tsTab === 'sources' ? (
-                <TrafficSourcesTable
-                  rows={trafficSources.data}
-                  loading={trafficSources.loading}
-                  error={trafficSources.error}
-                />
-              ) : tsTab === 'top-videos' ? (
-                <TrafficSourceTopVideosPanel
-                  rows={trafficSources.data}
-                  bySource={topVideosBySource.data}
-                  loading={trafficSources.loading || topVideosBySource.loading}
-                  error={trafficSources.error ?? topVideosBySource.error}
-                />
-              ) : tsTab === 'search' ? (
-                <>
-                  <div className="search-insights-columns">
-                    <SearchTermsDonutCard
-                      title="Top Search Terms"
-                      rows={searchTerms.data}
-                      loading={searchTerms.loading}
-                      error={searchTerms.error}
-                    />
-                    <SearchTermsDonutCard
-                      title="Top Search Terms — Videos"
-                      rows={searchTermsByVideo.data}
-                      loading={searchTermsByVideo.loading}
-                      error={searchTermsByVideo.error}
-                    />
-                    <SearchTermsDonutCard
-                      title="Top Search Terms — Shorts"
-                      rows={searchTermsByShort.data}
-                      loading={searchTermsByShort.loading}
-                      error={searchTermsByShort.error}
-                    />
-                  </div>
-                  <div className="search-insights-videos">
-                    <SearchTermVideosDonutCard
-                      title="Top Videos by Search Term"
-                      terms={searchTermsByVideo.data}
-                      termsLoading={searchTermsByVideo.loading}
-                      selectedTerm={videoTerm || searchTermsByVideo.data[0]?.search_term || null}
-                      onSelectTerm={setVideoTerm}
-                      videos={videosForVideoTerm.data}
-                      loading={videosForVideoTerm.loading}
-                      error={videosForVideoTerm.error}
-                    />
-                    <SearchTermVideosDonutCard
-                      title="Top Shorts by Search Term"
-                      terms={searchTermsByShort.data}
-                      termsLoading={searchTermsByShort.loading}
-                      selectedTerm={shortTerm || searchTermsByShort.data[0]?.search_term || null}
-                      onSelectTerm={setShortTerm}
-                      videos={videosForShortTerm.data}
-                      loading={videosForShortTerm.loading}
-                      error={videosForShortTerm.error}
-                    />
-                  </div>
-                </>
-              ) : (
-                <>
-                  <div className="related-videos-columns">
-                    <RelatedReferrerBreakdownCard
-                      title="Related Traffic from My Channel"
-                      referrers={relatedReferrersMine.data.items}
-                      loading={relatedReferrersMine.loading}
-                      error={relatedReferrersMine.error}
-                    />
-                    <RelatedReferrerBreakdownCard
-                      title="Related Traffic from Other Channels"
-                      referrers={relatedReferrersOther.data.items}
-                      loading={relatedReferrersOther.loading}
-                      error={relatedReferrersOther.error}
-                    />
-                  </div>
-                  <div className="related-videos-columns">
-                    <RelatedDestinationsByReferrerCard
-                      title="Top Destinations — My Channel"
-                      referrerOptions={relatedReferrersMine.data.items}
-                      referrerOptionsLoading={relatedReferrersMine.loading}
-                      selectedReferrerId={mineReferrerId}
-                      onSelectReferrer={setMineReferrerSelected}
-                      destinations={relatedDestinationsMine.data}
-                      loading={relatedDestinationsMine.loading}
-                      error={relatedDestinationsMine.error}
-                    />
-                    <RelatedDestinationsByReferrerCard
-                      title="Top Destinations — Other Channels"
-                      referrerOptions={relatedReferrersOther.data.items}
-                      referrerOptionsLoading={relatedReferrersOther.loading}
-                      selectedReferrerId={otherReferrerId}
-                      onSelectReferrer={setOtherReferrerSelected}
-                      destinations={relatedDestinationsOther.data}
-                      loading={relatedDestinationsOther.loading}
-                      error={relatedDestinationsOther.error}
-                    />
-                  </div>
-                </>
-              )}
-            </>
+            <TrafficSourcesTab data={data} subTab={tsTab} onSubTabChange={t => setParams({ ts_tab: t })} />
           )}
         </>
       )}

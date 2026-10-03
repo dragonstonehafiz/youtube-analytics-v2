@@ -1,4 +1,4 @@
-<svg xmlns="http://www.w3.org/2000/svg" width="231" height="148" viewBox="0 0 231 148" role="img" aria-label="Components on the Playlists page">
+<svg xmlns="http://www.w3.org/2000/svg" width="374" height="224" viewBox="0 0 374 224" role="img" aria-label="Components on the Playlists page">
 <title>Components on the Playlists page</title>
 
 <style>
@@ -31,12 +31,18 @@
     g rect.badge { fill: #1a1f27; stroke: #5b6475; } g text.badge-text { fill: #9aa3b2; }
   }
 </style>
-<rect class="bg" width="231" height="148" rx="10"/>
+<rect class="bg" width="374" height="224" rx="10"/>
 <path class="edge" d="M26.0,44.0 V68.0 H42.0"/>
+<path class="edge" d="M26.0,44.0 V106.0 H42.0"/>
+<path class="edge" d="M52.0,120.0 V144.0 H68.0"/>
 <g class="page"><rect x="16.0" y="16.0" width="130.3" height="28" rx="6"/><text x="28.0" y="30.0">Playlists page</text></g>
-<g class="local"><rect x="42.0" y="54.0" width="168.0" height="28" rx="6"/><text x="54.0" y="68.0">playlists-table-card</text></g>
+<g class="comp"><rect x="42.0" y="54.0" width="89.7" height="28" rx="6"/><text x="54.0" y="68.0">FilterBar</text></g>
+<g class="local"><rect x="42.0" y="92.0" width="168.0" height="28" rx="6"/><text x="54.0" y="106.0">playlists-table-card</text></g>
+<g class="comp"><rect x="68.0" y="130.0" width="97.0" height="28" rx="6"/><text x="80.0" y="144.0">Pagination</text></g>
 <g aria-hidden="true">
-<g class="local"><rect x="16.0" y="113" width="22" height="14" rx="3"/></g>
-<text class="legend-text" x="44.0" y="120">Defined in the page file</text>
+<g class="comp"><rect x="16.0" y="189" width="22" height="14" rx="3"/></g>
+<text class="legend-text" x="44.0" y="196">Shared component</text>
+<g class="local"><rect x="171.2" y="189" width="22" height="14" rx="3"/></g>
+<text class="legend-text" x="199.2" y="196">Defined in the page file</text>
 </g>
 </svg>

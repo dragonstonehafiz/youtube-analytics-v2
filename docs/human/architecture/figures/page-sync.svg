@@ -1,4 +1,4 @@
-<svg xmlns="http://www.w3.org/2000/svg" width="384" height="376" viewBox="0 0 384 376" role="img" aria-label="Components on the Sync page">
+<svg xmlns="http://www.w3.org/2000/svg" width="374" height="452" viewBox="0 0 374 452" role="img" aria-label="Components on the Sync page">
 <title>Components on the Sync page</title>
 
 <style>
@@ -31,26 +31,30 @@
     g rect.badge { fill: #1a1f27; stroke: #5b6475; } g text.badge-text { fill: #9aa3b2; }
   }
 </style>
-<rect class="bg" width="384" height="376" rx="10"/>
+<rect class="bg" width="374" height="452" rx="10"/>
 <path class="edge" d="M26.0,44.0 V68.0 H42.0"/>
 <path class="edge" d="M26.0,44.0 V106.0 H42.0"/>
-<path class="edge" d="M52.0,120.0 V144.0 H68.0"/>
-<path class="edge" d="M78.0,158.0 V182.0 H94.0"/>
-<path class="edge" d="M78.0,158.0 V220.0 H94.0"/>
-<path class="edge" d="M26.0,44.0 V258.0 H42.0"/>
-<path class="edge" d="M52.0,272.0 V296.0 H68.0"/>
+<path class="edge" d="M26.0,44.0 V144.0 H42.0"/>
+<path class="edge" d="M52.0,158.0 V182.0 H68.0"/>
+<path class="edge" d="M78.0,196.0 V220.0 H94.0"/>
+<path class="edge" d="M78.0,196.0 V258.0 H94.0"/>
+<path class="edge" d="M26.0,44.0 V296.0 H42.0"/>
+<path class="edge" d="M52.0,310.0 V334.0 H68.0"/>
+<path class="edge" d="M78.0,348.0 V372.0 H94.0"/>
 <g class="page"><rect x="16.0" y="16.0" width="91.6" height="28" rx="6"/><text x="28.0" y="30.0">Sync page</text></g>
 <g class="comp"><rect x="42.0" y="54.0" width="138.8" height="28" rx="6"/><text x="54.0" y="68.0">SyncStatusBanner</text></g>
-<g class="tab"><rect x="42.0" y="92.0" width="83.9" height="28" rx="6"/><text x="54.0" y="106.0">Sync tab</text></g>
-<g class="local"><rect x="68.0" y="130.0" width="95.0" height="28" rx="6"/><text x="80.0" y="144.0">sync-table</text></g>
-<g class="local"><rect x="94.0" y="168.0" width="146.1" height="28" rx="6"/><text x="106.0" y="182.0">StagePeriodSelect</text></g>
-<g class="local"><rect x="94.0" y="206.0" width="138.8" height="28" rx="6"/><text x="106.0" y="220.0">StageScopeSelect</text></g>
-<g class="tab"><rect x="42.0" y="244.0" width="107.1" height="28" rx="6"/><text x="54.0" y="258.0">History tab</text></g>
-<g class="local"><rect x="68.0" y="282.0" width="146.1" height="28" rx="6"/><text x="80.0" y="296.0">sync-history-card</text></g>
+<g class="comp"><rect x="42.0" y="92.0" width="53.2" height="28" rx="6"/><text x="54.0" y="106.0">Tabs</text></g>
+<g class="tab"><rect x="42.0" y="130.0" width="83.9" height="28" rx="6"/><text x="54.0" y="144.0">Sync tab</text></g>
+<g class="local"><rect x="68.0" y="168.0" width="95.0" height="28" rx="6"/><text x="80.0" y="182.0">sync-table</text></g>
+<g class="local"><rect x="94.0" y="206.0" width="146.1" height="28" rx="6"/><text x="106.0" y="220.0">StagePeriodSelect</text></g>
+<g class="local"><rect x="94.0" y="244.0" width="138.8" height="28" rx="6"/><text x="106.0" y="258.0">StageScopeSelect</text></g>
+<g class="tab"><rect x="42.0" y="282.0" width="107.1" height="28" rx="6"/><text x="54.0" y="296.0">History tab</text></g>
+<g class="local"><rect x="68.0" y="320.0" width="146.1" height="28" rx="6"/><text x="80.0" y="334.0">sync-history-card</text></g>
+<g class="comp"><rect x="94.0" y="358.0" width="97.0" height="28" rx="6"/><text x="106.0" y="372.0">Pagination</text></g>
 <g aria-hidden="true">
-<g class="comp"><rect x="16.0" y="341" width="22" height="14" rx="3"/></g>
-<text class="legend-text" x="44.0" y="348">Shared component</text>
-<g class="local"><rect x="169.5" y="341" width="22" height="14" rx="3"/></g>
-<text class="legend-text" x="197.5" y="348">Defined in the page file</text>
+<g class="comp"><rect x="16.0" y="417" width="22" height="14" rx="3"/></g>
+<text class="legend-text" x="44.0" y="424">Shared component</text>
+<g class="local"><rect x="171.2" y="417" width="22" height="14" rx="3"/></g>
+<text class="legend-text" x="199.2" y="424">Defined in the page file</text>
 </g>
 </svg>

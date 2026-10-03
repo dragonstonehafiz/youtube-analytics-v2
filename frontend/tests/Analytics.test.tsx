@@ -1,6 +1,6 @@
 // @vitest-environment jsdom
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
-import { act, cleanup, fireEvent, render, screen, waitFor } from '@testing-library/react'
+import { act, cleanup, fireEvent, render, screen, waitFor, within } from '@testing-library/react'
 import { Link, MemoryRouter, Route, Routes, useLocation } from 'react-router-dom'
 
 vi.mock('@/api', () => ({
@@ -210,9 +210,47 @@ describe('Traffic Sources sub-tabs', () => {
     expect(await screen.findByText('Top Videos by Search Term')).toBeDefined()
     expect(await screen.findByText('Top Shorts by Search Term')).toBeDefined()
     await waitFor(() => expect(mockGetVideosBySearchTerm).toHaveBeenCalled())
-    const contentTypes = mockGetVideosBySearchTerm.mock.calls.map(call => call[1]?.contentType)
+    const contentTypes = mockGetVideosBySearchTerm.mock.calls.map(call => call[0].contentType)
     expect(contentTypes).toContain('video')
     expect(contentTypes).toContain('short')
+  })
+})
+
+describe('request state across tab switches', () => {
+  it('keeps every card request at page level, so leaving and returning to a tab refetches nothing', async () => {
+    renderAnalytics('/analytics?tab=analytics')
+    await waitFor(() => expect(mockGetChannelAnalytics).toHaveBeenCalledTimes(1))
+    await waitFor(() => expect(mockGetSearchTerms).toHaveBeenCalledTimes(3))
+    const counts = () => [
+      mockGetVideoStats, mockGetChannelAnalytics, mockGetVideosPublished, mockGetChannelTrafficSources,
+      mockGetTopVideosByTrafficSource, mockGetTopVideosByViews, mockGetVideos, mockGetSearchTerms,
+    ].map(mock => mock.mock.calls.length)
+    const before = counts()
+
+    fireEvent.click(screen.getByRole('button', { name: 'Comments' }))
+    await screen.findByText('No comments found')
+    fireEvent.click(screen.getByRole('button', { name: 'Traffic Sources' }))
+    fireEvent.click(screen.getByRole('button', { name: 'Analytics' }))
+    await screen.findByText('Latest Videos')
+
+    expect(counts()).toEqual(before)
+  })
+
+  it('keeps a selected search term after switching to another sub-tab and back', async () => {
+    mockGetSearchTerms.mockResolvedValue({ items: [{ search_term: 'cats', views: 10 }, { search_term: 'dogs', views: 5 }] })
+    const { container } = renderAnalytics('/analytics?tab=traffic-sources&ts_tab=search')
+
+    const videoCard = (await screen.findByText('Top Videos by Search Term')).closest('.search-videos-donut') as HTMLElement
+    const videoSelect = await within(videoCard).findByRole('combobox')
+    fireEvent.change(videoSelect, { target: { value: 'dogs' } })
+    await waitFor(() => expect(mockGetVideosBySearchTerm).toHaveBeenCalledWith(expect.objectContaining({ searchTerm: 'dogs', contentType: 'video' })))
+
+    const subTabs = container.querySelector('.ts-subtabs') as HTMLElement
+    fireEvent.click(within(subTabs).getByRole('button', { name: 'Traffic Sources' }))
+    fireEvent.click(within(subTabs).getByRole('button', { name: 'Search Insights' }))
+
+    const returnedCard = (await screen.findByText('Top Videos by Search Term')).closest('.search-videos-donut') as HTMLElement
+    expect((within(returnedCard).getByRole('combobox') as HTMLSelectElement).value).toBe('dogs')
   })
 })
 
@@ -222,7 +260,7 @@ describe('Related Videos sub-tab', () => {
   const unresolvedRow = { referrer_video_id: 'ref-unresolved', title: null, thumbnail_url: null, referrer_own: null, views: 10 }
 
   beforeEach(() => {
-    mockGetRelatedVideoReferrers.mockImplementation(async (own: boolean) =>
+    mockGetRelatedVideoReferrers.mockImplementation(async ({ own }) =>
       own
         ? { items: [mineRow], total_named_views: 90 }
         : { items: [externalRow, unresolvedRow], total_named_views: 90 })
@@ -258,12 +296,11 @@ describe('Related Videos sub-tab', () => {
     await waitFor(() => expect(mockGetRelatedVideoReferrers).toHaveBeenCalledTimes(2))
 
     const calls = mockGetRelatedVideoReferrers.mock.calls
-    expect(calls.map(c => c[0]).sort()).toEqual([false, true])
-    for (const call of calls) {
-      expect(call[1]).toEqual({
-        startDate: '2024-01-10', endDate: '2024-01-20', title: 'foo', contentType: 'video', privacyStatus: 'public',
+    expect(calls.map(c => c[0].own).sort()).toEqual([false, true])
+    for (const [{ own: _own, ...query }] of calls) {
+      expect(query).toEqual({
+        startDate: '2024-01-10', endDate: '2024-01-20', title: 'foo', contentType: 'video', privacyStatus: 'public', limit: 1000,
       })
-      expect(call[2]).toBe(1000)
     }
   })
 
@@ -283,7 +320,7 @@ describe('Related Videos sub-tab', () => {
   it("each destination card starts with its own bucket's top referrer and fetches independently", async () => {
     renderAnalytics('/analytics?tab=traffic-sources&ts_tab=related')
     await waitFor(() => expect(mockGetRelatedVideoDestinations).toHaveBeenCalledTimes(2))
-    expect(mockGetRelatedVideoDestinations.mock.calls.map(c => c[0]).sort()).toEqual(['ref-ext', 'ref-mine'])
+    expect(mockGetRelatedVideoDestinations.mock.calls.map(c => c[0].referrerVideoId).sort()).toEqual(['ref-ext', 'ref-mine'])
   })
 
   it('selecting a referrer in one destination card does not affect the other', async () => {
@@ -295,13 +332,13 @@ describe('Related Videos sub-tab', () => {
     fireEvent.change(otherSelect, { target: { value: 'ref-unresolved' } })
 
     await waitFor(() => expect(mockGetRelatedVideoDestinations).toHaveBeenCalledTimes(1))
-    expect(mockGetRelatedVideoDestinations.mock.calls[0][0]).toBe('ref-unresolved')
+    expect(mockGetRelatedVideoDestinations.mock.calls[0][0].referrerVideoId).toBe('ref-unresolved')
   })
 })
 
 /** Sidebar Top-card calls always sort by views; the main table call uses the page's own sort. */
 function sidebarTopCalls() {
-  return mockGetTopVideosByViews.mock.calls.filter(call => call[0] === 'views')
+  return mockGetTopVideosByViews.mock.calls.filter(call => call[0].sortBy === 'views')
 }
 
 describe('sidebar cards', () => {
@@ -309,31 +346,31 @@ describe('sidebar cards', () => {
     renderAnalytics('/analytics?tab=analytics&title=foo&privacy_status=private')
 
     await waitFor(() => expect(mockGetVideos).toHaveBeenCalledTimes(2))
-    for (const call of mockGetVideos.mock.calls) {
-      expect(call[4]).toBe('foo')
-      expect(call[5]).toBeUndefined()
-      expect(call[6]).toBeUndefined()
-      expect(call[8]).toBe('private')
+    for (const [query] of mockGetVideos.mock.calls) {
+      expect(query.title).toBe('foo')
+      expect(query.startDate).toBeUndefined()
+      expect(query.endDate).toBeUndefined()
+      expect(query.privacyStatus).toBe('private')
     }
-    expect(mockGetVideos.mock.calls.map(c => c[7]).sort()).toEqual(['short', 'video'])
+    expect(mockGetVideos.mock.calls.map(c => c[0].contentType).sort()).toEqual(['short', 'video'])
 
     await waitFor(() => expect(sidebarTopCalls()).toHaveLength(2))
-    for (const call of sidebarTopCalls()) {
-      expect(call[1]).toEqual(expect.any(String))
-      expect(call[2]).toEqual(expect.any(String))
-      expect(call[4]).toBe('private')
-      expect(call[5]).toBe('foo')
+    for (const [query] of sidebarTopCalls()) {
+      expect(query.startDate).toEqual(expect.any(String))
+      expect(query.endDate).toEqual(expect.any(String))
+      expect(query.privacyStatus).toBe('private')
+      expect(query.title).toBe('foo')
     }
-    expect(sidebarTopCalls().map(c => c[3]).sort()).toEqual(['short', 'video'])
+    expect(sidebarTopCalls().map(c => c[0].contentType).sort()).toEqual(['short', 'video'])
   })
 
   it('resolves the opposite type empty without requesting it when Type=Video is selected', async () => {
     renderAnalytics('/analytics?tab=analytics&content_type=video')
 
     await waitFor(() => expect(mockGetVideos).toHaveBeenCalledTimes(1))
-    expect(mockGetVideos.mock.calls[0][7]).toBe('video')
+    expect(mockGetVideos.mock.calls[0][0].contentType).toBe('video')
     await waitFor(() => expect(sidebarTopCalls()).toHaveLength(1))
-    expect(sidebarTopCalls()[0][3]).toBe('video')
+    expect(sidebarTopCalls()[0][0].contentType).toBe('video')
 
     const shortsHeading = await screen.findByText('Top Shorts (Last 7 Days)')
     const shortsCard = shortsHeading.closest('.async-card')
@@ -343,17 +380,17 @@ describe('sidebar cards', () => {
     const latestShortsCard = latestShortsHeading.closest('.async-card')
     expect(latestShortsCard?.textContent).toContain('No videos for this period')
 
-    expect(mockGetVideos.mock.calls.some(c => c[7] === 'short')).toBe(false)
-    expect(sidebarTopCalls().some(c => c[3] === 'short')).toBe(false)
+    expect(mockGetVideos.mock.calls.some(c => c[0].contentType === 'short')).toBe(false)
+    expect(sidebarTopCalls().some(c => c[0].contentType === 'short')).toBe(false)
   })
 
   it('resolves the opposite type empty without requesting it when Type=Short is selected', async () => {
     renderAnalytics('/analytics?tab=analytics&content_type=short')
 
     await waitFor(() => expect(mockGetVideos).toHaveBeenCalledTimes(1))
-    expect(mockGetVideos.mock.calls[0][7]).toBe('short')
+    expect(mockGetVideos.mock.calls[0][0].contentType).toBe('short')
     await waitFor(() => expect(sidebarTopCalls()).toHaveLength(1))
-    expect(sidebarTopCalls()[0][3]).toBe('short')
+    expect(sidebarTopCalls()[0][0].contentType).toBe('short')
 
     const videosHeading = await screen.findByText('Top Videos (Last 7 Days)')
     const videosCard = videosHeading.closest('.async-card')
@@ -363,8 +400,8 @@ describe('sidebar cards', () => {
     const latestVideosCard = latestVideosHeading.closest('.async-card')
     expect(latestVideosCard?.textContent).toContain('No videos for this period')
 
-    expect(mockGetVideos.mock.calls.some(c => c[7] === 'video')).toBe(false)
-    expect(sidebarTopCalls().some(c => c[3] === 'video')).toBe(false)
+    expect(mockGetVideos.mock.calls.some(c => c[0].contentType === 'video')).toBe(false)
+    expect(sidebarTopCalls().some(c => c[0].contentType === 'video')).toBe(false)
   })
 })
 
@@ -395,6 +432,6 @@ describe('Title search debounce', () => {
 
     expect(new URLSearchParams(getSearch()).get('title')).toBe('foo')
     await waitFor(() => expect(mockGetChannelAnalytics).toHaveBeenCalled())
-    expect(mockGetVideoStats.mock.calls.some(c => c[0] === 'foo')).toBe(true)
+    expect(mockGetVideoStats.mock.calls.some(c => c[0]?.title === 'foo')).toBe(true)
   })
 })

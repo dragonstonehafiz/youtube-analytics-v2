@@ -115,13 +115,13 @@
         </article>
 
         <article class="dup">
-          <div class="dup-head"><h3>Uncalled API wrappers</h3><span class="dup-count">3 functions</span></div>
+          <div class="dup-head"><h3>Uncalled API wrappers</h3><span class="dup-count">2 functions</span></div>
           <p>Fetch helpers in <code>api.ts</code> for data the pages load another way.</p>
           <dl>
-            <dt>Where</dt><dd><code>getTopSearchTerms</code>, <code>getPlaylistTopSearchTerms</code>, <code>getPlaylistAggregatedAnalytics</code> in <code>api.ts</code></dd>
-            <dt>Does</dt><dd>Two call the top-10 search term routes; the third calls <code>/analytics/playlists/{id}</code>.</dd>
-            <dt>Meant for</dt><dd>Loading only the top search terms for the channel or a playlist; loading a playlist's chart data.</dd>
-            <dt>Why dead</dt><dd>Pages use other wrappers for the same data.</dd>
+            <dt>Where</dt><dd><code>getTopSearchTerms</code>, <code>getPlaylistTopSearchTerms</code> in <code>api.ts</code></dd>
+            <dt>Does</dt><dd>Call the top-10 search term routes.</dd>
+            <dt>Meant for</dt><dd>Loading only the top search terms for the channel or a playlist.</dd>
+            <dt>Why dead</dt><dd>Pages load the full term lists and truncate them for display.</dd>
           </dl>
         </article>
 

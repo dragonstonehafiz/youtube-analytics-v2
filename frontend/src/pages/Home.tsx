@@ -4,35 +4,14 @@ import { getTopVideosByViews, getVideos, getChannelTrafficSources, getSearchTerm
 import type { TopVideo, Video, TrafficSourceRow, SearchTermRow, SearchTermVideo } from '@/types'
 import type { RequestState } from '@/lib/requestState'
 import { pending, track } from '@/lib/requestState'
+import { lastNDates } from '@/lib/dates'
+import { toTopVideoShape } from '@/lib/topVideos'
+import { ALL_ROWS_LIMIT, RECENT_COUNT } from '@/lib/analyticsConstants'
 import VideoCarouselCard from '@/components/VideoCarouselCard'
 import TrafficSourceDonutCard from '@/components/TrafficSourceDonutCard'
 import SearchTermsDonutCard from '@/components/SearchTermsDonutCard'
 import SearchTermVideosDonutCard from '@/components/SearchTermVideosDonutCard'
 import './Home.css'
-
-const RECENT_COUNT = 10
-// Show every video with views for the selected term, not just a "top" handful.
-const ALL_VIDEOS_FOR_TERM_LIMIT = 1000
-
-function last28Dates(): [string, string] {
-  const today = new Date()
-  const end = today.toISOString().slice(0, 10)
-  const start = new Date(today.getTime() - 28 * 24 * 60 * 60 * 1000).toISOString().slice(0, 10)
-  return [start, end]
-}
-
-function toTopVideoShape(v: Video): TopVideo {
-  return {
-    id: v.id,
-    title: v.title,
-    published_at: v.published_at,
-    thumbnail_url: v.thumbnail_url,
-    content_type: v.content_type,
-    period_views: v.view_count,
-    period_watch_time_hours: v.total_watch_time_hours,
-    period_earnings_sgd: v.total_revenue_sgd,
-  }
-}
 
 const NAV_ITEMS = [
   {
@@ -69,15 +48,15 @@ export default function Home() {
 
   useEffect(() => {
     let active = true
-    const [startDate, endDate] = last28Dates()
+    const [startDate, endDate] = lastNDates(28)
     // Each card owns one request, so a slow or failing one never holds up the others.
-    track(getTopVideosByViews('views', startDate, endDate, 'video', 'public')
+    track(getTopVideosByViews({ sortBy: 'views', startDate, endDate, contentType: 'video', privacyStatus: 'public' })
       .then((data: { items: TopVideo[] }) => data.items ?? []), setTopVideos, () => active)
-    track(getTopVideosByViews('views', startDate, endDate, 'short', 'public')
+    track(getTopVideosByViews({ sortBy: 'views', startDate, endDate, contentType: 'short', privacyStatus: 'public' })
       .then((data: { items: TopVideo[] }) => data.items ?? []), setTopShorts, () => active)
-    track(getVideos(1, RECENT_COUNT, 'published_at', 'desc', undefined, undefined, undefined, undefined, 'public')
+    track(getVideos({ page: 1, pageSize: RECENT_COUNT, sortBy: 'published_at', sortDir: 'desc', privacyStatus: 'public' })
       .then((data: { items: Video[] }) => (data.items ?? []).map(toTopVideoShape)), setRecentVideos, () => active)
-    track(getChannelTrafficSources({ start_date: startDate, end_date: endDate, privacy_status: 'public' })
+    track(getChannelTrafficSources({ startDate, endDate, privacyStatus: 'public' })
       .then((data: { items: TrafficSourceRow[] }) => data.items ?? []), setTrafficSourceRows, () => active)
     track(getSearchTerms({ startDate, endDate, privacyStatus: 'public' })
       .then((data: { items: SearchTermRow[] }) => data.items ?? []), setSearchTerms, () => active)
@@ -88,10 +67,10 @@ export default function Home() {
   // the term list resolves. No content_type split here — videos and shorts are pooled.
   useEffect(() => {
     let active = true
-    const [startDate, endDate] = last28Dates()
+    const [startDate, endDate] = lastNDates(28)
     const term = videoTerm || searchTerms.data[0]?.search_term
     if (!term) { setVideosForTerm({ data: [], loading: false, error: null }); return }
-    track(getVideosBySearchTerm(term, { startDate, endDate, privacyStatus: 'public' }, ALL_VIDEOS_FOR_TERM_LIMIT)
+    track(getVideosBySearchTerm({ searchTerm: term, startDate, endDate, privacyStatus: 'public', limit: ALL_ROWS_LIMIT })
       .then((data: { items: SearchTermVideo[] }) => data.items ?? []), setVideosForTerm, () => active, 'Could not load videos')
     return () => { active = false }
   }, [videoTerm, searchTerms.data])

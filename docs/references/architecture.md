@@ -127,8 +127,8 @@ Each of `routes/`, `sync/`, `youtube/`, and `database/` re-exports its public ca
 | `src/index.css` | Global design tokens + shared CSS classes — see `frontend.md` |
 | `src/api.ts` | All fetch calls to the backend |
 | `src/types/index.ts` | Shared TypeScript interfaces |
-| `src/lib/` | Shared non-component helpers (`trafficSources.ts`, `topVideos.ts`, `categoricalColors.ts`) |
-| `src/hooks/` | Shared hooks (`useReplaceSearchParams.ts`, `useDebouncedInput.ts`, `useReconciledSelection.ts`) |
+| `src/lib/` | Shared non-component helpers (`trafficSources.ts`, `topVideos.ts`, `dates.ts`, `analyticsConstants.ts`, `categoricalColors.ts`) |
+| `src/hooks/` | Shared hooks (`useReplaceSearchParams.ts`, `useDebouncedInput.ts`, `useReconciledSelection.ts`, `useAvailableYears.ts`, `useCollectionAnalytics.ts`) |
 | `src/pages/` | Route-level components |
 | `src/components/` | Shared/reusable components |
 
@@ -233,11 +233,15 @@ frontend/
     lib/
       trafficSources.ts
       topVideos.ts
+      dates.ts
+      analyticsConstants.ts
       categoricalColors.ts
     hooks/
       useReplaceSearchParams.ts
       useDebouncedInput.ts
       useReconciledSelection.ts
+      useAvailableYears.ts
+      useCollectionAnalytics.ts
     pages/
       Home.tsx, Videos.tsx, Playlists.tsx, Analytics.tsx, VideoAnalytics.tsx,
       PlaylistAnalytics.tsx, Sync.tsx
@@ -247,6 +251,8 @@ frontend/
       UploadStrip.tsx, TrafficSourceChart.tsx, TrafficSourcesTable.tsx,
       TrafficSourceTopVideosPanel.tsx, TopVideosList.tsx, VideoCarouselCard.tsx,
       TrafficSourceDonutCard.tsx, TopPerformersCard.tsx, PeriodSelect.tsx,
+      FilterBar.tsx, Tabs.tsx, Pagination.tsx, DetailHeader.tsx, AnalyticsTab.tsx,
+      TrafficSourcesTab.tsx,
       SearchTermsDonutCard.tsx, SearchTermVideosDonutCard.tsx,
       RelatedReferrerBreakdownCard.tsx, RelatedDestinationsByReferrerCard.tsx
       (+ colocated .css files)

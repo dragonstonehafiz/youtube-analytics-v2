@@ -73,7 +73,7 @@ describe('Videos Title search debounce', () => {
     const params = new URLSearchParams(getSearch())
     expect(params.get('title')).toBe('foo')
     expect(params.get('page')).toBe('1')
-    expect(mockGetVideos.mock.calls.some(c => c[4] === 'foo')).toBe(true)
+    expect(mockGetVideos.mock.calls.some(c => c[0].title === 'foo')).toBe(true)
   })
 
   it('resets to page 1 only once the search commits', async () => {

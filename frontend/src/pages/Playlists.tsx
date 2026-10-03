@@ -5,6 +5,8 @@ import type { Playlist } from '@/types'
 import type { RequestState } from '@/lib/requestState'
 import { pending, track } from '@/lib/requestState'
 import AsyncCard from '@/components/AsyncCard'
+import Pagination from '@/components/Pagination'
+import FilterBar from '@/components/FilterBar'
 import { useReplaceSearchParams } from '@/hooks/useReplaceSearchParams'
 import { useDebouncedInput } from '@/hooks/useDebouncedInput'
 
@@ -19,7 +21,7 @@ interface PlaylistPage {
 }
 
 export default function Playlists() {
-  const [searchParams, setSearchParams] = useReplaceSearchParams()
+  const [searchParams, setParams] = useReplaceSearchParams()
   const page = Math.max(1, Number(searchParams.get('page') ?? 1))
   const sortKey = (searchParams.get('sort_by') as SortKey) ?? 'last_item_added'
   const sortDir = (searchParams.get('sort_dir') as SortDir) ?? 'desc'
@@ -30,7 +32,7 @@ export default function Playlists() {
   useEffect(() => {
     let active = true
     track(
-      getPlaylists(page, PAGE_SIZE, sortKey, sortDir, title || undefined)
+      getPlaylists({ page, pageSize: PAGE_SIZE, sortBy: sortKey, sortDir, title })
         .then((data: { items: Playlist[]; total: number }) => ({ items: data.items ?? [], total: data.total ?? 0 })),
       setListing,
       () => active,
@@ -42,34 +44,15 @@ export default function Playlists() {
   const playlists = listing.data.items
   const totalPages = Math.ceil(listing.data.total / PAGE_SIZE)
 
-  const setPage = (p: number) => {
-    setSearchParams(prev => {
-      const next = new URLSearchParams(prev)
-      next.set('page', String(p))
-      return next
-    })
-  }
+  const setPage = (p: number) => setParams({ page: String(p) })
 
-  const handleSort = (key: SortKey) => {
-    setSearchParams(prev => {
-      const next = new URLSearchParams(prev)
-      const currentDir = (prev.get('sort_dir') as SortDir) ?? 'desc'
-      const currentKey = prev.get('sort_by') ?? 'published_at'
-      next.set('sort_by', key)
-      next.set('sort_dir', currentKey === key && currentDir === 'desc' ? 'asc' : 'desc')
-      next.set('page', '1')
-      return next
-    })
-  }
+  const handleSort = (key: SortKey) => setParams({
+    sort_by: key,
+    sort_dir: sortKey === key && sortDir === 'desc' ? 'asc' : 'desc',
+    page: '1',
+  })
 
-  const handleFilterChange = (t: string) => {
-    setSearchParams(prev => {
-      const next = new URLSearchParams(prev)
-      t ? next.set('title', t) : next.delete('title')
-      next.set('page', '1')
-      return next
-    })
-  }
+  const handleFilterChange = (t: string) => setParams({ title: t || null, page: '1' })
 
   const arrow = (key: SortKey) => sortKey === key ? (sortDir === 'asc' ? ' ↑' : ' ↓') : ''
   const [titleDraft, setTitleDraft] = useDebouncedInput(title, handleFilterChange)
@@ -79,17 +62,7 @@ export default function Playlists() {
       <div className="page-header">
         <h1>Playlists</h1>
       </div>
-      <div className="filter-bar">
-        <label>
-          Title
-          <input
-            type="text"
-            placeholder="Search…"
-            value={titleDraft}
-            onChange={e => setTitleDraft(e.target.value)}
-          />
-        </label>
-      </div>
+      <FilterBar title={{ value: titleDraft, onChange: setTitleDraft }} />
       <AsyncCard
         variant="table"
         loading={listing.loading}
@@ -145,15 +118,7 @@ export default function Playlists() {
           </table>
         </div>
         {totalPages > 1 && (
-          <div className="pagination">
-            <button type="button" className="btn-ghost" onClick={() => setPage(page - 1)} disabled={page <= 1}>
-              Previous
-            </button>
-            <span className="pagination-info">Page {page} of {totalPages}</span>
-            <button type="button" className="btn-ghost" onClick={() => setPage(page + 1)} disabled={page >= totalPages}>
-              Next
-            </button>
-          </div>
+          <Pagination page={page} totalPages={totalPages} onChange={setPage} />
         )}
       </AsyncCard>
     </div>

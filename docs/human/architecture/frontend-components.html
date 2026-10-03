@@ -64,7 +64,7 @@
 
     <div class="stat-row">
       <div class="stat"><b>7</b><span>routes / pages</span></div>
-      <div class="stat"><b>23</b><span>shared components</span></div>
+      <div class="stat"><b>29</b><span>shared components</span></div>
       <div class="stat"><b>2</b><span>never rendered</span></div>
       <div class="stat"><b>3</b><span>components that own requests</span></div>
     </div>
@@ -120,8 +120,28 @@
         <div class="card component-card">
           <h4><code>PeriodSelect</code></h4>
           <p>The Period dropdown: a custom range, the last 28, 90 or 365 days, or a single year.</p>
-          <p class="meta"><strong>Used on:</strong> Videos (inside VideoTable), Analytics, VideoAnalytics, PlaylistAnalytics</p>
+          <p class="meta"><strong>Used on:</strong> Videos, Analytics, VideoAnalytics, PlaylistAnalytics (inside FilterBar)</p>
           <p class="meta"><strong>Loads its own data:</strong> <code>GET /meta/date-range</code> to build the year list</p>
+        </div>
+        <div class="card component-card">
+          <h4><code>FilterBar</code></h4>
+          <p>The filter card above a page's data. Each page picks its fields: Period with Start and End, Title, Type, Privacy, and any fields of its own. Its Type dropdown is <code>ContentTypeSelect</code>.</p>
+          <p class="meta"><strong>Used on:</strong> Videos (inside VideoTable), Playlists, Analytics, VideoAnalytics, PlaylistAnalytics, and every Comments tab (inside CommentsTab)</p>
+        </div>
+        <div class="card component-card">
+          <h4><code>Tabs</code></h4>
+          <p>A row of tab buttons, used for a page's main tabs and for the Traffic Sources sub-tabs.</p>
+          <p class="meta"><strong>Used on:</strong> Analytics, VideoAnalytics, PlaylistAnalytics, Sync</p>
+        </div>
+        <div class="card component-card">
+          <h4><code>Pagination</code></h4>
+          <p>The Previous, "Page x of y" and Next row under a paged list.</p>
+          <p class="meta"><strong>Used on:</strong> Videos (inside VideoTable), Playlists, PlaylistAnalytics (inside VideoTable), Sync, and every Comments tab (inside CommentsTab)</p>
+        </div>
+        <div class="card component-card">
+          <h4><code>DetailHeader</code></h4>
+          <p>The header card of a video or playlist: thumbnail, title and a row of stats.</p>
+          <p class="meta"><strong>Used on:</strong> VideoAnalytics, PlaylistAnalytics</p>
         </div>
       </div>
       <h3>Video lists and stats</h3>
@@ -219,10 +239,24 @@
           <p class="meta"><strong>Used on:</strong> Analytics, VideoAnalytics, PlaylistAnalytics</p>
         </div>
       </div>
+      <h3>Analytics tabs</h3>
+      <p class="group-note">The Analytics and Traffic Sources tabs of the channel and playlist pages.</p>
+      <div class="card-grid">
+        <div class="card component-card">
+          <h4><code>AnalyticsTab</code></h4>
+          <p>The Analytics tab: stats bar, daily chart, Top 10 table and the four sidebar cards.</p>
+          <p class="meta"><strong>Used on:</strong> Analytics, PlaylistAnalytics</p>
+        </div>
+        <div class="card component-card">
+          <h4><code>TrafficSourcesTab</code></h4>
+          <p>The Traffic Sources tab: stats bar, traffic chart, and its four sub-tabs.</p>
+          <p class="meta"><strong>Used on:</strong> Analytics, PlaylistAnalytics</p>
+        </div>
+      </div>
       <h3>Comments</h3>
       <div class="card-grid">
         <div class="card component-card">
-          <h4><code>CommentsPanel</code></h4>
+          <h4><code>CommentsTab</code></h4>
           <p>The whole Comments tab: its own filters, the comment feed grouped by video, and paging.</p>
           <p class="meta"><strong>Used on:</strong> Analytics, VideoAnalytics, PlaylistAnalytics</p>
           <p class="meta"><strong>Loads its own data:</strong> <code>GET /comments</code>, <code>/comments/videos/{id}</code> or <code>/comments/playlists/{id}</code></p>
@@ -282,13 +316,16 @@
       <div class="table-wrap"><table>
         <thead><tr><th>Hook or helper</th><th>Used by</th></tr></thead>
         <tbody>
-          <tr><td><code>useReplaceSearchParams</code></td><td><code>Videos</code>, <code>Playlists</code>, <code>Analytics</code>, <code>VideoAnalytics</code>, <code>PlaylistAnalytics</code>, <code>Sync</code>, <code>CommentsPanel</code></td></tr>
+          <tr><td><code>useReplaceSearchParams</code></td><td><code>Videos</code>, <code>Playlists</code>, <code>Analytics</code>, <code>VideoAnalytics</code>, <code>PlaylistAnalytics</code>, <code>Sync</code>, <code>CommentsTab</code></td></tr>
           <tr><td><code>useDebouncedInput</code></td><td><code>Playlists</code>, <code>Analytics</code>, <code>PlaylistAnalytics</code>, <code>VideoTable</code></td></tr>
-          <tr><td><code>useDebouncedFields</code></td><td><code>CommentsPanel</code></td></tr>
-          <tr><td><code>useReconciledSelection</code></td><td><code>Analytics</code>, <code>PlaylistAnalytics</code></td></tr>
-          <tr><td><code>track</code> / <code>pending</code> (<code>lib/requestState.ts</code>)</td><td><code>Home</code>, <code>Videos</code>, <code>Playlists</code>, <code>Analytics</code>, <code>VideoAnalytics</code>, <code>PlaylistAnalytics</code></td></tr>
-          <tr><td><code>toTopVideoShape</code>, <code>last7Dates</code> (<code>lib/topVideos.ts</code>)</td><td><code>Analytics</code>, <code>PlaylistAnalytics</code></td></tr>
-          <tr><td><code>last28Dates</code> (<code>components/PeriodSelect.tsx</code>)</td><td><code>Analytics</code>, <code>VideoAnalytics</code>, <code>PlaylistAnalytics</code></td></tr>
+          <tr><td><code>useDebouncedFields</code></td><td><code>CommentsTab</code></td></tr>
+          <tr><td><code>useCollectionAnalytics</code></td><td><code>Analytics</code>, <code>PlaylistAnalytics</code></td></tr>
+          <tr><td><code>useReconciledSelection</code></td><td><code>useCollectionAnalytics</code></td></tr>
+          <tr><td><code>track</code> / <code>pending</code> (<code>lib/requestState.ts</code>)</td><td><code>Home</code>, <code>Videos</code>, <code>Playlists</code>, <code>VideoAnalytics</code>, <code>PlaylistAnalytics</code>, <code>useCollectionAnalytics</code></td></tr>
+          <tr><td><code>useAvailableYears</code></td><td><code>PeriodSelect</code>, <code>Sync</code></td></tr>
+          <tr><td><code>toTopVideoShape</code> (<code>lib/topVideos.ts</code>)</td><td><code>Home</code>, <code>Analytics</code>, <code>PlaylistAnalytics</code></td></tr>
+          <tr><td><code>lastNDates</code> (<code>lib/dates.ts</code>)</td><td><code>Home</code>, <code>Analytics</code>, <code>VideoAnalytics</code>, <code>PlaylistAnalytics</code>, <code>PeriodSelect</code></td></tr>
+          <tr><td><code>RECENT_COUNT</code>, <code>ALL_ROWS_LIMIT</code> (<code>lib/analyticsConstants.ts</code>)</td><td><code>Home</code>, <code>Analytics</code>, <code>VideoAnalytics</code>, <code>PlaylistAnalytics</code></td></tr>
         </tbody>
       </table></div>
     </section>
