@@ -86,7 +86,7 @@ def store_lifetime_earnings() -> None:
         writer.update(Video(total_revenue_sgd=earnings), where=[("id", "=", video.id)])
     for playlist in reader.select(Playlist, ("id",)):
         assert playlist.id is not None
-        earnings = catalog.lifetime_earnings(catalog.playlist_video_ids(playlist.id))
+        earnings = catalog.lifetime_earnings(catalog.playlist_video_ids(playlist.id) or [])
         writer.update(Playlist(total_earnings_sgd=earnings), where=[("id", "=", playlist.id)])
 
 

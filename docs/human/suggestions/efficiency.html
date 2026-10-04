@@ -54,7 +54,7 @@
       <h1>Efficiency</h1>
       <p>This page shows code that does more work than it needs to.</p>
       <div class="meta-line">
-        <span>Source revision <code>820eb54</code></span>
+        <span>Source revision <code>941e58a</code></span>
       </div>
     </header>
 
@@ -77,24 +77,6 @@
     <section id="reads">
       <h2>Backend: API reads</h2>
       <div class="dup-list">
-
-        <article class="dup">
-          <div class="dup-head"><h3>Playlist list runs its aggregate twice</h3><span class="dup-count">per request</span></div>
-          <p><code>catalog.playlist_listing</code> puts the full grouped query inside both the <code>COUNT(*)</code> and the page query, and runs both on one connection.</p>
-          <dl>
-            <dt>Where</dt><dd><code>database/reports/catalog.py</code>, behind <code>GET /playlists</code></dd>
-            <dt>Cost</dt><dd>Every join in that query runs twice per request.</dd>
-          </dl>
-        </article>
-
-        <article class="dup">
-          <div class="dup-head"><h3>Playlist lookup repeated per endpoint</h3><span class="dup-count">per request</span></div>
-          <p>The playlist statistics route and each playlist analytics route check the playlist exists and load its video IDs before their own query.</p>
-          <dl>
-            <dt>Where</dt><dd><code>scope_video_ids</code> (<code>routes/video_scope.py</code>), run by every playlist-scoped route</dd>
-            <dt>Cost</dt><dd>Two extra queries per request, repeated across the many requests a playlist page sends.</dd>
-          </dl>
-        </article>
 
         <article class="dup">
           <div class="dup-head"><h3>Substring title search</h3><span class="dup-count">per filtered request</span></div>

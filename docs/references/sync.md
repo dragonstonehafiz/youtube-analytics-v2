@@ -236,7 +236,7 @@ Comments has no period or year selection from the user, so `sync_comments` calls
 - After a video's last request and coverage write, `writer.update()` saves `videos.total_revenue_sgd = catalog.lifetime_earnings([video_id])` before the next video starts. It covers all of the video's stored analytics, whatever the scope, and is not counted in `rows_written`. A skipped video keeps its stored total.
 - Both `continue` branches (no publish date, empty range) and the per-video row count emit a sync-only `DEBUG` record — see [Sync logging](#sync-logging). A prefiltered-out video emits none of these; it never entered the loop.
 
-Only after `_sync_daily_stage()` returns normally, `_store_playlist_earnings()` reads every playlist and saves `playlists.total_earnings_sgd = catalog.lifetime_earnings(catalog.playlist_video_ids(playlist_id))`. A failed or cancelled stage leaves playlist totals unchanged, and the video totals it already saved stay. No other stage changes either total, so a playlist membership change, a pruned video, or a new FX rate is reflected at the next successful Video Analytics run (see `database.md`).
+Only after `_sync_daily_stage()` returns normally, `_store_playlist_earnings()` reads every playlist and saves `playlists.total_earnings_sgd = catalog.lifetime_earnings(catalog.playlist_video_ids(playlist_id) or [])`. A failed or cancelled stage leaves playlist totals unchanged, and the video totals it already saved stay. No other stage changes either total, so a playlist membership change, a pruned video, or a new FX rate is reflected at the next successful Video Analytics run (see `database.md`).
 
 ## Traffic-source synchronization
 

@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import sqlite3
 import unittest
+from collections.abc import Callable
 from typing import Any
 from unittest import mock
 
@@ -189,8 +190,8 @@ class GetVideoTest(VideoCatalogTestCase):
         self.assertEqual(video["id"], "v-1")
 
 
-def _traced_listing(**kwargs: Any) -> tuple[dict, list[str]]:
-    """Run video_listing and return its result with the SELECT statements it executed."""
+def _traced_listing(listing: Callable[..., dict], **kwargs: Any) -> tuple[dict, list[str]]:
+    """Run a catalog listing and return its result with the SELECT statements it executed."""
     statements: list[str] = []
     open_connection = connection.get_connection
 
@@ -200,7 +201,7 @@ def _traced_listing(**kwargs: Any) -> tuple[dict, list[str]]:
         return conn
 
     with mock.patch("database.reader.get_connection", traced):
-        result = catalog.video_listing(**kwargs)
+        result = listing(**kwargs)
     return result, [sql for sql in statements if sql.lstrip().upper().startswith("SELECT")]
 
 
@@ -229,13 +230,13 @@ class VideoListingFieldsTest(VideoCatalogTestCase):
         self.assertEqual((items["v-3"]["total_revenue_sgd"], items["v-3"]["total_watch_time_hours"]), (0, 0))
 
     def test_base_fields_skip_analytics_joins(self) -> None:
-        body, statements = _traced_listing(fields=("id", "own", "published_at"), sort_dir="asc")
+        body, statements = _traced_listing(catalog.video_listing, fields=("id", "own", "published_at"), sort_dir="asc")
         self.assertEqual(body["items"][0], {"id": "v-1", "own": True, "published_at": "2024-01-01T00:00:00Z"})
         self.assertEqual(len(statements), 2)
         self.assertFalse(any("video_analytics" in sql or "fx_rates" in sql for sql in statements))
 
     def test_watch_time_alone_joins_analytics_without_fx(self) -> None:
-        body, statements = _traced_listing(fields=("total_watch_time_hours",), sort_dir="asc")
+        body, statements = _traced_listing(catalog.video_listing, fields=("total_watch_time_hours",), sort_dir="asc")
         self.assertEqual(body["items"][0], {"total_watch_time_hours": 1.5})
         self.assertIn("video_analytics", statements[-1])
         self.assertNotIn("fx_rates", statements[-1])
@@ -251,7 +252,7 @@ class VideoListingFieldsTest(VideoCatalogTestCase):
 
     def test_stored_earnings_are_read_and_sorted_without_analytics_joins(self) -> None:
         body, statements = _traced_listing(
-            fields=("id", "total_revenue_sgd"), sort_by="total_revenue_sgd", sort_dir="desc",
+            catalog.video_listing, fields=("id", "total_revenue_sgd"), sort_by="total_revenue_sgd", sort_dir="desc",
             video_ids=["v-3", "v-2", "v-1"],
         )
         self.assertEqual(
@@ -277,7 +278,7 @@ class VideoListingFieldsTest(VideoCatalogTestCase):
     def test_unpaginated_listing_returns_every_match_without_a_count(self) -> None:
         for index in range(60):
             writer.write(make_video(f"v-extra-{index:02d}", published_at="2025-01-01T00:00:00Z"))
-        body, statements = _traced_listing(fields=("id",), page_size=None)
+        body, statements = _traced_listing(catalog.video_listing, fields=("id",), page_size=None)
         self.assertEqual(set(body), {"items"})
         self.assertEqual(len(body["items"]), 64)
         self.assertEqual(len(statements), 1)
@@ -348,6 +349,20 @@ class GetAllPlaylistsTest(PlaylistCatalogTestCase):
         self._seed_sortable_playlists()
         items, _ = _page("/playlists", start_date="2024-01-02", end_date="2024-01-02")
         self.assertEqual({p["id"] for p in items}, {"p-2"})
+
+    def test_page_runs_one_statement_and_returns_no_count_column(self) -> None:
+        self._seed_sortable_playlists()
+        body, statements = _traced_listing(catalog.playlist_listing, page=2, page_size=2)
+        self.assertEqual(len(statements), 1)
+        self.assertEqual(body["total"], 3)
+        self.assertEqual(len(body["items"]), 1)
+        self.assertNotIn("total_count", body["items"][0])
+
+    def test_page_past_the_end_is_empty_with_zero_total(self) -> None:
+        self._seed_sortable_playlists()
+        items, total = _page("/playlists", page=3, page_size=2)
+        self.assertEqual(items, [])
+        self.assertEqual(total, 0)
 
 
 class PlaylistAggregateSortTest(IsolatedDatabaseTestCase):
@@ -458,6 +473,12 @@ class GetPlaylistVideosTest(PlaylistCatalogTestCase):
         body = _client.get("/videos/published", params={"playlist_id": "p-1"}).json()
         self.assertEqual([v["id"] for v in body["items"]], ["v-1", "v-2"])
         self.assertEqual(_client.get("/videos/published", params={"playlist_id": "nope"}).status_code, 404)
+
+    def test_published_videos_for_an_empty_playlist_are_an_empty_list(self) -> None:
+        writer.write(make_playlist("p-empty", "Empty", item_count=0))
+        response = _client.get("/videos/published", params={"playlist_id": "p-empty"})
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(response.json()["items"], [])
 
     def test_title_filter_matches_video_id_scoped_to_playlist(self) -> None:
         items, total = _page("/playlists/p-1/videos", title="v-1")

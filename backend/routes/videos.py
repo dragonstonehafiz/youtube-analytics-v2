@@ -4,7 +4,7 @@ from fastapi import APIRouter, Depends, Query
 
 from database.reports import analytics, catalog, traffic, video_statistics
 from ._shared import require_found
-from .video_scope import require_owned_video, require_playlist, scope_video_ids
+from .video_scope import require_owned_video, scope_video_ids
 
 router = APIRouter()
 
@@ -59,8 +59,7 @@ def get_videos_published(
     """Return id, title, published_at, thumbnail_url for all videos matching the filters."""
     video_ids = None
     if playlist_id:
-        require_playlist(playlist_id)
-        video_ids = catalog.playlist_video_ids(playlist_id)
+        video_ids = require_found(catalog.playlist_video_ids(playlist_id), "Playlist")
     return catalog.video_listing(
         fields=("id", "title", "published_at", "thumbnail_url", "content_type"), page_size=None,
         sort_by="published_at", sort_dir="asc", start_date=start_date, end_date=end_date,

@@ -60,7 +60,7 @@ GET  /videos/published
   → { items: PublishedVideo[] } | 404 if playlist_id is given and not found
   # items carry id, title, published_at, thumbnail_url, content_type only
   Filters on published_at, not analytics date. No pagination. With playlist_id, the handler calls
-  require_playlist() then catalog.playlist_video_ids() (the same two steps as the Analytics flow below)
+  catalog.playlist_video_ids() through require_found() (the same lookup as the Analytics flow below)
   and scopes to those members; an empty playlist_id is ignored.
   MUST be declared before /videos/{id} in routes/videos.py (path-matching order) — see below.
 
@@ -175,10 +175,10 @@ The handler's `scope_video_ids` dependency reads the matched route's path parame
 `playlist_id` it returns `None` (channel-wide, and a `playlist_id` query string is ignored); with one it
 runs these steps once per request:
 
-1. `require_playlist(playlist_id)` — the sole 404 boundary, raising `404 {"detail": "Playlist not found"}`.
-   It is a bare `reader.select_one(Playlist, ("id",), ...)` existence lookup; no playlist aggregate statistics are computed.
-2. `catalog.playlist_video_ids(playlist_id)` — the playlist's distinct, catalog-backed member IDs.
-3. the shared report, called with `video_ids=` those IDs.
+1. `require_found(catalog.playlist_video_ids(playlist_id), "Playlist")` — one query returning the playlist's
+   distinct, catalog-backed member IDs, or `None` when the playlist is not stored. `None` is the sole 404
+   boundary, raising `404 {"detail": "Playlist not found"}`; no playlist aggregate statistics are computed.
+2. the shared report, called with `video_ids=` those IDs.
 
 The shared analytics queries themselves never join `playlist_items`; the route resolves membership
 first (that lookup is the only thing that reads `playlist_items`) and passes the resulting IDs down.
@@ -187,7 +187,7 @@ Two consequences are worth stating explicitly:
 - An **existing but empty** playlist (no members, or only null/dangling ones) yields an empty ID
   collection, and the shared helpers treat that as "no rows" rather than "no filter" — so the route
   returns `{"items": []}` (or `{"items": {}}` for the traffic-sources/top route), never channel-wide data.
-  A **nonexistent** playlist is caught in step 1 and never reaches the query at all.
+  A **nonexistent** playlist is caught in step 1 and never reaches the report query at all.
 - Duplicate `playlist_items` rows for the same video cannot inflate playlist totals, since membership
   is deduplicated before the query sees it (see `database.md`).
 

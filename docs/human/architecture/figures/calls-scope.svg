@@ -1,6 +1,6 @@
 <svg xmlns="http://www.w3.org/2000/svg" width="825" height="278" viewBox="0 0 825 278" role="img" aria-label="Scope checks: routes/video_scope.py">
 <title>Scope checks: routes/video_scope.py</title>
-<desc>Lanes from left to right: API routes, Reports, Reader, SQLite. require_owned_video in API routes (404: Video not found). select_one in Reader. videos in SQLite. require_playlist in API routes (404: Playlist not found). select_one in Reader. playlists in SQLite. scope_video_ids in API routes (None, 404 or member IDs). catalog.playlist_video_ids in Reports (owned members). fetch in Reader. playlist_items in SQLite. videos in SQLite. require_owned_video calls select_one: id, own = 1. select_one queries videos: owned video. require_playlist calls select_one: playlist id. select_one queries playlists: playlist. scope_video_ids calls require_playlist: playlist_id. catalog.playlist_video_ids calls fetch: members. fetch queries playlist_items: members. fetch queries videos: owned only. scope_video_ids calls catalog.playlist_video_ids: playlist_id.</desc>
+<desc>Lanes from left to right: API routes, Reports, Reader, SQLite. require_owned_video in API routes (404: Video not found). select_one in Reader. videos in SQLite. require_playlist in API routes (404: Playlist not found). select_one in Reader. playlists in SQLite. scope_video_ids in API routes (None, 404 or member IDs). catalog.playlist_video_ids in Reports (owned members, or None). fetch_joined in Reader. playlists in SQLite. playlist_items in SQLite. videos in SQLite. require_owned_video calls select_one: id, own = 1. select_one queries videos: owned video. require_playlist calls select_one: playlist id. select_one queries playlists: playlist. catalog.playlist_video_ids calls fetch_joined: members. fetch_joined queries playlists: playlist row. fetch_joined queries playlist_items: members. fetch_joined queries videos: owned only. scope_video_ids calls catalog.playlist_video_ids: playlist_id.</desc>
 <style>
   .bg { fill: #ffffff; }
   text { font-family: system-ui, -apple-system, "Segoe UI", Roboto, Arial, sans-serif; font-size: 14px; fill: #1c2330; }
@@ -48,26 +48,27 @@
   <g class="node db"><rect x="541" y="114" width="80" height="33" rx="7"/><text class="code" x="581" y="135" text-anchor="middle">select_one</text></g>
   <g class="node db"><rect x="701" y="114" width="105" height="26" rx="7"/><text class="code" x="753" y="132" text-anchor="middle">playlists</text></g>
   <g class="node route"><rect x="19" y="196" width="181" height="48" rx="7"/><text class="code" x="110" y="217" text-anchor="middle">scope_video_ids</text><text class="sub" x="110" y="232" text-anchor="middle">None, 404 or member IDs</text></g>
-  <g class="node db"><rect x="280" y="196" width="181" height="58" rx="7"/><text class="code" x="371" y="222" text-anchor="middle">catalog.playlist_video_ids</text><text class="sub" x="371" y="237" text-anchor="middle">owned members</text></g>
-  <g class="node db"><rect x="541" y="196" width="80" height="58" rx="7"/><text class="code" x="581" y="230" text-anchor="middle">fetch</text></g>
+  <g class="node db"><rect x="280" y="196" width="181" height="58" rx="7"/><text class="code" x="371" y="222" text-anchor="middle">catalog.playlist_video_ids</text><text class="sub" x="371" y="237" text-anchor="middle">owned members, or None</text></g>
+  <g class="node db"><rect x="537" y="164" width="88" height="90" rx="7"/><text class="code" x="581" y="213" text-anchor="middle">fetch_joined</text></g>
+  <g class="node db"><rect x="701" y="164" width="105" height="26" rx="7"/><text class="code" x="753" y="182" text-anchor="middle">playlists</text></g>
   <g class="node db"><rect x="701" y="196" width="105" height="26" rx="7"/><text class="code" x="753" y="214" text-anchor="middle">playlist_items</text></g>
   <g class="node db"><rect x="701" y="228" width="105" height="26" rx="7"/><text class="code" x="753" y="246" text-anchor="middle">videos</text></g>
   <path class="edge" d="M200,66 H540" marker-end="url(#arrow)"/>
   <path class="edge" d="M621,63 H700" marker-end="url(#arrow)"/>
   <path class="edge" d="M200,130 H540" marker-end="url(#arrow)"/>
   <path class="edge" d="M621,127 H700" marker-end="url(#arrow)"/>
-  <path class="edge" d="M47,196 V163" marker-end="url(#arrow)"/>
-  <path class="edge" d="M461,225 H540" marker-end="url(#arrow)"/>
-  <path class="edge" d="M621,209 H700" marker-end="url(#arrow)"/>
-  <path class="edge" d="M621,241 H700" marker-end="url(#arrow)"/>
+  <path class="edge" d="M461,225 H536" marker-end="url(#arrow)"/>
+  <path class="edge" d="M625,177 H700" marker-end="url(#arrow)"/>
+  <path class="edge" d="M625,209 H700" marker-end="url(#arrow)"/>
+  <path class="edge" d="M625,241 H700" marker-end="url(#arrow)"/>
   <path class="edge" d="M200,220 H279" marker-end="url(#arrow)"/>
   <text class="edge-label" x="370" y="62" text-anchor="middle">id, own = 1</text>
   <text class="edge-label" x="660" y="58" text-anchor="middle">owned video</text>
   <text class="edge-label" x="370" y="126" text-anchor="middle">playlist id</text>
   <text class="edge-label" x="660" y="122" text-anchor="middle">playlist</text>
-  <text class="edge-label" x="55" y="184" text-anchor="start">playlist_id</text>
   <text class="edge-label" x="501" y="220" text-anchor="middle">members</text>
-  <text class="edge-label" x="660" y="204" text-anchor="middle">members</text>
-  <text class="edge-label" x="660" y="236" text-anchor="middle">owned only</text>
+  <text class="edge-label" x="662" y="172" text-anchor="middle">playlist row</text>
+  <text class="edge-label" x="662" y="204" text-anchor="middle">members</text>
+  <text class="edge-label" x="662" y="236" text-anchor="middle">owned only</text>
   <text class="edge-label" x="240" y="215" text-anchor="middle">playlist_id</text>
 </svg>

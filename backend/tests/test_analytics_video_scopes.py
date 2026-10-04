@@ -94,18 +94,21 @@ class VideoScopeTestCase(IsolatedDatabaseTestCase):
 
 class PlaylistVideoIdsTest(VideoScopeTestCase):
     def test_returns_each_valid_member_once(self) -> None:
-        self.assertEqual(sorted(catalog.playlist_video_ids("p-full")), ["v-a", "v-b"])
+        ids = catalog.playlist_video_ids("p-full")
+        assert ids is not None
+        self.assertEqual(sorted(ids), ["v-a", "v-b"])
 
     def test_excludes_dangling_and_null_membership(self) -> None:
         ids = catalog.playlist_video_ids("p-full")
+        assert ids is not None
         self.assertNotIn("missing-video", ids)
         self.assertNotIn(None, ids)
 
     def test_empty_playlist_returns_empty_list(self) -> None:
         self.assertEqual(catalog.playlist_video_ids("p-empty"), [])
 
-    def test_unknown_playlist_returns_empty_list(self) -> None:
-        self.assertEqual(catalog.playlist_video_ids("nope"), [])
+    def test_unknown_playlist_returns_none(self) -> None:
+        self.assertIsNone(catalog.playlist_video_ids("nope"))
 
 
 class AggregatedAnalyticsScopeTest(VideoScopeTestCase):
@@ -415,7 +418,7 @@ class PlaylistScopeTest(VideoScopeTestCase):
 
     def test_playlist_routes_resolve_membership_once_per_request(self) -> None:
         for suffix, params in PLAYLIST_ROUTE_PARAMS:
-            with self.subTest(suffix=suffix),                     mock.patch.object(catalog, "playlist_video_ids", wraps=catalog.playlist_video_ids) as members:
+            with self.subTest(suffix=suffix),                     mock.patch.object(catalog, "playlist_video_ids", wraps=catalog.playlist_video_ids) as members,                     mock.patch("routes.video_scope.require_playlist", side_effect=AssertionError("separate lookup")):
                 response = self.client.get(f"/analytics/playlists/p-full{suffix}", params={**DATE_RANGE, **params})
                 self.assertEqual(response.status_code, 200)
                 members.assert_called_once_with("p-full")

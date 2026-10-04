@@ -55,7 +55,7 @@
       <h1>Backend reference</h1>
       <p>This page shows what each backend file does and which functions each API route calls.</p>
       <div class="meta-line">
-        <span>Source revision <code>9581ccf</code></span>
+        <span>Source revision <code>941e58a</code></span>
       </div>
     </header>
 
@@ -153,8 +153,8 @@
           <dt class="col-head">Read</dt><dd class="col-head">Returns</dd><dd class="col-head">Used by</dd>
           <dt><code>catalog.playlist_listing</code></dt><dd>One page of playlists with their total views and stored earnings.</dd><dd class="used-by"><code>GET /playlists</code></dd>
           <dt><code>catalog.playlist_detail</code></dt><dd>One playlist with its total views and stored earnings.</dd><dd class="used-by"><code>GET /playlists/{id}</code></dd>
-          <dt><code>require_playlist</code></dt><dd>Returns 404 if the playlist doesn't exist.</dd><dd class="used-by">404 check: <code>/comments/playlists/{id}</code>, <code>/videos/published</code> with a playlist ID, and every playlist endpoint that uses <code>scope_video_ids</code></dd>
-          <dt><code>catalog.playlist_video_ids</code></dt><dd>The IDs of the channel's videos in a playlist.</dd><dd class="used-by"><code>GET /playlists/{id}/videos/stats</code><br><code>GET /playlists/{id}/videos</code><br>every <code>GET /analytics/playlists/{id}…</code> endpoint<br><code>GET /videos/published</code> with a playlist ID</dd>
+          <dt><code>require_playlist</code></dt><dd>Returns 404 if the playlist doesn't exist.</dd><dd class="used-by">404 check: <code>/comments/playlists/{id}</code></dd>
+          <dt><code>catalog.playlist_video_ids</code></dt><dd>The IDs of the channel's videos in a playlist, or nothing if the playlist doesn't exist, which those endpoints return as a 404.</dd><dd class="used-by"><code>GET /playlists/{id}/videos/stats</code><br><code>GET /playlists/{id}/videos</code><br>every <code>GET /analytics/playlists/{id}…</code> endpoint<br><code>GET /videos/published</code> with a playlist ID</dd>
         </dl>
       </div>
       <div class="card file-group">

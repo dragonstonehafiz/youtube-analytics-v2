@@ -22,5 +22,4 @@ def scope_video_ids(request: Request) -> list[str] | None:
     playlist_id = request.path_params.get("playlist_id")
     if playlist_id is None:
         return None
-    require_playlist(playlist_id)
-    return catalog.playlist_video_ids(playlist_id)
+    return require_found(catalog.playlist_video_ids(playlist_id), "Playlist")

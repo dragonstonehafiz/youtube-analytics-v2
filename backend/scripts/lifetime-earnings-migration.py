@@ -62,7 +62,7 @@ def migrate() -> MigrationResult:
                 writer.update(Video(total_revenue_sgd=earnings), where=[("id", "=", video_id)], conn=conn)
             playlist_ids = [row["id"] for row in conn.execute("SELECT id FROM playlists")]
             for playlist_id in playlist_ids:
-                earnings = catalog.lifetime_earnings(catalog.playlist_video_ids(playlist_id))
+                earnings = catalog.lifetime_earnings(catalog.playlist_video_ids(playlist_id) or [])
                 writer.update(Playlist(total_earnings_sgd=earnings), where=[("id", "=", playlist_id)], conn=conn)
         except BaseException:
             conn.rollback()

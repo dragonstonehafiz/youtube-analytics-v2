@@ -150,14 +150,14 @@ def playlist_listing(
     params.extend(date_params)
     base = _playlist_base_sql(conditions)
     order = f"{_PLAYLIST_SORT_COLUMNS.get(sort_by, 'last_item_added')} {'ASC' if sort_dir == 'asc' else 'DESC'}"
-    count_query = Query(f"SELECT COUNT(*) FROM ({base})", tuple(params))
-    page_query = Query(
-        f"SELECT * FROM ({base}) ORDER BY {order} LIMIT ? OFFSET ?",
+    query = Query(
+        f"SELECT *, COUNT(*) OVER () AS total_count FROM ({base}) ORDER BY {order} LIMIT ? OFFSET ?",
         (*params, page_size, (page - 1) * page_size),
     )
-    with reader.connect() as conn:
-        total = reader.fetch_scalar(count_query, conn=conn)
-        rows = reader.fetch_joined(page_query, (Playlist,), _PLAYLIST_TOTAL_VALUES, conn=conn)
+    rows = reader.fetch_joined(query, (Playlist,), (*_PLAYLIST_TOTAL_VALUES, "total_count"))
+    total = rows[0].values["total_count"] if rows else 0
+    for row in rows:
+        del row.values["total_count"]
     return {"items": _playlist_items(rows), "total": total, "page": page, "page_size": page_size}
 
 
@@ -168,18 +168,22 @@ def playlist_detail(playlist_id: str) -> dict | None:
     return items[0] if items else None
 
 
-def playlist_video_ids(playlist_id: str) -> list[str]:
-    """Distinct IDs of stored owned videos in a playlist."""
+def playlist_video_ids(playlist_id: str) -> list[str] | None:
+    """Distinct IDs of stored owned videos in a playlist, or None when the playlist is not stored."""
     query = Query(
         """
-        SELECT DISTINCT v.id AS id
-        FROM playlist_items pi
-        JOIN videos v ON v.id = pi.video_id AND v.own = 1
-        WHERE pi.playlist_id = ?
+        SELECT p.id AS playlist_id, v.id AS video_id
+        FROM playlists p
+        LEFT JOIN playlist_items pi ON pi.playlist_id = p.id
+        LEFT JOIN videos v ON v.id = pi.video_id AND v.own = 1
+        WHERE p.id = ?
         """,
         (playlist_id,),
     )
-    return [video.id for video in reader.fetch(Video, query) if video.id is not None]
+    rows = reader.fetch_joined(query, (), ("playlist_id", "video_id"))
+    if not rows:
+        return None
+    return list(dict.fromkeys(row.values["video_id"] for row in rows if row.values["video_id"] is not None))
 
 
 def lifetime_earnings(video_ids: Collection[str]) -> float:

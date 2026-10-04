@@ -362,7 +362,7 @@ def _store_playlist_earnings() -> None:
     """Save each playlist's lifetime earnings summed over its distinct owned member videos."""
     for playlist in reader.select(Playlist, ("id",)):
         assert playlist.id is not None
-        earnings = catalog.lifetime_earnings(catalog.playlist_video_ids(playlist.id))
+        earnings = catalog.lifetime_earnings(catalog.playlist_video_ids(playlist.id) or [])
         writer.update(Playlist(total_earnings_sgd=earnings), where=[("id", "=", playlist.id)])
 
 
