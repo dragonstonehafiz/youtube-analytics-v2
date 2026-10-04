@@ -61,7 +61,7 @@
       <h1>Frontend requests</h1>
       <p>This page shows every backend request the frontend makes, and when each one is sent.</p>
       <div class="meta-line">
-        <span>Source revision <code>8b641a8</code></span>
+        <span>Source revision <code>820eb54</code></span>
       </div>
     </header>
 
@@ -104,11 +104,10 @@
       </figure>
       <ul class="request-notes">
         <li>Title boxes wait 300 ms after typing stops.</li>
-        <li>Moving between Analytics and Traffic Sources sends nothing; arriving from Comments or Videos re-requests the period years.</li>
+        <li>Each tab and sub-tab sends its requests every time it opens, so moving between Analytics and Traffic Sources requests stats and uploads again. Arriving from Comments or Videos also re-requests the period years.</li>
         <li>A dates, title or privacy change requests the top term's videos twice: old term, then new.</li>
         <li>Type set to Video or Short skips the other type's sidebar cards.</li>
-        <li>Revisiting Related Videos sends destinations at once for the old referrer.</li>
-        <li>An unknown ID still sends every request; each returns 404.</li>
+        <li>An unknown ID still sends the open tab's requests; each returns 404.</li>
       </ul>
     </section>
 
@@ -138,7 +137,7 @@
       <p>How many requests each page sends when it opens on its default tab, not counting the top navigation's status poll.</p>
       <figure class="request-figure"><img src="figures/requests-page-open-counts.svg" alt="Number of requests each page sends when it opens"></figure>
       <ul class="request-notes">
-        <li>Opening channel or playlist Analytics on Related Videos adds 2 referrer requests, then 2 destination requests.</li>
+        <li>Opening on another tab sends that tab's requests instead. Comments sends only its comments request, plus the header on playlist and video pages.</li>
         <li>Type set to Video or Short removes 2 of the 4 sidebar requests.</li>
       </ul>
     </section>
@@ -235,7 +234,6 @@
     <section id="requests-that-may-run-unnecessarily">
       <h2>Requests that may run unnecessarily</h2>
       <div class="card-grid">
-        <div class="card"><h3>Hidden-tab requests</h3><p>The analytics pages load data for tabs that aren't open; the Comments tab alone still sends 13 analytics requests.</p></div>
         <div class="card"><h3>Term videos load twice</h3><p>A filter change requests the top term's videos with the old term, then again with the new one.</p></div>
         <div class="card"><h3>Two status pollers on the Sync page</h3><p>The top navigation and the Sync page each poll <code>/sync/status</code>, so that page sends two every 5 seconds.</p></div>
         <div class="card"><h3>Date range on every appearance</h3><p>The period dropdown requests <code>/meta/date-range</code> again each time a tab switch shows it.</p></div>

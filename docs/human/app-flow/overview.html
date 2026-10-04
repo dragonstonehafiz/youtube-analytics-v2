@@ -59,7 +59,7 @@
       <h1>Overview</h1>
       <p>This page shows how data moves from the browser to the database, and from YouTube into the database.</p>
       <div class="meta-line">
-        <span>Source revision <code>53b29e4</code></span>
+        <span>Source revision <code>820eb54</code></span>
       </div>
     </header>
 
@@ -161,7 +161,7 @@
           <tbody>
             <tr><td class="num">1</td><td>User picks "Last 90 days" in the Period dropdown</td><td><code>components/PeriodSelect.tsx</code></td></tr>
             <tr><td class="num">2</td><td><code>start_date</code>/<code>end_date</code> are written to the URL</td><td><code>pages/Analytics.tsx</code> (<code>setParams</code> from <code>useReplaceSearchParams</code>)</td></tr>
-            <tr><td class="num">3</td><td>Date-dependent effects re-run: stats, chart rows, uploads, traffic sources, top-by-source, search terms ×3, term videos ×2, top-videos table</td><td><code>hooks/useCollectionAnalytics.ts</code></td></tr>
+            <tr><td class="num">3</td><td>The open tab's date-dependent effects re-run. On the Analytics tab: stats, uploads, chart rows and the top-videos table</td><td><code>hooks/useCollectionAnalytics.ts</code>, called by <code>components/AnalyticsTab.tsx</code></td></tr>
             <tr><td class="num">4</td><td>e.g. <code>getChannelAnalytics()</code> → <code>GET /analytics/videos?start_date=…&amp;end_date=…</code></td><td><code>frontend/src/api.ts</code></td></tr>
             <tr><td class="num">5</td><td>Route → <code>analytics.daily_analytics(…)</code>, which runs its query through the reader with <code>fill_dates=…</code>; the reader fills days with no data for videos and Shorts</td><td><code>routes/analytics.py</code>, <code>database/reports/analytics.py</code>, <code>database/reader.py</code></td></tr>
             <tr><td class="num">6</td><td>Daily rows grouped by date and content type return; the chart re-renders</td><td><code>components/AnalyticsChart.tsx</code></td></tr>

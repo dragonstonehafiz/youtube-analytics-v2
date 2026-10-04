@@ -16,7 +16,6 @@ import { TRAFFIC_SOURCES_SUB_TABS, toTrafficSourcesSubTab } from '@/lib/trafficS
 import { lastNDates } from '@/lib/dates'
 import type { RequestState } from '@/lib/requestState'
 import { pending, track } from '@/lib/requestState'
-import { useCollectionAnalytics } from '@/hooks/useCollectionAnalytics'
 import { useDebouncedInput } from '@/hooks/useDebouncedInput'
 import './Analytics.css'
 
@@ -25,6 +24,63 @@ type Tab = 'analytics' | 'traffic-sources' | 'comments' | 'videos'
 interface VideoPage {
   items: Video[]
   total: number
+}
+
+interface PlaylistVideosQuery {
+  page: number
+  sortKey: SortKey
+  sortDir: SortDir
+  title: string
+  startDate: string
+  endDate: string
+  contentType: string
+  privacyStatus: string
+}
+
+interface PlaylistVideosTabProps {
+  playlistId: string
+  query: PlaylistVideosQuery
+  onPageChange: (page: number) => void
+  onSort: (key: SortKey) => void
+  onFilterChange: (title: string, startDate: string, endDate: string, contentType: string, privacyStatus: string) => void
+}
+
+/** The playlist's Videos tab: its own paginated listing, fetched while the tab is open. */
+function PlaylistVideosTab({ playlistId, query, onPageChange, onSort, onFilterChange }: PlaylistVideosTabProps) {
+  const { page, sortKey, sortDir, title, startDate, endDate, contentType, privacyStatus } = query
+  const [listing, setListing] = useState<RequestState<VideoPage>>(pending({ items: [], total: 0 }))
+
+  useEffect(() => {
+    let active = true
+    track(
+      getPlaylistVideos(playlistId, { page, pageSize: PAGE_SIZE, sortBy: sortKey, sortDir, title, startDate, endDate, contentType, privacyStatus })
+        .then((data: { items: Video[]; total: number }) => ({ items: data.items ?? [], total: data.total ?? 0 })),
+      setListing,
+      () => active,
+      'Could not load videos',
+    )
+    return () => { active = false }
+  }, [playlistId, page, sortKey, sortDir, title, startDate, endDate, contentType, privacyStatus])
+
+  return (
+    <VideoTable
+      videos={listing.data.items}
+      total={listing.data.total}
+      loading={listing.loading}
+      error={listing.error}
+      page={page}
+      sortKey={sortKey}
+      sortDir={sortDir}
+      title={title}
+      startDate={startDate}
+      endDate={endDate}
+      contentType={contentType}
+      privacyStatus={privacyStatus}
+      onPageChange={onPageChange}
+      onSort={onSort}
+      onFilterChange={onFilterChange}
+    />
+  )
 }
 
 export default function PlaylistAnalytics() {
@@ -53,20 +109,15 @@ export default function PlaylistAnalytics() {
   const tsTab = toTrafficSourcesSubTab(searchParams.get('ts_tab'), TRAFFIC_SOURCES_SUB_TABS)
 
   const [playlist, setPlaylist] = useState<RequestState<Playlist | null>>(pending(null))
-  const [listing, setListing] = useState<RequestState<VideoPage>>(pending({ items: [], total: 0 }))
 
-  const data = useCollectionAnalytics(
-    { kind: 'playlist', id: id! },
-    {
-      startDate: analyticsStartDate,
-      endDate: analyticsEndDate,
-      title: analyticsTitle,
-      contentType: analyticsContentType,
-      privacyStatus: analyticsPrivacyStatus,
-    },
-    topVideosSortBy,
-    tab === 'traffic-sources' && tsTab === 'related',
-  )
+  const scope = { kind: 'playlist', id: id! } as const
+  const analyticsFilters = {
+    startDate: analyticsStartDate,
+    endDate: analyticsEndDate,
+    title: analyticsTitle,
+    contentType: analyticsContentType,
+    privacyStatus: analyticsPrivacyStatus,
+  }
 
   useEffect(() => {
     if (!id) return
@@ -75,19 +126,6 @@ export default function PlaylistAnalytics() {
       .then((data: { item: Playlist | null }) => data.item ?? null), setPlaylist, () => active, 'Could not load this playlist')
     return () => { active = false }
   }, [id])
-
-  useEffect(() => {
-    if (!id) return
-    let active = true
-    track(
-      getPlaylistVideos(id, { page, pageSize: PAGE_SIZE, sortBy: sortKey, sortDir, title, startDate, endDate, contentType, privacyStatus })
-        .then((data: { items: Video[]; total: number }) => ({ items: data.items ?? [], total: data.total ?? 0 })),
-      setListing,
-      () => active,
-      'Could not load videos',
-    )
-    return () => { active = false }
-  }, [id, page, sortKey, sortDir, title, startDate, endDate, contentType, privacyStatus])
 
   const setPage = (p: number) => setParams({ page: String(p) })
 
@@ -119,7 +157,7 @@ export default function PlaylistAnalytics() {
     { value: 'analytics', label: 'Analytics' },
     { value: 'traffic-sources', label: 'Traffic Sources' },
     { value: 'comments', label: 'Comments' },
-    { value: 'videos', label: listing.data.total > 0 ? `Videos (${listing.data.total})` : 'Videos' },
+    { value: 'videos', label: 'Videos' },
   ]
 
   const playlistData = playlist.data
@@ -148,19 +186,9 @@ export default function PlaylistAnalytics() {
       {tab === 'comments' ? (
         <CommentsTab scope={{ kind: 'playlist', playlistId: id! }} />
       ) : tab === 'videos' ? (
-        <VideoTable
-          videos={listing.data.items}
-          total={listing.data.total}
-          loading={listing.loading}
-          error={listing.error}
-          page={page}
-          sortKey={sortKey}
-          sortDir={sortDir}
-          title={title}
-          startDate={startDate}
-          endDate={endDate}
-          contentType={contentType}
-          privacyStatus={privacyStatus}
+        <PlaylistVideosTab
+          playlistId={id!}
+          query={{ page, sortKey, sortDir, title, startDate, endDate, contentType, privacyStatus }}
           onPageChange={setPage}
           onSort={handleSort}
           onFilterChange={handleFilterChange}
@@ -178,9 +206,9 @@ export default function PlaylistAnalytics() {
             privacyStatus={{ value: analyticsPrivacyStatus, onChange: v => setParams({ analytics_privacy_status: v || null }) }}
           />
           {tab === 'analytics' ? (
-            <AnalyticsTab data={data} topVideosSortBy={topVideosSortBy} onTopVideosSort={handleTopVideosSort} />
+            <AnalyticsTab scope={scope} filters={analyticsFilters} topVideosSortBy={topVideosSortBy} onTopVideosSort={handleTopVideosSort} />
           ) : (
-            <TrafficSourcesTab data={data} subTab={tsTab} onSubTabChange={t => setParams({ ts_tab: t })} />
+            <TrafficSourcesTab scope={scope} filters={analyticsFilters} subTab={tsTab} onSubTabChange={t => setParams({ ts_tab: t })} />
           )}
         </>
       )}

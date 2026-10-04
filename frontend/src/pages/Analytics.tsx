@@ -8,7 +8,6 @@ import TrafficSourcesTab from '@/components/TrafficSourcesTab'
 import CommentsTab from '@/components/CommentsTab'
 import { TRAFFIC_SOURCES_SUB_TABS, toTrafficSourcesSubTab } from '@/lib/trafficSources'
 import { lastNDates } from '@/lib/dates'
-import { useCollectionAnalytics } from '@/hooks/useCollectionAnalytics'
 import { useReplaceSearchParams } from '@/hooks/useReplaceSearchParams'
 import { useDebouncedInput } from '@/hooks/useDebouncedInput'
 import './Analytics.css'
@@ -33,12 +32,8 @@ export default function Analytics() {
   const topVideosSortBy: TopVideoSortBy = rawTopVideosSortBy === 'views' ? 'views' : 'watch_time'
   const tsTab = toTrafficSourcesSubTab(searchParams.get('ts_tab'), TRAFFIC_SOURCES_SUB_TABS)
 
-  const data = useCollectionAnalytics(
-    { kind: 'channel' },
-    { startDate, endDate, title, contentType, privacyStatus },
-    topVideosSortBy,
-    tab === 'traffic-sources' && tsTab === 'related',
-  )
+  const scope = { kind: 'channel' } as const
+  const filters = { startDate, endDate, title, contentType, privacyStatus }
 
   // A bare route has no explicit tab; write the derived default back so the URL matches what renders.
   useEffect(() => {
@@ -78,9 +73,9 @@ export default function Analytics() {
       {tab === 'comments' ? (
         <CommentsTab scope={{ kind: 'channel' }} />
       ) : tab === 'analytics' ? (
-        <AnalyticsTab data={data} topVideosSortBy={topVideosSortBy} onTopVideosSort={handleTopVideosSort} />
+        <AnalyticsTab scope={scope} filters={filters} topVideosSortBy={topVideosSortBy} onTopVideosSort={handleTopVideosSort} />
       ) : (
-        <TrafficSourcesTab data={data} subTab={tsTab} onSubTabChange={t => setParams({ ts_tab: t })} />
+        <TrafficSourcesTab scope={scope} filters={filters} subTab={tsTab} onSubTabChange={t => setParams({ ts_tab: t })} />
       )}
     </div>
   )

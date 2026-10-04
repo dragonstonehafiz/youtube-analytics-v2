@@ -131,6 +131,25 @@ function sidebarRecentCalls() {
   return mockGetPlaylistVideos.mock.calls.filter(call => call[1].pageSize === 10)
 }
 
+/** Videos-tab listing calls use the table's page size, unlike the sidebar's recent lists. */
+function listingCalls() {
+  return mockGetPlaylistVideos.mock.calls.filter(call => call[1].pageSize !== 10)
+}
+
+describe('Videos tab', () => {
+  it('fetches the listing only while the Videos tab is open, under a plain label', async () => {
+    renderPlaylistAnalytics('/playlists/pl1?tab=analytics')
+    await waitFor(() => expect(sidebarRecentCalls()).toHaveLength(2))
+    expect(listingCalls()).toHaveLength(0)
+    expect(screen.getByRole('button', { name: 'Videos' })).toBeDefined()
+
+    fireEvent.click(screen.getByRole('button', { name: 'Videos' }))
+    await waitFor(() => expect(listingCalls()).toHaveLength(1))
+    expect(listingCalls()[0][0]).toBe('pl1')
+    expect(mockGetPlaylistTrafficSources).not.toHaveBeenCalled()
+  })
+})
+
 describe('playlist sidebar cards', () => {
   it('scopes sidebar requests to analytics_* filters, ignoring the Videos tab namespace', async () => {
     renderPlaylistAnalytics(
@@ -190,7 +209,7 @@ describe('Traffic Sources sub-tabs (Search Insights)', () => {
 
   it('scopes every search-insights request to this playlist id and the analytics_* filters', async () => {
     renderPlaylistAnalytics(
-      '/playlists/pl1?tab=traffic-sources&analytics_title=foo&analytics_privacy_status=private',
+      '/playlists/pl1?tab=traffic-sources&ts_tab=search&analytics_title=foo&analytics_privacy_status=private',
     )
 
     await waitFor(() => expect(mockGetPlaylistSearchTerms).toHaveBeenCalled())

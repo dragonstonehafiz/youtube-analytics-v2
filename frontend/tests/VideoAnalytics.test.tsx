@@ -71,6 +71,22 @@ afterEach(() => {
   vi.clearAllMocks()
 })
 
+describe('per-tab requests', () => {
+  it('the Analytics tab fetches only the daily analytics', async () => {
+    renderVideoAnalytics('/analytics/videos/v1?tab=analytics')
+    await waitFor(() => expect(mockGetVideoAnalytics).toHaveBeenCalledTimes(1))
+    expect(mockGetVideoTrafficSources).not.toHaveBeenCalled()
+    expect(mockGetVideoSearchTerms).not.toHaveBeenCalled()
+  })
+
+  it('the Sources sub-tab fetches traffic sources but not search terms', async () => {
+    renderVideoAnalytics('/analytics/videos/v1?tab=traffic-sources&ts_tab=sources')
+    await waitFor(() => expect(mockGetVideoTrafficSources).toHaveBeenCalledTimes(1))
+    expect(mockGetVideoAnalytics).not.toHaveBeenCalled()
+    expect(mockGetVideoSearchTerms).not.toHaveBeenCalled()
+  })
+})
+
 describe('Traffic Sources sub-tabs (Search Insights)', () => {
   it('defaults to the Traffic Sources sub-tab, switching to Search Insights renders the single donut card', async () => {
     renderVideoAnalytics('/analytics/videos/v1?tab=traffic-sources')
@@ -90,13 +106,13 @@ describe('Traffic Sources sub-tabs (Search Insights)', () => {
   })
 
   it('scopes the Search Insights fetch to this video id and the shared date filters', async () => {
-    renderVideoAnalytics('/analytics/videos/v1?tab=traffic-sources&start_date=2024-01-01&end_date=2024-01-31')
+    renderVideoAnalytics('/analytics/videos/v1?tab=traffic-sources&ts_tab=search&start_date=2024-01-01&end_date=2024-01-31')
 
     await waitFor(() => expect(mockGetVideoSearchTerms).toHaveBeenCalledWith('v1', { startDate: '2024-01-01', endDate: '2024-01-31' }))
   })
 
   it('a date-filter change refetches the Search Insights donut, not just the traffic chart', async () => {
-    renderVideoAnalytics('/analytics/videos/v1?tab=traffic-sources')
+    renderVideoAnalytics('/analytics/videos/v1?tab=traffic-sources&ts_tab=search')
     await waitFor(() => expect(mockGetVideoSearchTerms).toHaveBeenCalled())
     mockGetVideoSearchTerms.mockClear()
 

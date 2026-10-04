@@ -57,7 +57,7 @@
       <h1>Frontend components</h1>
       <p>This page shows which components each page renders and where each component is used.</p>
       <div class="meta-line">
-        <span>Source revision <code>8b641a8</code></span>
+        <span>Source revision <code>820eb54</code></span>
       </div>
     </header>
 
@@ -245,11 +245,13 @@
           <h4><code>AnalyticsTab</code></h4>
           <p>The Analytics tab: stats bar, daily chart, Top 10 table and the four sidebar cards.</p>
           <p class="meta"><strong>Used on:</strong> Analytics, PlaylistAnalytics</p>
+          <p class="meta"><strong>Loads its own data:</strong> stats, uploads, daily analytics, Top 10 and sidebar requests, each time the tab opens</p>
         </div>
         <div class="card component-card">
           <h4><code>TrafficSourcesTab</code></h4>
           <p>The Traffic Sources tab: stats bar, traffic chart, and its four sub-tabs.</p>
           <p class="meta"><strong>Used on:</strong> Analytics, PlaylistAnalytics</p>
+          <p class="meta"><strong>Loads its own data:</strong> stats, uploads and traffic sources when the tab opens; each sub-tab except Sources loads its own requests when it opens</p>
         </div>
       </div>
       <h3>Comments</h3>
@@ -304,8 +306,8 @@
           <tr><td><code>useReplaceSearchParams</code></td><td><code>Videos</code>, <code>Playlists</code>, <code>Analytics</code>, <code>VideoAnalytics</code>, <code>PlaylistAnalytics</code>, <code>Sync</code>, <code>CommentsTab</code></td></tr>
           <tr><td><code>useDebouncedInput</code></td><td><code>Playlists</code>, <code>Analytics</code>, <code>PlaylistAnalytics</code>, <code>VideoTable</code></td></tr>
           <tr><td><code>useDebouncedFields</code></td><td><code>CommentsTab</code></td></tr>
-          <tr><td><code>useCollectionAnalytics</code></td><td><code>Analytics</code>, <code>PlaylistAnalytics</code></td></tr>
-          <tr><td><code>useReconciledSelection</code></td><td><code>useCollectionAnalytics</code></td></tr>
+          <tr><td><code>useCollectionAnalytics</code> hooks</td><td><code>AnalyticsTab</code>, <code>TrafficSourcesTab</code></td></tr>
+          <tr><td><code>useReconciledSelection</code></td><td><code>useRelatedVideos</code> (<code>useCollectionAnalytics</code>)</td></tr>
           <tr><td><code>track</code> / <code>pending</code> (<code>lib/requestState.ts</code>)</td><td><code>Home</code>, <code>Videos</code>, <code>Playlists</code>, <code>VideoAnalytics</code>, <code>PlaylistAnalytics</code>, <code>useCollectionAnalytics</code></td></tr>
           <tr><td><code>useAvailableYears</code></td><td><code>PeriodSelect</code>, <code>Sync</code></td></tr>
           <tr><td><code>toTopVideoShape</code> (<code>lib/topVideos.ts</code>)</td><td><code>Home</code>, <code>Analytics</code>, <code>PlaylistAnalytics</code></td></tr>

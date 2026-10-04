@@ -80,51 +80,39 @@ function collectionApi(playlistId: string | null): CollectionApi {
 const EMPTY_RELATED_REFERRERS: RelatedReferrersResponse = { items: [], total_named_views: 0 }
 const EMPTY_RESOLVED = { data: [], loading: false, error: null }
 
-/**
- * Every request and selection behind the Analytics and Traffic Sources tabs of the channel or a
- * playlist. Call it at page level: requests run whichever tab is shown, except Related Videos,
- * which waits for `relatedTabVisible`.
- */
-export function useCollectionAnalytics(
-  scope: CollectionScope,
-  filters: CollectionFilters,
-  topVideosSortBy: TopVideoSortBy,
-  relatedTabVisible: boolean,
-) {
-  const playlistId = scope.kind === 'playlist' ? scope.id : null
-  const { startDate, endDate, title, contentType, privacyStatus } = filters
+function scopePlaylistId(scope: CollectionScope): string | null {
+  return scope.kind === 'playlist' ? scope.id : null
+}
 
+/** Statistics and uploaded-video markers, shown by both the Analytics and Traffic Sources tabs. */
+export function useCollectionOverview(scope: CollectionScope, filters: CollectionFilters) {
+  const playlistId = scopePlaylistId(scope)
+  const { startDate, endDate, title, contentType, privacyStatus } = filters
   const [stats, setStats] = useState<RequestState<VideoStats | null>>(pending(null))
-  const [rows, setRows] = useState<RequestState<AnalyticsRow[]>>(pending([]))
   const [publishedVideos, setPublishedVideos] = useState<RequestState<PublishedVideo[]>>(pending([]))
-  const [trafficSources, setTrafficSources] = useState<RequestState<TrafficSourceRow[]>>(pending([]))
-  const [topVideosBySource, setTopVideosBySource] = useState<RequestState<Record<string, TrafficSourceTopVideo[]>>>(pending({}))
+
+  useEffect(() => {
+    let active = true
+    const api = collectionApi(playlistId)
+    const query = { startDate, endDate, contentType, privacyStatus, title }
+    track(api.videoStats(query), setStats, () => active, 'Could not load statistics')
+    track(api.published(query).then(data => data.items ?? []), setPublishedVideos, () => active, 'Could not load uploads')
+    return () => { active = false }
+  }, [playlistId, startDate, endDate, contentType, privacyStatus, title])
+
+  return { stats, publishedVideos }
+}
+
+/** The Analytics tab's daily chart, sortable Top 10 table and four sidebar cards. */
+export function useAnalyticsTabData(scope: CollectionScope, filters: CollectionFilters, topVideosSortBy: TopVideoSortBy) {
+  const playlistId = scopePlaylistId(scope)
+  const { startDate, endDate, title, contentType, privacyStatus } = filters
+  const [rows, setRows] = useState<RequestState<AnalyticsRow[]>>(pending([]))
   const [topVideos, setTopVideos] = useState<RequestState<TopVideo[]>>(pending([]))
   const [recentVideos, setRecentVideos] = useState<RequestState<TopVideo[]>>(pending([]))
   const [recentShorts, setRecentShorts] = useState<RequestState<TopVideo[]>>(pending([]))
   const [topPerformingVideos, setTopPerformingVideos] = useState<RequestState<TopVideo[]>>(pending([]))
   const [topPerformingShorts, setTopPerformingShorts] = useState<RequestState<TopVideo[]>>(pending([]))
-  const [searchTerms, setSearchTerms] = useState<RequestState<SearchTermRow[]>>(pending([]))
-  const [searchTermsByVideo, setSearchTermsByVideo] = useState<RequestState<SearchTermRow[]>>(pending([]))
-  const [searchTermsByShort, setSearchTermsByShort] = useState<RequestState<SearchTermRow[]>>(pending([]))
-  const [videoTermSelected, setVideoTerm] = useState<string | null>(null)
-  const [shortTermSelected, setShortTerm] = useState<string | null>(null)
-  const [videosForVideoTerm, setVideosForVideoTerm] = useState<RequestState<SearchTermVideo[]>>(pending([]))
-  const [videosForShortTerm, setVideosForShortTerm] = useState<RequestState<SearchTermVideo[]>>(pending([]))
-  const [relatedReferrersMine, setRelatedReferrersMine] = useState<RequestState<RelatedReferrersResponse>>(pending(EMPTY_RELATED_REFERRERS))
-  const [relatedReferrersOther, setRelatedReferrersOther] = useState<RequestState<RelatedReferrersResponse>>(pending(EMPTY_RELATED_REFERRERS))
-  const [relatedDestinationsMine, setRelatedDestinationsMine] = useState<RequestState<RelatedDestinationRow[]>>(pending([]))
-  const [relatedDestinationsOther, setRelatedDestinationsOther] = useState<RequestState<RelatedDestinationRow[]>>(pending([]))
-  const [mineReferrerSelected, setMineReferrer] = useReconciledSelection(
-    relatedReferrersMine.data.items.map(r => r.referrer_video_id),
-  )
-  const [otherReferrerSelected, setOtherReferrer] = useReconciledSelection(
-    relatedReferrersOther.data.items.map(r => r.referrer_video_id),
-  )
-  const videoTerm = videoTermSelected || searchTermsByVideo.data[0]?.search_term || null
-  const shortTerm = shortTermSelected || searchTermsByShort.data[0]?.search_term || null
-  const mineReferrerId = mineReferrerSelected ?? relatedReferrersMine.data.items[0]?.referrer_video_id ?? null
-  const otherReferrerId = otherReferrerSelected ?? relatedReferrersOther.data.items[0]?.referrer_video_id ?? null
 
   // The four sidebar cards keep their fixed periods (no date filter for Latest, last-7-days for Top)
   // but otherwise track the title/type/privacy filters, with each card kept to its Video/Short identity.
@@ -154,21 +142,73 @@ export function useCollectionAnalytics(
     return () => { active = false }
   }, [playlistId, contentType, privacyStatus, title])
 
-  // One filter change starts five requests, each owning the state of the card it feeds.
   useEffect(() => {
     let active = true
-    const api = collectionApi(playlistId)
-    const query = { startDate, endDate, contentType, privacyStatus, title }
-    track(api.videoStats(query), setStats, () => active, 'Could not load statistics')
-    track(api.analytics(query).then(data => data.items ?? []), setRows, () => active, 'Could not load analytics')
-    track(api.published(query).then(data => data.items ?? []), setPublishedVideos, () => active, 'Could not load uploads')
-    track(api.trafficSources(query).then(data => data.items ?? []), setTrafficSources, () => active, 'Could not load traffic sources')
-    track(api.topVideosBySource(query).then(data => data.items ?? {}), setTopVideosBySource, () => active, 'Could not load traffic sources')
+    track(collectionApi(playlistId).analytics({ startDate, endDate, contentType, privacyStatus, title })
+      .then(data => data.items ?? []), setRows, () => active, 'Could not load analytics')
     return () => { active = false }
   }, [playlistId, startDate, endDate, contentType, privacyStatus, title])
 
-  // Search Insights ignores the content_type filter — these three columns always show the
-  // All/Video/Short split regardless of it, since that split is the point.
+  // The sortable top-video table reloads on its own sort change, and on nothing else's.
+  useEffect(() => {
+    let active = true
+    track(collectionApi(playlistId).topVideos({ sortBy: topVideosSortBy, startDate, endDate, contentType, privacyStatus, title })
+      .then(data => data.items ?? []), setTopVideos, () => active, 'Could not load top videos')
+    return () => { active = false }
+  }, [playlistId, startDate, endDate, contentType, privacyStatus, topVideosSortBy, title])
+
+  return { rows, topVideos, recentVideos, recentShorts, topPerformingVideos, topPerformingShorts }
+}
+
+/** Daily traffic-source rows behind the Traffic Sources chart and Sources table. */
+export function useTrafficSources(scope: CollectionScope, filters: CollectionFilters) {
+  const playlistId = scopePlaylistId(scope)
+  const { startDate, endDate, title, contentType, privacyStatus } = filters
+  const [trafficSources, setTrafficSources] = useState<RequestState<TrafficSourceRow[]>>(pending([]))
+
+  useEffect(() => {
+    let active = true
+    track(collectionApi(playlistId).trafficSources({ startDate, endDate, contentType, privacyStatus, title })
+      .then(data => data.items ?? []), setTrafficSources, () => active, 'Could not load traffic sources')
+    return () => { active = false }
+  }, [playlistId, startDate, endDate, contentType, privacyStatus, title])
+
+  return trafficSources
+}
+
+/** Top videos per traffic source, for the Top Videos by Traffic Source sub-tab. */
+export function useTopVideosBySource(scope: CollectionScope, filters: CollectionFilters) {
+  const playlistId = scopePlaylistId(scope)
+  const { startDate, endDate, title, contentType, privacyStatus } = filters
+  const [topVideosBySource, setTopVideosBySource] = useState<RequestState<Record<string, TrafficSourceTopVideo[]>>>(pending({}))
+
+  useEffect(() => {
+    let active = true
+    track(collectionApi(playlistId).topVideosBySource({ startDate, endDate, contentType, privacyStatus, title })
+      .then(data => data.items ?? {}), setTopVideosBySource, () => active, 'Could not load traffic sources')
+    return () => { active = false }
+  }, [playlistId, startDate, endDate, contentType, privacyStatus, title])
+
+  return topVideosBySource
+}
+
+/**
+ * The Search Insights sub-tab's three term lists and two term-video cards. Ignores the
+ * content_type filter: the All/Video/Short split is the point of these columns.
+ */
+export function useSearchInsights(scope: CollectionScope, filters: CollectionFilters) {
+  const playlistId = scopePlaylistId(scope)
+  const { startDate, endDate, title, privacyStatus } = filters
+  const [searchTerms, setSearchTerms] = useState<RequestState<SearchTermRow[]>>(pending([]))
+  const [searchTermsByVideo, setSearchTermsByVideo] = useState<RequestState<SearchTermRow[]>>(pending([]))
+  const [searchTermsByShort, setSearchTermsByShort] = useState<RequestState<SearchTermRow[]>>(pending([]))
+  const [videoTermSelected, setVideoTerm] = useState<string | null>(null)
+  const [shortTermSelected, setShortTerm] = useState<string | null>(null)
+  const [videosForVideoTerm, setVideosForVideoTerm] = useState<RequestState<SearchTermVideo[]>>(pending([]))
+  const [videosForShortTerm, setVideosForShortTerm] = useState<RequestState<SearchTermVideo[]>>(pending([]))
+  const videoTerm = videoTermSelected || searchTermsByVideo.data[0]?.search_term || null
+  const shortTerm = shortTermSelected || searchTermsByShort.data[0]?.search_term || null
+
   useEffect(() => {
     let active = true
     const api = collectionApi(playlistId)
@@ -179,7 +219,7 @@ export function useCollectionAnalytics(
     return () => { active = false }
   }, [playlistId, startDate, endDate, title, privacyStatus])
 
-  // Each Search Insights video card owns its own term selection independently.
+  // Each video card owns its own term selection independently.
   useEffect(() => {
     let active = true
     const term = videoTermSelected || searchTermsByVideo.data[0]?.search_term
@@ -198,56 +238,60 @@ export function useCollectionAnalytics(
     return () => { active = false }
   }, [playlistId, shortTermSelected, searchTermsByShort.data, startDate, endDate, title, privacyStatus])
 
-  // The two referrer-breakdown cards each own one own-filtered referrers call. Deferred
-  // until the Related Videos sub-tab is visible, and refetched whenever the filters change
-  // while it's visible, so entering the sub-tab always fetches fresh data.
+  return {
+    searchTerms, searchTermsByVideo, searchTermsByShort,
+    videoTerm, setVideoTerm, videosForVideoTerm,
+    shortTerm, setShortTerm, videosForShortTerm,
+  }
+}
+
+/** The Related Videos sub-tab's two referrer breakdowns and two destination cards. */
+export function useRelatedVideos(scope: CollectionScope, filters: CollectionFilters) {
+  const playlistId = scopePlaylistId(scope)
+  const { startDate, endDate, title, contentType, privacyStatus } = filters
+  const [relatedReferrersMine, setRelatedReferrersMine] = useState<RequestState<RelatedReferrersResponse>>(pending(EMPTY_RELATED_REFERRERS))
+  const [relatedReferrersOther, setRelatedReferrersOther] = useState<RequestState<RelatedReferrersResponse>>(pending(EMPTY_RELATED_REFERRERS))
+  const [relatedDestinationsMine, setRelatedDestinationsMine] = useState<RequestState<RelatedDestinationRow[]>>(pending([]))
+  const [relatedDestinationsOther, setRelatedDestinationsOther] = useState<RequestState<RelatedDestinationRow[]>>(pending([]))
+  const [mineReferrerSelected, setMineReferrer] = useReconciledSelection(
+    relatedReferrersMine.data.items.map(r => r.referrer_video_id),
+  )
+  const [otherReferrerSelected, setOtherReferrer] = useReconciledSelection(
+    relatedReferrersOther.data.items.map(r => r.referrer_video_id),
+  )
+  const mineReferrerId = mineReferrerSelected ?? relatedReferrersMine.data.items[0]?.referrer_video_id ?? null
+  const otherReferrerId = otherReferrerSelected ?? relatedReferrersOther.data.items[0]?.referrer_video_id ?? null
+
+  // Each referrer-breakdown card owns one own-filtered referrers call.
   useEffect(() => {
-    if (!relatedTabVisible) return
     let active = true
     const api = collectionApi(playlistId)
     const query = { startDate, endDate, title, contentType, privacyStatus, limit: ALL_ROWS_LIMIT }
     track(api.relatedReferrers({ ...query, own: true }), setRelatedReferrersMine, () => active, 'Could not load Related Video referrers')
     track(api.relatedReferrers({ ...query, own: false }), setRelatedReferrersOther, () => active, 'Could not load Related Video referrers')
     return () => { active = false }
-  }, [playlistId, relatedTabVisible, startDate, endDate, contentType, privacyStatus, title])
+  }, [playlistId, startDate, endDate, contentType, privacyStatus, title])
 
-  // Each destination card owns its own referrer selection, deferred the same way.
+  // Each destination card owns its own referrer selection.
   useEffect(() => {
-    if (!relatedTabVisible) return
     let active = true
     if (!mineReferrerId) { setRelatedDestinationsMine(EMPTY_RESOLVED); return }
     track(collectionApi(playlistId).relatedDestinations({ referrerVideoId: mineReferrerId, startDate, endDate, limit: ALL_ROWS_LIMIT })
       .then(data => data.items ?? []), setRelatedDestinationsMine, () => active, 'Could not load destinations')
     return () => { active = false }
-  }, [playlistId, relatedTabVisible, mineReferrerId, startDate, endDate])
+  }, [playlistId, mineReferrerId, startDate, endDate])
 
   useEffect(() => {
-    if (!relatedTabVisible) return
     let active = true
     if (!otherReferrerId) { setRelatedDestinationsOther(EMPTY_RESOLVED); return }
     track(collectionApi(playlistId).relatedDestinations({ referrerVideoId: otherReferrerId, startDate, endDate, limit: ALL_ROWS_LIMIT })
       .then(data => data.items ?? []), setRelatedDestinationsOther, () => active, 'Could not load destinations')
     return () => { active = false }
-  }, [playlistId, relatedTabVisible, otherReferrerId, startDate, endDate])
-
-  // The sortable top-video table reloads on its own sort change, and on nothing else's.
-  useEffect(() => {
-    let active = true
-    track(collectionApi(playlistId).topVideos({ sortBy: topVideosSortBy, startDate, endDate, contentType, privacyStatus, title })
-      .then(data => data.items ?? []), setTopVideos, () => active, 'Could not load top videos')
-    return () => { active = false }
-  }, [playlistId, startDate, endDate, contentType, privacyStatus, topVideosSortBy, title])
+  }, [playlistId, otherReferrerId, startDate, endDate])
 
   return {
-    stats, rows, publishedVideos, trafficSources, topVideosBySource, topVideos,
-    recentVideos, recentShorts, topPerformingVideos, topPerformingShorts,
-    searchTerms, searchTermsByVideo, searchTermsByShort,
-    videoTerm, setVideoTerm, videosForVideoTerm,
-    shortTerm, setShortTerm, videosForShortTerm,
     relatedReferrersMine, relatedReferrersOther,
     mineReferrerId, setMineReferrer, relatedDestinationsMine,
     otherReferrerId, setOtherReferrer, relatedDestinationsOther,
   }
 }
-
-export type CollectionAnalytics = ReturnType<typeof useCollectionAnalytics>

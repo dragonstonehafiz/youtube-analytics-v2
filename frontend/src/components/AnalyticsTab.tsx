@@ -1,5 +1,6 @@
 import type { TopVideoSortBy } from '@/types'
-import type { CollectionAnalytics } from '@/hooks/useCollectionAnalytics'
+import type { CollectionScope, CollectionFilters } from '@/hooks/useCollectionAnalytics'
+import { useCollectionOverview, useAnalyticsTabData } from '@/hooks/useCollectionAnalytics'
 import VideoStatsBar from '@/components/VideoStatsBar'
 import AnalyticsChart from '@/components/AnalyticsChart'
 import TopVideosList from '@/components/TopVideosList'
@@ -7,14 +8,16 @@ import TopPerformersCard from '@/components/TopPerformersCard'
 import VideoCarouselCard from '@/components/VideoCarouselCard'
 
 interface AnalyticsTabProps {
-  data: CollectionAnalytics
+  scope: CollectionScope
+  filters: CollectionFilters
   topVideosSortBy: TopVideoSortBy
   onTopVideosSort: (sortBy: TopVideoSortBy) => void
 }
 
 /** Analytics tab of the channel and playlist pages: stats, daily chart, Top 10 table, and sidebar cards. */
-export default function AnalyticsTab({ data, topVideosSortBy, onTopVideosSort }: AnalyticsTabProps) {
-  const { stats, rows, publishedVideos, topVideos, topPerformingVideos, topPerformingShorts, recentVideos, recentShorts } = data
+export default function AnalyticsTab({ scope, filters, topVideosSortBy, onTopVideosSort }: AnalyticsTabProps) {
+  const { stats, publishedVideos } = useCollectionOverview(scope, filters)
+  const { rows, topVideos, topPerformingVideos, topPerformingShorts, recentVideos, recentShorts } = useAnalyticsTabData(scope, filters, topVideosSortBy)
   return (
     <>
       <VideoStatsBar stats={stats.data} loading={stats.loading} error={stats.error} />

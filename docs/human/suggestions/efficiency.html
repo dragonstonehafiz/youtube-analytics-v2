@@ -54,7 +54,7 @@
       <h1>Efficiency</h1>
       <p>This page shows code that does more work than it needs to.</p>
       <div class="meta-line">
-        <span>Source revision <code>9581ccf</code></span>
+        <span>Source revision <code>820eb54</code></span>
       </div>
     </header>
 
@@ -136,15 +136,6 @@
           <dl>
             <dt>Where</dt><dd><code>Analytics</code>, <code>PlaylistAnalytics</code></dd>
             <dt>Cost</dt><dd>Two extra requests per change, even when the top term hasn't changed.</dd>
-          </dl>
-        </article>
-
-        <article class="dup">
-          <div class="dup-head"><h3>Hidden-tab requests</h3><span class="dup-count">per page open</span></div>
-          <p>Everything except the Related Videos requests loads whichever tab is open.</p>
-          <dl>
-            <dt>Where</dt><dd><code>Analytics</code> and <code>PlaylistAnalytics</code> (opening on Comments still sends 13 analytics requests); <code>VideoAnalytics</code> loads its chart, traffic and search requests on every tab</dd>
-            <dt>Cost</dt><dd>Requests for data that is not on screen.</dd>
           </dl>
         </article>
 

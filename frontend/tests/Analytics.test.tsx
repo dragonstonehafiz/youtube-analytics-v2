@@ -1,6 +1,6 @@
 // @vitest-environment jsdom
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
-import { act, cleanup, fireEvent, render, screen, waitFor, within } from '@testing-library/react'
+import { act, cleanup, fireEvent, render, screen, waitFor } from '@testing-library/react'
 import { Link, MemoryRouter, Route, Routes, useLocation } from 'react-router-dom'
 
 vi.mock('@/api', () => ({
@@ -217,40 +217,33 @@ describe('Traffic Sources sub-tabs', () => {
 })
 
 describe('request state across tab switches', () => {
-  it('keeps every card request at page level, so leaving and returning to a tab refetches nothing', async () => {
-    renderAnalytics('/analytics?tab=analytics')
-    await waitFor(() => expect(mockGetChannelAnalytics).toHaveBeenCalledTimes(1))
-    await waitFor(() => expect(mockGetSearchTerms).toHaveBeenCalledTimes(3))
-    const counts = () => [
-      mockGetVideoStats, mockGetChannelAnalytics, mockGetVideosPublished, mockGetChannelTrafficSources,
-      mockGetTopVideosByTrafficSource, mockGetTopVideosByViews, mockGetVideos, mockGetSearchTerms,
-    ].map(mock => mock.mock.calls.length)
-    const before = counts()
+  const analyticsMocks = () => [
+    mockGetVideoStats, mockGetChannelAnalytics, mockGetVideosPublished, mockGetChannelTrafficSources,
+    mockGetTopVideosByTrafficSource, mockGetTopVideosByViews, mockGetVideos, mockGetSearchTerms,
+    mockGetVideosBySearchTerm, mockGetRelatedVideoReferrers,
+  ]
 
-    fireEvent.click(screen.getByRole('button', { name: 'Comments' }))
+  it('sends no analytics requests while Comments is open', async () => {
+    renderAnalytics('/analytics?tab=comments')
     await screen.findByText('No comments found')
-    fireEvent.click(screen.getByRole('button', { name: 'Traffic Sources' }))
-    fireEvent.click(screen.getByRole('button', { name: 'Analytics' }))
-    await screen.findByText('Latest Videos')
-
-    expect(counts()).toEqual(before)
+    for (const mock of analyticsMocks()) expect(mock).not.toHaveBeenCalled()
   })
 
-  it('keeps a selected search term after switching to another sub-tab and back', async () => {
-    mockGetSearchTerms.mockResolvedValue({ items: [{ search_term: 'cats', views: 10 }, { search_term: 'dogs', views: 5 }] })
-    const { container } = renderAnalytics('/analytics?tab=traffic-sources&ts_tab=search')
+  it('fetches only the open tab, and fetches it again when the tab is reopened', async () => {
+    renderAnalytics('/analytics?tab=analytics')
+    await screen.findByText('Latest Videos')
+    await waitFor(() => expect(mockGetChannelAnalytics).toHaveBeenCalledTimes(1))
+    expect(mockGetChannelTrafficSources).not.toHaveBeenCalled()
+    expect(mockGetTopVideosByTrafficSource).not.toHaveBeenCalled()
+    expect(mockGetSearchTerms).not.toHaveBeenCalled()
 
-    const videoCard = (await screen.findByText('Top Videos by Search Term')).closest('.search-videos-donut') as HTMLElement
-    const videoSelect = await within(videoCard).findByRole('combobox')
-    fireEvent.change(videoSelect, { target: { value: 'dogs' } })
-    await waitFor(() => expect(mockGetVideosBySearchTerm).toHaveBeenCalledWith(expect.objectContaining({ searchTerm: 'dogs', contentType: 'video' })))
+    fireEvent.click(screen.getByRole('button', { name: 'Traffic Sources' }))
+    await waitFor(() => expect(mockGetChannelTrafficSources).toHaveBeenCalledTimes(1))
+    expect(mockGetTopVideosByTrafficSource).not.toHaveBeenCalled()
+    expect(mockGetSearchTerms).not.toHaveBeenCalled()
 
-    const subTabs = container.querySelector('.ts-subtabs') as HTMLElement
-    fireEvent.click(within(subTabs).getByRole('button', { name: 'Traffic Sources' }))
-    fireEvent.click(within(subTabs).getByRole('button', { name: 'Search Insights' }))
-
-    const returnedCard = (await screen.findByText('Top Videos by Search Term')).closest('.search-videos-donut') as HTMLElement
-    expect((within(returnedCard).getByRole('combobox') as HTMLSelectElement).value).toBe('dogs')
+    fireEvent.click(screen.getByRole('button', { name: 'Analytics' }))
+    await waitFor(() => expect(mockGetChannelAnalytics).toHaveBeenCalledTimes(2))
   })
 })
 

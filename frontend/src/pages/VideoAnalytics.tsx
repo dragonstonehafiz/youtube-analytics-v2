@@ -6,6 +6,7 @@ import Tabs from '@/components/Tabs'
 import type { TabOption } from '@/components/Tabs'
 import FilterBar from '@/components/FilterBar'
 import DetailHeader from '@/components/DetailHeader'
+import type { TrafficSourcesSubTab } from '@/lib/trafficSources'
 import { VIDEO_TRAFFIC_SOURCES_SUB_TABS, toTrafficSourcesSubTab } from '@/lib/trafficSources'
 import { lastNDates } from '@/lib/dates'
 import { ALL_ROWS_LIMIT } from '@/lib/analyticsConstants'
@@ -66,6 +67,143 @@ function DescriptionBlock({ text }: { text: string | null }) {
   )
 }
 
+interface VideoTabProps {
+  videoId: string
+  startDate: string
+  endDate: string
+}
+
+/** The Analytics tab: this video's daily chart. */
+function VideoAnalyticsTab({ videoId, startDate, endDate }: VideoTabProps) {
+  const [rows, setRows] = useState<RequestState<AnalyticsRow[]>>(pending([]))
+
+  useEffect(() => {
+    let active = true
+    track(getVideoAnalytics(videoId, { startDate, endDate })
+      .then((data: { items: AnalyticsRow[] }) => data.items ?? []), setRows, () => active, 'Could not load analytics')
+    return () => { active = false }
+  }, [videoId, startDate, endDate])
+
+  return <AnalyticsChart rows={rows.data} loading={rows.loading} error={rows.error} />
+}
+
+/** The Traffic Sources tab: the traffic chart shared by every sub-tab, then the sub-tabs. */
+function VideoTrafficSourcesTab({ videoId, startDate, endDate, subTab, onSubTabChange }: VideoTabProps & {
+  subTab: TrafficSourcesSubTab
+  onSubTabChange: (subTab: TrafficSourcesSubTab) => void
+}) {
+  const [trafficSources, setTrafficSources] = useState<RequestState<TrafficSourceRow[]>>(pending([]))
+
+  useEffect(() => {
+    let active = true
+    track(getVideoTrafficSources(videoId, { startDate, endDate })
+      .then((data: { items: TrafficSourceRow[] }) => data.items ?? []), setTrafficSources, () => active, 'Could not load traffic sources')
+    return () => { active = false }
+  }, [videoId, startDate, endDate])
+
+  return (
+    <>
+      <TrafficSourceChart
+        rows={trafficSources.data}
+        loading={trafficSources.loading}
+        error={trafficSources.error}
+      />
+      <Tabs
+        options={VIDEO_TRAFFIC_SOURCES_SUB_TABS}
+        value={subTab}
+        onChange={onSubTabChange}
+        className="ts-subtabs"
+      />
+      {subTab === 'sources' ? (
+        <TrafficSourcesTable
+          rows={trafficSources.data}
+          loading={trafficSources.loading}
+          error={trafficSources.error}
+        />
+      ) : subTab === 'search' ? (
+        <VideoSearchInsights videoId={videoId} startDate={startDate} endDate={endDate} />
+      ) : (
+        <VideoRelatedVideos videoId={videoId} startDate={startDate} endDate={endDate} />
+      )}
+    </>
+  )
+}
+
+function VideoSearchInsights({ videoId, startDate, endDate }: VideoTabProps) {
+  const [searchTerms, setSearchTerms] = useState<RequestState<SearchTermRow[]>>(pending([]))
+
+  useEffect(() => {
+    let active = true
+    track(getVideoSearchTerms(videoId, { startDate, endDate })
+      .then((data: { items: SearchTermRow[] }) => data.items ?? []), setSearchTerms, () => active, 'Could not load search terms')
+    return () => { active = false }
+  }, [videoId, startDate, endDate])
+
+  return (
+    <div className="search-insights-columns">
+      <SearchTermsDonutCard
+        title="Top Search Terms"
+        rows={searchTerms.data}
+        loading={searchTerms.loading}
+        error={searchTerms.error}
+      />
+    </div>
+  )
+}
+
+function VideoRelatedVideos({ videoId, startDate, endDate }: VideoTabProps) {
+  const [relatedReferrersMine, setRelatedReferrersMine] = useState<RequestState<RelatedReferrersResponse>>(pending(EMPTY_RELATED_REFERRERS))
+  const [relatedReferrersOther, setRelatedReferrersOther] = useState<RequestState<RelatedReferrersResponse>>(pending(EMPTY_RELATED_REFERRERS))
+  const [relatedDestinations, setRelatedDestinations] = useState<RequestState<RelatedDestinationRow[]>>(pending([]))
+
+  // The two referrer-breakdown cards each own one own-filtered, video-scoped referrers call.
+  useEffect(() => {
+    let active = true
+    const query = { startDate, endDate, limit: ALL_ROWS_LIMIT }
+    track(getVideoRelatedVideoReferrers(videoId, { ...query, own: true })
+      .then((data: RelatedReferrersResponse) => data), setRelatedReferrersMine, () => active, 'Could not load Related Video referrers')
+    track(getVideoRelatedVideoReferrers(videoId, { ...query, own: false })
+      .then((data: RelatedReferrersResponse) => data), setRelatedReferrersOther, () => active, 'Could not load Related Video referrers')
+    return () => { active = false }
+  }, [videoId, startDate, endDate])
+
+  // The outbound card has no dropdown: this video's own ID is always the referrer, via
+  // the channel-scoped destinations route (no video-scoped destinations route exists).
+  useEffect(() => {
+    let active = true
+    track(getRelatedVideoDestinations({ referrerVideoId: videoId, startDate, endDate, limit: ALL_ROWS_LIMIT })
+      .then((data: { items: RelatedDestinationRow[] }) => data.items ?? []), setRelatedDestinations, () => active, 'Could not load destinations')
+    return () => { active = false }
+  }, [videoId, startDate, endDate])
+
+  return (
+    <>
+      <div className="related-videos-columns">
+        <RelatedReferrerBreakdownCard
+          title="Related Traffic from My Channel"
+          referrers={relatedReferrersMine.data.items}
+          loading={relatedReferrersMine.loading}
+          error={relatedReferrersMine.error}
+        />
+        <RelatedReferrerBreakdownCard
+          title="Related Traffic from Other Channels"
+          referrers={relatedReferrersOther.data.items}
+          loading={relatedReferrersOther.loading}
+          error={relatedReferrersOther.error}
+        />
+      </div>
+      <div className="related-videos-columns">
+        <RelatedDestinationsByReferrerCard
+          title="Top Destinations From This Video"
+          destinations={relatedDestinations.data}
+          loading={relatedDestinations.loading}
+          error={relatedDestinations.error}
+        />
+      </div>
+    </>
+  )
+}
+
 export default function VideoAnalytics() {
   const { id } = useParams<{ id: string }>()
   const [searchParams, setParams] = useReplaceSearchParams()
@@ -73,14 +211,7 @@ export default function VideoAnalytics() {
   const tab = (searchParams.get('tab') as Tab) ?? 'analytics'
   const startDate = searchParams.has('start_date') ? searchParams.get('start_date')! : lastNDates(28)[0]
   const endDate = searchParams.has('end_date') ? searchParams.get('end_date')! : lastNDates(28)[1]
-  const [rows, setRows] = useState<RequestState<AnalyticsRow[]>>(pending([]))
-  const [trafficSources, setTrafficSources] = useState<RequestState<TrafficSourceRow[]>>(pending([]))
   const tsTab = toTrafficSourcesSubTab(searchParams.get('ts_tab'), VIDEO_TRAFFIC_SOURCES_SUB_TABS)
-  const relatedTabVisible = tab === 'traffic-sources' && tsTab === 'related'
-  const [searchTerms, setSearchTerms] = useState<RequestState<SearchTermRow[]>>(pending([]))
-  const [relatedReferrersMine, setRelatedReferrersMine] = useState<RequestState<RelatedReferrersResponse>>(pending(EMPTY_RELATED_REFERRERS))
-  const [relatedReferrersOther, setRelatedReferrersOther] = useState<RequestState<RelatedReferrersResponse>>(pending(EMPTY_RELATED_REFERRERS))
-  const [relatedDestinations, setRelatedDestinations] = useState<RequestState<RelatedDestinationRow[]>>(pending([]))
 
   useEffect(() => {
     if (!id) return
@@ -89,45 +220,6 @@ export default function VideoAnalytics() {
       .then((data: { item: Video | null }) => data.item ?? null), setVideo, () => active, 'Could not load this video')
     return () => { active = false }
   }, [id])
-
-  // The two data tabs each own their request, so a date change reloads only their cards.
-  useEffect(() => {
-    if (!id) return
-    let active = true
-    const filters = { startDate, endDate }
-    track(getVideoAnalytics(id, filters)
-      .then((data: { items: AnalyticsRow[] }) => data.items ?? []), setRows, () => active, 'Could not load analytics')
-    track(getVideoTrafficSources(id, filters)
-      .then((data: { items: TrafficSourceRow[] }) => data.items ?? []), setTrafficSources, () => active, 'Could not load traffic sources')
-    track(getVideoSearchTerms(id, filters)
-      .then((data: { items: SearchTermRow[] }) => data.items ?? []), setSearchTerms, () => active, 'Could not load search terms')
-    return () => { active = false }
-  }, [id, startDate, endDate])
-
-  // The two referrer-breakdown cards each own one own-filtered, video-scoped referrers
-  // call. Deferred until the Related Videos sub-tab is actually visible, and refetched
-  // whenever the filters change while it's visible.
-  useEffect(() => {
-    if (!id || !relatedTabVisible) return
-    let active = true
-    const query = { startDate, endDate, limit: ALL_ROWS_LIMIT }
-    track(getVideoRelatedVideoReferrers(id, { ...query, own: true })
-      .then((data: RelatedReferrersResponse) => data), setRelatedReferrersMine, () => active, 'Could not load Related Video referrers')
-    track(getVideoRelatedVideoReferrers(id, { ...query, own: false })
-      .then((data: RelatedReferrersResponse) => data), setRelatedReferrersOther, () => active, 'Could not load Related Video referrers')
-    return () => { active = false }
-  }, [id, relatedTabVisible, startDate, endDate])
-
-  // The outbound card has no dropdown: this video's own ID is always the referrer, via
-  // the channel-scoped destinations route (no video-scoped destinations route exists).
-  // Deferred the same way as the referrer-breakdown cards above.
-  useEffect(() => {
-    if (!id || !relatedTabVisible) return
-    let active = true
-    track(getRelatedVideoDestinations({ referrerVideoId: id, startDate, endDate, limit: ALL_ROWS_LIMIT })
-      .then((data: { items: RelatedDestinationRow[] }) => data.items ?? []), setRelatedDestinations, () => active, 'Could not load destinations')
-    return () => { active = false }
-  }, [id, relatedTabVisible, startDate, endDate])
 
   const videoData = video.data
 
@@ -179,62 +271,15 @@ export default function VideoAnalytics() {
           {tab === 'comments' ? (
             <CommentsTab scope={{ kind: 'video', videoId: id! }} />
           ) : tab === 'analytics' ? (
-            <AnalyticsChart rows={rows.data} loading={rows.loading} error={rows.error} />
+            <VideoAnalyticsTab videoId={id!} startDate={startDate} endDate={endDate} />
           ) : (
-            <>
-              <TrafficSourceChart
-                rows={trafficSources.data}
-                loading={trafficSources.loading}
-                error={trafficSources.error}
-              />
-              <Tabs
-                options={VIDEO_TRAFFIC_SOURCES_SUB_TABS}
-                value={tsTab}
-                onChange={t => setParams({ ts_tab: t })}
-                className="ts-subtabs"
-              />
-              {tsTab === 'sources' ? (
-                <TrafficSourcesTable
-                  rows={trafficSources.data}
-                  loading={trafficSources.loading}
-                  error={trafficSources.error}
-                />
-              ) : tsTab === 'search' ? (
-                <div className="search-insights-columns">
-                  <SearchTermsDonutCard
-                    title="Top Search Terms"
-                    rows={searchTerms.data}
-                    loading={searchTerms.loading}
-                    error={searchTerms.error}
-                  />
-                </div>
-              ) : (
-                <>
-                  <div className="related-videos-columns">
-                    <RelatedReferrerBreakdownCard
-                      title="Related Traffic from My Channel"
-                      referrers={relatedReferrersMine.data.items}
-                      loading={relatedReferrersMine.loading}
-                      error={relatedReferrersMine.error}
-                    />
-                    <RelatedReferrerBreakdownCard
-                      title="Related Traffic from Other Channels"
-                      referrers={relatedReferrersOther.data.items}
-                      loading={relatedReferrersOther.loading}
-                      error={relatedReferrersOther.error}
-                    />
-                  </div>
-                  <div className="related-videos-columns">
-                    <RelatedDestinationsByReferrerCard
-                      title="Top Destinations From This Video"
-                      destinations={relatedDestinations.data}
-                      loading={relatedDestinations.loading}
-                      error={relatedDestinations.error}
-                    />
-                  </div>
-                </>
-              )}
-            </>
+            <VideoTrafficSourcesTab
+              videoId={id!}
+              startDate={startDate}
+              endDate={endDate}
+              subTab={tsTab}
+              onSubTabChange={t => setParams({ ts_tab: t })}
+            />
           )}
         </>
       )}
