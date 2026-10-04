@@ -103,7 +103,7 @@ function SearchInsightsSubTab({ scope, filters }: SubTabProps) {
           selectedTerm={data.videoTerm}
           onSelectTerm={data.setVideoTerm}
           videos={data.videosForVideoTerm.data}
-          loading={data.videosForVideoTerm.loading}
+          loading={data.videosForVideoTerm.loading || data.searchTermsByVideo.loading}
           error={data.videosForVideoTerm.error}
         />
         <SearchTermVideosDonutCard
@@ -113,7 +113,7 @@ function SearchInsightsSubTab({ scope, filters }: SubTabProps) {
           selectedTerm={data.shortTerm}
           onSelectTerm={data.setShortTerm}
           videos={data.videosForShortTerm.data}
-          loading={data.videosForShortTerm.loading}
+          loading={data.videosForShortTerm.loading || data.searchTermsByShort.loading}
           error={data.videosForShortTerm.error}
         />
       </div>

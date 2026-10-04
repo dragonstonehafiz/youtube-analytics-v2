@@ -61,7 +61,7 @@
       <h1>Frontend requests</h1>
       <p>This page shows every backend request the frontend makes, and when each one is sent.</p>
       <div class="meta-line">
-        <span>Source revision <code>820eb54</code></span>
+        <span>Source revision <code>50a2aed</code></span>
       </div>
     </header>
 
@@ -104,8 +104,7 @@
       </figure>
       <ul class="request-notes">
         <li>Title boxes wait 300 ms after typing stops.</li>
-        <li>Each tab and sub-tab sends its requests every time it opens, so moving between Analytics and Traffic Sources requests stats and uploads again. Arriving from Comments or Videos also re-requests the period years.</li>
-        <li>A dates, title or privacy change requests the top term's videos twice: old term, then new.</li>
+        <li>Each tab and sub-tab sends its requests every time it opens, so moving between Analytics and Traffic Sources requests stats and uploads again.</li>
         <li>Type set to Video or Short skips the other type's sidebar cards.</li>
         <li>An unknown ID still sends the open tab's requests; each returns 404.</li>
       </ul>
@@ -127,7 +126,7 @@
       <p>Three shared components fetch their own data instead of getting it from the page.</p>
       <div class="card-grid">
         <div class="card"><h3>SyncStatus</h3><p>Polls <code>/sync/status</code> every 5 seconds on every page.</p></div>
-        <div class="card"><h3>PeriodSelect</h3><p>Calls <code>/meta/date-range</code> every time it appears, to build its year options.</p></div>
+        <div class="card"><h3>PeriodSelect</h3><p>Calls <code>/meta/date-range</code> the first time it appears in a page load, to build its year options; later appearances and the Sync page reuse that answer.</p></div>
         <div class="card"><h3>CommentsTab</h3><p>The Comments tab. It calls the channel, video or playlist comment route and reloads when a filter changes.</p></div>
       </div>
     </section>
@@ -234,9 +233,7 @@
     <section id="requests-that-may-run-unnecessarily">
       <h2>Requests that may run unnecessarily</h2>
       <div class="card-grid">
-        <div class="card"><h3>Term videos load twice</h3><p>A filter change requests the top term's videos with the old term, then again with the new one.</p></div>
         <div class="card"><h3>Two status pollers on the Sync page</h3><p>The top navigation and the Sync page each poll <code>/sync/status</code>, so that page sends two every 5 seconds.</p></div>
-        <div class="card"><h3>Date range on every appearance</h3><p>The period dropdown requests <code>/meta/date-range</code> again each time a tab switch shows it.</p></div>
       </div>
     </section>
 

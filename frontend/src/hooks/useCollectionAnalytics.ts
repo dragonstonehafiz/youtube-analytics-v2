@@ -219,24 +219,28 @@ export function useSearchInsights(scope: CollectionScope, filters: CollectionFil
     return () => { active = false }
   }, [playlistId, startDate, endDate, title, privacyStatus])
 
-  // Each video card owns its own term selection independently.
+  // Each video card owns its own term selection independently. Every filter these requests use
+  // also reloads the term lists, so they run on the term and the list's loading flag only: once
+  // per filter change, after the new list lands, instead of first with the stale top term.
   useEffect(() => {
+    if (searchTermsByVideo.loading) return
     let active = true
-    const term = videoTermSelected || searchTermsByVideo.data[0]?.search_term
-    if (!term) { setVideosForVideoTerm(EMPTY_RESOLVED); return }
-    track(collectionApi(playlistId).videosBySearchTerm({ searchTerm: term, startDate, endDate, title, privacyStatus, contentType: 'video', limit: ALL_ROWS_LIMIT })
+    if (!videoTerm) { setVideosForVideoTerm(EMPTY_RESOLVED); return }
+    track(collectionApi(playlistId).videosBySearchTerm({ searchTerm: videoTerm, startDate, endDate, title, privacyStatus, contentType: 'video', limit: ALL_ROWS_LIMIT })
       .then(data => data.items ?? []), setVideosForVideoTerm, () => active, 'Could not load videos')
     return () => { active = false }
-  }, [playlistId, videoTermSelected, searchTermsByVideo.data, startDate, endDate, title, privacyStatus])
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [videoTerm, searchTermsByVideo.loading])
 
   useEffect(() => {
+    if (searchTermsByShort.loading) return
     let active = true
-    const term = shortTermSelected || searchTermsByShort.data[0]?.search_term
-    if (!term) { setVideosForShortTerm(EMPTY_RESOLVED); return }
-    track(collectionApi(playlistId).videosBySearchTerm({ searchTerm: term, startDate, endDate, title, privacyStatus, contentType: 'short', limit: ALL_ROWS_LIMIT })
+    if (!shortTerm) { setVideosForShortTerm(EMPTY_RESOLVED); return }
+    track(collectionApi(playlistId).videosBySearchTerm({ searchTerm: shortTerm, startDate, endDate, title, privacyStatus, contentType: 'short', limit: ALL_ROWS_LIMIT })
       .then(data => data.items ?? []), setVideosForShortTerm, () => active, 'Could not load videos')
     return () => { active = false }
-  }, [playlistId, shortTermSelected, searchTermsByShort.data, startDate, endDate, title, privacyStatus])
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [shortTerm, searchTermsByShort.loading])
 
   return {
     searchTerms, searchTermsByVideo, searchTermsByShort,

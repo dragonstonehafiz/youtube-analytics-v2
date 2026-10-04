@@ -1,6 +1,6 @@
 // @vitest-environment jsdom
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
-import { act, cleanup, fireEvent, render, screen, waitFor } from '@testing-library/react'
+import { act, cleanup, fireEvent, render, screen, waitFor, within } from '@testing-library/react'
 import { Link, MemoryRouter, Route, Routes, useLocation } from 'react-router-dom'
 
 vi.mock('@/api', () => ({
@@ -213,6 +213,35 @@ describe('Traffic Sources sub-tabs', () => {
     const contentTypes = mockGetVideosBySearchTerm.mock.calls.map(call => call[0].contentType)
     expect(contentTypes).toContain('video')
     expect(contentTypes).toContain('short')
+  })
+})
+
+describe('Search Insights term videos', () => {
+  const cats = { items: [{ search_term: 'cats', views: 10 }] }
+
+  it('waits for the reloaded term lists after a filter change, then requests each card once', async () => {
+    mockGetSearchTerms.mockResolvedValue(cats)
+    renderAnalytics('/analytics?tab=traffic-sources&ts_tab=search')
+    await waitFor(() => expect(mockGetVideosBySearchTerm).toHaveBeenCalledTimes(2))
+    mockGetVideosBySearchTerm.mockClear()
+
+    const resolvers: ((value: typeof cats) => void)[] = []
+    mockGetSearchTerms.mockImplementation(() => new Promise(resolve => { resolvers.push(resolve) }))
+    fireEvent.change(screen.getByLabelText('Start'), { target: { value: '2024-02-01' } })
+    await waitFor(() => expect(resolvers).toHaveLength(3))
+
+    expect(mockGetVideosBySearchTerm).not.toHaveBeenCalled()
+    const videoCard = screen.getByText('Top Videos by Search Term').closest('.search-videos-donut') as HTMLElement
+    expect(within(videoCard).queryByRole('status')).not.toBeNull()
+
+    await act(async () => { for (const resolve of resolvers) resolve(cats) })
+    await waitFor(() => expect(mockGetVideosBySearchTerm).toHaveBeenCalledTimes(2))
+    await act(async () => {})
+    expect(mockGetVideosBySearchTerm).toHaveBeenCalledTimes(2)
+    for (const [query] of mockGetVideosBySearchTerm.mock.calls) {
+      expect(query.searchTerm).toBe('cats')
+      expect(query.startDate).toBe('2024-02-01')
+    }
   })
 })
 

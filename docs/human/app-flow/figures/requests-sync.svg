@@ -73,7 +73,7 @@
 <g class="eager"><rect x="259.6" y="56.0" width="111.6" height="30" rx="6"/><text class="mono" x="271.6" y="71.0">/sync/status</text></g><text class="note" x="263.6" y="95.0">Sent: page open</text><text class="note" x="453.6" y="95.0">Reloads: every 5 s</text>
 <g class="tab"><rect x="38" y="112.0" width="78.4" height="30" rx="6"/><text x="50" y="127.0">Sync tab</text></g>
 <g class="card"><rect x="60" y="152.0" width="92.0" height="30" rx="6"/><text x="72" y="167.0">sync-table</text></g>
-<g class="eager"><rect x="259.6" y="152.0" width="140.8" height="30" rx="6"/><text class="mono" x="271.6" y="167.0">/meta/date-range</text></g><text class="note" x="263.6" y="191.0">Sent: page open</text><text class="note" x="453.6" y="191.0">Reloads: never</text>
+<g class="eager"><rect x="259.6" y="152.0" width="140.8" height="30" rx="6"/><text class="mono" x="271.6" y="167.0">/meta/date-range</text></g><text class="note" x="263.6" y="191.0">Sent: once per page load</text><text class="note" x="453.6" y="191.0">Reloads: never</text>
 <g class="card"><rect x="60" y="208.0" width="112.4" height="30" rx="6"/><text x="72" y="223.0">Sync selected</text></g>
 <g class="press"><rect x="259.6" y="208.0" width="155.4" height="30" rx="6"/><text class="mono" x="271.6" y="223.0">POST /sync/trigger</text></g><text class="note" x="263.6" y="247.0">Sent: button pressed</text><text class="note" x="453.6" y="247.0">Reloads: never</text>
 <g class="press-after"><rect x="259.6" y="264.0" width="111.6" height="30" rx="6"/><text class="mono" x="271.6" y="279.0">/sync/status</text></g><text class="note" x="263.6" y="303.0">Sent: sync accepted</text><text class="note" x="453.6" y="303.0">Reloads: never</text>

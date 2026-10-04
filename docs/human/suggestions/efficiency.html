@@ -54,7 +54,7 @@
       <h1>Efficiency</h1>
       <p>This page shows code that does more work than it needs to.</p>
       <div class="meta-line">
-        <span>Source revision <code>941e58a</code></span>
+        <span>Source revision <code>50a2aed</code></span>
       </div>
     </header>
 
@@ -109,24 +109,6 @@
           <dl>
             <dt>Where</dt><dd>Every data effect; there is no <code>AbortController</code> in <code>frontend/src</code></dd>
             <dt>Cost</dt><dd>Each filter, date or tab change leaves the previous requests running to completion on the backend.</dd>
-          </dl>
-        </article>
-
-        <article class="dup">
-          <div class="dup-head"><h3>Term videos load twice</h3><span class="dup-count">per filter change</span></div>
-          <p>A filter change requests the top term's videos with the old term, then again with the new one.</p>
-          <dl>
-            <dt>Where</dt><dd><code>Analytics</code>, <code>PlaylistAnalytics</code></dd>
-            <dt>Cost</dt><dd>Two extra requests per change, even when the top term hasn't changed.</dd>
-          </dl>
-        </article>
-
-        <article class="dup">
-          <div class="dup-head"><h3>Date range on every appearance</h3><span class="dup-count">per appearance</span></div>
-          <p>The period dropdown requests <code>/meta/date-range</code> each time it mounts.</p>
-          <dl>
-            <dt>Where</dt><dd><code>PeriodSelect</code> (switching tabs brings it back; <code>PlaylistAnalytics</code> has two), plus a separate request in <code>Sync</code></dd>
-            <dt>Cost</dt><dd>The same value fetched repeatedly.</dd>
           </dl>
         </article>
 

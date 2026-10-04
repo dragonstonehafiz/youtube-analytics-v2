@@ -265,6 +265,31 @@ describe('Traffic Sources sub-tabs (Search Insights)', () => {
   })
 })
 
+describe('Search Insights term videos', () => {
+  it('waits for the reloaded term lists after a filter change, then requests each card once', async () => {
+    const cats = { items: [{ search_term: 'cats', views: 10 }] }
+    mockGetPlaylistSearchTerms.mockResolvedValue(cats)
+    renderPlaylistAnalytics('/playlists/pl1?tab=traffic-sources&ts_tab=search')
+    await waitFor(() => expect(mockGetPlaylistVideosBySearchTerm).toHaveBeenCalledTimes(2))
+    mockGetPlaylistVideosBySearchTerm.mockClear()
+
+    const resolvers: ((value: typeof cats) => void)[] = []
+    mockGetPlaylistSearchTerms.mockImplementation(() => new Promise(resolve => { resolvers.push(resolve) }))
+    fireEvent.change(screen.getByLabelText('Start'), { target: { value: '2024-02-01' } })
+    await waitFor(() => expect(resolvers).toHaveLength(3))
+    expect(mockGetPlaylistVideosBySearchTerm).not.toHaveBeenCalled()
+
+    await act(async () => { for (const resolve of resolvers) resolve(cats) })
+    await waitFor(() => expect(mockGetPlaylistVideosBySearchTerm).toHaveBeenCalledTimes(2))
+    await act(async () => {})
+    expect(mockGetPlaylistVideosBySearchTerm).toHaveBeenCalledTimes(2)
+    for (const [id, query] of mockGetPlaylistVideosBySearchTerm.mock.calls) {
+      expect(id).toBe('pl1')
+      expect(query.startDate).toBe('2024-02-01')
+    }
+  })
+})
+
 describe('Related Videos sub-tab', () => {
   const mineRow = { referrer_video_id: 'ref-mine', title: 'My Video', thumbnail_url: null, referrer_own: true, views: 50 }
   const externalRow = { referrer_video_id: 'ref-ext', title: 'External Video', thumbnail_url: null, referrer_own: false, views: 30 }

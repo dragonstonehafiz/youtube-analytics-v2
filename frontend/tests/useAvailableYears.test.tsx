@@ -7,13 +7,17 @@ vi.mock('@/api', () => ({
 }))
 
 import { getDateRange } from '@/api'
-import { useAvailableYears } from '@/hooks/useAvailableYears'
 
 const mockGetDateRange = vi.mocked(getDateRange)
 
-beforeEach(() => {
+/** The hook from a fresh module, so each test starts without a cached year. */
+let useAvailableYears: typeof import('@/hooks/useAvailableYears').useAvailableYears
+
+beforeEach(async () => {
   vi.useFakeTimers({ shouldAdvanceTime: true })
   vi.setSystemTime(new Date('2026-10-03T12:00:00Z'))
+  vi.resetModules()
+  ;({ useAvailableYears } = await import('@/hooks/useAvailableYears'))
 })
 
 afterEach(() => {
@@ -51,5 +55,47 @@ describe('useAvailableYears', () => {
     resolve({ earliest_year: 2024 })
     await Promise.resolve()
     expect(result.current).toEqual([])
+  })
+
+  it('reuses the first response for later mounts without another request', async () => {
+    mockGetDateRange.mockResolvedValue({ earliest_year: 2024 })
+    const first = renderHook(() => useAvailableYears())
+    await waitFor(() => expect(first.result.current).toEqual([2026, 2025, 2024]))
+    first.unmount()
+
+    const second = renderHook(() => useAvailableYears())
+    await waitFor(() => expect(second.result.current).toEqual([2026, 2025, 2024]))
+    expect(mockGetDateRange).toHaveBeenCalledTimes(1)
+  })
+
+  it('shares one request between components mounted together', async () => {
+    mockGetDateRange.mockResolvedValue({ earliest_year: 2025 })
+    const a = renderHook(() => useAvailableYears())
+    const b = renderHook(() => useAvailableYears())
+    await waitFor(() => expect(b.result.current).toEqual([2026, 2025]))
+    expect(a.result.current).toEqual([2026, 2025])
+    expect(mockGetDateRange).toHaveBeenCalledTimes(1)
+  })
+
+  it('asks again on the next mount after a failure', async () => {
+    mockGetDateRange.mockRejectedValueOnce(new Error('boom')).mockResolvedValueOnce({ earliest_year: 2025 })
+    const first = renderHook(() => useAvailableYears())
+    await waitFor(() => expect(mockGetDateRange).toHaveBeenCalledTimes(1))
+    first.unmount()
+
+    const second = renderHook(() => useAvailableYears())
+    await waitFor(() => expect(second.result.current).toEqual([2026, 2025]))
+    expect(mockGetDateRange).toHaveBeenCalledTimes(2)
+  })
+
+  it('asks again on the next mount when nothing was stored yet', async () => {
+    mockGetDateRange.mockResolvedValueOnce({ earliest_year: null }).mockResolvedValueOnce({ earliest_year: 2025 })
+    const first = renderHook(() => useAvailableYears())
+    await waitFor(() => expect(mockGetDateRange).toHaveBeenCalledTimes(1))
+    first.unmount()
+
+    const second = renderHook(() => useAvailableYears())
+    await waitFor(() => expect(second.result.current).toEqual([2026, 2025]))
+    expect(mockGetDateRange).toHaveBeenCalledTimes(2)
   })
 })
