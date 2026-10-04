@@ -59,8 +59,8 @@ class FromDictTest(unittest.TestCase):
 
     def test_unknown_keys_are_rejected(self) -> None:
         with self.assertRaises(ValueError) as raised:
-            Video.from_dict({"id": "v-1", "total_revenue_sgd": 1.0})
-        self.assertIn("total_revenue_sgd", str(raised.exception))
+            Video.from_dict({"id": "v-1", "total_watch_time_hours": 1.0})
+        self.assertIn("total_watch_time_hours", str(raised.exception))
 
     def test_the_source_mapping_is_not_mutated(self) -> None:
         source = {"id": "v-1", "title": "Alpha"}

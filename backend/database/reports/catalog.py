@@ -1,4 +1,4 @@
-"""Video and playlist listings, details, playlist membership and owned-video worklists."""
+"""Video and playlist listings, details, playlist membership, lifetime earnings and owned-video worklists."""
 
 from __future__ import annotations
 
@@ -12,11 +12,10 @@ from ..reader import Query, joined_columns
 from ..tables import field_names
 from ._conditions import published_bounds, video_conditions
 
-_PLAYLIST_TOTAL_VALUES = ("last_item_added", "total_views", "total_earnings_sgd")
+_PLAYLIST_TOTAL_VALUES = ("last_item_added", "total_views")
 
-# Lifetime totals a video listing can select, with the SQL that computes each over aliases va / fx.
+# Lifetime totals a video listing can select, with the SQL that computes each over alias va.
 _VIDEO_TOTALS = {
-    "total_revenue_sgd": "COALESCE(SUM(va.estimated_revenue * fx.usd_to_sgd), 0)",
     "total_watch_time_hours": "COALESCE(SUM(va.watch_time_minutes), 0) / 60.0",
 }
 _DEFAULT_VIDEO_FIELDS = (*field_names(Video), *_VIDEO_TOTALS)
@@ -25,7 +24,7 @@ _VIDEO_SORT_COLUMNS = {
     "published_at": "v.published_at",
     "view_count": "v.view_count",
     "comment_count": "v.comment_count",
-    "total_revenue_sgd": _VIDEO_TOTALS["total_revenue_sgd"],
+    "total_revenue_sgd": "v.total_revenue_sgd",
 }
 
 _PLAYLIST_SORT_COLUMNS = {
@@ -33,20 +32,12 @@ _PLAYLIST_SORT_COLUMNS = {
     "item_count": "playlists__item_count",
     "last_item_added": "last_item_added",
     "total_views": "total_views",
-    "total_earnings_sgd": "total_earnings_sgd",
+    "total_earnings_sgd": "playlists__total_earnings_sgd",
 }
 
 _PLAYLIST_TOTALS_SQL = """
     MAX(v.published_at) AS last_item_added,
-    COALESCE(SUM(v.view_count), 0) AS total_views,
-    COALESCE((
-        SELECT SUM(va.estimated_revenue * fx.usd_to_sgd)
-        FROM playlist_items pi2
-        JOIN videos v2 ON v2.id = pi2.video_id AND v2.own = 1
-        JOIN video_analytics va ON va.video_id = pi2.video_id
-        JOIN fx_rates fx ON fx.date = DATE(va.date)
-        WHERE pi2.playlist_id = p.id
-    ), 0) AS total_earnings_sgd
+    COALESCE(SUM(v.view_count), 0) AS total_views
 """
 
 
@@ -54,17 +45,13 @@ def _video_items(
     fields: Sequence[str], where: str, params: list[object], sort_by: str, sort_dir: str,
     page_size: int | None, offset: int, conn: sqlite3.Connection | None = None,
 ) -> list[dict]:
-    """Read owned videos as the requested fields, joining analytics/FX only when a total is selected or sorted."""
+    """Read owned videos as the requested fields, joining analytics only when a computed total is selected or sorted."""
     columns = [name for name in fields if name not in _VIDEO_TOTALS]
     totals = [name for name in fields if name in _VIDEO_TOTALS]
     computed = {*totals, *({sort_by} & _VIDEO_SORT_COLUMNS.keys())} & _VIDEO_TOTALS.keys()
     select = [joined_columns(Video, "v", columns)] if columns else []
     select += [f"{_VIDEO_TOTALS[name]} AS {name}" for name in totals]
-    joins = ""
-    if computed:
-        joins = "LEFT JOIN video_analytics va ON va.video_id = v.id"
-    if "total_revenue_sgd" in computed:
-        joins += " LEFT JOIN fx_rates fx ON fx.date = va.date"
+    joins = "LEFT JOIN video_analytics va ON va.video_id = v.id" if computed else ""
     order = f"{_VIDEO_SORT_COLUMNS.get(sort_by, 'v.published_at')} {'ASC' if sort_dir == 'asc' else 'DESC'}"
     limit, limit_params = ("LIMIT ? OFFSET ?", [page_size, offset]) if page_size is not None else ("", [])
     query = Query(
@@ -193,6 +180,23 @@ def playlist_video_ids(playlist_id: str) -> list[str]:
         (playlist_id,),
     )
     return [video.id for video in reader.fetch(Video, query) if video.id is not None]
+
+
+def lifetime_earnings(video_ids: Collection[str]) -> float:
+    """Summed daily revenue times that day's USD/SGD rate across distinct videos; 0 when none have any."""
+    ids = sorted(set(video_ids))
+    if not ids:
+        return 0.0
+    query = Query(
+        f"""
+        SELECT COALESCE(SUM(va.estimated_revenue * fx.usd_to_sgd), 0)
+        FROM video_analytics va
+        JOIN fx_rates fx ON fx.date = va.date
+        WHERE va.video_id IN ({', '.join('?' for _ in ids)})
+        """,
+        tuple(ids),
+    )
+    return float(reader.fetch_scalar(query))
 
 
 def owned_video_worklist(published_through: str | None = None) -> list[Video]:

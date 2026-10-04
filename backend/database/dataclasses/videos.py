@@ -23,3 +23,4 @@ class Video(Row):
     comment_count: int | None = None
     own: bool | None = None
     updated_at: str | None = None
+    total_revenue_sgd: float | None = None

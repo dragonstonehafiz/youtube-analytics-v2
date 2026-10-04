@@ -60,7 +60,7 @@
       <h1>Data storage and access</h1>
       <p>This page shows where the data lives, how the backend reads it into Python objects, writes those objects back, and how read results become the JSON the frontend receives.</p>
       <div class="meta-line">
-        <span>Source revision <code>53b29e4</code></span>
+        <span>Source revision <code>9581ccf</code></span>
       </div>
     </header>
 
@@ -232,7 +232,7 @@ writer.delete(Video, where=where)            # DELETE FROM videos WHERE videos."
 
     <section id="aggregates">
       <h2>Aggregates</h2>
-      <p>Totals such as a search term's views or a video's earnings for a period are not stored in the database. SQLite calculates them each time a request asks, with <code>SUM</code> and <code>GROUP BY</code>, and the result is sent to the frontend in one of two shapes.</p>
+      <p>Totals such as a search term's views or a video's earnings for a period are not stored in the database. Lifetime earnings are the exception: each video and playlist stores its own, updated by the Video Analytics sync. SQLite calculates the other totals each time a request asks, with <code>SUM</code> and <code>GROUP BY</code>, and the result is sent to the frontend in one of two shapes.</p>
       <div class="table-wrap fixed-table">
         <table>
           <caption>Where a calculated total ends up</caption>
@@ -267,13 +267,14 @@ grouped = reader.group_by(rows, (VideoTrafficSource, "traffic_source_type"), lim
       <p>One video's trip through <code>GET /videos/published</code>, which the charts use to mark upload days.</p>
 
       <h3>1 · Stored in SQLite</h3>
-      <p>The full row in <code>videos</code>, all 14 columns.</p>
+      <p>The full row in <code>videos</code>, all 15 columns.</p>
 <pre class="code"><code>id='v-1', channel_id='c1', title='Alpha Video', description='', published_at='2024-01-01T00:00:00Z',
 duration_seconds=100, thumbnail_url='', content_type='video', privacy_status='public',
-view_count=100, like_count=10, comment_count=2, own=1, updated_at='2024-06-01T00:00:00+00:00'</code></pre>
+view_count=100, like_count=10, comment_count=2, own=1, updated_at='2024-06-01T00:00:00+00:00',
+total_revenue_sgd=2.7</code></pre>
 
       <h3>2 · Read into a <code>Video</code></h3>
-      <p>The route calls <code>catalog.video_listing()</code> with the five fields the chart needs and no page size. None of them is a lifetime total, so the query reads <code>videos</code> alone, with no analytics join, and the other nine fields stay <code>None</code>.</p>
+      <p>The route calls <code>catalog.video_listing()</code> with the five fields the chart needs and no page size. None of them is a calculated total, so the query reads <code>videos</code> alone, with no analytics join, and the other ten fields stay <code>None</code>.</p>
 <pre class="code"><code>rows = reader.fetch_joined(query, (Video,))
 
 row[Video] == Video(id="v-1", title="Alpha Video", published_at="2024-01-01T00:00:00Z", thumbnail_url="",

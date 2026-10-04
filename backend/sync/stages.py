@@ -340,6 +340,9 @@ def _sync_daily_stage(
                 counts.rows_written += 1
             status.raise_if_stopping()
             writer.write_many(_coverage_rows(collector, video_id, months))
+        if row_class is VideoAnalytics:
+            earnings = catalog.lifetime_earnings([video_id])
+            writer.update(Video(total_revenue_sgd=earnings), where=[("id", "=", video_id)])
         _logger.debug(
             "%s %d/%d video=%s rows=%d title=%r",
             collector, i, total, video_id, counts.rows_fetched - rows_before, title,
@@ -347,11 +350,20 @@ def _sync_daily_stage(
 
 
 def sync_video_analytics(scope: str, year: int | None, counts: SyncCounts) -> None:
-    """Sync daily analytics for every eligible owned video."""
+    """Sync daily analytics for every eligible owned video, then refresh every playlist's lifetime earnings."""
     _sync_daily_stage(
         "video_analytics", "Syncing video analytics", youtube.iter_video_analytics, VideoAnalytics,
         scope, year, counts,
     )
+    _store_playlist_earnings()
+
+
+def _store_playlist_earnings() -> None:
+    """Save each playlist's lifetime earnings summed over its distinct owned member videos."""
+    for playlist in reader.select(Playlist, ("id",)):
+        assert playlist.id is not None
+        earnings = catalog.lifetime_earnings(catalog.playlist_video_ids(playlist.id))
+        writer.update(Playlist(total_earnings_sgd=earnings), where=[("id", "=", playlist.id)])
 
 
 def sync_video_traffic_sources(scope: str, year: int | None, counts: SyncCounts) -> None:

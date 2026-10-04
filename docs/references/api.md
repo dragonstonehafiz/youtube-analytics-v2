@@ -45,7 +45,8 @@ GET  /videos
    title, start_date, end_date, content_type, privacy_status
   sort_by ∈ published_at | view_count | comment_count | total_revenue_sgd
   → { items: Video[], total, page, page_size }
-  Video.total_revenue_sgd / total_watch_time_hours are lifetime sums (no date filter applied) — see database.md
+  Video.total_revenue_sgd / total_watch_time_hours are lifetime sums (no date filter applied); earnings are stored and
+  updated by the video_analytics sync stage — see database.md
 
 GET  /videos/stats
   ?title, start_date, end_date, content_type, privacy_status
@@ -91,7 +92,7 @@ GET  /playlists
   ?page=1, page_size=50 (max 200), sort_by=last_item_added, sort_dir=desc, title, start_date, end_date
   sort_by ∈ last_item_added | published_at | item_count | total_views | total_earnings_sgd
   → { items: Playlist[], total, page, page_size }
-  Each row includes last_item_added, total_views, total_earnings_sgd (aggregated, see database.md)
+  Each row includes last_item_added, total_views (aggregated), and the stored total_earnings_sgd — see database.md
 
 GET  /playlists/{playlist_id}
   → { item: Playlist } | 404   # same aggregated fields as above

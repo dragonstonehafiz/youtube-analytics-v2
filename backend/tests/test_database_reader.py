@@ -97,7 +97,7 @@ class ToDictTest(unittest.TestCase):
 
     def test_unknown_field_is_rejected(self) -> None:
         with self.assertRaises(ValueError):
-            Video(id="abc").to_dict(("id", "total_revenue_sgd"))
+            Video(id="abc").to_dict(("id", "total_watch_time_hours"))
 
     def test_falsy_values_survive_and_encode(self) -> None:
         video = Video(id="abc", description="", view_count=0, own=False)
@@ -295,8 +295,8 @@ class FetchTest(ReaderTestCase):
 
     def test_unexpected_alias_is_reported(self) -> None:
         with self.assertRaises(ValueError) as raised:
-            reader.fetch(Video, Query("SELECT v.id, 1 AS total_revenue_sgd FROM videos v"))
-        self.assertIn("total_revenue_sgd", str(raised.exception))
+            reader.fetch(Video, Query("SELECT v.id, 1 AS total_watch_time_hours FROM videos v"))
+        self.assertIn("total_watch_time_hours", str(raised.exception))
 
     def test_empty_aggregate_scalar_is_none(self) -> None:
         self.assertIsNone(reader.fetch_scalar(Query("SELECT MAX(date) FROM video_analytics")))

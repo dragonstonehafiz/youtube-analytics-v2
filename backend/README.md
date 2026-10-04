@@ -85,6 +85,7 @@ backend/
   scripts/             # standalone, one-time, idempotent migrations for pre-existing databases
     issue-48-migration.py
     issue-62-migration.py
+    lifetime-earnings-migration.py
 
   tests/               # stdlib unittest suite (database, API contracts, sync, logging) run via pytest
     conftest.py          # autouse fixture that fails closed on real network/OAuth access

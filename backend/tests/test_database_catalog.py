@@ -19,6 +19,7 @@ from tests.support import (
     make_playlist_item,
     make_video,
     make_video_analytics,
+    store_lifetime_earnings,
 )
 
 _client = create_test_client(videos_router, playlists_router)
@@ -116,6 +117,7 @@ class GetAllVideosSortTest(VideoCatalogTestCase):
                 "estimated_revenue": revenue, "average_view_duration_seconds": 1, "average_view_percentage": 1.0,
                 "likes": 0, "subscribers_gained": 0, "subscribers_lost": 0,
             }, "updated_at": FIXED_NOW}))
+        store_lifetime_earnings()
         asc_items, _ = _page("/videos", page_size=10, sort_by="total_revenue_sgd", sort_dir="asc")
         desc_items, _ = _page("/videos", page_size=10, sort_by="total_revenue_sgd", sort_dir="desc")
         self.assertEqual([i["id"] for i in asc_items], ["v-4", "v-1", "v-3", "v-2"])
@@ -211,10 +213,11 @@ class VideoListingFieldsTest(VideoCatalogTestCase):
         writer.write(make_video_analytics("v-1", "2024-02-01", watch_time_minutes=60, estimated_revenue=5.0))
         writer.write(make_video_analytics("v-1", "2024-02-02", watch_time_minutes=30, estimated_revenue=7.0))
         writer.write(make_video_analytics("v-2", "2024-02-01", watch_time_minutes=120, estimated_revenue=1.0))
+        store_lifetime_earnings()
 
-    def test_default_fields_are_every_column_plus_lifetime_totals(self) -> None:
+    def test_default_fields_are_every_column_plus_lifetime_watch_time(self) -> None:
         body = catalog.video_listing()
-        expected = [*field_names(Video), "total_revenue_sgd", "total_watch_time_hours"]
+        expected = [*field_names(Video), "total_watch_time_hours"]
         self.assertEqual(set(body), {"items", "total", "page", "page_size"})
         self.assertEqual([list(item) for item in body["items"]], [expected] * 4)
 
@@ -246,13 +249,22 @@ class VideoListingFieldsTest(VideoCatalogTestCase):
         items = catalog.video_listing(fields=("id", "published_at"), video_ids=["v-5"])["items"]
         self.assertEqual(items, [{"id": "v-5", "published_at": None}])
 
-    def test_sorting_by_an_unselected_total_computes_it_without_returning_it(self) -> None:
+    def test_stored_earnings_are_read_and_sorted_without_analytics_joins(self) -> None:
         body, statements = _traced_listing(
-            fields=("id",), sort_by="total_revenue_sgd", sort_dir="desc", video_ids=["v-3", "v-2", "v-1"],
+            fields=("id", "total_revenue_sgd"), sort_by="total_revenue_sgd", sort_dir="desc",
+            video_ids=["v-3", "v-2", "v-1"],
         )
-        self.assertEqual([i["id"] for i in body["items"]], ["v-1", "v-2", "v-3"])
-        self.assertEqual(set(body["items"][0]), {"id"})
-        self.assertIn("fx_rates", statements[-1])
+        self.assertEqual(
+            body["items"],
+            [{"id": "v-1", "total_revenue_sgd": 10.0}, {"id": "v-2", "total_revenue_sgd": 2.0},
+             {"id": "v-3", "total_revenue_sgd": 0}],
+        )
+        self.assertFalse(any("video_analytics" in sql or "fx_rates" in sql for sql in statements))
+
+    def test_sorting_by_unselected_earnings_does_not_return_it(self) -> None:
+        items = catalog.video_listing(fields=("id",), sort_by="total_revenue_sgd", sort_dir="desc")["items"]
+        self.assertEqual([i["id"] for i in items][:2], ["v-1", "v-2"])
+        self.assertEqual(set(items[0]), {"id"})
 
     def test_duplicate_fields_yield_one_key(self) -> None:
         items = catalog.video_listing(fields=("id", "id"), video_ids=["v-1"])["items"]
@@ -363,6 +375,7 @@ class PlaylistAggregateSortTest(IsolatedDatabaseTestCase):
                 "estimated_revenue": revenue, "average_view_duration_seconds": 1, "average_view_percentage": 1.0,
                 "likes": 0, "subscribers_gained": 0, "subscribers_lost": 0,
             }, "updated_at": FIXED_NOW}))
+        store_lifetime_earnings()
 
     def test_last_item_added_sorts_both_directions(self) -> None:
         asc, _ = _page("/playlists", sort_by="last_item_added", sort_dir="asc")
@@ -427,6 +440,7 @@ class GetPlaylistVideosTest(PlaylistCatalogTestCase):
         writer.write(make_playlist_item("pi-dup", "p-1", "v-1", 2))
         writer.write(make_fx_rate("2024-01-05", 1.5))
         writer.write(make_video_analytics("v-1", "2024-01-05", watch_time_minutes=60, estimated_revenue=2.0))
+        store_lifetime_earnings()
         items, total = _page("/playlists/p-1/videos")
         self.assertEqual(total, 2)
         self.assertEqual(sorted(i["id"] for i in items), ["v-1", "v-2"])

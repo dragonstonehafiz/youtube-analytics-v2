@@ -233,14 +233,17 @@ Comments has no period or year selection from the user, so `sync_comments` calls
   - `"year"`/`"all"`: the single existing scoped range (unchanged from before coverage), with `months_to_mark` set to every month it actually spans.
 - If a video has no non-empty request at all (fully covered history plus no publish-date-eligible previous/current month), it's skipped entirely via `continue` — **zero API calls** for that video, logged once as `reason=empty_range`, not per request.
 - For each request: the generator/write loop runs (`iter_video_analytics()` → `writer.write(VideoAnalytics.from_dict(...))` per row), then — only after that request's fetch and every write succeed — `writer.write_many(_coverage_rows("video_analytics", video_id, months_to_mark))` marks its months complete, including when the generator yielded zero rows for some or all of them. A fetch, pagination, upsert, or cancellation failure anywhere in a request leaves that request's months uncovered; earlier requests in the same video (or earlier videos) keep their coverage, so a later Incremental run resumes at the failure rather than restarting all successful work.
+- After a video's last request and coverage write, `writer.update()` saves `videos.total_revenue_sgd = catalog.lifetime_earnings([video_id])` before the next video starts. It covers all of the video's stored analytics, whatever the scope, and is not counted in `rows_written`. A skipped video keeps its stored total.
 - Both `continue` branches (no publish date, empty range) and the per-video row count emit a sync-only `DEBUG` record — see [Sync logging](#sync-logging). A prefiltered-out video emits none of these; it never entered the loop.
+
+Only after `_sync_daily_stage()` returns normally, `_store_playlist_earnings()` reads every playlist and saves `playlists.total_earnings_sgd = catalog.lifetime_earnings(catalog.playlist_video_ids(playlist_id))`. A failed or cancelled stage leaves playlist totals unchanged, and the video totals it already saved stay. No other stage changes either total, so a playlist membership change, a pruned video, or a new FX rate is reflected at the next successful Video Analytics run (see `database.md`).
 
 ## Traffic-source synchronization
 
 `sync_video_traffic_sources(scope, year, counts)` (`sync/stages.py`) runs the same `_sync_daily_stage()` loop with collector `video_traffic_sources`, fetcher `iter_video_traffic_sources()`, and row class `VideoTrafficSource`:
 
 - Same prefiltered-worklist behavior, same `_video_period_requests("video_traffic_sources", ...)` selection/coalescing, and the same per-request coverage-write-after-success behavior as analytics — see [Analytics synchronization](#analytics-synchronization) and [Shared monthly coverage selection](#shared-monthly-coverage-selection). The two stages track coverage under independent collector names (`video_analytics` vs. `video_traffic_sources`), so one's coverage can never hide the other's work.
-- Same per-video `DEBUG` detail records as analytics — see [Sync logging](#sync-logging).
+- Same per-video `DEBUG` detail records as analytics — see [Sync logging](#sync-logging). It never updates stored earnings.
 
 ## FX-rate synchronization
 

@@ -115,6 +115,7 @@ indefinitely and are safe to delete between runs.
 | `schema.sql` | SQLite schema definition (12 tables) — see `database.md` |
 | `scripts/issue-48-migration.py` | Standalone, one-time migration adding `videos.own` to a pre-existing database — not run by `init_db()` (see `database.md`) |
 | `scripts/issue-62-migration.py` | Standalone, one-time `sync_coverage` backfill for a pre-existing database — not run by `init_db()` (see `database.md`) |
+| `scripts/lifetime-earnings-migration.py` | Standalone, rerunnable addition and backfill of the stored lifetime-earnings columns for a pre-existing database — not run by `init_db()` (see `database.md`) |
 
 Each of `routes/`, `sync/`, `youtube/`, and `database/` re-exports its public callables from its package `__init__.py`, so other modules keep importing them as `import database`, `import sync`, `import youtube`, `from routes import router` — the split is internal. The exception is `database/reports/`, whose modules callers import explicitly (`from database.reports import catalog`).
 
@@ -214,6 +215,7 @@ backend/
   scripts/
     issue-48-migration.py    # standalone one-time migration adding videos.own
     issue-62-migration.py    # standalone one-time sync_coverage backfill
+    lifetime-earnings-migration.py  # standalone stored lifetime-earnings columns and backfill
 
   secrets/
     token.json           # OAuth token; auto-deleted on any credential-refresh failure, re-created on next auth

@@ -16,3 +16,4 @@ class Playlist(Row):
     thumbnail_url: str | None = None
     item_count: int | None = None
     updated_at: str | None = None
+    total_earnings_sgd: float | None = None

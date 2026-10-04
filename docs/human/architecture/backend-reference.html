@@ -55,7 +55,7 @@
       <h1>Backend reference</h1>
       <p>This page shows what each backend file does and which functions each API route calls.</p>
       <div class="meta-line">
-        <span>Source revision <code>8b641a8</code></span>
+        <span>Source revision <code>9581ccf</code></span>
       </div>
     </header>
 
@@ -125,6 +125,7 @@
         <dt><code>schema.sql</code></dt><dd>Defines the database tables.</dd>
         <dt><code>scripts/issue-48-migration.py</code></dt><dd>Adds the <code>videos.own</code> column to an older database.</dd>
         <dt><code>scripts/issue-62-migration.py</code></dt><dd>Fills in sync coverage for an older database.</dd>
+        <dt><code>scripts/lifetime-earnings-migration.py</code></dt><dd>Adds the stored lifetime earnings columns to an older database and fills them.</dd>
       </dl>
       </div>
     </section>
@@ -138,8 +139,8 @@
         <p>Handled in <code>routes/videos.py</code> and <code>routes/metadata.py</code>.</p>
         <dl class="returns-list">
           <dt class="col-head">Read</dt><dd class="col-head">Returns</dd><dd class="col-head">Used by</dd>
-          <dt><code>catalog.video_listing</code></dt><dd>Videos as the chosen fields, by default every column plus lifetime earnings and watch hours, one page at a time or all at once.</dd><dd class="used-by"><code>GET /videos</code> (one page)<br><code>GET /playlists/{id}/videos</code> (the playlist's video IDs, one page)<br><code>GET /videos/published</code> (five fields, all matches, oldest first)</dd>
-          <dt><code>catalog.video_detail</code></dt><dd>One video with its lifetime earnings and watch hours.</dd><dd class="used-by"><code>GET /videos/{id}</code></dd>
+          <dt><code>catalog.video_listing</code></dt><dd>Videos as the chosen fields, by default every column, including stored lifetime earnings, plus watch hours, one page at a time or all at once.</dd><dd class="used-by"><code>GET /videos</code> (one page)<br><code>GET /playlists/{id}/videos</code> (the playlist's video IDs, one page)<br><code>GET /videos/published</code> (five fields, all matches, oldest first)</dd>
+          <dt><code>catalog.video_detail</code></dt><dd>One video with its stored lifetime earnings and watch hours.</dd><dd class="used-by"><code>GET /videos/{id}</code></dd>
           <dt><code>video_statistics.get_video_stats</code></dt><dd>The stats bar numbers: legacy and new video counts, views and earnings, plus comment and privacy totals.</dd><dd class="used-by"><code>GET /videos/stats</code><br><code>GET /playlists/{id}/videos/stats</code> (the playlist's video IDs)</dd>
           <dt><code>require_owned_video</code></dt><dd>Returns 404 unless the video is one of this channel's.</dd><dd class="used-by">404 check: <code>GET /videos/{id}/analytics</code>, <code>/videos/{id}/traffic-sources</code>, <code>/analytics/videos/{id}/search-insights</code>, <code>/analytics/videos/{id}/related-videos/referrers</code>, <code>/comments/videos/{id}</code></dd>
           <dt><code>reader.scalar(Video, "MIN", "published_at")</code></dt><dd>The earliest publish year, for the year dropdowns.</dd><dd class="used-by"><code>GET /meta/date-range</code></dd>
@@ -150,8 +151,8 @@
         <p>Handled in <code>routes/playlists.py</code>, <code>routes/videos.py</code> and <code>routes/video_scope.py</code>.</p>
         <dl class="returns-list">
           <dt class="col-head">Read</dt><dd class="col-head">Returns</dd><dd class="col-head">Used by</dd>
-          <dt><code>catalog.playlist_listing</code></dt><dd>One page of playlists with their total views and earnings.</dd><dd class="used-by"><code>GET /playlists</code></dd>
-          <dt><code>catalog.playlist_detail</code></dt><dd>One playlist with its total views and earnings.</dd><dd class="used-by"><code>GET /playlists/{id}</code></dd>
+          <dt><code>catalog.playlist_listing</code></dt><dd>One page of playlists with their total views and stored earnings.</dd><dd class="used-by"><code>GET /playlists</code></dd>
+          <dt><code>catalog.playlist_detail</code></dt><dd>One playlist with its total views and stored earnings.</dd><dd class="used-by"><code>GET /playlists/{id}</code></dd>
           <dt><code>require_playlist</code></dt><dd>Returns 404 if the playlist doesn't exist.</dd><dd class="used-by">404 check: <code>/comments/playlists/{id}</code>, <code>/videos/published</code> with a playlist ID, and every playlist endpoint that uses <code>scope_video_ids</code></dd>
           <dt><code>catalog.playlist_video_ids</code></dt><dd>The IDs of the channel's videos in a playlist.</dd><dd class="used-by"><code>GET /playlists/{id}/videos/stats</code><br><code>GET /playlists/{id}/videos</code><br>every <code>GET /analytics/playlists/{id}…</code> endpoint<br><code>GET /videos/published</code> with a playlist ID</dd>
         </dl>

@@ -54,7 +54,7 @@
       <h1>Efficiency</h1>
       <p>This page shows code that does more work than it needs to.</p>
       <div class="meta-line">
-        <span>Source revision <code>53b29e4</code></span>
+        <span>Source revision <code>9581ccf</code></span>
       </div>
     </header>
 
@@ -79,20 +79,11 @@
       <div class="dup-list">
 
         <article class="dup">
-          <div class="dup-head"><h3>Lifetime earnings recomputed on every read</h3><span class="dup-count">per request</span></div>
-          <p>Lifetime earnings are not stored, so each list and detail read that returns or sorts by them sums every daily analytics row again.</p>
-          <dl>
-            <dt>Where</dt><dd><code>video_listing</code> (video list, playlist videos), <code>video_detail</code>, <code>playlist_listing</code> and <code>playlist_detail</code> in <code>database/reports/catalog.py</code></dd>
-            <dt>Cost</dt><dd>Work that grows with all analytics rows, for totals that only change after a sync.</dd>
-          </dl>
-        </article>
-
-        <article class="dup">
           <div class="dup-head"><h3>Playlist list runs its aggregate twice</h3><span class="dup-count">per request</span></div>
           <p><code>catalog.playlist_listing</code> puts the full grouped query inside both the <code>COUNT(*)</code> and the page query, and runs both on one connection.</p>
           <dl>
             <dt>Where</dt><dd><code>database/reports/catalog.py</code>, behind <code>GET /playlists</code></dd>
-            <dt>Cost</dt><dd>Every join and subquery in that query runs twice per request.</dd>
+            <dt>Cost</dt><dd>Every join in that query runs twice per request.</dd>
           </dl>
         </article>
 

@@ -9,7 +9,7 @@ Persistence layer, schema, row dataclasses, the shared reader and writer, and qu
 - `backend/schema.sql`
 - `backend/database/dataclasses/` (one row dataclass per table), `backend/database/tables.py`, `backend/database/filters.py`, `backend/database/reader.py`, `backend/database/writer.py`, `backend/database/reports/`
 - `backend/database/connection.py`
-- `backend/scripts/issue-48-migration.py`, `backend/scripts/issue-62-migration.py` — standalone, one-time migrations for pre-existing databases (see [Compatibility constraints](#compatibility-constraints)); neither is run by `init_db()`
+- `backend/scripts/issue-48-migration.py`, `backend/scripts/issue-62-migration.py`, `backend/scripts/lifetime-earnings-migration.py` — standalone, one-time migrations for pre-existing databases (see [Compatibility constraints](#compatibility-constraints) and [Stored lifetime earnings](#stored-lifetime-earnings)); none is run by `init_db()`
 
 ## Contents
 
@@ -18,6 +18,7 @@ Persistence layer, schema, row dataclasses, the shared reader and writer, and qu
 - [Row dataclasses, reader, and writer](#row-dataclasses-reader-and-writer)
 - [Ownership boundary](#ownership-boundary)
 - [Sync coverage](#sync-coverage)
+- [Stored lifetime earnings](#stored-lifetime-earnings)
 - [Relationships and deletion behavior](#relationships-and-deletion-behavior)
 - [Timestamp behavior](#timestamp-behavior)
 - [Query conventions](#query-conventions)
@@ -41,19 +42,23 @@ Twelve tables:
 
 ```sql
 videos                  -- id, channel_id, title, description, published_at, duration_seconds, thumbnail_url,
-                        --   content_type, privacy_status, view_count, like_count, comment_count, own, updated_at
+                        --   content_type, privacy_status, view_count, like_count, comment_count, own, updated_at,
+                        --   total_revenue_sgd
                         --   channel_id is the owning YouTube channel ID, used by sync/stages.py::sync_videos()
                         --   to filter playlist-only candidates to this channel's own videos (see sync.md)
                         --   own is INTEGER NOT NULL DEFAULT 1 CHECK (own IN (0, 1)) — the ownership boundary
                         --   (see below); the reader's registered converter turns every selected own into a
                         --   Python bool (see Row dataclasses, reader, and writer)
+                        --   total_revenue_sgd is REAL NOT NULL DEFAULT 0 — stored lifetime earnings (see Stored
+                        --   lifetime earnings)
 video_analytics         -- video_id, date, views, watch_time_minutes, estimated_revenue,
                         --   average_view_duration_seconds, average_view_percentage,
                         --   likes, subscribers_gained, subscribers_lost, updated_at
                         --   PRIMARY KEY (video_id, date)
 video_traffic_sources   -- video_id, date, traffic_source_type, views, watch_time_minutes, updated_at
                         --   PRIMARY KEY (video_id, date, traffic_source_type)
-playlists               -- id, title, description, published_at, thumbnail_url, item_count, updated_at
+playlists               -- id, title, description, published_at, thumbnail_url, item_count, updated_at,
+                        --   total_earnings_sgd (REAL NOT NULL DEFAULT 0, stored lifetime earnings)
 playlist_items          -- id, playlist_id, video_id, position, updated_at
 comment_authors         -- id, youtube_channel_id, display_name, profile_image_url, channel_url, updated_at
                         --   id is namespace-prefixed: "channel:<youtube channel id>" when the commenter's
@@ -229,9 +234,10 @@ Transactions (upserts, updates, and deletes alike):
 | | `related_video_referrers(..., video_ids=None, own=None, limit=None)` | `{items, total_named_views}` |
 | | `related_video_destinations(referrer_video_id, ..., limit=None, video_ids=None)` | `list[dict]` of `target_video_id`, `title`, `thumbnail_url`, `content_type`, `views` |
 | `catalog.py` | `video_listing(*, fields=None, page=1, page_size=50, ..., video_ids=None)` | Owned videos as the chosen `fields` (see [Video listing fields](#video-listing-fields)): `{items, total, page, page_size}` for a page, or `{items}` with every match and no count when `page_size=None` |
-| | `playlist_listing(...)` | `{items, total, page, page_size}` of playlists with membership totals |
+| | `playlist_listing(...)` | `{items, total, page, page_size}` of playlists with stored earnings and membership totals |
 | | `video_detail(video_id)` / `playlist_detail(playlist_id)` | the item `dict`, or `None` |
 | | `playlist_video_ids(playlist_id)` | `list[str]` |
+| | `lifetime_earnings(video_ids)` | `float`: summed `estimated_revenue * usd_to_sgd` over the distinct videos, `0.0` when none have any |
 | | `owned_video_worklist(published_through=None)` | `list[Video]` holding `id`, `title`, `published_at` |
 | `comments.py` | `comment_feed(*, page, page_size, sort_by, ..., video_id=None, playlist_id=None)` | `{items, total, page, page_size}` |
 | `video_statistics.py` | `get_video_stats(title, start_date, end_date, content_type, privacy_status, video_ids=None)` | the Legacy/New statistics `dict` (see *Video stats*) |
@@ -243,7 +249,7 @@ A report with a page and its count, or several reads, runs them on one `reader.c
 
 #### Video listing fields
 
-`catalog.video_listing(fields=...)` returns items with exactly the named keys, in the given order. A name is either a `Video` column or one of the two lifetime totals: `total_revenue_sgd` (`SUM(estimated_revenue * usd_to_sgd)`, needing the `video_analytics` and `fx_rates` joins) and `total_watch_time_hours` (`SUM(watch_time_minutes) / 60.0`, needing only `video_analytics`). `fields=None` selects every `Video` column plus both totals. The query joins and groups only when a selected total, or a `sort_by="total_revenue_sgd"`, needs it, so a read of plain columns touches `videos` alone; a total used only for sorting is computed but not returned. An unknown name raises `ValueError` from the reader's field check. The count query always reads `videos` alone. `GET /videos/published` uses `fields=("id", "title", "published_at", "thumbnail_url", "content_type")`, `page_size=None`, and ascending `published_at`; `video_detail()` shares the same query builder with the full default projection and no count.
+`catalog.video_listing(fields=...)` returns items with exactly the named keys, in the given order. A name is either a `Video` column, including the stored `total_revenue_sgd`, or the computed lifetime total `total_watch_time_hours` (`SUM(watch_time_minutes) / 60.0`, needing the `video_analytics` join). `fields=None` selects every `Video` column plus `total_watch_time_hours`. The query joins and groups only when `total_watch_time_hours` is selected, so a read of columns, including earnings, and every sort touch `videos` alone; a sort column that is not selected is not returned. An unknown name raises `ValueError` from the reader's field check. The count query always reads `videos` alone. `GET /videos/published` uses `fields=("id", "title", "published_at", "thumbnail_url", "content_type")`, `page_size=None`, and ascending `published_at`; `video_detail()` shares the same query builder with the full default projection and no count.
 
 ## Ownership boundary
 
@@ -290,6 +296,19 @@ The `sync_coverage` table persists, independently of any reporting table, which 
 
 `backend/scripts/issue-62-migration.py` is a standalone, one-time, idempotent script for an existing database: it reads only `videos.id`/`videos.own`/`videos.published_at` for `own = 1` rows and the local current date, then marks every calendar month from each owned video's publish month through the current month complete for all four collectors — with its own `INSERT … ON CONFLICT … DO UPDATE` statement executed against one connection, so the whole run commits as a single transaction. It never reads or writes any Analytics reporting table. This is an explicit operator baseline assertion, not an evidence backfill: unlike the runtime sync rule above, it declares a month done whether or not a corresponding reporting row exists, since a pre-existing database's Analytics history is trusted as already synced. It calls `init_db()` first so `sync_coverage` exists even on a pre-Issue-62 database, and is safe to rerun (identical resulting rows each time). See `backend/README.md` for when to run it.
 
+## Stored lifetime earnings
+
+`videos.total_revenue_sgd` and `playlists.total_earnings_sgd` hold lifetime earnings in SGD, computed by `catalog.lifetime_earnings(video_ids)`: `SUM(estimated_revenue * usd_to_sgd)` over `video_analytics` joined to `fx_rates` on `fx.date = va.date`, for distinct `video_id IN (...)`. A day without an FX rate contributes nothing.
+
+- A video's total is `lifetime_earnings([video_id])`, over all of its stored analytics regardless of a sync's scope.
+- A playlist's total is `lifetime_earnings(playlist_video_ids(playlist_id))`: its distinct stored owned members, so a video listed twice counts once and external or missing members count nothing.
+- Only the `video_analytics` sync stage writes them (see `sync.md`). Other stages write `Video`/`Playlist` rows without these fields, which the writer leaves untouched; a new row gets the column default `0`.
+- Catalog reads and earnings sorts read the stored columns and never sum analytics for them.
+
+### Lifetime earnings migration
+
+`backend/scripts/lifetime-earnings-migration.py` adds either column a pre-existing database lacks (checked with `PRAGMA table_info`), then recalculates every owned video's total and every playlist total with the rules above. External videos have no analytics, so they keep the column default `0`. The column additions and totals run in one `BEGIN IMMEDIATE` transaction and roll back together on any error. It never changes analytics or FX rows and is safe to rerun: existing columns are kept and totals are recalculated in place. Run it from `backend/` with the backend stopped: `.venv/Scripts/python.exe scripts/lifetime-earnings-migration.py`.
+
 ## Relationships and deletion behavior
 
 - `video_analytics.video_id → videos.id` **ON DELETE CASCADE**
@@ -330,8 +349,8 @@ The writer never sets timestamps. Sync supplies `updated_at = now()` on every ro
 
 - **Every** query uses parameterized `?` placeholders — never string-interpolated values. `f"..."` is used only to interpolate registry table and column names (reader, writer, and `filters.py`), compiler-generated subquery aliases, report SQL fragments, or `ORDER BY` fragments looked up from a fixed mapping, never raw user input.
 - Sort keys are looked up in explicit mappings in `database/reports/catalog.py` before being interpolated into `ORDER BY`:
-  - `_VIDEO_SORT_COLUMNS` maps `published_at`, `view_count`, `comment_count`, `total_revenue_sgd` to `v.published_at`, `v.view_count`, `v.comment_count`, and the lifetime-revenue `SUM` expression; `video_listing()` uses it for both the channel and playlist video lists.
-  - `_PLAYLIST_SORT_COLUMNS` maps `published_at`/`item_count` to the aliased `playlists__published_at`/`playlists__item_count` result columns and `last_item_added`, `total_views`, `total_earnings_sgd` to themselves, since `playlist_listing()` sorts the outer `SELECT * FROM (…)`.
+  - `_VIDEO_SORT_COLUMNS` maps `published_at`, `view_count`, `comment_count`, `total_revenue_sgd` to the matching `v.` columns; `video_listing()` uses it for both the channel and playlist video lists.
+  - `_PLAYLIST_SORT_COLUMNS` maps `published_at`/`item_count`/`total_earnings_sgd` to the aliased `playlists__published_at`/`playlists__item_count`/`playlists__total_earnings_sgd` result columns and `last_item_added`, `total_views` to themselves, since `playlist_listing()` sorts the outer `SELECT * FROM (…)`.
   - An invalid `sort_by` silently falls back to the default column rather than erroring.
 - `_SORT_CLAUSES` (`database/reports/comments.py`) maps each public comment sort value to a full `ORDER BY` fragment rather than a bare column, each ending in `c.id` so equal timestamps or like counts cannot shuffle rows between pages: `"newest"` → `c.published_at DESC, c.id DESC`; `"oldest"` → `c.published_at ASC, c.id ASC`; `"likes"` → `c.like_count DESC, c.published_at DESC, c.id DESC`. An unrecognized value falls back to `"newest"`; the HTTP layer rejects it first (see `api.md`).
 - `analytics.top_videos()` looks `sort_by` up in `_TOP_VIDEO_ORDER_BY` (`database/reports/analytics.py`), a mapping from public sort value to a full `ORDER BY` clause (aggregate plus deterministic tie-breakers), not a bare column name:
@@ -361,8 +380,8 @@ The writer never sets timestamps. Sync supplies `updated_at = now()` on every ro
 
 ## Aggregation and filtering semantics
 
-- **Lifetime vs. period totals**: the `total_revenue_sgd` / `total_watch_time_hours` values from `catalog.video_listing()` and `catalog.video_detail()` are lifetime sums with no date filter applied, computed via `LEFT JOIN video_analytics` + `LEFT JOIN fx_rates`. Endpoints under `/analytics/*` (e.g. `analytics.top_videos()`, `analytics.daily_analytics()`) compute period-scoped sums bounded by `start_date`/`end_date` instead — same join pattern, but with date conditions applied.
-- **Currency conversion**: `estimated_revenue_sgd` / `total_revenue_sgd` / `total_earnings_sgd` are always computed as `estimated_revenue * usd_to_sgd`, joined via `fx_rates.date = video_analytics.date` (or `DATE(va.date)` in the playlist-earnings subquery in `reports/catalog.py` — same semantic result, slightly different SQL form). A missing FX row for a given date means that date's revenue contributes `NULL`, `COALESCE`d to `0`.
+- **Lifetime vs. period totals**: the `total_revenue_sgd` / `total_watch_time_hours` values from `catalog.video_listing()` and `catalog.video_detail()` are lifetime sums with no date filter applied: earnings are stored (see [Stored lifetime earnings](#stored-lifetime-earnings)) and watch time is computed via `LEFT JOIN video_analytics`. Endpoints under `/analytics/*` (e.g. `analytics.top_videos()`, `analytics.daily_analytics()`) compute period-scoped sums bounded by `start_date`/`end_date` instead — same join pattern, but with date conditions applied.
+- **Currency conversion**: `estimated_revenue_sgd` / `total_revenue_sgd` / `total_earnings_sgd` are always computed as `estimated_revenue * usd_to_sgd`, joined via `fx_rates.date = video_analytics.date`; the stored lifetime totals are computed the same way when saved. A missing FX row for a given date means that date's revenue contributes `NULL`, `COALESCE`d to `0`.
 - **Date filters**: filters against `published_at` (`videos`, `playlists`) use `>= start_date` and `<= end_date + "T23:59:59"` since `published_at` is a full timestamp; filters against `date` columns (`video_analytics.date`, `video_traffic_sources.date`) use plain `>= start_date` / `<= end_date` since those are date-only strings. Mixing these up would silently exclude the final day of a range.
 - **Title filter**: every video-title `title`/`video_title` parameter across the backend — the reports through their shared `video_conditions()` (`video_listing`, `top_videos`, `search_terms`, `videos_by_search_term`, `daily_analytics`, `daily_traffic_sources`, `top_videos_by_traffic_source`, the target side of `related_video_referrers`, and `video_title` in `comment_feed`) and `get_video_stats()` — matches the corresponding video's **title or ID**: when non-empty, it appends the grouped condition `(v.title LIKE ? OR v.id LIKE ?)`, binding `f"%{title}%"` twice, combined with any other supplied condition via `AND`. `related_video_referrers()`'s `title` matches only the *target* video, never a referrer. The playlist `title` filter in `catalog.playlist_listing()` matches `(p.title LIKE ? OR p.id LIKE ?)` the same way, against the playlist's own ID. When a `video_ids` scope is also supplied, the filter is additive to it, not a replacement — a match outside the scoped set still yields no row. An omitted or empty value leaves the query unchanged from before this filter existed.
 - **Grouping — analytics rows**: `analytics.daily_analytics()` groups by `(date, content_type)` — a video-day and a short-day on the same date are two separate rows, never summed together. Views, watch time, revenue, likes, and subscriber counts are `SUM`s; average view duration and percentage are `AVG`s. A single video's series is the same query with `video_ids=[video_id]`, where each group holds that video's one row, so its values equal the stored ones (including `NULL` metrics). Rows carry `date`, `content_type`, the metrics, and `estimated_revenue_sgd`; there is no `video_id` or `updated_at`.

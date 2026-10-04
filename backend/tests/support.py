@@ -31,6 +31,7 @@ from database import (
     writer,
 )
 from database.dataclasses import Row
+from database.reports import catalog
 from sync.write_preparation import related_video_rows, search_term_rows
 
 # Captured once at import time, before any test patches connection._DB_PATH, so later
@@ -77,6 +78,18 @@ class IsolatedDatabaseTestCase(unittest.TestCase):
         database.init_db()
 
 
+def store_lifetime_earnings() -> None:
+    """Save every video's and playlist's lifetime earnings the way Video Analytics does."""
+    for video in reader.select(Video, ("id",)):
+        assert video.id is not None
+        earnings = catalog.lifetime_earnings([video.id])
+        writer.update(Video(total_revenue_sgd=earnings), where=[("id", "=", video.id)])
+    for playlist in reader.select(Playlist, ("id",)):
+        assert playlist.id is not None
+        earnings = catalog.lifetime_earnings(catalog.playlist_video_ids(playlist.id))
+        writer.update(Playlist(total_earnings_sgd=earnings), where=[("id", "=", playlist.id)])
+
+
 def covered_periods(collector: str, video_id: str, start_key: str, end_key: str) -> set[str]:
     """Return stored completed period keys for a video and collector within an inclusive range."""
     rows = reader.select(SyncCoverage, ("period_key",), where=[
@@ -97,6 +110,8 @@ class StageReads:
         self.stored_video_ids: list[str] = []
         self.comment_ids: set[str] = set()
         self.last_fx_rate: FxRate | None = None
+        self.playlist_members: dict[str, list[str]] = {}
+        self.earnings: dict[str, float] = {}
 
     def worklist(self, published_through: str | None = None) -> list[Video]:
         """Return the owned-video worklist."""
@@ -110,6 +125,8 @@ class StageReads:
             return [Video(id=video_id) for video_id in self.stored_video_ids]
         if model is Comment:
             return [Comment(id=comment_id) for comment_id in sorted(self.comment_ids)]
+        if model is Playlist:
+            return [Playlist(id=playlist_id) for playlist_id in self.playlist_members]
         raise AssertionError(f"unexpected select of {model.__name__}")
 
     def select_one(self, model: type, fields: object = None, *, where: object = (), **kwargs: object) -> Row | None:
@@ -120,6 +137,14 @@ class StageReads:
         video_id = dict((column, value) for column, _, value in where)["id"]  # type: ignore[attr-defined]
         return next((video for video in self.videos if video.id == video_id), None)
 
+    def playlist_video_ids(self, playlist_id: str) -> list[str]:
+        """Return a playlist's distinct member video IDs."""
+        return sorted(set(self.playlist_members[playlist_id]))
+
+    def lifetime_earnings(self, video_ids: Iterable[str]) -> float:
+        """Return the summed configured earnings of distinct videos."""
+        return sum(self.earnings.get(video_id, 0.0) for video_id in set(video_ids))
+
 
 def patch_stage_reads() -> StageReads:
     """Route sync.stages reader and worklist calls to a fresh StageReads until mock.patch.stopall()."""
@@ -127,6 +152,8 @@ def patch_stage_reads() -> StageReads:
     for name in ("select", "select_one"):
         mock.patch(f"sync.stages.reader.{name}", side_effect=getattr(reads, name)).start()
     mock.patch("sync.stages.catalog.owned_video_worklist", side_effect=reads.worklist).start()
+    for name in ("playlist_video_ids", "lifetime_earnings"):
+        mock.patch(f"sync.stages.catalog.{name}", side_effect=getattr(reads, name)).start()
     return reads
 
 
@@ -138,6 +165,7 @@ class StageWrites:
         self.fail: Callable[[Row], None] | None = None
         self.deletes: list[tuple[type, list[object]]] = []
         self.deleted: dict[type, int] = {}
+        self.updates: list[tuple[Row, list[object]]] = []
 
     def write(self, row: Row, **kwargs: object) -> int:
         """Record one row, first letting `fail` raise for it."""
@@ -151,6 +179,11 @@ class StageWrites:
                 self.fail(row)
         self.rows.extend(batch)
         return len(batch)
+
+    def update(self, row: Row, *, where: Sequence[object], **kwargs: object) -> int:
+        """Record one filtered update and report one changed row."""
+        self.updates.append((row, list(where)))
+        return 1
 
     def delete(self, model: type, *, where: Sequence[object], **kwargs: object) -> int:
         """Record one filtered delete and return the count configured in `deleted` for its class."""
@@ -169,7 +202,7 @@ class StageWrites:
 def patch_stage_writes() -> StageWrites:
     """Route sync.stages writer calls to a fresh StageWrites until mock.patch.stopall()."""
     writes = StageWrites()
-    for name in ("write", "write_many", "delete"):
+    for name in ("write", "write_many", "update", "delete"):
         mock.patch(f"sync.stages.writer.{name}", side_effect=getattr(writes, name)).start()
     return writes
 
