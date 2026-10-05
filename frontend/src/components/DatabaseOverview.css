@@ -38,7 +38,6 @@
   list-style: none;
   display: flex;
   flex-direction: column;
-  gap: 0.4rem;
 }
 
 .database-overview-bar-row {
@@ -46,7 +45,17 @@
   grid-template-columns: minmax(0, 11rem) minmax(0, 1fr) 5rem;
   gap: 0.75rem;
   align-items: center;
+  padding: 0.3rem 0.5rem;
   font-size: 12px;
+}
+
+/* Row dividers and hover match .data-table rows, so a short bar's count is easy to follow across. */
+.database-overview-bar-row:not(:last-child) {
+  border-bottom: 1px solid var(--border);
+}
+
+.database-overview-bar-row:hover {
+  background: var(--blue-light);
 }
 
 .database-overview-bar-label {
@@ -62,9 +71,9 @@
   height: 10px;
 }
 
-/* Same track as the traffic-source table's bars. */
+/* Visible track so each row's full width reads as one line. */
 .database-overview-bar-track {
-  fill: var(--border-light);
+  fill: var(--border);
 }
 
 .database-overview-bar-value {
