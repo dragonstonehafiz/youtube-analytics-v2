@@ -92,7 +92,7 @@
           <p><code>/sync/database</code> reads every page through <code>dbstat</code> and runs <code>COUNT(*)</code> on every table.</p>
           <dl>
             <dt>Where</dt><dd><code>database/reports/storage.py</code>, called by <code>DatabaseOverview</code> each time the Sync page opens</dd>
-            <dt>Cost</dt><dd>Reads the whole database file per request, so the time grows with the database size.</dd>
+            <dt>Cost</dt><dd>Starts a Python process and reads the whole database file per request, so the time grows with the database size.</dd>
           </dl>
         </article>
 

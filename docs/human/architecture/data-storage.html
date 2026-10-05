@@ -305,11 +305,11 @@ INSERT INTO videos ("id", "title", "view_count", "updated_at") VALUES (?, ?, ?, 
 
     <section id="boundaries">
       <h2>Who reads and writes the database</h2>
-      <p>Routes and sync don't run SQL themselves. Each arrow below is labelled with what the caller uses that part for. Reports run their SQL through the reader, except the storage report, which opens its own read-only <code>apsw</code> connection because it needs SQLite's <code>dbstat</code> table.</p>
+      <p>Routes and sync don't run SQL themselves. Each arrow below is labelled with what the caller uses that part for. Reports run their SQL through the reader, except the storage report, which opens a read-only <code>apsw</code> connection in a separate process because it needs SQLite's <code>dbstat</code> table.</p>
       <figure class="diagram">
         <svg viewBox="0 0 900 430" role="img" aria-labelledby="bound-title bound-desc">
           <title id="bound-title">Who reads and writes the database</title>
-          <desc id="bound-desc">routes/ uses reports/ for lists, charts and stats, and reader.py for 404 checks and the first publish year. sync/ uses reports/ for the owned-video worklist, reader.py for coverage, stored IDs and the latest FX rate, and writer.py to save fetched rows and prune. reports/ runs its SQL through reader.py, and reads database size and row counts from SQLite directly through apsw. reader.py runs SELECTs on SQLite; writer.py runs INSERT, UPDATE and DELETE.</desc>
+          <desc id="bound-desc">routes/ uses reports/ for lists, charts and stats, and reader.py for 404 checks and the first publish year. sync/ uses reports/ for the owned-video worklist, reader.py for coverage, stored IDs and the latest FX rate, and writer.py to save fetched rows and prune. reports/ runs its SQL through reader.py, and reads database size and row counts from SQLite directly through apsw in a child process. reader.py runs SELECTs on SQLite; writer.py runs INSERT, UPDATE and DELETE.</desc>
           <defs>
             <marker id="arrow-bound" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse">
               <path class="arrowhead" d="M0,0 L10,5 L0,10 z"/>
@@ -337,7 +337,7 @@ INSERT INTO videos ("id", "title", "view_count", "updated_at") VALUES (?, ?, ?, 
           <text class="edge-label on-edge" x="245" y="236" dy="-6" text-anchor="middle" transform="rotate(-47.0 245 236)">owned-video worklist</text>
           <text class="edge-label on-edge" x="289" y="267" dy="-6" text-anchor="middle" transform="rotate(-26.8 289 267)">coverage, stored IDs, FX rate</text>
           <text class="edge-label on-edge" x="289" y="344" dy="-6" text-anchor="middle" transform="rotate(2.1 289 344)">fetched rows, pruning</text>
-          <text class="edge-label on-edge" x="695" y="145" dy="-6" text-anchor="middle" transform="rotate(41.2 695 145)">size, row counts (apsw)</text>
+          <text class="edge-label on-edge" x="695" y="145" dy="-6" text-anchor="middle" transform="rotate(41.2 695 145)">size, row counts (apsw process)</text>
           <text class="edge-label on-edge" x="669" y="221" dy="-6" text-anchor="middle" transform="rotate(21.4 669 221)">SELECT</text>
           <text class="edge-label on-edge" x="677" y="307" dy="-6" text-anchor="middle" transform="rotate(-30.1 677 307)">INSERT, UPDATE, DELETE</text>
           <text class="edge-label on-edge" x="510" y="126">runs its SQL</text>

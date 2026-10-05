@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import subprocess
 from pathlib import Path
 from typing import cast
 from unittest import mock
@@ -86,6 +87,12 @@ class DatabaseStorageTest(IsolatedDatabaseTestCase):
         self.assertEqual(self._tables(result)["videos"]["row_count"], 300)
         self.assertGreater(result["total_bytes"], connection.database_path().stat().st_size)
         self._assert_reconciles(result)
+
+    def test_measurement_timeout_is_reported_unavailable(self) -> None:
+        timeout = subprocess.TimeoutExpired(cmd="storage", timeout=60)
+        with mock.patch.object(storage.subprocess, "run", side_effect=timeout):
+            with self.assertRaises(storage.StorageUnavailable):
+                storage.database_storage()
 
     def test_missing_database_is_reported_unavailable(self) -> None:
         missing = Path(connection.database_path()).with_name("missing.db")

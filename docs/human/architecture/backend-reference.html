@@ -92,7 +92,7 @@
         <dt><code>filters.py</code></dt><dd>Turns a list of conditions into a SQL <code>WHERE</code>.</dd>
         <dt><code>reader.py</code></dt><dd>Runs reads and returns data classes. Only <code>reports/storage.py</code> reads around it.</dd>
         <dt><code>writer.py</code></dt><dd>Runs every insert, update and delete.</dd>
-        <dt><code>reports/</code></dt><dd>Runs the joined, grouped, ranked and paged reads and returns finished results. One file per purpose: <code>analytics.py</code>, <code>traffic.py</code>, <code>catalog.py</code>, <code>comments.py</code>, <code>video_statistics.py</code> (the Legacy/New stats bar), <code>sync_history.py</code> and <code>storage.py</code> (database size and row counts, read through <code>apsw</code> because it needs SQLite's <code>dbstat</code> table).</dd>
+        <dt><code>reports/</code></dt><dd>Runs the joined, grouped, ranked and paged reads and returns finished results. One file per purpose: <code>analytics.py</code>, <code>traffic.py</code>, <code>catalog.py</code>, <code>comments.py</code>, <code>video_statistics.py</code> (the Legacy/New stats bar), <code>sync_history.py</code> and <code>storage.py</code> (database size and row counts, read through <code>apsw</code> in a separate process because it needs SQLite's <code>dbstat</code> table).</dd>
         <dt><code>connection.py</code></dt><dd>Opens database connections, gives the database path, and creates the tables.</dd>
       </dl>
       </div>

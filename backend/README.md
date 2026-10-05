@@ -114,7 +114,7 @@ GET  /sync/status             Active sync status and progress
 POST /sync/trigger            Queue a manual sync of the selected stages (JSON plan body)
 POST /sync/stop               Request cooperative cancellation of the active sync
 GET  /sync/runs               Recent sync-stage records, newest first
-GET  /sync/database           Database storage and row counts per table (reads dbstat through apsw)
+GET  /sync/database           Database storage and row counts per table (reads dbstat through apsw in a child process)
 ```
 
 ## Syncing

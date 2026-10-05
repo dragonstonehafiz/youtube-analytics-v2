@@ -315,13 +315,15 @@ The `sync_coverage` table persists, independently of any reporting table, which 
 
 `storage.database_storage()` (`database/reports/storage.py`), served by `GET /sync/database`, measures allocated storage and row counts for every table in the `database/tables.py` registry. It reads through `apsw`, whose bundled SQLite includes the `dbstat` virtual table; the standard-library `sqlite3` build does not. All other database access uses `sqlite3`.
 
-- It opens its own read-only `apsw` connection at `database_path()` with a 30s busy timeout, takes every measurement inside one read transaction, and closes the connection. It runs no checkpoint or maintenance command.
+The measurement runs in a child process, `python -m database.reports.storage <db path>` started from `backend/`, which prints the result as JSON. `apsw` and `sqlite3` are separate copies of SQLite, and on POSIX systems two copies in one process break each other's file locks, because closing any handle drops every lock the process holds on that file. The child process keeps `apsw` out of the server process. Moving every connection onto `apsw` would remove the child process (issue #78).
+
+- The child opens a read-only `apsw` connection at `database_path()` with a 30s busy timeout, takes every measurement inside one read transaction, and closes the connection. It runs no checkpoint or maintenance command.
 - `total_bytes` is `PRAGMA page_count × PRAGMA page_size` from that snapshot: the committed logical database, including pages still only in the WAL. It excludes the `-wal`/`-shm` files themselves, so it can differ from the main file's size on disk before a checkpoint.
 - A table's `size_bytes` is the `dbstat` page bytes (`aggregate = TRUE`) of the table and every index whose `sqlite_schema.tbl_name` is that table, automatic indexes included.
 - `row_count` is `SELECT COUNT(*)` per table. Table names come only from the registry.
 - `other_bytes` is `total_bytes` minus the table bytes: free pages, `sqlite_schema`, `sqlite_sequence`, and any other non-registry object. Table bytes plus `other_bytes` always equal `total_bytes`.
 - `tables` lists every registry table in registry order, including tables with no rows.
-- An `apsw` error, or table bytes exceeding the total, raises `StorageUnavailable`, which the route turns into a 503.
+- A child that exits with an error (an `apsw` error, or table bytes exceeding the total) or runs past 60s raises `StorageUnavailable`, which the route turns into a 503.
 
 ## Relationships and deletion behavior
 
