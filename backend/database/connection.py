@@ -14,6 +14,11 @@ def now() -> str:
     return datetime.now(timezone.utc).isoformat()
 
 
+def database_path() -> Path:
+    """Return the path of the application's SQLite database file."""
+    return _DB_PATH
+
+
 def get_connection() -> sqlite3.Connection:
     """Return a SQLite connection with row_factory and foreign key enforcement set."""
     conn = sqlite3.connect(_DB_PATH, timeout=30)

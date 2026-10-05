@@ -188,6 +188,20 @@ export interface SyncRunsResponse {
   page_size: number
 }
 
+/** One application table's allocated bytes (indexes included) and row count. */
+export interface DatabaseTableStats {
+  name: string
+  size_bytes: number
+  row_count: number
+}
+
+/** `other_bytes` is allocated space no application table owns: free pages and SQLite internals. */
+export interface DatabaseStatsResponse {
+  total_bytes: number
+  other_bytes: number
+  tables: DatabaseTableStats[]
+}
+
 export interface TopVideo {
   id: string
   title: string

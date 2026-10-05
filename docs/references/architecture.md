@@ -109,9 +109,9 @@ indefinitely and are safe to delete between runs.
 | `database/dataclasses/` | One data-only row dataclass per table (`Video`, `Playlist`, …), every field defaulting to `None`, with shared `from_dict()`/`to_dict(fields=...)` conversion |
 | `database/tables.py` | Shared row-class → table registry, primary keys, generated-key and non-decreasing-column rules, used by both reader and writer |
 | `database/filters.py` | Shared validated `WHERE` compilation from tuple conditions and `NotExists` predicates, used by reader selects and writer updates and deletes |
-| `database/reader.py` | All read execution: `select`/`select_one`/`scalar` for one table, `fetch`/`fetch_joined`/`fetch_scalar` for code-owned SQL, optional daily date filling (`DateFill`), per-field grouping of results (`group_by`), and connection borrowing |
+| `database/reader.py` | All read execution except `reports/storage.py`'s `apsw` reads: `select`/`select_one`/`scalar` for one table, `fetch`/`fetch_joined`/`fetch_scalar` for code-owned SQL, optional daily date filling (`DateFill`), per-field grouping of results (`group_by`), and connection borrowing |
 | `database/writer.py` | Every insert/update/delete: `write()`/`write_many()` update-then-insert by key, leaving `None` fields untouched (`write()` can return persisted fields such as a generated ID); `update()` changes only the rows matching a required filter and never inserts; `delete()` removes the rows matching a required filter; each call runs in one committed transaction or a savepoint on a borrowed one |
-| `database/reports/` | Purpose-based read functions that own their SQL, reader calls, date filling, grouping, and serialization and return finished results: `analytics.py`, `traffic.py`, `catalog.py`, `comments.py`, `video_statistics.py`, `sync_history.py`, plus shared SQL fragments in `_conditions.py` |
+| `database/reports/` | Purpose-based read functions that own their SQL, reader calls, date filling, grouping, and serialization and return finished results: `analytics.py`, `traffic.py`, `catalog.py`, `comments.py`, `video_statistics.py`, `sync_history.py`, `storage.py` (storage statistics through `apsw`), plus shared SQL fragments in `_conditions.py` |
 | `schema.sql` | SQLite schema definition (12 tables) — see `database.md` |
 | `scripts/issue-48-migration.py` | Standalone, one-time migration adding `videos.own` to a pre-existing database — not run by `init_db()` (see `database.md`) |
 | `scripts/issue-62-migration.py` | Standalone, one-time `sync_coverage` backfill for a pre-existing database — not run by `init_db()` (see `database.md`) |
@@ -209,7 +209,7 @@ backend/
     reader.py                # read execution
     writer.py                # insert/update/delete execution
     reports/                 # purpose-based reports: analytics, traffic, catalog, comments,
-                             # video_statistics, sync_history, _conditions (shared SQL fragments)
+                             # video_statistics, sync_history, storage, _conditions (shared SQL fragments)
     dataclasses/             # one row dataclass per table, plus base.py (from_dict/to_dict)
 
   scripts/

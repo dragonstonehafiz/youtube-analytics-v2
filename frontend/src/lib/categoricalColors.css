@@ -1,5 +1,5 @@
-/* Rank-based categorical palette for search-term/video donut charts. Values match the
-   app's validated 8-hue theme also used by TRAFFIC_SOURCE_COLORS. */
+/* The app's validated 8-hue categorical theme, in theme order. Search-term/video donuts use
+   slots by rank; DatabaseOverview gives tables fixed slots. Values match TRAFFIC_SOURCE_COLORS. */
 :root {
   --categorical-color-0: #2a78d6;
   --categorical-color-1: #eb6834;
@@ -7,6 +7,8 @@
   --categorical-color-3: #eda100;
   --categorical-color-4: #e87ba4;
   --categorical-color-5: #008300;
+  --categorical-color-6: #4a3aa7;
+  --categorical-color-7: #e34948;
   --categorical-other-color: #898781;
 }
 
@@ -16,4 +18,6 @@
 .categorical-color-3 { background: var(--categorical-color-3); fill: var(--categorical-color-3); }
 .categorical-color-4 { background: var(--categorical-color-4); fill: var(--categorical-color-4); }
 .categorical-color-5 { background: var(--categorical-color-5); fill: var(--categorical-color-5); }
+.categorical-color-6 { background: var(--categorical-color-6); fill: var(--categorical-color-6); }
+.categorical-color-7 { background: var(--categorical-color-7); fill: var(--categorical-color-7); }
 .categorical-color-other { background: var(--categorical-other-color); fill: var(--categorical-other-color); }

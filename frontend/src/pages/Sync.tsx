@@ -16,6 +16,7 @@ import type {
 import { useReplaceSearchParams } from '@/hooks/useReplaceSearchParams'
 import { useAvailableYears } from '@/hooks/useAvailableYears'
 import AsyncCard from '@/components/AsyncCard'
+import DatabaseOverview from '@/components/DatabaseOverview'
 import Pagination from '@/components/Pagination'
 import Tabs from '@/components/Tabs'
 import type { TabOption } from '@/components/Tabs'
@@ -412,6 +413,8 @@ export default function Sync() {
       </div>
 
       <SyncStatusBanner status={status} unavailable={statusUnavailable} />
+
+      <DatabaseOverview />
 
       <Tabs options={TABS} value={tab} onChange={t => setParams({ tab: t })} />
 

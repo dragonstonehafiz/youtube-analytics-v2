@@ -19,6 +19,7 @@ Persistence layer, schema, row dataclasses, the shared reader and writer, and qu
 - [Ownership boundary](#ownership-boundary)
 - [Sync coverage](#sync-coverage)
 - [Stored lifetime earnings](#stored-lifetime-earnings)
+- [Storage statistics](#storage-statistics)
 - [Relationships and deletion behavior](#relationships-and-deletion-behavior)
 - [Timestamp behavior](#timestamp-behavior)
 - [Query conventions](#query-conventions)
@@ -27,14 +28,14 @@ Persistence layer, schema, row dataclasses, the shared reader and writer, and qu
 
 ## Connection behavior
 
-`get_connection()` (`database/connection.py:17-24`) returns a `sqlite3.Connection` with:
+`get_connection()` (`database/connection.py:22-29`) returns a `sqlite3.Connection` with:
 
 - `row_factory = sqlite3.Row`
 - `PRAGMA foreign_keys = ON` — set on every connection, not just once at startup
 - `PRAGMA journal_mode = WAL`
 - `PRAGMA busy_timeout = 30000` (30s)
 
-`init_db()` (`database/connection.py:27-32`) creates tables from `schema.sql` via `executescript()` if they don't already exist; it does not run migrations. Both the database and schema paths are resolved from the backend root (`Path(__file__).parent.parent`, i.e. one level above the `database/` package), so they always resolve to `backend/data/youtube.db` and `backend/schema.sql` regardless of which module inside the package imports them.
+`init_db()` (`database/connection.py:32-37`) creates tables from `schema.sql` via `executescript()` if they don't already exist; it does not run migrations. Both the database and schema paths are resolved from the backend root (`Path(__file__).parent.parent`, i.e. one level above the `database/` package), so they always resolve to `backend/data/youtube.db` and `backend/schema.sql` regardless of which module inside the package imports them. `database_path()` returns the database path for code that opens its own connection, such as the storage report (see [Storage statistics](#storage-statistics)).
 
 ## Schema
 
@@ -95,7 +96,7 @@ There is no `sync_state` table — the scheduler derives its checkpoint from `sy
 
 ## Row dataclasses, reader, and writer
 
-Reads go through `database/reader.py`; inserts, updates, and deletes go through `database/writer.py`. Both use the table registry in `database/tables.py` and the WHERE compiler in `database/filters.py`. The writer imports the reader only to read back `returning` fields on its own connection; the reader never imports the writer. Sync-run lifecycle rows are written through the writer like any other row (see `sync.md`).
+Reads go through `database/reader.py`, except the storage report's `apsw` reads (see [Storage statistics](#storage-statistics)); inserts, updates, and deletes go through `database/writer.py`. Both use the table registry in `database/tables.py` and the WHERE compiler in `database/filters.py`. The writer imports the reader only to read back `returning` fields on its own connection; the reader never imports the writer. Sync-run lifecycle rows are written through the writer like any other row (see `sync.md`).
 
 ### Row dataclasses
 
@@ -242,6 +243,7 @@ Transactions (upserts, updates, and deletes alike):
 | `comments.py` | `comment_feed(*, page, page_size, sort_by, ..., video_id=None, playlist_id=None)` | `{items, total, page, page_size}` |
 | `video_statistics.py` | `get_video_stats(title, start_date, end_date, content_type, privacy_status, video_ids=None)` | the Legacy/New statistics `dict` (see *Video stats*) |
 | `sync_history.py` | `sync_batches(*, page, page_size)` | `{items, total, page, page_size}` of batches with their runs |
+| `storage.py` | `database_storage()` | `{total_bytes, other_bytes, tables}` (see [Storage statistics](#storage-statistics)) |
 
 `reports/_conditions.py` holds the shared SQL fragments: `video_conditions()` (owned-video scope and filters on alias `v`), `published_bounds()`, `date_bounds()`, `month_bounds()`, and `limit_clause()`. It builds no complete query and reads nothing.
 
@@ -308,6 +310,20 @@ The `sync_coverage` table persists, independently of any reporting table, which 
 ### Lifetime earnings migration
 
 `backend/scripts/lifetime-earnings-migration.py` adds either column a pre-existing database lacks (checked with `PRAGMA table_info`), then recalculates every owned video's total and every playlist total with the rules above. External videos have no analytics, so they keep the column default `0`. The column additions and totals run in one `BEGIN IMMEDIATE` transaction and roll back together on any error. It never changes analytics or FX rows and is safe to rerun: existing columns are kept and totals are recalculated in place. Run it from `backend/` with the backend stopped: `.venv/Scripts/python.exe scripts/lifetime-earnings-migration.py`.
+
+## Storage statistics
+
+`storage.database_storage()` (`database/reports/storage.py`), served by `GET /sync/database`, measures allocated storage and row counts for every table in the `database/tables.py` registry. It reads through `apsw`, whose bundled SQLite includes the `dbstat` virtual table; the standard-library `sqlite3` build does not. All other database access uses `sqlite3`.
+
+The measurement runs in a child process, `python -m database.reports.storage <db path>` started from `backend/`, which prints the result as JSON. `apsw` and `sqlite3` are separate copies of SQLite, and on POSIX systems two copies in one process break each other's file locks, because closing any handle drops every lock the process holds on that file. The child process keeps `apsw` out of the server process. Moving every connection onto `apsw` would remove the child process (issue #78).
+
+- The child opens a read-only `apsw` connection at `database_path()` with a 30s busy timeout, takes every measurement inside one read transaction, and closes the connection. It runs no checkpoint or maintenance command.
+- `total_bytes` is `PRAGMA page_count × PRAGMA page_size` from that snapshot: the committed logical database, including pages still only in the WAL. It excludes the `-wal`/`-shm` files themselves, so it can differ from the main file's size on disk before a checkpoint.
+- A table's `size_bytes` is the `dbstat` page bytes (`aggregate = TRUE`) of the table and every index whose `sqlite_schema.tbl_name` is that table, automatic indexes included.
+- `row_count` is `SELECT COUNT(*)` per table. Table names come only from the registry.
+- `other_bytes` is `total_bytes` minus the table bytes: free pages, `sqlite_schema`, `sqlite_sequence`, and any other non-registry object. Table bytes plus `other_bytes` always equal `total_bytes`.
+- `tables` lists every registry table in registry order, including tables with no rows.
+- A child that exits with an error (an `apsw` error, or table bytes exceeding the total) or runs past 60s raises `StorageUnavailable`, which the route turns into a 503.
 
 ## Relationships and deletion behavior
 
@@ -412,7 +428,7 @@ The writer never sets timestamps. Sync supplies `updated_at = now()` on every ro
 
 - Adding a new sortable column requires adding it to both the relevant sort mapping (`database/reports/catalog.py`'s `_VIDEO_SORT_COLUMNS` or `_PLAYLIST_SORT_COLUMNS`) *and* the frontend's `SortKey` type (see `frontend.md`) — the backend will silently ignore an unrecognized `sort_by` rather than reject it.
 - Because every sync write supplies a fresh `updated_at`, this column cannot be used to detect "did the underlying value actually change since last sync" — only "was this row touched by the most recent sync."
-- Imports inside `database/` flow one way: `reader.py` imports `connection.py` and `dataclasses/`; `writer.py` imports `reader.py`; the `reports/` modules import `reader.py`, `dataclasses/`, and `reports/_conditions.py`. Nothing imports back through the package facade (`database/__init__.py`), and no report imports `routes` or `sync`. Playlist membership is resolved by the route layer (`scope_video_ids()`, and `GET /videos/published` directly) and passed in as `video_ids`, which keeps the scoped reports usable with any caller-supplied set of videos.
+- Imports inside `database/` flow one way: `reader.py` imports `connection.py` and `dataclasses/`; `writer.py` imports `reader.py`; the `reports/` modules import `reader.py`, `dataclasses/`, and `reports/_conditions.py`, except `reports/storage.py`, which imports `connection.py` and `tables.py`. Nothing imports back through the package facade (`database/__init__.py`), and no report imports `routes` or `sync`. Playlist membership is resolved by the route layer (`scope_video_ids()`, and `GET /videos/published` directly) and passed in as `video_ids`, which keeps the scoped reports usable with any caller-supplied set of videos.
 - `get_video_stats()` takes `video_ids` **after** every other parameter, and the other reports take it keyword-only; callers pass it by keyword. It binds one `?` per ID, so a scope is bounded by SQLite's parameter limit — practical for playlist-sized collections, not for arbitrarily large ID sets.
 - `backend/scripts/issue-48-migration.py` is a standalone, one-time script for adding `videos.own` to a pre-existing database (idempotent — checks `PRAGMA table_info(videos)` before altering). It is intentionally not wired into `init_db()`: a one-time fixup doesn't belong in code that runs on every app start.
 - The writer's `MAX(own, ?)` rule for `Video.own` means `own` can only ever move from `0` to `1` over a row's lifetime, never back — there is no code path that demotes a confirmed-owned video to external.

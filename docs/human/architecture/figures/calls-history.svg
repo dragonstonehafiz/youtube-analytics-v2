@@ -1,6 +1,6 @@
-<svg xmlns="http://www.w3.org/2000/svg" width="874" height="251" viewBox="0 0 874 251" role="img" aria-label="Sync history: routes/synchronization.py">
-<title>Sync history: routes/synchronization.py</title>
-<desc>Lanes from left to right: Frontend (api.ts), API routes, Reports, Reader, SQLite. GET /sync/runs in API routes. getSyncRuns in Frontend (api.ts) (Sync). fetch_scalar in Reader. sync_runs in SQLite. fetch in Reader. sync_runs in SQLite. select in Reader. sync_runs in SQLite. group_by in Reader (in memory). sync_history.sync_batches in Reports. getSyncRuns calls GET /sync/runs: page. sync_history.sync_batches calls fetch_scalar: batch count. fetch_scalar queries sync_runs: batch IDs. sync_history.sync_batches calls fetch: batches. fetch queries sync_runs: page. sync_history.sync_batches calls select: stage runs. select queries sync_runs: runs. sync_history.sync_batches calls group_by: by batch_id. GET /sync/runs calls sync_history.sync_batches: page, size.</desc>
+<svg xmlns="http://www.w3.org/2000/svg" width="984" height="444" viewBox="0 0 984 444" role="img" aria-label="Sync history and database storage: routes/synchronization.py">
+<title>Sync history and database storage: routes/synchronization.py</title>
+<desc>Lanes from left to right: Frontend (api.ts), API routes, Reports, Reader, SQLite. getSyncRuns Sync. GET /sync/runs. sync_history. sync_batches. fetch_scalar. sync_runs. fetch. sync_runs. select. sync_runs. group_by in memory. getDatabaseStats Sync. GET /sync/database. storage. database_storage apsw child process. PRAGMA page_size. PRAGMA page_count. sqlite_schema. dbstat. every app table. Arrow: page. Arrow: page, size. Arrow: batch count. Arrow: batch IDs. Arrow: batches. Arrow: page. Arrow: stage runs. Arrow: runs. Arrow: by batch_id. Arrow: page size. Arrow: total pages. Arrow: index owners. Arrow: bytes per table and index. Arrow: row counts. Arrow: storage. Arrow: measure. storage.database_storage reads SQLite directly through a read-only apsw connection in a child process, not through the reader.</desc>
 <style>
   .bg { fill: #ffffff; }
   text { font-family: system-ui, -apple-system, "Segoe UI", Roboto, Arial, sans-serif; font-size: 14px; fill: #1c2330; }
@@ -33,41 +33,63 @@
     .arrowhead { fill: #9aa3b2; }
   }
 </style>
-<rect class="bg" width="874" height="251" rx="10"/>
+<rect class="bg" width="984" height="444" rx="10"/>
   <defs>
     <marker id="arrow" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path class="arrowhead" d="M0,0 L10,5 L0,10 z"/></marker>
   </defs>
-  <g class="lane"><rect x="12" y="8" width="162" height="235" rx="8"/><text x="93" y="28" text-anchor="middle">Frontend (api.ts)</text></g>
-  <g class="lane"><rect x="240" y="8" width="119" height="235" rx="8"/><text x="299" y="28" text-anchor="middle">API routes</text></g>
-  <g class="lane"><rect x="424" y="8" width="113" height="235" rx="8"/><text x="481" y="28" text-anchor="middle">Reports</text></g>
-  <g class="lane"><rect x="603" y="8" width="106" height="235" rx="8"/><text x="656" y="28" text-anchor="middle">Reader</text></g>
-  <g class="lane"><rect x="775" y="8" width="87" height="235" rx="8"/><text x="819" y="28" text-anchor="middle">SQLite</text></g>
-  <g class="node route"><rect x="246" y="50" width="105" height="48" rx="7"/><text class="code" x="299" y="78" text-anchor="middle">GET /sync/runs</text></g>
-  <g class="node fe"><rect x="19" y="50" width="148" height="48" rx="7"/><text class="code" x="93" y="71" text-anchor="middle">getSyncRuns</text><text class="sub" x="93" y="86" text-anchor="middle">Sync</text></g>
-  <g class="node db"><rect x="610" y="50" width="92" height="33" rx="7"/><text class="code" x="656" y="71" text-anchor="middle">fetch_scalar</text></g>
-  <g class="node db"><rect x="782" y="50" width="73" height="26" rx="7"/><text class="code" x="819" y="68" text-anchor="middle">sync_runs</text></g>
-  <g class="node db"><rect x="610" y="93" width="92" height="33" rx="7"/><text class="code" x="656" y="114" text-anchor="middle">fetch</text></g>
-  <g class="node db"><rect x="782" y="93" width="73" height="26" rx="7"/><text class="code" x="819" y="110" text-anchor="middle">sync_runs</text></g>
-  <g class="node db"><rect x="610" y="136" width="92" height="33" rx="7"/><text class="code" x="656" y="157" text-anchor="middle">select</text></g>
-  <g class="node db"><rect x="782" y="136" width="73" height="26" rx="7"/><text class="code" x="819" y="154" text-anchor="middle">sync_runs</text></g>
-  <g class="node db"><rect x="610" y="179" width="92" height="48" rx="7"/><text class="code" x="656" y="200" text-anchor="middle">group_by</text><text class="sub" x="656" y="215" text-anchor="middle">in memory</text></g>
-  <g class="node db"><rect x="431" y="50" width="99" height="177" rx="7"/><text class="code" x="481" y="71" text-anchor="middle">sync_history.</text><text class="code" x="481" y="87" text-anchor="middle">sync_batches</text></g>
-  <path class="edge" d="M166,74 H246" marker-end="url(#arrow)"/>
-  <path class="edge" d="M530,66 H609" marker-end="url(#arrow)"/>
-  <path class="edge" d="M702,63 H781" marker-end="url(#arrow)"/>
-  <path class="edge" d="M530,110 H609" marker-end="url(#arrow)"/>
-  <path class="edge" d="M702,106 H781" marker-end="url(#arrow)"/>
-  <path class="edge" d="M530,152 H609" marker-end="url(#arrow)"/>
-  <path class="edge" d="M702,149 H781" marker-end="url(#arrow)"/>
-  <path class="edge" d="M530,203 H609" marker-end="url(#arrow)"/>
-  <path class="edge" d="M351,74 H430" marker-end="url(#arrow)"/>
+  <g class="lane"><rect x="12" y="8" width="162" height="428" rx="8"/><text x="93" y="28" text-anchor="middle">Frontend (api.ts)</text></g>
+  <g class="lane"><rect x="240" y="8" width="150" height="428" rx="8"/><text x="315" y="28" text-anchor="middle">API routes</text></g>
+  <g class="lane"><rect x="456" y="8" width="138" height="428" rx="8"/><text x="525" y="28" text-anchor="middle">Reports</text></g>
+  <g class="lane"><rect x="660" y="8" width="106" height="428" rx="8"/><text x="713" y="28" text-anchor="middle">Reader</text></g>
+  <g class="lane"><rect x="832" y="8" width="140" height="428" rx="8"/><text x="902" y="28" text-anchor="middle">SQLite</text></g>
+  <g class="node fe"><rect x="19" y="50" width="148" height="48" rx="7"/><text class="code" x="93" y="71" text-anchor="middle">getSyncRuns</text><text class="sub" x="93" y="87" text-anchor="middle">Sync</text></g>
+  <g class="node route"><rect x="246" y="50" width="138" height="48" rx="7"/><text class="code" x="315" y="71" text-anchor="middle">GET /sync/runs</text></g>
+  <g class="node db"><rect x="463" y="50" width="124" height="177" rx="7"/><text class="code" x="525" y="71" text-anchor="middle">sync_history.</text><text class="code" x="525" y="87" text-anchor="middle">sync_batches</text></g>
+  <g class="node db"><rect x="667" y="50" width="92" height="33" rx="7"/><text class="code" x="713" y="71" text-anchor="middle">fetch_scalar</text></g>
+  <g class="node db"><rect x="866" y="50" width="73" height="26" rx="7"/><text class="code" x="902" y="68" text-anchor="middle">sync_runs</text></g>
+  <g class="node db"><rect x="667" y="93" width="92" height="33" rx="7"/><text class="code" x="713" y="114" text-anchor="middle">fetch</text></g>
+  <g class="node db"><rect x="866" y="93" width="73" height="26" rx="7"/><text class="code" x="902" y="111" text-anchor="middle">sync_runs</text></g>
+  <g class="node db"><rect x="667" y="136" width="92" height="33" rx="7"/><text class="code" x="713" y="157" text-anchor="middle">select</text></g>
+  <g class="node db"><rect x="866" y="136" width="73" height="26" rx="7"/><text class="code" x="902" y="154" text-anchor="middle">sync_runs</text></g>
+  <g class="node db"><rect x="667" y="179" width="92" height="48" rx="7"/><text class="code" x="713" y="200" text-anchor="middle">group_by</text><text class="sub" x="713" y="216" text-anchor="middle">in memory</text></g>
+  <g class="node fe"><rect x="19" y="250" width="148" height="48" rx="7"/><text class="code" x="93" y="271" text-anchor="middle">getDatabaseStats</text><text class="sub" x="93" y="287" text-anchor="middle">Sync</text></g>
+  <g class="node route"><rect x="246" y="250" width="138" height="48" rx="7"/><text class="code" x="315" y="271" text-anchor="middle">GET /sync/database</text></g>
+  <g class="node db"><rect x="463" y="250" width="124" height="174" rx="7"/><text class="code" x="525" y="271" text-anchor="middle">storage.</text><text class="code" x="525" y="287" text-anchor="middle">database_storage</text><text class="sub" x="525" y="303" text-anchor="middle">apsw child process</text></g>
+  <g class="node db"><rect x="839" y="250" width="126" height="26" rx="7"/><text class="code" x="902" y="268" text-anchor="middle">PRAGMA page_size</text></g>
+  <g class="node db"><rect x="839" y="287" width="126" height="26" rx="7"/><text class="code" x="902" y="305" text-anchor="middle">PRAGMA page_count</text></g>
+  <g class="node db"><rect x="839" y="324" width="126" height="26" rx="7"/><text class="code" x="902" y="342" text-anchor="middle">sqlite_schema</text></g>
+  <g class="node db"><rect x="839" y="361" width="126" height="26" rx="7"/><text class="code" x="902" y="379" text-anchor="middle">dbstat</text></g>
+  <g class="node db"><rect x="839" y="398" width="126" height="26" rx="7"/><text class="sub" x="902" y="416" text-anchor="middle">every app table</text></g>
+  <path class="edge" d="M167,74 H246" marker-end="url(#arrow)"/>
+  <path class="edge" d="M384,74 H463" marker-end="url(#arrow)"/>
+  <path class="edge" d="M587,66 H667" marker-end="url(#arrow)"/>
+  <path class="edge" d="M759,63 H866" marker-end="url(#arrow)"/>
+  <path class="edge" d="M587,110 H667" marker-end="url(#arrow)"/>
+  <path class="edge" d="M759,106 H866" marker-end="url(#arrow)"/>
+  <path class="edge" d="M587,152 H667" marker-end="url(#arrow)"/>
+  <path class="edge" d="M759,149 H866" marker-end="url(#arrow)"/>
+  <path class="edge" d="M587,203 H667" marker-end="url(#arrow)"/>
+  <path class="edge" d="M587,263 H839" marker-end="url(#arrow)"/>
+  <path class="edge" d="M587,300 H839" marker-end="url(#arrow)"/>
+  <path class="edge" d="M587,337 H839" marker-end="url(#arrow)"/>
+  <path class="edge" d="M587,374 H839" marker-end="url(#arrow)"/>
+  <path class="edge" d="M587,411 H839" marker-end="url(#arrow)"/>
+  <path class="edge" d="M167,274 H246" marker-end="url(#arrow)"/>
+  <path class="edge" d="M384,274 H463" marker-end="url(#arrow)"/>
   <text class="edge-label" x="206" y="69" text-anchor="middle">page</text>
-  <text class="edge-label" x="569" y="62" text-anchor="middle">batch count</text>
-  <text class="edge-label" x="742" y="58" text-anchor="middle">batch IDs</text>
-  <text class="edge-label" x="569" y="104" text-anchor="middle">batches</text>
-  <text class="edge-label" x="742" y="101" text-anchor="middle">page</text>
-  <text class="edge-label" x="569" y="148" text-anchor="middle">stage runs</text>
-  <text class="edge-label" x="742" y="144" text-anchor="middle">runs</text>
-  <text class="edge-label" x="569" y="198" text-anchor="middle">by batch_id</text>
-  <text class="edge-label" x="391" y="69" text-anchor="middle">page, size</text>
+  <text class="edge-label" x="423" y="69" text-anchor="middle">page, size</text>
+  <text class="edge-label" x="627" y="61" text-anchor="middle">batch count</text>
+  <text class="edge-label" x="812" y="58" text-anchor="middle">batch IDs</text>
+  <text class="edge-label" x="627" y="105" text-anchor="middle">batches</text>
+  <text class="edge-label" x="812" y="101" text-anchor="middle">page</text>
+  <text class="edge-label" x="627" y="147" text-anchor="middle">stage runs</text>
+  <text class="edge-label" x="812" y="144" text-anchor="middle">runs</text>
+  <text class="edge-label" x="627" y="198" text-anchor="middle">by batch_id</text>
+  <text class="edge-label" x="713" y="258" text-anchor="middle">page size</text>
+  <text class="edge-label" x="713" y="295" text-anchor="middle">total pages</text>
+  <text class="edge-label" x="713" y="332" text-anchor="middle">index owners</text>
+  <text class="edge-label" x="713" y="369" text-anchor="middle">bytes per table and index</text>
+  <text class="edge-label" x="713" y="406" text-anchor="middle">row counts</text>
+  <text class="edge-label" x="206" y="269" text-anchor="middle">storage</text>
+  <text class="edge-label" x="423" y="269" text-anchor="middle">measure</text>
 </svg>

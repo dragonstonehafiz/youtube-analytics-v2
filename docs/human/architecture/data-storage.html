@@ -60,7 +60,7 @@
       <h1>Data storage and access</h1>
       <p>This page shows where the data lives, how the backend reads it into Python objects, writes those objects back, and how read results become the JSON the frontend receives.</p>
       <div class="meta-line">
-        <span>Source revision <code>9581ccf</code></span>
+        <span>Source revision <code>2aa0de4</code></span>
       </div>
     </header>
 
@@ -305,11 +305,11 @@ INSERT INTO videos ("id", "title", "view_count", "updated_at") VALUES (?, ?, ?, 
 
     <section id="boundaries">
       <h2>Who reads and writes the database</h2>
-      <p>Routes and sync don't run SQL themselves. Each arrow below is labelled with what the caller uses that part for. Reports run their SQL through the reader, so only the reader and the writer touch SQLite.</p>
+      <p>Routes and sync don't run SQL themselves. Each arrow below is labelled with what the caller uses that part for. Reports run their SQL through the reader, except the storage report, which opens a read-only <code>apsw</code> connection in a separate process because it needs SQLite's <code>dbstat</code> table.</p>
       <figure class="diagram">
         <svg viewBox="0 0 900 430" role="img" aria-labelledby="bound-title bound-desc">
           <title id="bound-title">Who reads and writes the database</title>
-          <desc id="bound-desc">routes/ uses reports/ for lists, charts and stats, and reader.py for 404 checks and the first publish year. sync/ uses reports/ for the owned-video worklist, reader.py for coverage, stored IDs and the latest FX rate, and writer.py to save fetched rows and prune. reports/ runs its SQL through reader.py. reader.py runs SELECTs on SQLite; writer.py runs INSERT, UPDATE and DELETE.</desc>
+          <desc id="bound-desc">routes/ uses reports/ for lists, charts and stats, and reader.py for 404 checks and the first publish year. sync/ uses reports/ for the owned-video worklist, reader.py for coverage, stored IDs and the latest FX rate, and writer.py to save fetched rows and prune. reports/ runs its SQL through reader.py, and reads database size and row counts from SQLite directly through apsw in a child process. reader.py runs SELECTs on SQLite; writer.py runs INSERT, UPDATE and DELETE.</desc>
           <defs>
             <marker id="arrow-bound" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse">
               <path class="arrowhead" d="M0,0 L10,5 L0,10 z"/>
@@ -318,7 +318,7 @@ INSERT INTO videos ("id", "title", "view_count", "updated_at") VALUES (?, ?, ?, 
           <g class="node route"><rect x="20" y="40" width="160" height="56" rx="8"/><text class="title" x="100" y="64" text-anchor="middle">routes/</text><text class="sub" x="100" y="82" text-anchor="middle">HTTP endpoints</text></g>
           <g class="node sync"><rect x="20" y="300" width="160" height="56" rx="8"/><text class="title" x="100" y="324" text-anchor="middle">sync/</text><text class="sub" x="100" y="342" text-anchor="middle">sync stages</text></g>
           <g class="node db"><rect x="400" y="20" width="200" height="56" rx="8"/><text class="title" x="500" y="44" text-anchor="middle">reports/</text><text class="sub" x="500" y="62" text-anchor="middle">SQL + finished results</text></g>
-          <g class="node db"><rect x="400" y="170" width="200" height="56" rx="8"/><text class="title" x="500" y="194" text-anchor="middle">reader.py</text><text class="sub" x="500" y="212" text-anchor="middle">runs every read</text></g>
+          <g class="node db"><rect x="400" y="170" width="200" height="56" rx="8"/><text class="title" x="500" y="194" text-anchor="middle">reader.py</text><text class="sub" x="500" y="212" text-anchor="middle">runs reads</text></g>
           <g class="node db"><rect x="400" y="320" width="200" height="56" rx="8"/><text class="title" x="500" y="344" text-anchor="middle">writer.py</text><text class="sub" x="500" y="362" text-anchor="middle">inserts, updates, deletes</text></g>
           <g class="node"><rect x="740" y="230" width="150" height="56" rx="8"/><text class="title" x="815" y="254" text-anchor="middle">SQLite</text><text class="sub" x="815" y="272" text-anchor="middle">data/youtube.db</text></g>
 
@@ -329,6 +329,7 @@ INSERT INTO videos ("id", "title", "view_count", "updated_at") VALUES (?, ?, ?, 
           <path class="edge" d="M180,340 L398,348" marker-end="url(#arrow-bound)"/>
           <path class="edge" d="M500,76 L500,168" marker-end="url(#arrow-bound)"/>
           <path class="edge" d="M600,194 L738,248" marker-end="url(#arrow-bound)"/>
+          <path class="edge" d="M600,62 L790,228" marker-end="url(#arrow-bound)"/>
           <path class="edge" d="M600,352 L738,272" marker-end="url(#arrow-bound)"/>
 
           <text class="edge-label on-edge" x="289" y="51" dy="-6" text-anchor="middle" transform="rotate(-3.7 289 51)">lists, charts, stats</text>
@@ -336,6 +337,7 @@ INSERT INTO videos ("id", "title", "view_count", "updated_at") VALUES (?, ?, ?, 
           <text class="edge-label on-edge" x="245" y="236" dy="-6" text-anchor="middle" transform="rotate(-47.0 245 236)">owned-video worklist</text>
           <text class="edge-label on-edge" x="289" y="267" dy="-6" text-anchor="middle" transform="rotate(-26.8 289 267)">coverage, stored IDs, FX rate</text>
           <text class="edge-label on-edge" x="289" y="344" dy="-6" text-anchor="middle" transform="rotate(2.1 289 344)">fetched rows, pruning</text>
+          <text class="edge-label on-edge" x="695" y="145" dy="-6" text-anchor="middle" transform="rotate(41.2 695 145)">size, row counts (apsw process)</text>
           <text class="edge-label on-edge" x="669" y="221" dy="-6" text-anchor="middle" transform="rotate(21.4 669 221)">SELECT</text>
           <text class="edge-label on-edge" x="677" y="307" dy="-6" text-anchor="middle" transform="rotate(-30.1 677 307)">INSERT, UPDATE, DELETE</text>
           <text class="edge-label on-edge" x="510" y="126">runs its SQL</text>
@@ -352,9 +354,9 @@ INSERT INTO videos ("id", "title", "view_count", "updated_at") VALUES (?, ?, ?, 
         <div class="card"><h3><span class="tag db">dataclasses/</span></h3><p>One class per table, holding a row's values.</p></div>
         <div class="card"><h3><span class="tag db">tables.py</span></h3><p>Maps each class to its table and key columns.</p></div>
         <div class="card"><h3><span class="tag db">filters.py</span></h3><p>Turns a <code>where</code> list into SQL.</p></div>
-        <div class="card"><h3><span class="tag db">reader.py</span></h3><p>Runs every read and returns data classes.</p></div>
+        <div class="card"><h3><span class="tag db">reader.py</span></h3><p>Runs reads and returns data classes. Only the storage report reads around it.</p></div>
         <div class="card"><h3><span class="tag db">writer.py</span></h3><p>Runs every insert, update and delete.</p></div>
-        <div class="card"><h3><span class="tag db">reports/</span></h3><p>One file per purpose, such as analytics, traffic, catalog, comments, the Legacy/New statistics and sync history. Each holds its SQL and returns a finished result.</p></div>
+        <div class="card"><h3><span class="tag db">reports/</span></h3><p>One file per purpose, such as analytics, traffic, catalog, comments, the Legacy/New statistics, sync history and database storage. Each holds its SQL and returns a finished result.</p></div>
         <div class="card"><h3><span class="tag sync">Sync-run rows</span></h3><p>Written through the writer and read back through the reader like any other row.</p></div>
       </div>
     </section>

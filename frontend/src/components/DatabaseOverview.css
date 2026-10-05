@@ -1,0 +1,107 @@
+/* Storage donut on the left, row-count bars on the right; stacked on narrow screens. */
+.database-overview {
+  margin-bottom: 1rem;
+}
+
+.database-overview-body {
+  display: grid;
+  grid-template-columns: minmax(160px, 220px) minmax(0, 1fr);
+  gap: 1.5rem;
+  align-items: center;
+}
+
+.database-overview-tooltip {
+  display: flex;
+  flex-direction: column;
+  padding: 0.4rem 0.6rem;
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  font-size: 13px;
+  color: var(--text);
+}
+
+.database-overview-tooltip-label {
+  color: var(--text-heading);
+  font-weight: 600;
+}
+
+.database-overview-note {
+  margin: 0 0 0.5rem;
+  font-size: 12px;
+  color: var(--text-secondary);
+}
+
+.database-overview-bars {
+  margin: 0;
+  padding: 0;
+  list-style: none;
+  display: flex;
+  flex-direction: column;
+}
+
+.database-overview-bar-row {
+  display: grid;
+  grid-template-columns: minmax(0, 11rem) minmax(0, 1fr) 5rem;
+  gap: 0.75rem;
+  align-items: center;
+  padding: 0.3rem 0.5rem;
+  font-size: 12px;
+}
+
+/* Row dividers and hover match .data-table rows, so a short bar's count is easy to follow across. */
+.database-overview-bar-row:not(:last-child) {
+  border-bottom: 1px solid var(--border);
+}
+
+.database-overview-bar-row:hover {
+  background: var(--blue-light);
+}
+
+/* Column labels styled like .data-table th. */
+.database-overview-bars-head {
+  font-size: 10px;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.03em;
+  color: var(--text-secondary);
+  border-bottom: 1px solid var(--border);
+}
+
+.database-overview-bars-head:hover {
+  background: none;
+}
+
+.database-overview-bar-label {
+  color: var(--text);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.database-overview-bar {
+  display: block;
+  width: 100%;
+  height: 10px;
+}
+
+/* Visible track so each row's full width reads as one line. */
+.database-overview-bar-track {
+  fill: var(--border);
+}
+
+.database-overview-bar-value {
+  color: var(--text-secondary);
+  font-weight: 600;
+  text-align: right;
+}
+
+@media (max-width: 640px) {
+  .database-overview-body {
+    grid-template-columns: minmax(0, 1fr);
+  }
+
+  .database-overview-bar-row {
+    grid-template-columns: minmax(0, 8rem) minmax(0, 1fr) 4rem;
+  }
+}

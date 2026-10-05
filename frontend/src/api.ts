@@ -8,6 +8,7 @@ import type {
   SyncPlan,
   SyncQueuedResponse,
   SyncRunsResponse,
+  DatabaseStatsResponse,
   SearchTermRow,
   SearchTermVideo,
   RelatedReferrersResponse,
@@ -274,4 +275,10 @@ export const getSyncRuns = async (page: number, pageSize: number): Promise<SyncR
   const response = await fetch(buildUrl("/sync/runs", { page, pageSize }))
   if (!response.ok) throw new Error(`Sync history request failed (${response.status})`)
   return response.json() as Promise<SyncRunsResponse>
+}
+
+export const getDatabaseStats = async (): Promise<DatabaseStatsResponse> => {
+  const response = await fetch(buildUrl("/sync/database"))
+  if (!response.ok) throw new Error(`Database statistics request failed (${response.status})`)
+  return response.json() as Promise<DatabaseStatsResponse>
 }

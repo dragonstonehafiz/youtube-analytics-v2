@@ -408,6 +408,17 @@ GET  /sync/runs
   status. A batch's status is the worst status among its stages:
   failed > incomplete > running > cancelled > success.
   Only stages that actually started have rows; a plan's rows share one batch_id.
+
+GET  /sync/database
+  → { total_bytes, other_bytes, tables: DatabaseTableStats[] }
+  DatabaseTableStats: { name, size_bytes, row_count }
+  One entry per application table in database/tables.py registry order, including
+  tables with no rows. size_bytes includes the table's indexes. other_bytes is
+  allocated space no application table owns (free pages, SQLite internals);
+  sum(size_bytes) + other_bytes = total_bytes. All sizes are integer bytes of the
+  committed logical database, measured from one snapshot (see database.md).
+  503 { detail: "Database statistics are unavailable" } when the measurement fails;
+  no path or SQLite error text is returned.
 ```
 
 ## Route-order and compatibility constraints

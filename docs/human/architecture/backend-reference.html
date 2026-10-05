@@ -55,7 +55,7 @@
       <h1>Backend reference</h1>
       <p>This page shows what each backend file does and which functions each API route calls.</p>
       <div class="meta-line">
-        <span>Source revision <code>941e58a</code></span>
+        <span>Source revision <code>2aa0de4</code></span>
       </div>
     </header>
 
@@ -77,7 +77,7 @@
         <dt><code>playlists.py</code></dt><dd>Serves the Playlists page and single-playlist data.</dd>
         <dt><code>analytics.py</code></dt><dd>Serves the Analytics pages: charts, top videos, traffic sources, search terms, and related videos.</dd>
         <dt><code>comments.py</code></dt><dd>Serves the comment feeds for the channel, a video, or a playlist.</dd>
-        <dt><code>synchronization.py</code></dt><dd>Starts and stops syncs, reports progress, and returns sync history.</dd>
+        <dt><code>synchronization.py</code></dt><dd>Starts and stops syncs, reports progress, and returns sync history and database storage.</dd>
         <dt><code>metadata.py</code></dt><dd>Returns the earliest publish year for the year dropdowns.</dd>
         <dt><code>video_scope.py</code></dt><dd>Returns 404 for a missing video or playlist, and loads a playlist's video IDs. Defines no endpoints.</dd>
         <dt><code>_shared.py</code></dt><dd>Turns a missing lookup result into a 404 "not found" response. Defines no endpoints.</dd>
@@ -90,10 +90,10 @@
         <dt><code>dataclasses/</code></dt><dd>One data class per table, such as <code>Video</code> or <code>Comment</code>. They only hold values.</dd>
         <dt><code>tables.py</code></dt><dd>Maps each class to its table and key columns.</dd>
         <dt><code>filters.py</code></dt><dd>Turns a list of conditions into a SQL <code>WHERE</code>.</dd>
-        <dt><code>reader.py</code></dt><dd>Runs every read and returns data classes.</dd>
+        <dt><code>reader.py</code></dt><dd>Runs reads and returns data classes. Only <code>reports/storage.py</code> reads around it.</dd>
         <dt><code>writer.py</code></dt><dd>Runs every insert, update and delete.</dd>
-        <dt><code>reports/</code></dt><dd>Runs the joined, grouped, ranked and paged reads and returns finished results. One file per purpose: <code>analytics.py</code>, <code>traffic.py</code>, <code>catalog.py</code>, <code>comments.py</code>, <code>video_statistics.py</code> (the Legacy/New stats bar) and <code>sync_history.py</code>.</dd>
-        <dt><code>connection.py</code></dt><dd>Opens database connections and creates the tables.</dd>
+        <dt><code>reports/</code></dt><dd>Runs the joined, grouped, ranked and paged reads and returns finished results. One file per purpose: <code>analytics.py</code>, <code>traffic.py</code>, <code>catalog.py</code>, <code>comments.py</code>, <code>video_statistics.py</code> (the Legacy/New stats bar), <code>sync_history.py</code> and <code>storage.py</code> (database size and row counts, read through <code>apsw</code> in a separate process because it needs SQLite's <code>dbstat</code> table).</dd>
+        <dt><code>connection.py</code></dt><dd>Opens database connections, gives the database path, and creates the tables.</dd>
       </dl>
       </div>
       <div class="card file-group">
@@ -203,10 +203,11 @@
       </div>
       <div class="card file-group">
         <h3>Sync</h3>
-        <p>Defined in <code>database/reports/sync_history.py</code> and <code>sync/status.py</code>.</p>
+        <p>Defined in <code>database/reports/sync_history.py</code>, <code>database/reports/storage.py</code> and <code>sync/status.py</code>.</p>
         <dl class="returns-list">
           <dt class="col-head">Read</dt><dd class="col-head">Returns</dd><dd class="col-head">Used by</dd>
           <dt><code>sync_history.sync_batches</code></dt><dd>One page of past syncs, each with its stages and overall status.</dd><dd class="used-by"><code>GET /sync/runs</code></dd>
+          <dt><code>storage.database_storage</code></dt><dd>Database size, each table's size and row count, and unowned space.</dd><dd class="used-by"><code>GET /sync/database</code></dd>
           <dt><code>sync.get_sync_status</code></dt><dd>The live sync state, read from memory.</dd><dd class="used-by"><code>GET /sync/status</code></dd>
         </dl>
       </div>
@@ -242,9 +243,9 @@
       <figure class="call-figure">
         <img src="figures/calls-comments.svg" alt="Comments and date range: routes/comments.py and routes/metadata.py">
       </figure>
-      <h3>Sync history <small><code>routes/synchronization.py</code></small></h3>
+      <h3>Sync history and database storage <small><code>routes/synchronization.py</code></small></h3>
       <figure class="call-figure">
-        <img src="figures/calls-history.svg" alt="Sync history: routes/synchronization.py">
+        <img src="figures/calls-history.svg" alt="Sync history and database storage: routes/synchronization.py">
       </figure>
       <h3>Sync control <small><code>routes/synchronization.py</code></small></h3>
       <figure class="call-figure">

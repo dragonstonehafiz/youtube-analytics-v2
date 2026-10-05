@@ -18,6 +18,18 @@ vi.mock('@/api', () => ({
   getSyncRuns: vi.fn(),
 }))
 
+// The overview's own states are covered in DatabaseOverview.test.tsx; here only its placement and mounts matter.
+const overviewMounted = vi.fn()
+vi.mock('@/components/DatabaseOverview', async () => {
+  const { useEffect } = await import('react')
+  return {
+    default: function DatabaseOverviewStub() {
+      useEffect(() => overviewMounted(), [])
+      return <div data-testid="database-overview" />
+    },
+  }
+})
+
 import { getDateRange, getSyncRuns, getSyncStatus, stopSync, triggerSync } from '@/api'
 import Sync from '@/pages/Sync'
 
@@ -149,6 +161,41 @@ beforeEach(() => {
 afterEach(() => {
   cleanup()
   vi.clearAllMocks()
+})
+
+describe('database overview', () => {
+  const precedes = (a: Element, b: Element) => (a.compareDocumentPosition(b) & Node.DOCUMENT_POSITION_FOLLOWING) !== 0
+
+  it.each(['/sync', '/sync?tab=history'])('sits between the status banner and the tabs on %s', async route => {
+    const { container } = renderSync(route)
+    await settled()
+
+    const banner = container.querySelector('.sync-status-banner-shell')
+    const overview = screen.getByTestId('database-overview')
+    const tabs = container.querySelector('.tabs')
+    expect(banner && tabs).toBeTruthy()
+    expect(precedes(banner!, overview)).toBe(true)
+    expect(precedes(overview, tabs!)).toBe(true)
+  })
+
+  it('adds no third tab', async () => {
+    const { container } = renderSync('/sync')
+    await settled()
+
+    const labels = Array.from(container.querySelectorAll('.tabs .tab')).map(tab => tab.textContent)
+    expect(labels).toEqual(['Sync', 'History'])
+  })
+
+  it('mounts once and is not remounted when switching tabs', async () => {
+    renderSync('/sync')
+    await settled()
+
+    fireEvent.click(screen.getByRole('button', { name: 'History' }))
+    await waitFor(() => expect(mockGetSyncRuns).toHaveBeenCalled())
+    fireEvent.click(screen.getByRole('button', { name: 'Sync' }))
+
+    expect(overviewMounted).toHaveBeenCalledTimes(1)
+  })
 })
 
 describe('tab selection and URL state', () => {
