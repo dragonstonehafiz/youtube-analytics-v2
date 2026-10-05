@@ -58,6 +58,20 @@
   background: var(--blue-light);
 }
 
+/* Column labels styled like .data-table th. */
+.database-overview-bars-head {
+  font-size: 10px;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.03em;
+  color: var(--text-secondary);
+  border-bottom: 1px solid var(--border);
+}
+
+.database-overview-bars-head:hover {
+  background: none;
+}
+
 .database-overview-bar-label {
   color: var(--text);
   overflow: hidden;

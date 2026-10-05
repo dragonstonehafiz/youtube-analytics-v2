@@ -144,6 +144,12 @@ function DatabaseOverviewContent({ data }: { data: DatabaseStatsResponse }) {
 
       <div className="database-overview-rows">
         {maxRows === 0 && <p className="database-overview-note">No rows stored yet</p>}
+        {/* Column labels for sighted readers; the list's aria-label already names the counts. */}
+        <div className="database-overview-bar-row database-overview-bars-head" aria-hidden="true">
+          <span>Table</span>
+          <span />
+          <span className="database-overview-bar-value">Rows</span>
+        </div>
         <ul className="database-overview-bars" aria-label="Rows per table">
           {rows.map(t => (
             <li key={t.name} className="database-overview-bar-row">
