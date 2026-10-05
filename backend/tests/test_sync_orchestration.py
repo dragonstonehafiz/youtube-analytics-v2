@@ -670,11 +670,13 @@ class AnalyticsWorkerConcurrencyTest(OrchestrationTestCase):
         self.assertEqual(failures, [])
 
     def test_failed_stage_stays_distinct_while_sibling_worker_is_running(self) -> None:
+        sibling_entered = threading.Event()
         sibling_release = threading.Event()
         self.stage_mocks["sync_video_analytics"].side_effect = RuntimeError("quota exceeded")
 
         def hold_sibling(scope: object, year: object, counts: object) -> None:
             status.update_sync_progress("video_traffic_sources", "Syncing traffic sources...")
+            sibling_entered.set()
             sibling_release.wait(timeout=5)
 
         self.stage_mocks["sync_video_traffic_sources"].side_effect = hold_sibling
@@ -694,6 +696,8 @@ class AnalyticsWorkerConcurrencyTest(OrchestrationTestCase):
         thread = threading.Thread(target=execute)
         thread.start()
         try:
+            # The workers run in parallel, so the failure can land before the sibling starts.
+            self.assertTrue(sibling_entered.wait(timeout=2))
             deadline = time.time() + 2
             snapshot = status.get_sync_status()
             states = {stage["key"]: stage["state"] for stage in snapshot["stages"]}
