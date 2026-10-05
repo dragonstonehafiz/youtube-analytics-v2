@@ -27,8 +27,8 @@
 <rect class="first" x="160" y="190" width="300" height="24" rx="4"/>
 <text x="470" y="202">10</text>
 <text x="20" y="236">Sync</text>
-<rect class="first" x="160" y="224" width="60" height="24" rx="4"/>
-<text x="230" y="236">2</text>
+<rect class="first" x="160" y="224" width="90" height="24" rx="4"/>
+<text x="260" y="236">3</text>
 <rect class="first" x="20" y="268" width="14" height="14" rx="3"/><text class="muted" x="40" y="275">Request sent when the page opens</text>
 <rect class="then" x="250" y="268" width="14" height="14" rx="3"/><text class="muted" x="270" y="275">From previous request</text>
 </svg>

@@ -6,7 +6,7 @@ from fastapi import APIRouter, BackgroundTasks, HTTPException, Query
 from pydantic import BaseModel, ConfigDict
 
 import sync
-from database.reports import sync_history
+from database.reports import storage, sync_history
 
 router = APIRouter()
 
@@ -85,3 +85,12 @@ def sync_runs(
 ) -> dict:
     """Return a page of newest-first sync batches and the total batch count."""
     return sync_history.sync_batches(page=page, page_size=page_size)
+
+
+@router.get("/sync/database")
+def database_storage() -> dict:
+    """Return allocated database bytes and row counts for every application table."""
+    try:
+        return storage.database_storage()
+    except storage.StorageUnavailable as exc:
+        raise HTTPException(status_code=503, detail="Database statistics are unavailable") from exc

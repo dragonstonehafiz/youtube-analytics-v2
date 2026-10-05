@@ -57,15 +57,15 @@
       <h1>Frontend components</h1>
       <p>This page shows which components each page renders and where each component is used.</p>
       <div class="meta-line">
-        <span>Source revision <code>820eb54</code></span>
+        <span>Source revision <code>2aa0de4</code></span>
       </div>
     </header>
 
     <div class="stat-row">
       <div class="stat"><b>7</b><span>routes / pages</span></div>
-      <div class="stat"><b>29</b><span>shared components</span></div>
-      <div class="stat"><b>2</b><span>never rendered</span></div>
-      <div class="stat"><b>3</b><span>components that own requests</span></div>
+      <div class="stat"><b>28</b><span>shared components</span></div>
+      <div class="stat"><b>0</b><span>never rendered</span></div>
+      <div class="stat"><b>6</b><span>components that own requests</span></div>
     </div>
 
     <section id="rules">
@@ -269,6 +269,12 @@
           <h4><code>SyncStatusBanner</code></h4>
           <p>The strip at the top of the Sync page with one card per active or finished stage.</p>
           <p class="meta"><strong>Used on:</strong> Sync</p>
+        </div>
+        <div class="card component-card">
+          <h4><code>DatabaseOverview</code></h4>
+          <p>The Database card above the Sync page's tabs: a donut of storage by table and a bar per table's row count.</p>
+          <p class="meta"><strong>Used on:</strong> Sync</p>
+          <p class="meta"><strong>Loads its own data:</strong> <code>GET /sync/database</code> when the page opens</p>
         </div>
       </div>
     </section>

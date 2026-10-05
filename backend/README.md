@@ -71,7 +71,7 @@ backend/
     filters.py           # shared WHERE compilation for reader selects and writer updates/deletes
     reader.py            # all read execution, including daily date filling and result grouping
     writer.py            # all inserts/updates (update-then-insert by key, None fields left untouched), filtered updates, and filtered deletes
-    reports/             # finished-result reads: analytics, traffic, catalog, comments, video_statistics, sync_history
+    reports/             # finished-result reads: analytics, traffic, catalog, comments, video_statistics, sync_history, storage
 
   sync/                # Sync plans, orchestration, and an uncalled freshness-check scheduler
     status.py
@@ -114,6 +114,7 @@ GET  /sync/status             Active sync status and progress
 POST /sync/trigger            Queue a manual sync of the selected stages (JSON plan body)
 POST /sync/stop               Request cooperative cancellation of the active sync
 GET  /sync/runs               Recent sync-stage records, newest first
+GET  /sync/database           Database storage and row counts per table (reads dbstat through apsw)
 ```
 
 ## Syncing

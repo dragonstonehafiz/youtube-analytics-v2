@@ -54,7 +54,7 @@
       <h1>Efficiency</h1>
       <p>This page shows code that does more work than it needs to.</p>
       <div class="meta-line">
-        <span>Source revision <code>50a2aed</code></span>
+        <span>Source revision <code>2aa0de4</code></span>
       </div>
     </header>
 
@@ -84,6 +84,15 @@
           <dl>
             <dt>Where</dt><dd>11 reads in <code>backend/database/reports/</code>, all through <code>video_conditions()</code></dd>
             <dt>Cost</dt><dd>A leading <code>%</code> cannot use an index, so every video row is scanned. Small at the current table size.</dd>
+          </dl>
+        </article>
+
+        <article class="dup">
+          <div class="dup-head"><h3>Whole-database scan for storage statistics</h3><span class="dup-count">per Sync page open</span></div>
+          <p><code>/sync/database</code> reads every page through <code>dbstat</code> and runs <code>COUNT(*)</code> on every table.</p>
+          <dl>
+            <dt>Where</dt><dd><code>database/reports/storage.py</code>, called by <code>DatabaseOverview</code> each time the Sync page opens</dd>
+            <dt>Cost</dt><dd>Reads the whole database file per request, so the time grows with the database size.</dd>
           </dl>
         </article>
 

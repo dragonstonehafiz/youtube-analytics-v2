@@ -61,7 +61,7 @@
       <h1>Frontend requests</h1>
       <p>This page shows every backend request the frontend makes, and when each one is sent.</p>
       <div class="meta-line">
-        <span>Source revision <code>50a2aed</code></span>
+        <span>Source revision <code>2aa0de4</code></span>
       </div>
     </header>
 
@@ -123,10 +123,11 @@
 
     <section id="request-owning-shared-components">
       <h2>Request-owning components</h2>
-      <p>Three shared components fetch their own data instead of getting it from the page.</p>
+      <p>Four shared components fetch their own data instead of getting it from the page.</p>
       <div class="card-grid">
         <div class="card"><h3>SyncStatus</h3><p>Polls <code>/sync/status</code> every 5 seconds on every page.</p></div>
         <div class="card"><h3>PeriodSelect</h3><p>Calls <code>/meta/date-range</code> the first time it appears in a page load, to build its year options; later appearances and the Sync page reuse that answer.</p></div>
+        <div class="card"><h3>DatabaseOverview</h3><p>Calls <code>/sync/database</code> once each time the Sync page opens. Switching between the Sync and History tabs does not call it again.</p></div>
         <div class="card"><h3>CommentsTab</h3><p>The Comments tab. It calls the channel, video or playlist comment route and reloads when a filter changes.</p></div>
       </div>
     </section>
@@ -225,6 +226,7 @@
           <dt><code>triggerSync</code></dt><dd><code>POST /sync/trigger</code></dd><dd class="used-by">Sync</dd>
           <dt><code>stopSync</code></dt><dd><code>POST /sync/stop</code></dd><dd class="used-by">Sync</dd>
           <dt><code>getSyncRuns</code></dt><dd><code>/sync/runs</code></dd><dd class="used-by">Sync</dd>
+          <dt><code>getDatabaseStats</code></dt><dd><code>/sync/database</code></dd><dd class="used-by">DatabaseOverview</dd>
           <dt><code>getDateRange</code></dt><dd><code>/meta/date-range</code></dd><dd class="used-by">useAvailableYears (PeriodSelect, Sync)</dd>
         </dl>
       </div>
