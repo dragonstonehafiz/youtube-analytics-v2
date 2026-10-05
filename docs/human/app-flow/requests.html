@@ -24,6 +24,8 @@
       <div class="nav-menu-list">
         <a href="../architecture/backend-architecture.html">Backend architecture</a>
         <a href="../architecture/backend-reference.html">Backend reference</a>
+        <a href="../architecture/data-storage.html">Data storage and access</a>
+        <a href="../architecture/reader-writer.html">Reader and writer</a>
         <a href="../architecture/frontend-components.html">Frontend components</a>
       </div>
     </details>
@@ -45,9 +47,7 @@
       <li><a href="#home">Home</a></li>
       <li><a href="#videos">Videos</a></li>
       <li><a href="#playlists">Playlists</a></li>
-      <li><a href="#analytics">Analytics</a></li>
-      <li><a href="#videoanalytics">VideoAnalytics</a></li>
-      <li><a href="#playlistanalytics">PlaylistAnalytics</a></li>
+      <li><a href="#analytics">Analytics pages</a></li>
       <li><a href="#sync">Sync</a></li>
       <li><a href="#request-owning-shared-components">Request-owning components</a></li>
       <li><a href="#first-load-bursts">Requests per page open</a></li>
@@ -61,171 +61,63 @@
       <h1>Frontend requests</h1>
       <p>This page shows every backend request the frontend makes, and when each one is sent.</p>
       <div class="meta-line">
-        <span>Source revision <code>8f69e1f</code></span>
+        <span>Source revision <code>50a2aed</code></span>
       </div>
     </header>
 
     <section id="home">
       <h2>Home <small><code>/</code></small></h2>
-      <p>Everything uses a fixed window of the last 28 days and public videos only; there are no filters.</p>
-      <h3>When the page opens</h3>
       <figure class="request-figure">
-        <img src="figures/requests-home-load.svg" alt="Home: when the page opens">
+        <img src="figures/requests-home.svg" alt="Home: every card with the requests behind it">
       </figure>
-      <h3>When you change something</h3>
-      <figure class="request-figure">
-        <img src="figures/requests-home-actions.svg" alt="Home: when you change something">
-      </figure>
+      <ul class="request-notes">
+        <li>Every card uses the last 28 days and public videos only.</li>
+      </ul>
     </section>
 
     <section id="videos">
       <h2>Videos <small><code>/videos</code></small></h2>
-      <p>Filters, sort and page number live in the URL, so each request reruns when a value it uses changes.</p>
-      <h3>When the page opens</h3>
       <figure class="request-figure">
-        <img src="figures/requests-videos-load.svg" alt="Videos: when the page opens">
-      </figure>
-      <h3>When you change something</h3>
-      <figure class="request-figure">
-        <img src="figures/requests-videos-actions.svg" alt="Videos: when you change something">
+        <img src="figures/requests-videos.svg" alt="Videos: every card with the requests behind it">
       </figure>
       <ul class="request-notes">
-        <li>The title box waits until you stop typing for 300 ms before anything reloads.</li>
-        <li>Filters are title, period or dates, type and privacy.</li>
+        <li>Title box waits 300 ms after typing stops.</li>
+        <li>Sort and filter changes return the table to page 1.</li>
       </ul>
     </section>
 
     <section id="playlists">
       <h2>Playlists <small><code>/playlists</code></small></h2>
-      <p>Sort, page and title live in the URL.</p>
-      <h3>When the page opens</h3>
       <figure class="request-figure">
-        <img src="figures/requests-playlists-load.svg" alt="Playlists: when the page opens">
-      </figure>
-      <h3>When you change something</h3>
-      <figure class="request-figure">
-        <img src="figures/requests-playlists-actions.svg" alt="Playlists: when you change something">
+        <img src="figures/requests-playlists.svg" alt="Playlists: every card with the requests behind it">
       </figure>
       <ul class="request-notes">
-        <li>The title box waits until you stop typing for 300 ms before anything reloads.</li>
+        <li>Title box waits 300 ms after typing stops.</li>
+        <li>Sort and title changes return the table to page 1.</li>
       </ul>
     </section>
 
     <section id="analytics">
-      <h2>Analytics <small><code>/analytics</code></small></h2>
-      <p>Filters live in the URL, so each request reruns when a filter it uses changes.</p>
-      <h3>When the page opens</h3>
+      <h2>Analytics pages <small><code>/analytics</code> · <code>/analytics/playlists/:id</code> · <code>/analytics/videos/:id</code></small></h2>
       <figure class="request-figure">
-        <img src="figures/requests-analytics-load.svg" alt="Analytics: when the page opens">
-      </figure>
-      <h3>Analytics tab</h3>
-      <figure class="request-figure">
-        <img src="figures/requests-analytics-tab-analytics.svg" alt="Analytics: analytics tab">
-      </figure>
-      <h3>Traffic Sources tab</h3>
-      <figure class="request-figure">
-        <img src="figures/requests-analytics-tab-traffic.svg" alt="Analytics: traffic sources tab">
-      </figure>
-      <h3>Comments tab</h3>
-      <figure class="request-figure">
-        <img src="figures/requests-analytics-tab-comments.svg" alt="Analytics: comments tab">
-      </figure>
-      <h3>When you change something</h3>
-      <figure class="request-figure">
-        <img src="figures/requests-analytics-actions.svg" alt="Analytics: when you change something">
+        <img src="figures/requests-analytics.svg" alt="Analytics pages: every tab, sub-tab and card with the requests behind it">
       </figure>
       <ul class="request-notes">
-        <li>The title box waits until you stop typing for 300 ms before the page reloads anything.</li>
-        <li>With the Related Videos sub-tab open, date, title, privacy and type changes also reload the referrers, and date changes reload the destinations.</li>
-        <li>After a date, title or privacy change, the two "videos for the top search term" requests run twice: once straight away with the old top term, and again when the new term lists arrive.</li>
-        <li>The page-open requests (except the period dropdown) also run when the page is opened on the Comments tab, even though only the comments are shown there.</li>
-      </ul>
-    </section>
-
-    <section id="videoanalytics">
-      <h2>VideoAnalytics <small><code>/analytics/videos/:id</code></small></h2>
-      <p>The start and end dates live in the URL. <code>{id}</code> is the video in the page address.</p>
-      <h3>When the page opens</h3>
-      <figure class="request-figure">
-        <img src="figures/requests-video-load.svg" alt="VideoAnalytics: when the page opens">
-      </figure>
-      <h3>Analytics tab</h3>
-      <figure class="request-figure">
-        <img src="figures/requests-video-tab-analytics.svg" alt="VideoAnalytics: analytics tab">
-      </figure>
-      <h3>Traffic Sources tab</h3>
-      <figure class="request-figure">
-        <img src="figures/requests-video-tab-traffic.svg" alt="VideoAnalytics: traffic sources tab">
-      </figure>
-      <h3>Comments tab</h3>
-      <figure class="request-figure">
-        <img src="figures/requests-video-tab-comments.svg" alt="VideoAnalytics: comments tab">
-      </figure>
-      <h3>When you change something</h3>
-      <figure class="request-figure">
-        <img src="figures/requests-video-actions.svg" alt="VideoAnalytics: when you change something">
-      </figure>
-      <ul class="request-notes">
-        <li>With the Related Videos sub-tab open, date changes also reload the referrers and destinations.</li>
-        <li>The destinations request doesn't wait for anything: this video is always the referrer.</li>
-        <li>None of the requests wait for the video details, so an unknown video ID sends every request and each comes back 404.</li>
-      </ul>
-    </section>
-
-    <section id="playlistanalytics">
-      <h2>PlaylistAnalytics <small><code>/analytics/playlists/:id</code></small></h2>
-      <p>The Analytics and Traffic Sources tabs use their own <code>analytics_*</code> filters in the URL; the Videos tab uses separate ones. <code>{id}</code> is the playlist in the page address.</p>
-      <h3>When the page opens</h3>
-      <figure class="request-figure">
-        <img src="figures/requests-playlist-load.svg" alt="PlaylistAnalytics: when the page opens">
-      </figure>
-      <h3>Analytics tab</h3>
-      <figure class="request-figure">
-        <img src="figures/requests-playlist-tab-analytics.svg" alt="PlaylistAnalytics: analytics tab">
-      </figure>
-      <h3>Traffic Sources tab</h3>
-      <figure class="request-figure">
-        <img src="figures/requests-playlist-tab-traffic.svg" alt="PlaylistAnalytics: traffic sources tab">
-      </figure>
-      <h3>Comments tab</h3>
-      <figure class="request-figure">
-        <img src="figures/requests-playlist-tab-comments.svg" alt="PlaylistAnalytics: comments tab">
-      </figure>
-      <h3>Videos tab</h3>
-      <figure class="request-figure">
-        <img src="figures/requests-playlist-tab-videos.svg" alt="PlaylistAnalytics: videos tab">
-      </figure>
-      <h3>When you change something</h3>
-      <figure class="request-figure">
-        <img src="figures/requests-playlist-actions.svg" alt="PlaylistAnalytics: when you change something">
-      </figure>
-      <ul class="request-notes">
-        <li>The title boxes wait until you stop typing for 300 ms before anything reloads.</li>
-        <li>With the Related Videos sub-tab open, date, title, privacy and type changes also reload the referrers, and date changes reload the destinations.</li>
-        <li>After a date, title or privacy change, the two "videos for the top search term" requests run twice, the same as on Analytics.</li>
-        <li>The Videos tab count request runs on every tab, because its total labels the tab.</li>
-        <li>None of the requests wait for the playlist header, so an unknown playlist ID sends every request and each comes back 404.</li>
+        <li>Title boxes wait 300 ms after typing stops.</li>
+        <li>Each tab and sub-tab sends its requests every time it opens, so moving between Analytics and Traffic Sources requests stats and uploads again.</li>
+        <li>Type set to Video or Short skips the other type's sidebar cards.</li>
+        <li>An unknown ID still sends the open tab's requests; each returns 404.</li>
       </ul>
     </section>
 
     <section id="sync">
       <h2>Sync <small><code>/sync</code></small></h2>
-      <p>The open tab and the History page number live in the URL.</p>
-      <h3>When the page opens</h3>
       <figure class="request-figure">
-        <img src="figures/requests-sync-load.svg" alt="Sync: when the page opens">
-      </figure>
-      <h3>History tab</h3>
-      <figure class="request-figure">
-        <img src="figures/requests-sync-tab-history.svg" alt="Sync: history tab">
-      </figure>
-      <h3>When you change something</h3>
-      <figure class="request-figure">
-        <img src="figures/requests-sync-actions.svg" alt="Sync: when you change something">
+        <img src="figures/requests-sync.svg" alt="Sync: every tab and card with the requests behind it">
       </figure>
       <ul class="request-notes">
-        <li>Checking stages or changing periods on the Sync tab sends nothing until you press Sync selected.</li>
-        <li>The page polls /sync/status on both tabs. The top navigation's status indicator polls it too, so this page sends two status requests every 5 seconds.</li>
+        <li>The top navigation also polls sync status, so this page sends two every 5 s.</li>
+        <li>History reloads each time its tab is opened.</li>
       </ul>
     </section>
 
@@ -233,9 +125,9 @@
       <h2>Request-owning components</h2>
       <p>Three shared components fetch their own data instead of getting it from the page.</p>
       <div class="card-grid">
-        <div class="card"><h3>SyncStatus</h3><p><code>components/SyncStatus.tsx</code> calls <code>/sync/status</code> as soon as the app loads, then every 5 seconds. It sits in the top navigation, outside the page routes, so it keeps polling on every page for as long as the app is open, whether or not a sync is running.</p></div>
-        <div class="card"><h3>PeriodSelect</h3><p><code>components/PeriodSelect.tsx</code> calls <code>/meta/date-range</code> every time it appears, to build its year options. Nothing is cached, and errors are ignored. It appears on Videos (inside the video table), Analytics, VideoAnalytics and PlaylistAnalytics.</p></div>
-        <div class="card"><h3>CommentsPanel</h3><p><code>components/CommentsPanel.tsx</code> is the whole Comments tab. It calls <code>/comments</code> on Analytics, <code>/comments/videos/{id}</code> on VideoAnalytics and <code>/comments/playlists/{id}</code> on PlaylistAnalytics. It reloads when you change page, sort, dates or type; the comment, commenter and video title boxes wait for 300 ms of no typing, then reload together.</p></div>
+        <div class="card"><h3>SyncStatus</h3><p>Polls <code>/sync/status</code> every 5 seconds on every page.</p></div>
+        <div class="card"><h3>PeriodSelect</h3><p>Calls <code>/meta/date-range</code> the first time it appears in a page load, to build its year options; later appearances and the Sync page reuse that answer.</p></div>
+        <div class="card"><h3>CommentsTab</h3><p>The Comments tab. It calls the channel, video or playlist comment route and reloads when a filter changes.</p></div>
       </div>
     </section>
 
@@ -244,8 +136,8 @@
       <p>How many requests each page sends when it opens on its default tab, not counting the top navigation's status poll.</p>
       <figure class="request-figure"><img src="figures/requests-page-open-counts.svg" alt="Number of requests each page sends when it opens"></figure>
       <ul class="request-notes">
-        <li>Opening Analytics or PlaylistAnalytics on the Related Videos sub-tab adds 2 referrer requests, then 2 destination requests once those come back.</li>
-        <li>Setting the Type filter to Video or Short on Analytics or PlaylistAnalytics removes 2 of the 4 sidebar requests.</li>
+        <li>Opening on another tab sends that tab's requests instead. Comments sends only its comments request, plus the header on playlist and video pages.</li>
+        <li>Type set to Video or Short removes 2 of the 4 sidebar requests.</li>
       </ul>
     </section>
 
@@ -281,7 +173,6 @@
           <dt><code>getChannelAnalytics</code></dt><dd><code>/analytics/videos</code></dd><dd class="used-by">Analytics</dd>
           <dt><code>getTopVideosByViews</code></dt><dd><code>/analytics/videos/top</code></dd><dd class="used-by">Home, Analytics</dd>
           <dt><code>getPlaylistAnalytics</code></dt><dd><code>/analytics/playlists/{id}</code></dd><dd class="used-by">PlaylistAnalytics</dd>
-          <dt><code>getPlaylistAggregatedAnalytics</code></dt><dd><code>/analytics/playlists/{id}</code></dd><dd class="used-by">nothing (duplicate of getPlaylistAnalytics)</dd>
           <dt><code>getPlaylistTopVideosByViews</code></dt><dd><code>/analytics/playlists/{id}/top</code></dd><dd class="used-by">PlaylistAnalytics</dd>
         </dl>
       </div>
@@ -300,11 +191,9 @@
         <dl class="returns-list">
           <dt class="col-head">Function</dt><dd class="col-head">Route</dd><dd class="col-head">Used by</dd>
           <dt><code>getSearchTerms</code></dt><dd><code>/analytics/search-insights</code></dd><dd class="used-by">Home, Analytics</dd>
-          <dt><code>getTopSearchTerms</code></dt><dd><code>/analytics/search-insights/top</code></dd><dd class="used-by">nothing</dd>
           <dt><code>getVideosBySearchTerm</code></dt><dd><code>/analytics/search-insights/videos</code></dd><dd class="used-by">Home, Analytics</dd>
           <dt><code>getVideoSearchTerms</code></dt><dd><code>/analytics/videos/{id}/search-insights</code></dd><dd class="used-by">VideoAnalytics</dd>
           <dt><code>getPlaylistSearchTerms</code></dt><dd><code>/analytics/playlists/{id}/search-insights</code></dd><dd class="used-by">PlaylistAnalytics</dd>
-          <dt><code>getPlaylistTopSearchTerms</code></dt><dd><code>/analytics/playlists/{id}/search-insights/top</code></dd><dd class="used-by">nothing</dd>
           <dt><code>getPlaylistVideosBySearchTerm</code></dt><dd><code>/analytics/playlists/{id}/search-insights/videos</code></dd><dd class="used-by">PlaylistAnalytics</dd>
         </dl>
       </div>
@@ -323,9 +212,9 @@
         <h3>Comments</h3>
         <dl class="returns-list">
           <dt class="col-head">Function</dt><dd class="col-head">Route</dd><dd class="col-head">Used by</dd>
-          <dt><code>getComments</code></dt><dd><code>/comments</code></dd><dd class="used-by">CommentsPanel</dd>
-          <dt><code>getVideoComments</code></dt><dd><code>/comments/videos/{id}</code></dd><dd class="used-by">CommentsPanel</dd>
-          <dt><code>getPlaylistComments</code></dt><dd><code>/comments/playlists/{id}</code></dd><dd class="used-by">CommentsPanel</dd>
+          <dt><code>getComments</code></dt><dd><code>/comments</code></dd><dd class="used-by">CommentsTab</dd>
+          <dt><code>getVideoComments</code></dt><dd><code>/comments/videos/{id}</code></dd><dd class="used-by">CommentsTab</dd>
+          <dt><code>getPlaylistComments</code></dt><dd><code>/comments/playlists/{id}</code></dd><dd class="used-by">CommentsTab</dd>
         </dl>
       </div>
       <div class="card file-group">
@@ -336,7 +225,7 @@
           <dt><code>triggerSync</code></dt><dd><code>POST /sync/trigger</code></dd><dd class="used-by">Sync</dd>
           <dt><code>stopSync</code></dt><dd><code>POST /sync/stop</code></dd><dd class="used-by">Sync</dd>
           <dt><code>getSyncRuns</code></dt><dd><code>/sync/runs</code></dd><dd class="used-by">Sync</dd>
-          <dt><code>getDateRange</code></dt><dd><code>/meta/date-range</code></dd><dd class="used-by">PeriodSelect, Sync</dd>
+          <dt><code>getDateRange</code></dt><dd><code>/meta/date-range</code></dd><dd class="used-by">useAvailableYears (PeriodSelect, Sync)</dd>
         </dl>
       </div>
     </section>
@@ -344,11 +233,7 @@
     <section id="requests-that-may-run-unnecessarily">
       <h2>Requests that may run unnecessarily</h2>
       <div class="card-grid">
-        <div class="card"><h3>Hidden-tab requests</h3><p>On Analytics and PlaylistAnalytics, everything except the Related Videos requests loads whichever tab is open. Opening the page on the Comments tab still sends 13 analytics requests. Search-term requests load while other sub-tabs are showing, top videos per traffic source loads on the Analytics tab, and the sidebar and top videos table load on Traffic Sources. VideoAnalytics loads its chart, traffic and search requests on every tab, including Comments.</p></div>
-        <div class="card"><h3>Term videos load twice</h3><p>On Analytics and PlaylistAnalytics, a date, title or privacy change sends the "videos for the top search term" requests straight away with the old top term, then again when the new term lists arrive, even if the top term hasn't changed.</p></div>
-        <div class="card"><h3>Two status pollers on the Sync page</h3><p>The top navigation and the Sync page each request <code>/sync/status</code> every 5 seconds, so that page sends two per interval. The top navigation's poll runs on every page whether or not a sync is running.</p></div>
-        <div class="card"><h3>Date range on every appearance</h3><p>The period dropdown requests <code>/meta/date-range</code> every time it appears. Switching tabs brings it back and requests it again, PlaylistAnalytics has two of them on different tabs, and the Sync page requests the same thing separately.</p></div>
-        <div class="card"><h3>Unused API functions</h3><p><code>getPlaylistAggregatedAnalytics</code> duplicates <code>getPlaylistAnalytics</code> and has no caller. <code>getTopSearchTerms</code> and <code>getPlaylistTopSearchTerms</code> have no caller, so the two <code>…/search-insights/top</code> routes are never requested by the frontend.</p></div>
+        <div class="card"><h3>Two status pollers on the Sync page</h3><p>The top navigation and the Sync page each poll <code>/sync/status</code>, so that page sends two every 5 seconds.</p></div>
       </div>
     </section>
 

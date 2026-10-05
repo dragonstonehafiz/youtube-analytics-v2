@@ -182,29 +182,6 @@ input, select {
   transform: none;
 }
 
-/* Back button */
-.btn-back {
-  display: inline-flex;
-  align-items: center;
-  gap: 0.4rem;
-  background: var(--surface);
-  border: 1px solid var(--border);
-  border-radius: var(--radius-sm);
-  padding: 0.4rem 0.75rem;
-  font-size: 13px;
-  font-weight: 500;
-  color: var(--text-secondary);
-  cursor: pointer;
-  transition: color 0.15s, border-color 0.15s, background 0.15s;
-  box-shadow: var(--shadow-sm);
-}
-
-.btn-back:hover {
-  color: var(--blue);
-  border-color: var(--blue-mid);
-  background: var(--blue-light);
-}
-
 /* Filter bar */
 .filter-bar {
   display: flex;
@@ -239,7 +216,8 @@ input, select {
 
 .filter-bar input[type="text"],
 .filter-bar input[type="date"],
-.filter-bar select {
+.filter-bar select,
+.form-control {
   border: 1.5px solid var(--border);
   border-radius: var(--radius-sm);
   padding: 0.35rem 0.6rem;
@@ -252,71 +230,9 @@ input, select {
 
 .filter-bar input[type="text"]:focus,
 .filter-bar input[type="date"]:focus,
-.filter-bar select:focus {
+.filter-bar select:focus,
+.form-control:focus {
   border-color: var(--blue);
-}
-
-/* Video list */
-.video-list {
-  display: flex;
-  flex-direction: column;
-  gap: 0;
-  background: var(--surface);
-  border: 1px solid var(--border);
-  border-radius: var(--radius);
-  overflow: hidden;
-  box-shadow: var(--shadow-md);
-}
-
-.video-list-item {
-  display: flex;
-  align-items: center;
-  gap: 1rem;
-  padding: 0.875rem 1rem;
-  border-bottom: 1px solid var(--border);
-  transition: background 0.12s;
-  cursor: pointer;
-  text-decoration: none;
-  color: inherit;
-}
-
-.video-list-item:last-child {
-  border-bottom: none;
-}
-
-.video-list-item:hover {
-  background: var(--blue-light);
-}
-
-.video-list-item img {
-  width: 96px;
-  height: 54px;
-  object-fit: cover;
-  border-radius: 6px;
-  flex-shrink: 0;
-  background: var(--border);
-}
-
-.video-list-item-info {
-  flex: 1;
-  min-width: 0;
-}
-
-.video-list-item-title {
-  font-size: 13px;
-  font-weight: 600;
-  color: var(--text-heading);
-  white-space: nowrap;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  margin-bottom: 0.25rem;
-}
-
-.video-list-item-meta {
-  display: flex;
-  gap: 0.75rem;
-  font-size: 12px;
-  color: var(--text-secondary);
 }
 
 .badge {
@@ -409,47 +325,41 @@ input, select {
   background: var(--border);
 }
 
+/* Video thumbnails: an <img>, or a placeholder <div> of the same size when there is no image. */
+.thumb-small,
+.thumb-large {
+  object-fit: cover;
+  display: block;
+}
+
+.thumb-small {
+  width: 40px;
+  height: 24px;
+  border-radius: 3px;
+  flex-shrink: 0;
+}
+
+.thumb-large {
+  width: 120px;
+  height: 68px;
+  border-radius: 4px;
+}
+
+.thumb-placeholder {
+  background: var(--border);
+}
+
+/* Round dot in front of a legend label; the caller sets its color. */
+.legend-swatch {
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  flex-shrink: 0;
+}
+
 /* Shared horizontal overflow wrapper for data tables */
 .table-overflow-wrap {
   overflow-x: auto;
-}
-
-/* Analytics table */
-.analytics-table {
-  width: 100%;
-  border-collapse: collapse;
-  background: var(--surface);
-  border-radius: var(--radius);
-  overflow: hidden;
-  box-shadow: var(--shadow-md);
-  border: 1px solid var(--border);
-  font-size: 13px;
-}
-
-.analytics-table th {
-  text-align: left;
-  padding: 0.75rem 1rem;
-  font-size: 11px;
-  font-weight: 700;
-  text-transform: uppercase;
-  letter-spacing: 0.06em;
-  color: var(--text-secondary);
-  background: var(--bg);
-  border-bottom: 1px solid var(--border);
-}
-
-.analytics-table td {
-  padding: 0.65rem 1rem;
-  border-bottom: 1px solid var(--border);
-  color: var(--text);
-}
-
-.analytics-table tbody tr:last-child td {
-  border-bottom: none;
-}
-
-.analytics-table tbody tr:hover td {
-  background: var(--blue-light);
 }
 
 /* Tabs */

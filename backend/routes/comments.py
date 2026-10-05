@@ -2,9 +2,10 @@ from __future__ import annotations
 
 from typing import Literal
 
-from fastapi import APIRouter, HTTPException, Query
+from fastapi import APIRouter, Query
 
-import database
+from database.reports import comments
+from .video_scope import require_owned_video, require_playlist
 
 router = APIRouter()
 
@@ -24,10 +25,10 @@ def list_comments(
     content_type: str | None = Query(default=None),
 ) -> dict:
     """Return a page of channel-wide top-level comments with optional filters and sort."""
-    items, total = database.get_comments(
-        page, page_size, sort_by, text, video_title, author, start_date, end_date, content_type
+    return comments.comment_feed(
+        page=page, page_size=page_size, sort_by=sort_by, text=text, video_title=video_title,
+        author=author, start_date=start_date, end_date=end_date, content_type=content_type,
     )
-    return {"items": items, "total": total, "page": page, "page_size": page_size}
 
 
 @router.get("/comments/videos/{video_id}")
@@ -42,12 +43,11 @@ def list_video_comments(
     end_date: str | None = Query(default=None),
 ) -> dict:
     """Return a filtered and sorted page of one video's top-level comments."""
-    if not database.get_owned_video(video_id):
-        raise HTTPException(status_code=404, detail="Video not found")
-    items, total = database.get_video_comments(
-        video_id, page, page_size, sort_by, text, author, start_date, end_date
+    require_owned_video(video_id)
+    return comments.comment_feed(
+        page=page, page_size=page_size, sort_by=sort_by, text=text,
+        author=author, start_date=start_date, end_date=end_date, video_id=video_id,
     )
-    return {"items": items, "total": total, "page": page, "page_size": page_size}
 
 
 @router.get("/comments/playlists/{playlist_id}")
@@ -64,10 +64,9 @@ def list_playlist_comments(
     content_type: str | None = Query(default=None),
 ) -> dict:
     """Return a page of comments on one playlist's videos with optional filters and sort."""
-    if not database.get_playlist(playlist_id):
-        raise HTTPException(status_code=404, detail="Playlist not found")
-    items, total = database.get_playlist_comments(
-        playlist_id, page, page_size, sort_by, text, video_title, author, start_date, end_date,
-        content_type,
+    require_playlist(playlist_id)
+    return comments.comment_feed(
+        page=page, page_size=page_size, sort_by=sort_by, text=text, video_title=video_title,
+        author=author, start_date=start_date, end_date=end_date, content_type=content_type,
+        playlist_id=playlist_id,
     )
-    return {"items": items, "total": total, "page": page, "page_size": page_size}

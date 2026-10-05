@@ -23,37 +23,19 @@
   width: 100px;
 }
 
+/* A missing thumbnail shows the row's rank instead. */
+.thumb-placeholder.top-videos-thumb-rank {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 0.75rem;
+  color: var(--text-secondary);
+}
+
 .top-videos-col-watch-time {
   width: 130px;
 }
 
 .top-videos-col-earnings {
   width: 140px;
-}
-
-.top-videos-thumb {
-  width: 120px;
-  height: 68px;
-  object-fit: cover;
-  border-radius: 4px;
-  display: block;
-}
-
-.top-videos-thumb--placeholder {
-  background: var(--border);
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  font-size: 0.75rem;
-  color: var(--text-secondary);
-  border-radius: 4px;
-  width: 120px;
-  height: 68px;
-}
-
-.top-videos-title {
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-  max-width: 0;
 }

@@ -24,7 +24,9 @@ async def lifespan(app: FastAPI):
             # No sync can be in flight at startup — the reservation guarding one lives in
             # memory and died with the previous process — so any row still marked running
             # was stranded by a kill or crash and is safe to close out here.
-            stranded = database.mark_incomplete_sync_runs()
+            stranded = database.writer.update(
+                database.SyncRun(status="incomplete"), where=(("status", "=", "running"),)
+            )
             if stranded:
                 _logger.warning("Marked stranded sync stages incomplete count=%d", stranded)
         except Exception as exc:

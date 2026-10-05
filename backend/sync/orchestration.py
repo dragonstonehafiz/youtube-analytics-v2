@@ -5,7 +5,7 @@ import uuid
 from collections.abc import Callable, Sequence
 from dataclasses import dataclass, field
 
-import database
+from database import SyncRun, now, writer
 from logging_config import exception_context, get_logger
 
 from . import status
@@ -78,6 +78,16 @@ _STAGE_FAILURE_LABELS: dict[str, str] = {
 }
 
 
+def _finish_sync_run(
+    sync_run_id: int | None, outcome: str, counts: SyncCounts, error_message: str | None = None,
+) -> None:
+    """Record a stage's final status, completion time, counters, and optional error."""
+    writer.update(SyncRun(
+        status=outcome, completed_at=now(), rows_fetched=counts.rows_fetched, rows_written=counts.rows_written,
+        rows_deleted=counts.rows_deleted, error_message=error_message,
+    ), where=(("id", "=", sync_run_id),))
+
+
 def _run_stage(
     batch_id: str,
     sync_type: str,
@@ -90,7 +100,10 @@ def _run_stage(
     _logger.info("Sync stage started %s", _format_stage_counts(sync_type, counts))
 
     try:
-        sync_run_id = database.create_sync_run(batch_id, sync_type, scope, year)
+        started = SyncRun(
+            batch_id=batch_id, sync_type=sync_type, scope=scope, year=year, status="running", started_at=now(),
+        )
+        sync_run_id = writer.write(started, returning=("id",)).id
     except Exception as exc:
         _logger.error(
             "Sync stage persistence failed %s operation=create_sync_run %s",
@@ -106,9 +119,7 @@ def _run_stage(
             "Sync stage cancelled %s scope=%s year=%s", _format_stage_counts(sync_type, counts), scope, year
         )
         try:
-            database.cancel_sync_run(
-                sync_run_id, counts.rows_fetched, counts.rows_written, counts.rows_deleted
-            )
+            _finish_sync_run(sync_run_id, "cancelled", counts)
         except Exception as cancel_exc:
             _logger.error(
                 "Sync stage persistence failed %s operation=cancel_sync_run %s",
@@ -126,9 +137,7 @@ def _run_stage(
             exception_context(exc),
         )
         try:
-            database.fail_sync_run(
-                sync_run_id, str(exc), counts.rows_fetched, counts.rows_written, counts.rows_deleted
-            )
+            _finish_sync_run(sync_run_id, "failed", counts, str(exc))
         except Exception as fail_exc:
             _logger.error(
                 "Sync stage persistence failed %s operation=fail_sync_run %s",
@@ -139,9 +148,7 @@ def _run_stage(
         raise
     else:
         try:
-            database.complete_sync_run(
-                sync_run_id, counts.rows_fetched, counts.rows_written, counts.rows_deleted
-            )
+            _finish_sync_run(sync_run_id, "success", counts)
         except Exception as exc:
             _logger.error(
                 "Sync stage persistence failed %s operation=complete_sync_run %s",

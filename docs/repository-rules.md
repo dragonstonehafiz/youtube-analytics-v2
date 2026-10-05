@@ -8,7 +8,7 @@ Coding rules, verification expectations, and safety/permission boundaries that a
 - qualify all column names with table aliases in any query that joins multiple tables
 - use type hints and concise, single-line docstrings on all backend functions — keep docstrings to 120 characters or fewer and describe purpose or contract, not implementation history or step-by-step logic
 - use explicit TypeScript types; avoid `any`
-- use HTML `<table>` with `table-layout: fixed` for all data tables — the comments feed (`CommentsPanel`) is a deliberate exception; comment bodies are prose, not cells
+- use HTML `<table>` with `table-layout: fixed` for all data tables — the comments feed (`CommentsTab`) is a deliberate exception; comment bodies are prose, not cells
 - keep CSS in colocated `.css` files; no inline styles
 - use `@/` alias imports (e.g. `import { getVideos } from '@/api'`)
 - keep `.method()` on the same line as its object in Python — no chained calls starting on a new line

@@ -2,12 +2,18 @@ import { useEffect, useRef, useState } from 'react'
 import { useParams } from 'react-router-dom'
 import { getVideo, getVideoAnalytics, getVideoTrafficSources, getVideoSearchTerms, getVideoRelatedVideoReferrers, getRelatedVideoDestinations } from '@/api'
 import type { Video, AnalyticsRow, TrafficSourceRow, SearchTermRow, RelatedReferrersResponse, RelatedDestinationRow } from '@/types'
-import PeriodSelect, { last28Dates } from '@/components/PeriodSelect'
+import Tabs from '@/components/Tabs'
+import type { TabOption } from '@/components/Tabs'
+import FilterBar from '@/components/FilterBar'
+import DetailHeader from '@/components/DetailHeader'
+import type { TrafficSourcesSubTab } from '@/lib/trafficSources'
+import { VIDEO_TRAFFIC_SOURCES_SUB_TABS, toTrafficSourcesSubTab } from '@/lib/trafficSources'
+import { lastNDates } from '@/lib/dates'
+import { ALL_ROWS_LIMIT } from '@/lib/analyticsConstants'
 import type { RequestState } from '@/lib/requestState'
 import { pending, track } from '@/lib/requestState'
-import AsyncCard from '@/components/AsyncCard'
 import AnalyticsChart from '@/components/AnalyticsChart'
-import CommentsPanel from '@/components/CommentsPanel'
+import CommentsTab from '@/components/CommentsTab'
 import TrafficSourceChart from '@/components/TrafficSourceChart'
 import TrafficSourcesTable from '@/components/TrafficSourcesTable'
 import SearchTermsDonutCard from '@/components/SearchTermsDonutCard'
@@ -18,15 +24,15 @@ import '@/components/VideoMetaCard.css'
 import './Analytics.css'
 import './VideoAnalytics.css'
 
-const RELATED_VIDEOS_FETCH_LIMIT = 1000
 const EMPTY_RELATED_REFERRERS: RelatedReferrersResponse = { items: [], total_named_views: 0 }
 
 type Tab = 'analytics' | 'traffic-sources' | 'comments'
-type TrafficSourcesSubTab = 'sources' | 'search' | 'related'
 
-function toTrafficSourcesSubTab(value: string | null): TrafficSourcesSubTab {
-  return value === 'search' || value === 'related' ? value : 'sources'
-}
+const TABS: readonly TabOption<Tab>[] = [
+  { value: 'analytics', label: 'Analytics' },
+  { value: 'traffic-sources', label: 'Traffic Sources' },
+  { value: 'comments', label: 'Comments' },
+]
 
 function formatDuration(seconds: number): string {
   const h = Math.floor(seconds / 3600)
@@ -61,21 +67,151 @@ function DescriptionBlock({ text }: { text: string | null }) {
   )
 }
 
-export default function VideoAnalytics() {
-  const { id } = useParams<{ id: string }>()
-  const [searchParams, setSearchParams] = useReplaceSearchParams()
-  const [video, setVideo] = useState<RequestState<Video | null>>(pending(null))
-  const tab = (searchParams.get('tab') as Tab) ?? 'analytics'
-  const startDate = searchParams.has('start_date') ? searchParams.get('start_date')! : last28Dates()[0]
-  const endDate = searchParams.has('end_date') ? searchParams.get('end_date')! : last28Dates()[1]
+interface VideoTabProps {
+  videoId: string
+  startDate: string
+  endDate: string
+}
+
+/** The Analytics tab: this video's daily chart. */
+function VideoAnalyticsTab({ videoId, startDate, endDate }: VideoTabProps) {
   const [rows, setRows] = useState<RequestState<AnalyticsRow[]>>(pending([]))
+
+  useEffect(() => {
+    let active = true
+    track(getVideoAnalytics(videoId, { startDate, endDate })
+      .then((data: { items: AnalyticsRow[] }) => data.items ?? []), setRows, () => active, 'Could not load analytics')
+    return () => { active = false }
+  }, [videoId, startDate, endDate])
+
+  return <AnalyticsChart rows={rows.data} loading={rows.loading} error={rows.error} />
+}
+
+/** The Traffic Sources tab: the traffic chart shared by every sub-tab, then the sub-tabs. */
+function VideoTrafficSourcesTab({ videoId, startDate, endDate, subTab, onSubTabChange }: VideoTabProps & {
+  subTab: TrafficSourcesSubTab
+  onSubTabChange: (subTab: TrafficSourcesSubTab) => void
+}) {
   const [trafficSources, setTrafficSources] = useState<RequestState<TrafficSourceRow[]>>(pending([]))
-  const tsTab = toTrafficSourcesSubTab(searchParams.get('ts_tab'))
-  const relatedTabVisible = tab === 'traffic-sources' && tsTab === 'related'
+
+  useEffect(() => {
+    let active = true
+    track(getVideoTrafficSources(videoId, { startDate, endDate })
+      .then((data: { items: TrafficSourceRow[] }) => data.items ?? []), setTrafficSources, () => active, 'Could not load traffic sources')
+    return () => { active = false }
+  }, [videoId, startDate, endDate])
+
+  return (
+    <>
+      <TrafficSourceChart
+        rows={trafficSources.data}
+        loading={trafficSources.loading}
+        error={trafficSources.error}
+      />
+      <Tabs
+        options={VIDEO_TRAFFIC_SOURCES_SUB_TABS}
+        value={subTab}
+        onChange={onSubTabChange}
+        className="ts-subtabs"
+      />
+      {subTab === 'sources' ? (
+        <TrafficSourcesTable
+          rows={trafficSources.data}
+          loading={trafficSources.loading}
+          error={trafficSources.error}
+        />
+      ) : subTab === 'search' ? (
+        <VideoSearchInsights videoId={videoId} startDate={startDate} endDate={endDate} />
+      ) : (
+        <VideoRelatedVideos videoId={videoId} startDate={startDate} endDate={endDate} />
+      )}
+    </>
+  )
+}
+
+function VideoSearchInsights({ videoId, startDate, endDate }: VideoTabProps) {
   const [searchTerms, setSearchTerms] = useState<RequestState<SearchTermRow[]>>(pending([]))
+
+  useEffect(() => {
+    let active = true
+    track(getVideoSearchTerms(videoId, { startDate, endDate })
+      .then((data: { items: SearchTermRow[] }) => data.items ?? []), setSearchTerms, () => active, 'Could not load search terms')
+    return () => { active = false }
+  }, [videoId, startDate, endDate])
+
+  return (
+    <div className="search-insights-columns">
+      <SearchTermsDonutCard
+        title="Top Search Terms"
+        rows={searchTerms.data}
+        loading={searchTerms.loading}
+        error={searchTerms.error}
+      />
+    </div>
+  )
+}
+
+function VideoRelatedVideos({ videoId, startDate, endDate }: VideoTabProps) {
   const [relatedReferrersMine, setRelatedReferrersMine] = useState<RequestState<RelatedReferrersResponse>>(pending(EMPTY_RELATED_REFERRERS))
   const [relatedReferrersOther, setRelatedReferrersOther] = useState<RequestState<RelatedReferrersResponse>>(pending(EMPTY_RELATED_REFERRERS))
   const [relatedDestinations, setRelatedDestinations] = useState<RequestState<RelatedDestinationRow[]>>(pending([]))
+
+  // The two referrer-breakdown cards each own one own-filtered, video-scoped referrers call.
+  useEffect(() => {
+    let active = true
+    const query = { startDate, endDate, limit: ALL_ROWS_LIMIT }
+    track(getVideoRelatedVideoReferrers(videoId, { ...query, own: true })
+      .then((data: RelatedReferrersResponse) => data), setRelatedReferrersMine, () => active, 'Could not load Related Video referrers')
+    track(getVideoRelatedVideoReferrers(videoId, { ...query, own: false })
+      .then((data: RelatedReferrersResponse) => data), setRelatedReferrersOther, () => active, 'Could not load Related Video referrers')
+    return () => { active = false }
+  }, [videoId, startDate, endDate])
+
+  // The outbound card has no dropdown: this video's own ID is always the referrer, via
+  // the channel-scoped destinations route (no video-scoped destinations route exists).
+  useEffect(() => {
+    let active = true
+    track(getRelatedVideoDestinations({ referrerVideoId: videoId, startDate, endDate, limit: ALL_ROWS_LIMIT })
+      .then((data: { items: RelatedDestinationRow[] }) => data.items ?? []), setRelatedDestinations, () => active, 'Could not load destinations')
+    return () => { active = false }
+  }, [videoId, startDate, endDate])
+
+  return (
+    <>
+      <div className="related-videos-columns">
+        <RelatedReferrerBreakdownCard
+          title="Related Traffic from My Channel"
+          referrers={relatedReferrersMine.data.items}
+          loading={relatedReferrersMine.loading}
+          error={relatedReferrersMine.error}
+        />
+        <RelatedReferrerBreakdownCard
+          title="Related Traffic from Other Channels"
+          referrers={relatedReferrersOther.data.items}
+          loading={relatedReferrersOther.loading}
+          error={relatedReferrersOther.error}
+        />
+      </div>
+      <div className="related-videos-columns">
+        <RelatedDestinationsByReferrerCard
+          title="Top Destinations From This Video"
+          destinations={relatedDestinations.data}
+          loading={relatedDestinations.loading}
+          error={relatedDestinations.error}
+        />
+      </div>
+    </>
+  )
+}
+
+export default function VideoAnalytics() {
+  const { id } = useParams<{ id: string }>()
+  const [searchParams, setParams] = useReplaceSearchParams()
+  const [video, setVideo] = useState<RequestState<Video | null>>(pending(null))
+  const tab = (searchParams.get('tab') as Tab) ?? 'analytics'
+  const startDate = searchParams.has('start_date') ? searchParams.get('start_date')! : lastNDates(28)[0]
+  const endDate = searchParams.has('end_date') ? searchParams.get('end_date')! : lastNDates(28)[1]
+  const tsTab = toTrafficSourcesSubTab(searchParams.get('ts_tab'), VIDEO_TRAFFIC_SOURCES_SUB_TABS)
 
   useEffect(() => {
     if (!id) return
@@ -85,261 +221,65 @@ export default function VideoAnalytics() {
     return () => { active = false }
   }, [id])
 
-  // The two data tabs each own their request, so a date change reloads only their cards.
-  useEffect(() => {
-    if (!id) return
-    let active = true
-    track(getVideoAnalytics(id, startDate || undefined, endDate || undefined)
-      .then((data: { items: AnalyticsRow[] }) => data.items ?? []), setRows, () => active, 'Could not load analytics')
-    track(getVideoTrafficSources(id, startDate || undefined, endDate || undefined)
-      .then((data: { items: TrafficSourceRow[] }) => data.items ?? []), setTrafficSources, () => active, 'Could not load traffic sources')
-    track(getVideoSearchTerms(id, startDate || undefined, endDate || undefined)
-      .then((data: { items: SearchTermRow[] }) => data.items ?? []), setSearchTerms, () => active, 'Could not load search terms')
-    return () => { active = false }
-  }, [id, startDate, endDate])
-
-  // The two referrer-breakdown cards each own one own-filtered, video-scoped referrers
-  // call. Deferred until the Related Videos sub-tab is actually visible, and refetched
-  // whenever the filters change while it's visible.
-  useEffect(() => {
-    if (!id || !relatedTabVisible) return
-    let active = true
-    track(getVideoRelatedVideoReferrers(id, true, startDate || undefined, endDate || undefined, RELATED_VIDEOS_FETCH_LIMIT)
-      .then((data: RelatedReferrersResponse) => data), setRelatedReferrersMine, () => active, 'Could not load Related Video referrers')
-    track(getVideoRelatedVideoReferrers(id, false, startDate || undefined, endDate || undefined, RELATED_VIDEOS_FETCH_LIMIT)
-      .then((data: RelatedReferrersResponse) => data), setRelatedReferrersOther, () => active, 'Could not load Related Video referrers')
-    return () => { active = false }
-  }, [id, relatedTabVisible, startDate, endDate])
-
-  // The outbound card has no dropdown: this video's own ID is always the referrer, via
-  // the channel-scoped destinations route (no video-scoped destinations route exists).
-  // Deferred the same way as the referrer-breakdown cards above.
-  useEffect(() => {
-    if (!id || !relatedTabVisible) return
-    let active = true
-    track(getRelatedVideoDestinations(id, startDate || undefined, endDate || undefined, RELATED_VIDEOS_FETCH_LIMIT)
-      .then((data: { items: RelatedDestinationRow[] }) => data.items ?? []), setRelatedDestinations, () => active, 'Could not load destinations')
-    return () => { active = false }
-  }, [id, relatedTabVisible, startDate, endDate])
-
-  const handleTsTabChange = (t: TrafficSourcesSubTab) => {
-    setSearchParams(prev => {
-      const next = new URLSearchParams(prev)
-      next.set('ts_tab', t)
-      return next
-    })
-  }
-
-  const handleTabChange = (t: Tab) => {
-    setSearchParams(prev => {
-      const next = new URLSearchParams(prev)
-      next.set('tab', t)
-      return next
-    })
-  }
+  const videoData = video.data
 
   return (
     <div className="page analytics-page">
-      <AsyncCard
+      <DetailHeader
         loading={video.loading}
         error={video.error}
-        empty={!video.data}
         emptyMessage="Video not found."
-        className="video-meta-card"
-        bodyClassName="video-meta-card-body"
-      >
-        {video.data && (
-          <>
-            <div className="video-meta-thumb-wrap">
-              {video.data.thumbnail_url
-                ? <img src={video.data.thumbnail_url} alt="" className="video-meta-thumb" />
-                : <div className="video-meta-thumb video-meta-thumb-placeholder" />}
-            </div>
-            <div className="video-meta-info">
-              <div className="video-meta-title-row">
-                <h1 className="video-meta-title">{video.data.title}</h1>
-                <span className={`badge${video.data.content_type === 'short' ? ' short' : ''}`}>
-                  {video.data.content_type === 'short' ? 'Short' : 'Video'}
-                </span>
-              </div>
-              <div className="video-meta-stats">
-                <div className="video-meta-stat">
-                  <span className="video-meta-stat-value">{video.data.view_count.toLocaleString()}</span>
-                  <span className="video-meta-stat-label">Views</span>
-                </div>
-                <div className="video-meta-stat-divider" />
-                <div className="video-meta-stat">
-                  <span className="video-meta-stat-value">{video.data.like_count.toLocaleString()}</span>
-                  <span className="video-meta-stat-label">Likes</span>
-                </div>
-                <div className="video-meta-stat-divider" />
-                <div className="video-meta-stat">
-                  <span className="video-meta-stat-value">{video.data.comment_count.toLocaleString()}</span>
-                  <span className="video-meta-stat-label">Comments</span>
-                </div>
-                <div className="video-meta-stat-divider" />
-                <div className="video-meta-stat">
-                  <span className="video-meta-stat-value">{video.data.published_at.slice(0, 10)}</span>
-                  <span className="video-meta-stat-label">Published</span>
-                </div>
-                {video.data.duration_seconds != null && (
-                  <>
-                    <div className="video-meta-stat-divider" />
-                    <div className="video-meta-stat">
-                      <span className="video-meta-stat-value">{formatDuration(video.data.duration_seconds)}</span>
-                      <span className="video-meta-stat-label">Length</span>
-                    </div>
-                  </>
-                )}
-                <div className="video-meta-stat-divider" />
-                <div className="video-meta-stat">
-                  <span className="video-meta-stat-value">S${video.data.total_revenue_sgd.toLocaleString('en-SG', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</span>
-                  <span className="video-meta-stat-label">Earnings</span>
-                </div>
-              </div>
-              <DescriptionBlock text={video.data.description} />
-            </div>
-          </>
+        content={videoData && {
+          thumbnailUrl: videoData.thumbnail_url,
+          title: videoData.title,
+          stats: [
+            { label: 'Views', value: videoData.view_count.toLocaleString() },
+            { label: 'Likes', value: videoData.like_count.toLocaleString() },
+            { label: 'Comments', value: videoData.comment_count.toLocaleString() },
+            { label: 'Published', value: videoData.published_at.slice(0, 10) },
+            ...(videoData.duration_seconds != null ? [{ label: 'Length', value: formatDuration(videoData.duration_seconds) }] : []),
+            { label: 'Earnings', value: `S$${videoData.total_revenue_sgd.toLocaleString('en-SG', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}` },
+          ],
+        }}
+        badge={videoData && (
+          <span className={`badge${videoData.content_type === 'short' ? ' short' : ''}`}>
+            {videoData.content_type === 'short' ? 'Short' : 'Video'}
+          </span>
         )}
-      </AsyncCard>
+      >
+        {videoData && <DescriptionBlock text={videoData.description} />}
+      </DetailHeader>
 
       {/* The tabs and their data are suppressed only once the video is definitively
           missing — never while its metadata request is still in flight. */}
       {(video.loading || video.data) && (
         <>
-          <div className="tabs">
-            <button
-              type="button"
-              className={`tab${tab === 'analytics' ? ' active' : ''}`}
-              onClick={() => handleTabChange('analytics')}
-            >
-              Analytics
-            </button>
-            <button
-              type="button"
-              className={`tab${tab === 'traffic-sources' ? ' active' : ''}`}
-              onClick={() => handleTabChange('traffic-sources')}
-            >
-              Traffic Sources
-            </button>
-            <button
-              type="button"
-              className={`tab${tab === 'comments' ? ' active' : ''}`}
-              onClick={() => handleTabChange('comments')}
-            >
-              Comments
-            </button>
-          </div>
+          <Tabs options={TABS} value={tab} onChange={t => setParams({ tab: t })} />
 
           {/* Comments filter on their own publication dates and carry their own filter
               bar, so the shared analytics date range does not apply to that tab. */}
           {tab !== 'comments' && (
-          <div className="filter-bar">
-            <PeriodSelect
-              startDate={startDate}
-              endDate={endDate}
-              onChange={(sd, ed) => setSearchParams(prev => {
-                const next = new URLSearchParams(prev)
-                next.set('start_date', sd)
-                next.set('end_date', ed)
-                return next
-              })}
-            />
-            <label>
-              Start
-              <input type="date" value={startDate} onChange={e => setSearchParams(prev => {
-                const next = new URLSearchParams(prev)
-                next.set('start_date', e.target.value)
-                return next
-              })} />
-            </label>
-            <label>
-              End
-              <input type="date" value={endDate} onChange={e => setSearchParams(prev => {
-                const next = new URLSearchParams(prev)
-                next.set('end_date', e.target.value)
-                return next
-              })} />
-            </label>
-          </div>
+          <FilterBar
+            dates={{
+              startDate: { value: startDate, onChange: v => setParams({ start_date: v }) },
+              endDate: { value: endDate, onChange: v => setParams({ end_date: v }) },
+              onPeriodChange: (sd, ed) => setParams({ start_date: sd, end_date: ed }),
+            }}
+          />
           )}
 
           {tab === 'comments' ? (
-            <CommentsPanel scope={{ kind: 'video', videoId: id! }} />
+            <CommentsTab scope={{ kind: 'video', videoId: id! }} />
           ) : tab === 'analytics' ? (
-            <AnalyticsChart rows={rows.data} loading={rows.loading} error={rows.error} />
+            <VideoAnalyticsTab videoId={id!} startDate={startDate} endDate={endDate} />
           ) : (
-            <>
-              <TrafficSourceChart
-                rows={trafficSources.data}
-                loading={trafficSources.loading}
-                error={trafficSources.error}
-              />
-              <div className="tabs ts-subtabs">
-                <button
-                  type="button"
-                  className={`tab${tsTab === 'sources' ? ' active' : ''}`}
-                  onClick={() => handleTsTabChange('sources')}
-                >
-                  Traffic Sources
-                </button>
-                <button
-                  type="button"
-                  className={`tab${tsTab === 'search' ? ' active' : ''}`}
-                  onClick={() => handleTsTabChange('search')}
-                >
-                  Search Insights
-                </button>
-                <button
-                  type="button"
-                  className={`tab${tsTab === 'related' ? ' active' : ''}`}
-                  onClick={() => handleTsTabChange('related')}
-                >
-                  Related Videos
-                </button>
-              </div>
-              {tsTab === 'sources' ? (
-                <TrafficSourcesTable
-                  rows={trafficSources.data}
-                  loading={trafficSources.loading}
-                  error={trafficSources.error}
-                />
-              ) : tsTab === 'search' ? (
-                <div className="search-insights-columns">
-                  <SearchTermsDonutCard
-                    title="Top Search Terms"
-                    rows={searchTerms.data}
-                    loading={searchTerms.loading}
-                    error={searchTerms.error}
-                  />
-                </div>
-              ) : (
-                <>
-                  <div className="related-videos-columns">
-                    <RelatedReferrerBreakdownCard
-                      title="Related Traffic from My Channel"
-                      referrers={relatedReferrersMine.data.items}
-                      loading={relatedReferrersMine.loading}
-                      error={relatedReferrersMine.error}
-                    />
-                    <RelatedReferrerBreakdownCard
-                      title="Related Traffic from Other Channels"
-                      referrers={relatedReferrersOther.data.items}
-                      loading={relatedReferrersOther.loading}
-                      error={relatedReferrersOther.error}
-                    />
-                  </div>
-                  <div className="related-videos-columns">
-                    <RelatedDestinationsByReferrerCard
-                      title="Top Destinations From This Video"
-                      destinations={relatedDestinations.data}
-                      loading={relatedDestinations.loading}
-                      error={relatedDestinations.error}
-                    />
-                  </div>
-                </>
-              )}
-            </>
+            <VideoTrafficSourcesTab
+              videoId={id!}
+              startDate={startDate}
+              endDate={endDate}
+              subTab={tsTab}
+              onSubTabChange={t => setParams({ ts_tab: t })}
+            />
           )}
         </>
       )}

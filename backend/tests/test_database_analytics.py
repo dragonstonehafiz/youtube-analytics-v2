@@ -1,10 +1,17 @@
 from __future__ import annotations
 
 import unittest
+from typing import Any
 
 import database
+from database import writer
+from database import FxRate, VideoAnalytics, reader
+from database.reports import analytics, traffic
+from routes.videos import router as videos_router
 from tests.support import (
+    FIXED_NOW,
     IsolatedDatabaseTestCase,
+    create_test_client,
     make_fx_rate,
     make_traffic_source,
     make_video,
@@ -12,15 +19,26 @@ from tests.support import (
 )
 
 
+ANALYTICS_ROW_FIELDS = {
+    "date", "content_type", "views", "watch_time_minutes", "estimated_revenue", "estimated_revenue_sgd",
+    "average_view_duration_seconds", "average_view_percentage", "likes", "subscribers_gained", "subscribers_lost",
+}
+
+
+def _top_video_ids(**filters: Any) -> list[str]:
+    """Return the top-videos report's ranked video IDs."""
+    return [row["id"] for row in analytics.top_videos(**filters)]
+
+
 class AnalyticsFixtureTestCase(IsolatedDatabaseTestCase):
     def _seed(self) -> None:
         """Seed videos and analytics with both present and missing FX rates."""
-        database.upsert_own_video(make_video("v-1", "Alpha", content_type="video"))
-        database.upsert_own_video(make_video("v-2", "Beta", content_type="short"))
-        database.upsert_video_analytics(make_video_analytics("v-1", "2024-01-01", views=100, watch_time_minutes=60, estimated_revenue=10.0))
-        database.upsert_video_analytics(make_video_analytics("v-2", "2024-01-01", views=50, watch_time_minutes=20, estimated_revenue=5.0))
-        database.upsert_video_analytics(make_video_analytics("v-1", "2024-01-03", views=200, watch_time_minutes=90, estimated_revenue=20.0))
-        database.upsert_fx_rate(make_fx_rate("2024-01-01", 1.5))
+        writer.write(make_video("v-1", "Alpha", content_type="video"))
+        writer.write(make_video("v-2", "Beta", content_type="short"))
+        writer.write(make_video_analytics("v-1", "2024-01-01", views=100, watch_time_minutes=60, estimated_revenue=10.0))
+        writer.write(make_video_analytics("v-2", "2024-01-01", views=50, watch_time_minutes=20, estimated_revenue=5.0))
+        writer.write(make_video_analytics("v-1", "2024-01-03", views=200, watch_time_minutes=90, estimated_revenue=20.0))
+        writer.write(make_fx_rate("2024-01-01", 1.5))
 
 
 class AggregatedAnalyticsTest(AnalyticsFixtureTestCase):
@@ -29,84 +47,172 @@ class AggregatedAnalyticsTest(AnalyticsFixtureTestCase):
         self._seed()
 
     def test_per_content_type_groups_stay_independent(self) -> None:
-        rows = database.get_aggregated_analytics(start_date="2024-01-01", end_date="2024-01-03")
+        rows = analytics.daily_analytics(start_date="2024-01-01", end_date="2024-01-03")
         by_key = {(r["date"], r["content_type"]): r for r in rows}
         self.assertEqual(by_key[("2024-01-01", "video")]["views"], 100)
         self.assertEqual(by_key[("2024-01-01", "short")]["views"], 50)
 
     def test_date_bounds_are_inclusive(self) -> None:
-        rows = database.get_aggregated_analytics(start_date="2024-01-01", end_date="2024-01-01")
+        rows = analytics.daily_analytics(start_date="2024-01-01", end_date="2024-01-01")
         self.assertEqual({r["date"] for r in rows}, {"2024-01-01"})
 
     def test_missing_date_content_type_combination_is_zero_filled(self) -> None:
-        rows = database.get_aggregated_analytics(start_date="2024-01-01", end_date="2024-01-03")
+        rows = analytics.daily_analytics(start_date="2024-01-01", end_date="2024-01-03")
         missing = next(r for r in rows if r["date"] == "2024-01-02" and r["content_type"] == "video")
         self.assertEqual(missing["views"], 0)
 
     def test_trailing_dates_after_the_last_real_row_are_trimmed(self) -> None:
-        rows = database.get_aggregated_analytics(start_date="2024-01-01", end_date="2024-01-10")
+        rows = analytics.daily_analytics(start_date="2024-01-01", end_date="2024-01-10")
         self.assertEqual(max(r["date"] for r in rows), "2024-01-03")
 
     def test_fx_conversion_uses_the_matching_date_rate(self) -> None:
-        rows = database.get_aggregated_analytics(start_date="2024-01-01", end_date="2024-01-01", content_type="video")
+        rows = analytics.daily_analytics(start_date="2024-01-01", end_date="2024-01-01", content_type="video")
         self.assertAlmostEqual(rows[0]["estimated_revenue_sgd"], 15.0)
 
     def test_missing_fx_rate_contributes_zero_not_an_error(self) -> None:
-        rows = database.get_aggregated_analytics(start_date="2024-01-03", end_date="2024-01-03", content_type="video")
+        rows = analytics.daily_analytics(start_date="2024-01-03", end_date="2024-01-03", content_type="video")
         self.assertEqual(rows[0]["estimated_revenue_sgd"], 0)
 
     def test_no_data_in_range_returns_empty_list(self) -> None:
-        rows = database.get_aggregated_analytics(start_date="2025-01-01", end_date="2025-01-31")
+        rows = analytics.daily_analytics(start_date="2025-01-01", end_date="2025-01-31")
         self.assertEqual(rows, [])
+
+    def test_leading_gap_and_absent_requested_content_type_are_zero_filled(self) -> None:
+        writer.write(make_video("v-3", "Gamma", content_type="video"))
+        writer.write(make_video_analytics("v-3", "2023-12-30", views=0))
+        rows = analytics.daily_analytics(start_date="2023-12-29", end_date="2024-01-03", content_type="short")
+        self.assertEqual([r["date"] for r in rows], ["2023-12-29", "2023-12-30", "2023-12-31", "2024-01-01"])
+        self.assertEqual({r["content_type"] for r in rows}, {"short"})
+        self.assertEqual(sum(r["views"] for r in rows), 50)
+
+    def test_zero_filled_rows_have_every_metric_key_and_no_video_id(self) -> None:
+        rows = analytics.daily_analytics(start_date="2024-01-01", end_date="2024-01-03")
+        real = next(r for r in rows if r["date"] == "2024-01-01" and r["content_type"] == "video")
+        synthetic = next(r for r in rows if r["date"] == "2024-01-02" and r["content_type"] == "video")
+        self.assertEqual(set(real), ANALYTICS_ROW_FIELDS)
+        self.assertEqual(set(synthetic), ANALYTICS_ROW_FIELDS)
+        self.assertTrue(all(synthetic[key] == 0 for key in synthetic if key not in ("date", "content_type")))
+
+
+class VideoAnalyticsRouteTest(AnalyticsFixtureTestCase):
+    def setUp(self) -> None:
+        super().setUp()
+        self._seed()
+        self.client = create_test_client(videos_router)
+
+    def _items(self, video_id: str, **params: str) -> list[dict]:
+        response = self.client.get(f"/videos/{video_id}/analytics", params=params)
+        self.assertEqual(response.status_code, 200)
+        return response.json()["items"]
+
+    def test_real_rows_carry_only_the_response_fields_and_convert_revenue(self) -> None:
+        rows = self._items("v-1", start_date="2024-01-01", end_date="2024-01-03")
+        first = rows[0]
+        self.assertEqual(set(first), ANALYTICS_ROW_FIELDS)
+        self.assertEqual((first["date"], first["content_type"], first["views"]), ("2024-01-01", "video", 100))
+        self.assertAlmostEqual(first["estimated_revenue_sgd"], 15.0)
+        self.assertEqual(rows[-1]["estimated_revenue_sgd"], 0)
+
+    def test_synthetic_rows_keep_content_type_and_zero_only_metrics(self) -> None:
+        rows = self._items("v-1", start_date="2024-01-01", end_date="2024-01-10")
+        self.assertEqual([r["date"] for r in rows], ["2024-01-01", "2024-01-02", "2024-01-03"])
+        synthetic = rows[1]
+        self.assertEqual(set(synthetic), ANALYTICS_ROW_FIELDS)
+        self.assertEqual(synthetic["content_type"], "video")
+        for key in ANALYTICS_ROW_FIELDS - {"date", "content_type"}:
+            self.assertEqual(synthetic[key], 0)
+
+    def test_null_metrics_stay_null_on_real_rows(self) -> None:
+        writer.write(make_video("v-3", "Gamma"))
+        writer.write(VideoAnalytics(video_id="v-3", date="2024-01-01", updated_at=FIXED_NOW))
+        first = self._items("v-3")[0]
+        self.assertIsNone(first["views"])
+        self.assertIsNone(first["likes"])
+
+    def test_fills_only_the_video_content_type(self) -> None:
+        rows = self._items("v-1", start_date="2024-01-01", end_date="2024-01-03")
+        self.assertEqual({r["content_type"] for r in rows}, {"video"})
+        self.assertEqual(len(rows), 3)
+
+    def test_one_video_aggregate_scope_still_fills_both_content_types(self) -> None:
+        rows = analytics.daily_analytics(start_date="2024-01-01", end_date="2024-01-03", video_ids=["v-1"])
+        self.assertEqual({r["content_type"] for r in rows}, {"video", "short"})
+        self.assertEqual(len(rows), 6)
+
+    def test_leading_gap_starts_at_the_requested_date(self) -> None:
+        rows = self._items("v-2", start_date="2023-12-31", end_date="2024-01-01")
+        self.assertEqual([r["date"] for r in rows], ["2023-12-31", "2024-01-01"])
+        self.assertEqual(rows[0]["content_type"], "short")
+
+    def test_a_video_without_rows_returns_empty(self) -> None:
+        writer.write(make_video("v-3", "Gamma"))
+        self.assertEqual(self._items("v-3"), [])
 
 
 class AggregatedTrafficSourcesTest(IsolatedDatabaseTestCase):
     def setUp(self) -> None:
         super().setUp()
-        database.upsert_own_video(make_video("v-1", "Alpha"))
-        database.upsert_own_video(make_video("v-2", "Beta"))
+        self.client = create_test_client(videos_router)
+        writer.write(make_video("v-1", "Alpha"))
+        writer.write(make_video("v-2", "Beta"))
         # Both videos have SEARCH data on the same date, so aggregation must sum across
         # videos rather than just echoing one video's number.
-        database.upsert_video_traffic_source(make_traffic_source("v-1", "2024-01-01", "SEARCH", views=30, watch_time_minutes=10))
-        database.upsert_video_traffic_source(make_traffic_source("v-1", "2024-01-01", "SUGGESTED", views=20, watch_time_minutes=5))
-        database.upsert_video_traffic_source(make_traffic_source("v-2", "2024-01-01", "SEARCH", views=40, watch_time_minutes=15))
+        writer.write(make_traffic_source("v-1", "2024-01-01", "SEARCH", views=30, watch_time_minutes=10))
+        writer.write(make_traffic_source("v-1", "2024-01-01", "SUGGESTED", views=20, watch_time_minutes=5))
+        writer.write(make_traffic_source("v-2", "2024-01-01", "SEARCH", views=40, watch_time_minutes=15))
         # v-1 also has a real row in March, so February sits strictly between two real
         # dates and must be zero-filled rather than trimmed as trailing.
-        database.upsert_video_traffic_source(make_traffic_source("v-1", "2024-03-15", "SEARCH", views=5, watch_time_minutes=2))
+        writer.write(make_traffic_source("v-1", "2024-03-15", "SEARCH", views=5, watch_time_minutes=2))
+
+    def _video_traffic(self, video_id: str, **params: str) -> list[dict]:
+        response = self.client.get(f"/videos/{video_id}/traffic-sources", params=params)
+        self.assertEqual(response.status_code, 200)
+        return response.json()["items"]
 
     def test_per_video_traffic_sources_are_grouped_by_type(self) -> None:
-        rows = database.get_video_traffic_sources("v-1")
+        rows = self._video_traffic("v-1")
         self.assertEqual({r["traffic_source_type"] for r in rows if r["views"]}, {"SEARCH", "SUGGESTED"})
 
     def test_aggregated_traffic_sums_across_videos(self) -> None:
-        rows = database.get_aggregated_traffic_sources(start_date="2024-01-01", end_date="2024-01-01")
+        rows = traffic.daily_traffic_sources(start_date="2024-01-01", end_date="2024-01-01")
         search_row = next(r for r in rows if r["traffic_source_type"] == "SEARCH" and r["date"] == "2024-01-01")
         self.assertEqual(search_row["views"], 70)
 
     def test_every_missing_intermediate_day_is_zero_filled_for_each_source_type(self) -> None:
-        rows = database.get_video_traffic_sources("v-1", start_date="2024-01-01", end_date="2024-03-15")
+        rows = self._video_traffic("v-1", start_date="2024-01-01", end_date="2024-03-15")
         february_rows = [r for r in rows if r["date"].startswith("2024-02")]
         self.assertEqual({r["date"] for r in february_rows}, {f"2024-02-{d:02d}" for d in range(1, 30)})
         self.assertEqual({r["traffic_source_type"] for r in february_rows}, {"SEARCH", "SUGGESTED"})
         self.assertTrue(all(r["views"] == 0 and r["watch_time_minutes"] == 0 for r in february_rows))
 
     def test_real_rows_are_preserved_alongside_zero_fill(self) -> None:
-        rows = database.get_video_traffic_sources("v-1", start_date="2024-01-01", end_date="2024-03-15")
+        rows = self._video_traffic("v-1", start_date="2024-01-01", end_date="2024-03-15")
         by_key = {(r["date"], r["traffic_source_type"]): r for r in rows}
         self.assertEqual(by_key[("2024-01-01", "SEARCH")]["views"], 30)
         self.assertEqual(by_key[("2024-01-01", "SUGGESTED")]["views"], 20)
         self.assertEqual(by_key[("2024-03-15", "SEARCH")]["views"], 5)
 
     def test_explicit_mid_month_start_date_is_not_moved_back_to_the_first(self) -> None:
-        rows = database.get_video_traffic_sources("v-1", start_date="2024-03-10", end_date="2024-03-15")
+        rows = self._video_traffic("v-1", start_date="2024-03-10", end_date="2024-03-15")
         self.assertEqual(min(r["date"] for r in rows), "2024-03-10")
 
     def test_trailing_dates_after_the_last_real_row_are_trimmed(self) -> None:
-        rows = database.get_video_traffic_sources("v-1", start_date="2024-01-01", end_date="2024-06-01")
+        rows = self._video_traffic("v-1", start_date="2024-01-01", end_date="2024-06-01")
         self.assertEqual(max(r["date"] for r in rows), "2024-03-15")
 
+    def test_rows_carry_only_the_response_fields(self) -> None:
+        rows = self._video_traffic("v-1", start_date="2024-01-01", end_date="2024-01-02")
+        self.assertEqual({tuple(r) for r in rows}, {("date", "traffic_source_type", "views", "watch_time_minutes")})
+        self.assertEqual([(r["date"], r["traffic_source_type"]) for r in rows], [
+            ("2024-01-01", "SEARCH"), ("2024-01-01", "SUGGESTED"),
+        ])
+
+    def test_aggregated_source_types_are_those_observed_in_the_filtered_result(self) -> None:
+        rows = traffic.daily_traffic_sources(start_date="2024-03-01", end_date="2024-03-15")
+        self.assertEqual({r["traffic_source_type"] for r in rows}, {"SEARCH"})
+
     def test_synthetic_zero_rows_do_not_change_real_totals(self) -> None:
-        rows = database.get_video_traffic_sources("v-1", start_date="2024-01-01", end_date="2024-03-15")
+        rows = self._video_traffic("v-1", start_date="2024-01-01", end_date="2024-03-15")
         self.assertEqual(sum(r["views"] for r in rows), 30 + 20 + 5)
         self.assertEqual(sum(r["watch_time_minutes"] for r in rows), 10 + 5 + 2)
 
@@ -114,53 +220,56 @@ class AggregatedTrafficSourcesTest(IsolatedDatabaseTestCase):
 class FxRatesTest(IsolatedDatabaseTestCase):
     def setUp(self) -> None:
         super().setUp()
-        database.upsert_fx_rate(make_fx_rate("2024-01-01", 1.30))
-        database.upsert_fx_rate(make_fx_rate("2024-01-15", 1.35))
-        database.upsert_fx_rate(make_fx_rate("2024-02-01", 1.40))
+        writer.write(make_fx_rate("2024-01-01", 1.30))
+        writer.write(make_fx_rate("2024-01-15", 1.35))
+        writer.write(make_fx_rate("2024-02-01", 1.40))
 
     def test_range_filter_is_inclusive(self) -> None:
-        rows = database.get_fx_rates(start_date="2024-01-01", end_date="2024-01-15")
-        self.assertEqual([r["date"] for r in rows], ["2024-01-01", "2024-01-15"])
+        rows = reader.select(
+            FxRate, ("date", "usd_to_sgd"),
+            where=[("date", ">=", "2024-01-01"), ("date", "<=", "2024-01-15")], order_by=("date",),
+        )
+        self.assertEqual([r.date for r in rows], ["2024-01-01", "2024-01-15"])
 
     def test_last_fx_rate_is_the_latest_date(self) -> None:
-        latest = database.get_last_fx_rate()
+        latest = reader.select_one(FxRate, ("date", "usd_to_sgd"), order_by=("-date",))
         assert latest is not None
-        self.assertEqual(latest["date"], "2024-02-01")
+        self.assertEqual(latest.date, "2024-02-01")
 
     def test_empty_table_returns_none(self) -> None:
         with database.get_connection() as conn:
             conn.execute("DELETE FROM fx_rates")
-        self.assertIsNone(database.get_last_fx_rate())
+        self.assertIsNone(reader.select_one(FxRate, ("date", "usd_to_sgd"), order_by=("-date",)))
 
 
 class TopVideosOrderingTest(IsolatedDatabaseTestCase):
     def setUp(self) -> None:
         super().setUp()
-        database.upsert_own_video(make_video("v-1", "Alpha"))
-        database.upsert_own_video(make_video("v-2", "Beta"))
-        database.upsert_own_video(make_video("v-3", "Gamma"))
+        writer.write(make_video("v-1", "Alpha"))
+        writer.write(make_video("v-2", "Beta"))
+        writer.write(make_video("v-3", "Gamma"))
         # v-1 and v-2 tie on views to prove the deterministic id tie-breaker.
-        database.upsert_video_analytics(make_video_analytics("v-1", "2024-01-01", views=100, watch_time_minutes=5))
-        database.upsert_video_analytics(make_video_analytics("v-2", "2024-01-01", views=100, watch_time_minutes=50))
-        database.upsert_video_analytics(make_video_analytics("v-3", "2024-01-01", views=50, watch_time_minutes=10))
+        writer.write(make_video_analytics("v-1", "2024-01-01", views=100, watch_time_minutes=5))
+        writer.write(make_video_analytics("v-2", "2024-01-01", views=100, watch_time_minutes=50))
+        writer.write(make_video_analytics("v-3", "2024-01-01", views=50, watch_time_minutes=10))
 
     def test_orders_by_views_descending_by_default(self) -> None:
-        rows = database.get_top_videos_by_views(start_date="2024-01-01", end_date="2024-01-01")
-        self.assertEqual([r["id"] for r in rows][:2], ["v-1", "v-2"])
-        self.assertEqual(rows[-1]["id"], "v-3")
+        ids = _top_video_ids(start_date="2024-01-01", end_date="2024-01-01")
+        self.assertEqual(ids[:2], ["v-1", "v-2"])
+        self.assertEqual(ids[-1], "v-3")
 
     def test_tied_views_break_ties_by_ascending_id(self) -> None:
-        rows = database.get_top_videos_by_views(start_date="2024-01-01", end_date="2024-01-01")
-        tied = [r["id"] for r in rows if r["id"] in ("v-1", "v-2")]
+        ids = _top_video_ids(start_date="2024-01-01", end_date="2024-01-01")
+        tied = [video_id for video_id in ids if video_id in ("v-1", "v-2")]
         self.assertEqual(tied, ["v-1", "v-2"])
 
     def test_watch_time_sort_reorders_by_watch_time(self) -> None:
-        rows = database.get_top_videos_by_views(start_date="2024-01-01", end_date="2024-01-01", sort_by="watch_time")
-        self.assertEqual(rows[0]["id"], "v-2")
+        ids = _top_video_ids(start_date="2024-01-01", end_date="2024-01-01", sort_by="watch_time")
+        self.assertEqual(ids[0], "v-2")
 
     def test_limit_truncates_results(self) -> None:
-        rows = database.get_top_videos_by_views(start_date="2024-01-01", end_date="2024-01-01", limit=1)
-        self.assertEqual(len(rows), 1)
+        ids = _top_video_ids(start_date="2024-01-01", end_date="2024-01-01", limit=1)
+        self.assertEqual(len(ids), 1)
 
 
 if __name__ == "__main__":

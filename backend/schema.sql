@@ -12,7 +12,8 @@ CREATE TABLE IF NOT EXISTS videos (
     like_count INTEGER,
     comment_count INTEGER,
     own INTEGER NOT NULL DEFAULT 1 CHECK (own IN (0, 1)),
-    updated_at TEXT NOT NULL
+    updated_at TEXT NOT NULL,
+    total_revenue_sgd REAL NOT NULL DEFAULT 0
 );
 
 CREATE TABLE IF NOT EXISTS video_analytics (
@@ -53,7 +54,8 @@ CREATE TABLE IF NOT EXISTS playlists (
     published_at TEXT,
     thumbnail_url TEXT,
     item_count INTEGER,
-    updated_at TEXT NOT NULL
+    updated_at TEXT NOT NULL,
+    total_earnings_sgd REAL NOT NULL DEFAULT 0
 );
 
 CREATE TABLE IF NOT EXISTS playlist_items (

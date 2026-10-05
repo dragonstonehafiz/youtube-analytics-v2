@@ -1,13 +1,29 @@
 from __future__ import annotations
 
+from collections.abc import Callable, Iterable
 from dataclasses import dataclass
 from datetime import date, timedelta
 
-import database
 import youtube
+from database import (
+    Comment,
+    CommentAuthor,
+    FxRate,
+    NotExists,
+    Playlist,
+    PlaylistItem,
+    SyncCoverage,
+    Video,
+    VideoAnalytics,
+    VideoTrafficSource,
+    now,
+    reader,
+    writer,
+)
+from database.reports import catalog
 from logging_config import exception_context, get_logger
 
-from . import coverage, monthly_insights, status
+from . import coverage, monthly_insights, status, write_preparation
 
 # How many further comments an incremental scan keeps reading after it recognises the
 # first one it already stores. One maximum-size page, so the overlap costs no extra
@@ -25,6 +41,15 @@ class SyncCounts:
     rows_deleted: int = 0
 
 
+def _coverage_rows(collector: str, video_id: str, months: list[str]) -> list[SyncCoverage]:
+    """Return completed-month coverage rows for one video and collector, stamped now."""
+    completed_at = now()
+    return [
+        SyncCoverage(collector=collector, video_id=video_id, period_key=month, completed_at=completed_at)
+        for month in months
+    ]
+
+
 def _incremental_monthly_windows(
     collector: str, video_id: str, publish_date: date, yesterday: date, forced: list[monthly_insights.MonthlyWindow],
 ) -> list[monthly_insights.MonthlyWindow]:
@@ -32,7 +57,13 @@ def _incremental_monthly_windows(
     windows_all = monthly_insights.monthly_windows_for_range(publish_date, yesterday)
     if not windows_all:
         return []
-    covered = database.get_covered_periods(collector, video_id, windows_all[0].month, windows_all[-1].month)
+    rows = reader.select(SyncCoverage, ("period_key",), where=[
+        ("collector", "=", collector),
+        ("video_id", "=", video_id),
+        ("period_key", ">=", windows_all[0].month),
+        ("period_key", "<=", windows_all[-1].month),
+    ])
+    covered = {row.period_key for row in rows if row.period_key is not None}
     missing_months = {window.month for window in coverage.missing_windows(windows_all, covered)}
     forced_months = {window.month for window in forced}
     # Rebuild from windows_all (rather than concatenating missing + forced) so the
@@ -121,7 +152,7 @@ def sync_videos(counts: SyncCounts, playlist_video_ids: set[str]) -> set[str]:
         if i > 0:
             status.raise_if_stopping()
         if video_id in uploads_id_set or video_id in owned_playlist_only_ids:
-            database.upsert_own_video(video)
+            writer.write(Video.from_dict({**video, "own": True, "updated_at": now()}))
             counts.rows_written += 1
 
     return uploads_id_set | owned_playlist_only_ids
@@ -153,7 +184,7 @@ def sync_playlists(counts: SyncCounts) -> set[str]:
     for i, playlist in enumerate(playlists):
         if i > 0:
             status.raise_if_stopping()
-        database.upsert_playlist(playlist)
+        writer.write(Playlist.from_dict({**playlist, "updated_at": now()}))
         counts.rows_written += 1
         if playlist["id"] in truncated_playlists:
             _logger.warning(
@@ -161,9 +192,9 @@ def sync_playlists(counts: SyncCounts) -> set[str]:
                 playlist["id"], len(all_items[playlist["id"]]), playlist.get("title"),
             )
             continue
-        counts.rows_deleted += database.delete_playlist_items(playlist["id"])
+        counts.rows_deleted += writer.delete(PlaylistItem, where=[("playlist_id", "=", playlist["id"])])
         for item in all_items[playlist["id"]]:
-            database.upsert_playlist_item(item)
+            writer.write(PlaylistItem.from_dict({**item, "updated_at": now()}))
             counts.rows_written += 1
 
     if playlists_truncated:
@@ -173,7 +204,10 @@ def sync_playlists(counts: SyncCounts) -> set[str]:
         return playlist_video_ids
 
     status.raise_if_stopping()
-    counts.rows_deleted += database.delete_playlists_not_in([p["id"] for p in playlists])
+    # An empty listing never clears stored playlists.
+    if playlists:
+        playlist_ids = [p["id"] for p in playlists]
+        counts.rows_deleted += writer.delete(Playlist, where=[("id", "NOT IN", playlist_ids)])
     return playlist_video_ids
 
 
@@ -185,16 +219,19 @@ def _comment_bootstrap_cutoff(today: date) -> str:
 def sync_comments(scope: str, counts: SyncCounts) -> None:
     """Sync top-level comments for every stored owned video."""
     cutoff = _comment_bootstrap_cutoff(date.today())
-    video_ids = database.get_owned_video_ids()
-    total = len(video_ids)
+    videos = catalog.owned_video_worklist()
+    total = len(videos)
 
-    for i, video_id in enumerate(video_ids, start=1):
+    for i, video in enumerate(videos, start=1):
         if i > 1:
             status.raise_if_stopping()
         status.update_sync_progress("comments", f"Syncing comments ({i}/{total})...")
-        video = database.get_owned_video(video_id)
-        title = video.get("title") if video else None
-        known_ids = database.get_comment_ids_for_video(video_id)
+        assert video.id is not None
+        video_id = video.id
+        title = video.title
+        known_ids = {
+            comment.id for comment in reader.select(Comment, ("id",), where=[("video_id", "=", video_id)])
+        }
         fetched_before = counts.rows_fetched
         written_before = counts.rows_written
         overlap_remaining: int | None = None
@@ -222,9 +259,9 @@ def sync_comments(scope: str, counts: SyncCounts) -> None:
                     break
 
             try:
-                database.upsert_comment_author(item["author"])
+                writer.write(CommentAuthor.from_dict({**item["author"], "updated_at": now()}))
                 counts.rows_written += 1
-                database.upsert_comment(comment)
+                writer.write(Comment.from_dict({**comment, "updated_at": now()}))
                 counts.rows_written += 1
             except Exception as exc:
                 _logger.warning(
@@ -238,42 +275,51 @@ def sync_comments(scope: str, counts: SyncCounts) -> None:
             counts.rows_written - written_before, title,
         )
 
-    counts.rows_deleted += database.delete_orphan_comment_authors()
+    counts.rows_deleted += writer.delete(CommentAuthor, where=[NotExists(Comment, (("author_id", "id"),))])
 
 
 def sync_pruning(counts: SyncCounts, channel_owned_ids: set[str]) -> None:
     """Delete database videos absent from the confirmed channel-owned IDs."""
     status.raise_if_stopping()
-    counts.rows_deleted += database.delete_videos_not_in(sorted(channel_owned_ids))
+    counts.rows_deleted += writer.delete(Video, where=[("own", "=", True), ("id", "NOT IN", sorted(channel_owned_ids))])
 
 
-def sync_video_analytics(scope: str, year: int | None, counts: SyncCounts) -> None:
-    """Sync daily analytics for every eligible owned video."""
+def _sync_daily_stage(
+    collector: str,
+    progress_label: str,
+    fetch: Callable[..., Iterable[dict]],
+    row_class: type[VideoAnalytics] | type[VideoTrafficSource],
+    scope: str,
+    year: int | None,
+    counts: SyncCounts,
+) -> None:
+    """Sync one daily per-video Analytics collector for every eligible owned video."""
     today = date.today()
     effective_end = _effective_range_end(scope, year, today - timedelta(days=1))
     end_date = effective_end.isoformat()
 
-    video_ids = database.get_owned_video_ids(published_through=end_date)
-    total = len(video_ids)
-    for i, video_id in enumerate(video_ids, start=1):
+    videos = catalog.owned_video_worklist(published_through=end_date)
+    total = len(videos)
+    for i, video in enumerate(videos, start=1):
         if i > 1:
             status.raise_if_stopping()
-        status.update_sync_progress("video_analytics", f"Syncing video analytics ({i}/{total})...")
-        video = database.get_owned_video(video_id)
-        if not video or not video.get("published_at"):
+        status.update_sync_progress(collector, f"{progress_label} ({i}/{total})...")
+        assert video.id is not None
+        video_id = video.id
+        title = video.title
+        if not video.published_at:
             _logger.debug(
-                "video_analytics %d/%d video=%s skipped reason=no_publish_date title=%r",
-                i, total, video_id, video.get("title") if video else None,
+                "%s %d/%d video=%s skipped reason=no_publish_date title=%r",
+                collector, i, total, video_id, title,
             )
             continue
-        publish_date = video["published_at"][:10]
-        title = video.get("title")
+        publish_date = video.published_at[:10]
 
-        requests = _video_period_requests("video_analytics", video_id, scope, year, today, end_date, publish_date)
+        requests = _video_period_requests(collector, video_id, scope, year, today, end_date, publish_date)
         if not requests:
             _logger.debug(
-                "video_analytics %d/%d video=%s skipped reason=empty_range title=%r",
-                i, total, video_id, title,
+                "%s %d/%d video=%s skipped reason=empty_range title=%r",
+                collector, i, total, video_id, title,
             )
             continue
 
@@ -282,7 +328,7 @@ def sync_video_analytics(scope: str, year: int | None, counts: SyncCounts) -> No
             if j > 0:
                 status.raise_if_stopping()
             first_row = True
-            for row in youtube.iter_video_analytics(
+            for row in fetch(
                 video_id, start, range_end, publish_date=publish_date, title=title,
                 checkpoint=status.raise_if_stopping,
             ):
@@ -290,67 +336,70 @@ def sync_video_analytics(scope: str, year: int | None, counts: SyncCounts) -> No
                     status.raise_if_stopping()
                 first_row = False
                 counts.rows_fetched += 1
-                database.upsert_video_analytics(row)
+                writer.write(row_class.from_dict({**row, "updated_at": now()}))
                 counts.rows_written += 1
             status.raise_if_stopping()
-            database.upsert_coverage("video_analytics", video_id, months)
+            writer.write_many(_coverage_rows(collector, video_id, months))
+        if row_class is VideoAnalytics:
+            earnings = catalog.lifetime_earnings([video_id])
+            writer.update(Video(total_revenue_sgd=earnings), where=[("id", "=", video_id)])
         _logger.debug(
-            "video_analytics %d/%d video=%s rows=%d title=%r",
-            i, total, video_id, counts.rows_fetched - rows_before, title,
+            "%s %d/%d video=%s rows=%d title=%r",
+            collector, i, total, video_id, counts.rows_fetched - rows_before, title,
         )
+
+
+def sync_video_analytics(scope: str, year: int | None, counts: SyncCounts) -> None:
+    """Sync daily analytics for every eligible owned video, then refresh every playlist's lifetime earnings."""
+    _sync_daily_stage(
+        "video_analytics", "Syncing video analytics", youtube.iter_video_analytics, VideoAnalytics,
+        scope, year, counts,
+    )
+    _store_playlist_earnings()
+
+
+def _store_playlist_earnings() -> None:
+    """Save each playlist's lifetime earnings summed over its distinct owned member videos."""
+    for playlist in reader.select(Playlist, ("id",)):
+        assert playlist.id is not None
+        earnings = catalog.lifetime_earnings(catalog.playlist_video_ids(playlist.id) or [])
+        writer.update(Playlist(total_earnings_sgd=earnings), where=[("id", "=", playlist.id)])
 
 
 def sync_video_traffic_sources(scope: str, year: int | None, counts: SyncCounts) -> None:
     """Sync daily traffic-source breakdowns for every eligible owned video."""
-    today = date.today()
-    effective_end = _effective_range_end(scope, year, today - timedelta(days=1))
-    end_date = effective_end.isoformat()
+    _sync_daily_stage(
+        "video_traffic_sources", "Syncing traffic sources", youtube.iter_video_traffic_sources,
+        VideoTrafficSource, scope, year, counts,
+    )
 
-    video_ids = database.get_owned_video_ids(published_through=end_date)
-    total = len(video_ids)
-    for i, video_id in enumerate(video_ids, start=1):
-        if i > 1:
-            status.raise_if_stopping()
-        status.update_sync_progress("video_traffic_sources", f"Syncing traffic sources ({i}/{total})...")
-        video = database.get_owned_video(video_id)
-        if not video or not video.get("published_at"):
-            _logger.debug(
-                "video_traffic_sources %d/%d video=%s skipped reason=no_publish_date title=%r",
-                i, total, video_id, video.get("title") if video else None,
-            )
-            continue
-        publish_date = video["published_at"][:10]
-        title = video.get("title")
 
-        requests = _video_period_requests("video_traffic_sources", video_id, scope, year, today, end_date, publish_date)
-        if not requests:
-            _logger.debug(
-                "video_traffic_sources %d/%d video=%s skipped reason=empty_range title=%r",
-                i, total, video_id, title,
-            )
-            continue
-
-        rows_before = counts.rows_fetched
-        for j, (start, range_end, months) in enumerate(requests):
-            if j > 0:
-                status.raise_if_stopping()
-            first_row = True
-            for row in youtube.iter_video_traffic_sources(
-                video_id, start, range_end, publish_date=publish_date, title=title,
-                checkpoint=status.raise_if_stopping,
-            ):
-                if not first_row:
-                    status.raise_if_stopping()
-                first_row = False
-                counts.rows_fetched += 1
-                database.upsert_video_traffic_source(row)
-                counts.rows_written += 1
-            status.raise_if_stopping()
-            database.upsert_coverage("video_traffic_sources", video_id, months)
-        _logger.debug(
-            "video_traffic_sources %d/%d video=%s rows=%d title=%r",
-            i, total, video_id, counts.rows_fetched - rows_before, title,
-        )
+def _monthly_windows(
+    collector: str,
+    video: Video,
+    scope: str,
+    year: int | None,
+    yesterday: date,
+    incremental_windows: list[monthly_insights.MonthlyWindow],
+) -> list[monthly_insights.MonthlyWindow] | None:
+    """Return the months to fetch for one video, or None when year/all has no publish date to range from."""
+    if scope in ("year", "all"):
+        if not video.published_at:
+            return None
+        publish_date = date.fromisoformat(video.published_at[:10])
+        if scope == "year":
+            assert year is not None, "scope=year requires a year"
+            start = max(publish_date, date(year, 1, 1))
+            end = min(yesterday, date(year, 12, 31))
+        else:
+            start = publish_date
+            end = yesterday
+        return monthly_insights.monthly_windows_for_range(start, end)
+    if video.published_at:
+        publish_date = date.fromisoformat(video.published_at[:10])
+        assert video.id is not None
+        return _incremental_monthly_windows(collector, video.id, publish_date, yesterday, incremental_windows)
+    return incremental_windows
 
 
 def sync_search_insights(scope: str, year: int | None, counts: SyncCounts) -> None:
@@ -361,37 +410,24 @@ def sync_search_insights(scope: str, year: int | None, counts: SyncCounts) -> No
     # Captured once so a midnight rollover mid-run cannot change the worklist. Used only
     # as the incremental fallback for a video with no publish date to compute a range from.
     incremental_windows = monthly_insights.monthly_search_windows(today)
-    video_ids = database.get_owned_video_ids(published_through=effective_end.isoformat())
-    total = len(video_ids)
+    videos = catalog.owned_video_worklist(published_through=effective_end.isoformat())
+    total = len(videos)
 
-    for i, video_id in enumerate(video_ids, start=1):
+    for i, video in enumerate(videos, start=1):
         if i > 1:
             status.raise_if_stopping()
-        video = database.get_owned_video(video_id)
-        title = video.get("title") if video else None
+        assert video.id is not None
+        video_id = video.id
+        title = video.title
         status.update_sync_progress("search_insights", f"Syncing search insights ({i}/{total})...")
 
-        if scope in ("year", "all"):
-            if not video or not video.get("published_at"):
-                _logger.debug(
-                    "search_insights %d/%d video=%s skipped reason=no_publish_date title=%r",
-                    i, total, video_id, title,
-                )
-                continue
-            publish_date = date.fromisoformat(video["published_at"][:10])
-            if scope == "year":
-                assert year is not None, "scope=year requires a year"
-                start = max(publish_date, date(year, 1, 1))
-                end = min(yesterday, date(year, 12, 31))
-            else:
-                start = publish_date
-                end = yesterday
-            windows = monthly_insights.monthly_windows_for_range(start, end)
-        elif video and video.get("published_at"):
-            publish_date = date.fromisoformat(video["published_at"][:10])
-            windows = _incremental_monthly_windows("search_insights", video_id, publish_date, yesterday, incremental_windows)
-        else:
-            windows = incremental_windows
+        windows = _monthly_windows("search_insights", video, scope, year, yesterday, incremental_windows)
+        if windows is None:
+            _logger.debug(
+                "search_insights %d/%d video=%s skipped reason=no_publish_date title=%r",
+                i, total, video_id, title,
+            )
+            continue
 
         rows_before = counts.rows_fetched
         for j, window in enumerate(windows):
@@ -401,8 +437,9 @@ def sync_search_insights(scope: str, year: int | None, counts: SyncCounts) -> No
                 video_id, window.start_date, window.end_date, checkpoint=status.raise_if_stopping
             )
             counts.rows_fetched += result.raw_row_count
-            counts.rows_written += database.upsert_search_terms(video_id, window.month, result.terms)
-            database.upsert_coverage("search_insights", video_id, [window.month])
+            terms = write_preparation.search_term_rows(video_id, window.month, result.terms, updated_at=now())
+            counts.rows_written += writer.write_many(terms)
+            writer.write_many(_coverage_rows("search_insights", video_id, [window.month]))
         _logger.debug(
             "search_insights %d/%d video=%s months=%d rows=%d title=%r",
             i, total, video_id, len(windows), counts.rows_fetched - rows_before, title,
@@ -417,40 +454,25 @@ def sync_related_video_insights(scope: str, year: int | None, counts: SyncCounts
     # Captured once so a midnight rollover mid-run cannot change the worklist. Used only
     # as the incremental fallback for a video with no publish date to compute a range from.
     incremental_windows = monthly_insights.monthly_search_windows(today)
-    video_ids = database.get_owned_video_ids(published_through=effective_end.isoformat())
-    total = len(video_ids)
+    videos = catalog.owned_video_worklist(published_through=effective_end.isoformat())
+    total = len(videos)
     newly_encountered_ids: set[str] = set()
 
-    for i, video_id in enumerate(video_ids, start=1):
+    for i, video in enumerate(videos, start=1):
         if i > 1:
             status.raise_if_stopping()
-        video = database.get_owned_video(video_id)
-        title = video.get("title") if video else None
+        assert video.id is not None
+        video_id = video.id
+        title = video.title
         status.update_sync_progress("related_video_insights", f"Syncing related video insights ({i}/{total})...")
 
-        if scope in ("year", "all"):
-            if not video or not video.get("published_at"):
-                _logger.debug(
-                    "related_video_insights %d/%d video=%s skipped reason=no_publish_date title=%r",
-                    i, total, video_id, title,
-                )
-                continue
-            publish_date = date.fromisoformat(video["published_at"][:10])
-            if scope == "year":
-                assert year is not None, "scope=year requires a year"
-                start = max(publish_date, date(year, 1, 1))
-                end = min(yesterday, date(year, 12, 31))
-            else:
-                start = publish_date
-                end = yesterday
-            windows = monthly_insights.monthly_windows_for_range(start, end)
-        elif video and video.get("published_at"):
-            publish_date = date.fromisoformat(video["published_at"][:10])
-            windows = _incremental_monthly_windows(
-                "related_video_insights", video_id, publish_date, yesterday, incremental_windows
+        windows = _monthly_windows("related_video_insights", video, scope, year, yesterday, incremental_windows)
+        if windows is None:
+            _logger.debug(
+                "related_video_insights %d/%d video=%s skipped reason=no_publish_date title=%r",
+                i, total, video_id, title,
             )
-        else:
-            windows = incremental_windows
+            continue
 
         rows_before = counts.rows_fetched
         for j, window in enumerate(windows):
@@ -460,8 +482,13 @@ def sync_related_video_insights(scope: str, year: int | None, counts: SyncCounts
                 video_id, window.start_date, window.end_date, checkpoint=status.raise_if_stopping
             )
             counts.rows_fetched += result.raw_row_count
-            counts.rows_written += database.upsert_related_videos(video_id, window.month, result.referrers)
-            database.upsert_coverage("related_video_insights", video_id, [window.month])
+            referrers = write_preparation.related_video_rows(
+                video_id, window.month, result.referrers, updated_at=now()
+            )
+            if referrers and reader.select_one(Video, ("id",), where=[("id", "=", video_id), ("own", "=", True)]) is None:
+                raise ValueError(f"target_video_id {video_id!r} is not an owned video")
+            counts.rows_written += writer.write_many(referrers)
+            writer.write_many(_coverage_rows("related_video_insights", video_id, [window.month]))
             newly_encountered_ids.update(r["referrer_video_id"] for r in result.referrers)
         _logger.debug(
             "related_video_insights %d/%d video=%s months=%d rows=%d title=%r",
@@ -473,7 +500,8 @@ def sync_related_video_insights(scope: str, year: int | None, counts: SyncCounts
 
 def _resolve_related_video_metadata(newly_encountered_ids: set[str], counts: SyncCounts) -> None:
     """Resolve and classify metadata for previously unknown referrer videos."""
-    unknown_ids = sorted(newly_encountered_ids - set(database.get_all_video_ids()))
+    known_ids = {video.id for video in reader.select(Video, ("id",))}
+    unknown_ids = sorted(newly_encountered_ids - known_ids)
     if not unknown_ids:
         return
 
@@ -503,7 +531,7 @@ def _resolve_related_video_metadata(newly_encountered_ids: set[str], counts: Syn
             if j > 0:
                 status.raise_if_stopping()
             counts.rows_fetched += 1
-            database.upsert_related_video(video, own=video.get("channel_id") == channel_id)
+            writer.write(Video.from_dict({**video, "own": video.get("channel_id") == channel_id, "updated_at": now()}))
             counts.rows_written += 1
             resolved += 1
     _logger.debug(
@@ -517,11 +545,11 @@ def sync_fx_rates(counts: SyncCounts) -> None:
     import pandas as pd
 
     yesterday = date.today() - timedelta(days=1)
-    last_row = database.get_last_fx_rate()
-    carry: float | None = last_row["usd_to_sgd"] if last_row else None
+    last_rate = reader.select_one(FxRate, ("date", "usd_to_sgd"), order_by=("-date",))
+    carry: float | None = last_rate.usd_to_sgd if last_rate else None
     start = (
-        date.fromisoformat(last_row["date"]) + timedelta(days=1)
-        if last_row else date(2015, 1, 1)
+        date.fromisoformat(last_rate.date) + timedelta(days=1)
+        if last_rate and last_rate.date else date(2015, 1, 1)
     )
 
     if start > yesterday:
@@ -546,7 +574,7 @@ def sync_fx_rates(counts: SyncCounts) -> None:
             carry = closes[day_str]
         if carry is not None:
             counts.rows_fetched += 1
-            database.upsert_fx_rate({"date": day_str, "usd_to_sgd": carry})
+            writer.write(FxRate(date=day_str, usd_to_sgd=carry, updated_at=now()))
             counts.rows_written += 1
         current += timedelta(days=1)
 

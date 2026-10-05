@@ -209,7 +209,7 @@ main { min-width: 0; }
 
 .hero { margin-bottom: 24px; }
 .hero h1 { font-size: clamp(1.6rem, 3.5vw, 2.2rem); line-height: 1.2; margin: 0 0 8px; }
-.hero p { color: var(--text-muted); margin: 0; max-width: none; }
+.hero p { color: var(--text-muted); margin: 0; }
 
 .meta-line {
   display: flex;
@@ -231,7 +231,6 @@ main { min-width: 0; }
 section { margin: 0 0 40px; }
 section > h2 { font-size: 1.4rem; margin: 0 0 12px; padding-bottom: 6px; border-bottom: 1px solid var(--border); }
 h3 { font-size: 1.1rem; margin: 24px 0 8px; }
-p, ul, ol { max-width: 80ch; }
 
 /* ---------- Cards & callouts ---------- */
 

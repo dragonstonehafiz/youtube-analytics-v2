@@ -3,9 +3,45 @@ from __future__ import annotations
 import unittest
 from unittest import mock
 
+from fastapi import FastAPI, HTTPException
+from fastapi.routing import APIRoute
+
 import sync
 from routes import router
+from routes._shared import require_found
 from tests.support import SeededDatabaseTestCase, create_test_client
+
+
+class RequireFoundTest(unittest.TestCase):
+    def test_only_none_raises_404(self) -> None:
+        falsy: tuple[object, ...] = ({}, [], 0, "")
+        for item in falsy:
+            with self.subTest(item=item):
+                self.assertIs(require_found(item, "Video"), item)
+        with self.assertRaises(HTTPException) as raised:
+            require_found(None, "Playlist")
+        self.assertEqual(raised.exception.status_code, 404)
+        self.assertEqual(raised.exception.detail, "Playlist not found")
+
+
+class SharedScopeRouteSchemaTest(unittest.TestCase):
+    def test_channel_routes_have_no_playlist_id_parameter(self) -> None:
+        app = FastAPI()
+        app.include_router(router)
+        paths = app.openapi()["paths"]
+        endpoints: dict[object, list[str]] = {}
+        for included in router.routes:
+            for route in included.original_router.routes:  # type: ignore[attr-defined]
+                if isinstance(route, APIRoute):
+                    endpoints.setdefault(route.endpoint, []).append(route.path)
+        shared = [path for route_paths in endpoints.values() if len(route_paths) > 1 for path in route_paths]
+        self.assertEqual(len(shared), 20)
+        for path in shared:
+            if "{playlist_id}" in path:
+                continue
+            with self.subTest(path=path):
+                params = [p["name"] for p in paths[path]["get"].get("parameters", [])]
+                self.assertNotIn("playlist_id", params)
 
 
 class ApiContractTestCase(SeededDatabaseTestCase):
@@ -96,7 +132,7 @@ class MetadataContractTest(ApiContractTestCase):
 
 class NoLifespanTest(ApiContractTestCase):
     """The app under test is built with create_test_client(), which never runs
-    server.lifespan — so init_db, mark_incomplete_sync_runs, and the scheduler are never
+    server.lifespan — so init_db, the stranded sync-run sweep, and the scheduler are never
     invoked by the app itself; the isolated database is populated only by SeededDatabaseTestCase."""
 
     def test_scheduler_start_is_never_called(self) -> None:

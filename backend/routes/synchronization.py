@@ -5,8 +5,8 @@ from typing import Literal
 from fastapi import APIRouter, BackgroundTasks, HTTPException, Query
 from pydantic import BaseModel, ConfigDict
 
-import database
 import sync
+from database.reports import sync_history
 
 router = APIRouter()
 
@@ -84,5 +84,4 @@ def sync_runs(
     page_size: int = Query(default=25, ge=1, le=200),
 ) -> dict:
     """Return a page of newest-first sync batches and the total batch count."""
-    items, total = database.get_sync_runs(page, page_size)
-    return {"items": items, "total": total, "page": page, "page_size": page_size}
+    return sync_history.sync_batches(page=page, page_size=page_size)

@@ -1,9 +1,9 @@
 import { Link } from 'react-router-dom'
 import { PieChart, Pie, Cell, ResponsiveContainer, Tooltip } from 'recharts'
 import type { RelatedReferrerRow } from '@/types'
-import { categoricalColorClass, CATEGORICAL_OTHER_CLASS } from '@/lib/categoricalColors'
+import { categoricalColorClass, CATEGORICAL_OTHER_CLASS, CATEGORICAL_SLOT_COUNT } from '@/lib/categoricalColors'
 import AsyncCard from '@/components/AsyncCard'
-import './RelatedReferrerBreakdownCard.css'
+import '@/components/DonutCard.css'
 
 interface Props {
   title: string
@@ -13,7 +13,6 @@ interface Props {
   error?: string | null
 }
 
-const TOP_N = 6
 const OTHER_ITEMIZE_N = 3
 const OTHER_NAMED_KEY = '__other_named__'
 
@@ -36,13 +35,13 @@ function ReferrerName({ r }: { r: RelatedReferrerRow }) {
 
 function ReferrerThumb({ r }: { r: RelatedReferrerRow }) {
   return r.thumbnail_url
-    ? <img src={r.thumbnail_url} alt="" className="related-referrer-thumb" />
-    : <div className="related-referrer-thumb related-referrer-thumb--placeholder" />
+    ? <img src={r.thumbnail_url} alt="" className="thumb-small" />
+    : <div className="thumb-small thumb-placeholder" />
 }
 
 export default function RelatedReferrerBreakdownCard({ title, referrers, loading, error = null }: Props) {
-  const topReferrers = referrers.slice(0, TOP_N)
-  const otherReferrers = referrers.slice(TOP_N)
+  const topReferrers = referrers.slice(0, CATEGORICAL_SLOT_COUNT)
+  const otherReferrers = referrers.slice(CATEGORICAL_SLOT_COUNT)
   const otherViews = otherReferrers.reduce((s, r) => s + r.views, 0)
   const totalViews = referrers.reduce((s, r) => s + r.views, 0)
   const itemizedOtherReferrers = otherReferrers.slice(0, OTHER_ITEMIZE_N)
@@ -60,10 +59,10 @@ export default function RelatedReferrerBreakdownCard({ title, referrers, loading
       error={error}
       empty={totalViews === 0}
       emptyMessage="No Related Video traffic for this period"
-      className="related-referrer-breakdown"
+      className="related-referrer-breakdown donut-card"
       heading={<div className="section-header">{title}</div>}
     >
-      <div className="related-referrer-breakdown-chart-wrap">
+      <div className="donut-chart-wrap">
         <ResponsiveContainer width="100%" height={180}>
           <PieChart>
             <Pie data={slices} dataKey="views" nameKey="label" innerRadius="65%" outerRadius="100%" paddingAngle={1} stroke="none">
@@ -76,39 +75,39 @@ export default function RelatedReferrerBreakdownCard({ title, referrers, loading
             />
           </PieChart>
         </ResponsiveContainer>
-        <div className="related-referrer-breakdown-center">
-          <span className="related-referrer-breakdown-center-value">{totalViews.toLocaleString()}</span>
-          <span className="related-referrer-breakdown-center-label">Views</span>
+        <div className="donut-center">
+          <span className="donut-center-value">{totalViews.toLocaleString()}</span>
+          <span className="donut-center-label">Views</span>
         </div>
       </div>
 
-      <div className="related-referrer-breakdown-legend">
+      <div className="donut-legend">
         {topReferrers.map((r, i) => (
-          <div key={r.referrer_video_id} className="related-referrer-breakdown-legend-item">
+          <div key={r.referrer_video_id} className="donut-legend-item">
             <ReferrerThumb r={r} />
-            <span className={`related-referrer-breakdown-legend-swatch ${categoricalColorClass(i)}`} />
-            <span className="related-referrer-breakdown-legend-label"><ReferrerName r={r} /></span>
-            <span className="related-referrer-breakdown-legend-views">{r.views.toLocaleString()}</span>
+            <span className={`legend-swatch ${categoricalColorClass(i)}`} />
+            <span className="donut-legend-label"><ReferrerName r={r} /></span>
+            <span className="donut-legend-value">{r.views.toLocaleString()}</span>
           </div>
         ))}
 
         {otherReferrers.length > 0 && (
           <>
-            <div className="related-referrer-breakdown-legend-divider">Other includes:</div>
+            <div className="donut-legend-divider">Other includes:</div>
             {itemizedOtherReferrers.map(r => (
-              <div key={r.referrer_video_id} className="related-referrer-breakdown-legend-item related-referrer-breakdown-legend-item--sub">
+              <div key={r.referrer_video_id} className="donut-legend-item donut-legend-item--sub">
                 <ReferrerThumb r={r} />
-                <span className={`related-referrer-breakdown-legend-swatch ${CATEGORICAL_OTHER_CLASS}`} />
-                <span className="related-referrer-breakdown-legend-label"><ReferrerName r={r} /></span>
-                <span className="related-referrer-breakdown-legend-views">{r.views.toLocaleString()}</span>
+                <span className={`legend-swatch ${CATEGORICAL_OTHER_CLASS}`} />
+                <span className="donut-legend-label"><ReferrerName r={r} /></span>
+                <span className="donut-legend-value">{r.views.toLocaleString()}</span>
               </div>
             ))}
             {remainderReferrers.length > 0 && (
-              <div className="related-referrer-breakdown-legend-item related-referrer-breakdown-legend-item--sub">
-                <div className="related-referrer-thumb related-referrer-thumb--placeholder" />
-                <span className={`related-referrer-breakdown-legend-swatch ${CATEGORICAL_OTHER_CLASS}`} />
-                <span className="related-referrer-breakdown-legend-label">{remainderReferrers.length} more referrers</span>
-                <span className="related-referrer-breakdown-legend-views">{remainderViews.toLocaleString()}</span>
+              <div className="donut-legend-item donut-legend-item--sub">
+                <div className="thumb-small thumb-placeholder" />
+                <span className={`legend-swatch ${CATEGORICAL_OTHER_CLASS}`} />
+                <span className="donut-legend-label">{remainderReferrers.length} more referrers</span>
+                <span className="donut-legend-value">{remainderViews.toLocaleString()}</span>
               </div>
             )}
           </>

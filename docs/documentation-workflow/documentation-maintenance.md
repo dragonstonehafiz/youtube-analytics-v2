@@ -54,13 +54,15 @@ Every fact should have exactly one canonical home. A file not in the ownership m
 
 ## Human-readable views
 
-`docs/human/` holds eight HTML pages — `overview.html` and `requests.html` in `docs/human/app-flow/`, the backend and frontend-components ones in `docs/human/architecture/`, and `repeated-code.html`, `efficiency.html`, and `dead-code.html` in `docs/human/suggestions/` — sharing `docs/human/human-docs.css` and the nav-dropdown script `docs/human/human-docs.js`. Styles used by only one page go in a `.css` file of the same name next to that page, not in the shared file. Adding or renaming a page means updating the nav menu on every page. The per-page component diagrams on `frontend-components.html` are SVG files in `docs/human/architecture/figures/`.
+`docs/human/` holds ten HTML pages — `overview.html` and `requests.html` in `docs/human/app-flow/`, the backend, data-storage, reader-writer, and frontend-components ones in `docs/human/architecture/`, and `repeated-code.html`, `efficiency.html`, and `dead-code.html` in `docs/human/suggestions/` — sharing `docs/human/human-docs.css` and the nav-dropdown script `docs/human/human-docs.js`. Styles used by only one page go in a `.css` file of the same name next to that page, not in the shared file. Adding or renaming a page means updating the nav menu on every page. The per-page component diagrams on `frontend-components.html` are SVG files in `docs/human/architecture/figures/`.
 
 | Page | Update when a change… |
 |---|---|
 | [`app-flow/overview.html`](../human/app-flow/overview.html) | adds, removes, or rewires a sync trigger, a startup/shutdown step, a layer in the request path, an external API, or the frontend↔backend origin/port |
 | [`architecture/backend-architecture.html`](../human/architecture/backend-architecture.html) | adds, removes, or renames a backend package; changes a package's role; changes an import between backend packages; or changes a main request or sync call path |
 | [`architecture/backend-reference.html`](../human/architecture/backend-reference.html) | adds, removes, renames, or moves a backend module; changes a module's responsibility; adds or removes an endpoint; or changes which functions a route handler or a `database` function calls |
+| [`architecture/data-storage.html`](../human/architecture/data-storage.html) | changes `schema.sql` tables, keys, or relationships; adds, removes, or renames a row dataclass or its fields; changes the shared registry in `database/tables.py` (tables, keys, write rules); changes the reader's query options, result mapping, connection handling, or `to_dict()` serialization; changes the shared `WHERE` compilation in `database/filters.py` (operators, `NotExists`, empty-list rules); changes `from_dict()`, the writer's update/insert or `None`-omission rules, its filtered-delete rules, its transaction handling, or how sync turns fetched data into rows; moves a read between the reader, a caller, and a `database/reports/` function; or changes how a read result becomes API JSON |
+| [`architecture/reader-writer.html`](../human/architecture/reader-writer.html) | adds, removes, or renames a public function in `database/reader.py` or `database/writer.py`; changes what one does; or changes where the app uses it |
 | [`architecture/frontend-components.html`](../human/architecture/frontend-components.html) | adds, removes, or renames a route, page, tab, or component; adds or removes a JSX render site; or changes which shared hooks/helpers a file uses |
 | [`suggestions/repeated-code.html`](../human/suggestions/repeated-code.html) | adds, removes, or changes a copy of code, markup, or a CSS rule that the page lists, or introduces new code or CSS duplicated across files |
 | [`suggestions/efficiency.html`](../human/suggestions/efficiency.html) | changes how often a listed query, connection, upsert, poll, or request runs; changes a listed query's shape; or adds a per-row, per-video, or per-request cost of the same kind |
@@ -70,7 +72,7 @@ Every fact should have exactly one canonical home. A file not in the ownership m
 When updating a page:
 
 1. Re-derive the affected facts from current source rather than editing numbers by hand from memory. Component counts are static JSX render sites; request maps describe source-defined triggers, not browser traffic.
-2. Update every table, diagram, and observation on the page that the change affects, including the matching SVG in `docs/human/architecture/figures/` when a page's components change.
+2. Update every table, diagram, and observation on the page that the change affects, including the matching SVG in the page's `figures/` folder and any inline SVG diagram on the page; draw figures following [`svg-figures.md`](svg-figures.md).
 3. Whenever any value on the page is re-measured, set its stated source revision to the commit the change is based on (`git rev-parse --short HEAD`).
 4. Link to `docs/references/` for contract detail instead of copying it into the page.
 5. Check the page locally (see [Verification](#verification)).
@@ -87,7 +89,7 @@ Component behavior, endpoint details, schema descriptions, and page-specific con
 
 ### Task procedures
 
-`docs/programming-workflow/implementation-planning.md`, `docs/github-workflow/issue-authoring.md`, `docs/github-workflow/pull-request-authoring.md`, and this file own procedures: how to draft an issue, how to create an implementation plan, how to maintain documentation. They link to references instead of embedding detailed application knowledge.
+`docs/programming-workflow/implementation-planning.md`, `docs/github-workflow/issue-authoring.md`, `docs/github-workflow/pull-request-authoring.md`, `docs/github-workflow/commit-message-authoring.md`, `docs/documentation-workflow/svg-figures.md`, and this file own procedures: how to draft an issue, how to create an implementation plan, how to maintain documentation. They link to references instead of embedding detailed application knowledge.
 
 ### References
 

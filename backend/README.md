@@ -64,16 +64,14 @@ backend/
     synchronization.py
     metadata.py
 
-  database/            # DB connection and helpers, grouped by domain
+  database/            # DB connection, row dataclasses, shared filters, the reader and writer, and purpose-based reports
     connection.py
-    videos.py
-    playlists.py
-    analytics.py
-    traffic_sources.py
-    comments.py
-    fx_rates.py
-    sync_runs.py
-    sync_coverage.py     # persisted per-video/month completion for the four Analytics API stages
+    dataclasses/         # one data-only row dataclass per table
+    tables.py            # shared class-to-table registry, keys, and write rules
+    filters.py           # shared WHERE compilation for reader selects and writer updates/deletes
+    reader.py            # all read execution, including daily date filling and result grouping
+    writer.py            # all inserts/updates (update-then-insert by key, None fields left untouched), filtered updates, and filtered deletes
+    reports/             # finished-result reads: analytics, traffic, catalog, comments, video_statistics, sync_history
 
   sync/                # Sync plans, orchestration, and an uncalled freshness-check scheduler
     status.py
@@ -82,10 +80,12 @@ backend/
     stages.py
     scheduler.py
     coverage.py          # pure sync_coverage selection helpers (missing/coalescing), no I/O
+    write_preparation.py # pure validation of monthly insight payloads into row objects, no I/O
 
   scripts/             # standalone, one-time, idempotent migrations for pre-existing databases
     issue-48-migration.py
     issue-62-migration.py
+    lifetime-earnings-migration.py
 
   tests/               # stdlib unittest suite (database, API contracts, sync, logging) run via pytest
     conftest.py          # autouse fixture that fails closed on real network/OAuth access
@@ -230,13 +230,22 @@ pre-seeded `SeededDatabaseTestCase`), which creates a fresh temporary SQLite fil
 test, calls the real `database.init_db()` against it, and refuses to run if the resolved
 path ever matches the real application database — so no test can touch
 `data/youtube.db`. `tests/support.py` also provides deterministic row factories
-(`make_video`, `make_playlist`, `make_video_analytics`, etc.), a `freeze_now()` context
-manager that pins every generated `updated_at`/`started_at`/`completed_at` timestamp so
-seeded fixtures stay reproducible, and a `seed_dataset()` convenience (built on
-`freeze_now()`) that populates every table with a small, fixed dataset.
+(`make_video`, `make_playlist`, `make_video_analytics`, `make_coverage`, etc.) that return
+row dataclasses stamped with the fixed `FIXED_NOW` timestamp, ready for
+`writer.write()`/`write_many()`. `make_search_term`/`make_related_referrer` instead return
+API-shaped dictionaries for `sync.write_preparation`. It also has a `freeze_now()` context
+manager that pins the timestamps `database.now()` generates, and a `seed_dataset()`
+convenience that populates every table with a small, fixed dataset. Sync-stage tests that
+should not touch a database install `patch_stage_reads()`, which routes `sync.stages`'
+reader and owned-video worklist calls to an in-memory `StageReads` holding typed rows (worklist videos, covered
+months, stored video and comment IDs, the latest FX rate), and `patch_stage_writes()`,
+which records the rows and filtered deletes `sync.stages` sends to the writer in a
+`StageWrites` (it can be told to fail for chosen rows and to return a chosen deleted
+count per row class). `covered_periods()` reads stored `sync_coverage` months for
+database-backed assertions.
 `create_test_app()`/`create_test_client()` build a lifespan-free FastAPI app from one or
 more routers for API contract tests, so — unlike a real request through `server.app` —
-`mark_incomplete_sync_runs()` never runs; only the
+the stranded sync-run sweep never runs; only the
 test's own `IsolatedDatabaseTestCase.setUp()` initializes the database. Extend the suite
 by adding new focused tests on top of these factories rather than duplicating
 temp-database or app-construction boilerplate.
@@ -251,4 +260,3 @@ and the logging tests redirect both log files to a `TemporaryDirectory`.
 - `google-api-python-client` — YouTube Data + Analytics API
 - `google-auth-oauthlib` — OAuth2 flow
 - `httpx2` — required by `starlette.testclient` for the test suite only
-- `pydantic-settings` — `.env` config management

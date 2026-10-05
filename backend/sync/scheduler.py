@@ -3,7 +3,7 @@ from __future__ import annotations
 import threading
 from datetime import date, datetime
 
-import database
+from database import SyncRun, reader
 
 from .orchestration import run_plan
 from .plans import full_incremental_plan
@@ -11,7 +11,7 @@ from .plans import full_incremental_plan
 
 def synced_today() -> bool:
     """Return whether any sync stage succeeded on the current local date."""
-    completed_at = database.get_last_successful_run_completed_at()
+    completed_at = reader.scalar(SyncRun, "MAX", "completed_at", where=[("status", "=", "success")])
     if not completed_at:
         return False
     try:

@@ -1,11 +1,20 @@
 from __future__ import annotations
 
+import sqlite3
 import threading
 import unittest
+from unittest import mock
 
 import database
-from database import connection
+from database import SyncRun, connection, writer
+from database.reports import sync_history
 from tests.support import IsolatedDatabaseTestCase
+
+
+def _history(page: int, page_size: int) -> tuple[list[dict], int]:
+    """Return the sync-history report's batches and total for one page."""
+    body = sync_history.sync_batches(page=page, page_size=page_size)
+    return body["items"], body["total"]
 
 
 class SyncRunsTestCase(IsolatedDatabaseTestCase):
@@ -33,6 +42,25 @@ class SyncRunsTestCase(IsolatedDatabaseTestCase):
             assert cursor.lastrowid is not None
             return cursor.lastrowid
 
+    def _finish(
+        self,
+        run_id: int | None,
+        status: str,
+        rows_fetched: int = 0,
+        rows_written: int = 0,
+        rows_deleted: int = 0,
+        error_message: str | None = None,
+    ) -> None:
+        """Finalize one stage row the way orchestration does."""
+        writer.update(SyncRun(
+            status=status, completed_at=database.now(), rows_fetched=rows_fetched, rows_written=rows_written,
+            rows_deleted=rows_deleted, error_message=error_message,
+        ), where=[("id", "=", run_id)])
+
+    def _sweep(self) -> int:
+        """Mark running stages incomplete the way application startup does."""
+        return writer.update(SyncRun(status="incomplete"), where=[("status", "=", "running")])
+
 
 class GroupingTest(SyncRunsTestCase):
     def test_stages_sharing_a_batch_collapse_into_one_group(self) -> None:
@@ -40,7 +68,7 @@ class GroupingTest(SyncRunsTestCase):
         self._seed("2024-05-01T10:01:00+00:00", "batch-a", "videos")
         self._seed("2024-05-01T10:02:00+00:00", "batch-a", "fx_rates")
 
-        items, total = database.get_sync_runs(1, 25)
+        items, total = _history(1, 25)
 
         self.assertEqual(total, 1)
         self.assertEqual(len(items), 1)
@@ -52,7 +80,7 @@ class GroupingTest(SyncRunsTestCase):
         self._seed("2024-05-01T09:00:00+00:00", "batch-a", "videos")
         self._seed("2024-05-01T18:00:00+00:00", "batch-b", "videos")
 
-        items, total = database.get_sync_runs(1, 25)
+        items, total = _history(1, 25)
 
         self.assertEqual(total, 2)
         self.assertEqual([g["batch_id"] for g in items], ["batch-b", "batch-a"])
@@ -62,7 +90,7 @@ class GroupingTest(SyncRunsTestCase):
         self._seed("2024-05-01T10:00:00+00:00", "batch-a", "playlists")
         self._seed("2024-05-01T10:09:00+00:00", "batch-a", "fx_rates")
 
-        items, _ = database.get_sync_runs(1, 25)
+        items, _ = _history(1, 25)
 
         self.assertEqual(items[0]["started_at"], "2024-05-01T10:00:00+00:00")
 
@@ -70,7 +98,7 @@ class GroupingTest(SyncRunsTestCase):
         self._seed("2024-05-01T23:50:00+00:00", "batch-a", "videos")
         self._seed("2024-05-02T00:10:00+00:00", "batch-a", "comments")
 
-        items, total = database.get_sync_runs(1, 25)
+        items, total = _history(1, 25)
 
         self.assertEqual(total, 1)
         self.assertEqual(items[0]["run_count"], 2)
@@ -81,7 +109,7 @@ class GroupingTest(SyncRunsTestCase):
         self._seed("2024-05-01T23:00:00+00:00", "batch-early", "fx_rates")
         self._seed("2024-05-01T09:00:00+00:00", "batch-later", "videos")
 
-        items, _ = database.get_sync_runs(1, 25)
+        items, _ = _history(1, 25)
 
         self.assertEqual([g["batch_id"] for g in items], ["batch-later", "batch-early"])
 
@@ -90,7 +118,7 @@ class GroupingTest(SyncRunsTestCase):
         self._seed("2024-05-01T10:00:00+00:00", "batch-b", "videos")
         self._seed("2024-05-01T10:00:00+00:00", "batch-c", "videos")
 
-        items, _ = database.get_sync_runs(1, 25)
+        items, _ = _history(1, 25)
 
         self.assertEqual([g["batch_id"] for g in items], ["batch-c", "batch-b", "batch-a"])
 
@@ -99,7 +127,7 @@ class GroupingTest(SyncRunsTestCase):
         self._seed("2024-05-01T10:01:00+00:00", "batch-a", "videos")
         self._seed("2024-05-01T10:02:00+00:00", "batch-a", "comments")
 
-        items, _ = database.get_sync_runs(1, 25)
+        items, _ = _history(1, 25)
 
         self.assertEqual(
             [r["sync_type"] for r in items[0]["runs"]], ["comments", "videos", "playlists"])
@@ -107,7 +135,7 @@ class GroupingTest(SyncRunsTestCase):
     def test_children_with_equal_timestamps_use_the_descending_id_tie_breaker(self) -> None:
         ids = [self._seed("2024-05-01T10:00:00+00:00", "batch-a") for _ in range(4)]
 
-        items, _ = database.get_sync_runs(1, 25)
+        items, _ = _history(1, 25)
 
         self.assertEqual([r["id"] for r in items[0]["runs"]], sorted(ids, reverse=True))
 
@@ -118,7 +146,7 @@ class RollupTest(SyncRunsTestCase):
         self._seed("2024-05-01T10:01:00+00:00", "batch-a", "comments", 7, 3, 0)
         self._seed("2024-05-01T10:02:00+00:00", "batch-a", "pruning", 0, 0, 4)
 
-        items, _ = database.get_sync_runs(1, 25)
+        items, _ = _history(1, 25)
 
         self.assertEqual(items[0]["rows_fetched"], 17)
         self.assertEqual(items[0]["rows_written"], 8)
@@ -128,7 +156,7 @@ class RollupTest(SyncRunsTestCase):
         self._seed("2024-05-01T10:00:00+00:00", "batch-a", "videos", 10, 5, 1)
         self._seed("2024-05-01T10:01:00+00:00", "batch-a", "comments", 7, 3, 2)
 
-        group = database.get_sync_runs(1, 25)[0][0]
+        group = _history(1, 25)[0][0]
 
         for key in ("rows_fetched", "rows_written", "rows_deleted"):
             self.assertEqual(group[key], sum(r[key] for r in group["runs"]))
@@ -136,9 +164,9 @@ class RollupTest(SyncRunsTestCase):
     def test_a_failed_stage_contributes_its_partial_counters(self) -> None:
         run_id = self._seed("2024-05-01T10:00:00+00:00", "batch-a", "videos")
         self._seed("2024-05-01T10:01:00+00:00", "batch-a", "comments", 4, 2, 0)
-        database.fail_sync_run(run_id, "quota exceeded", 3, 1, 0)
+        self._finish(run_id, "failed", 3, 1, 0, "quota exceeded")
 
-        items, _ = database.get_sync_runs(1, 25)
+        items, _ = _history(1, 25)
 
         self.assertEqual(items[0]["rows_fetched"], 7)
         self.assertEqual(items[0]["rows_written"], 3)
@@ -147,7 +175,7 @@ class RollupTest(SyncRunsTestCase):
         self._seed("2024-05-01T10:00:00+00:00", "batch-a", "videos", 10, 5, 1)
         self._seed("2024-05-02T10:00:00+00:00", "batch-b", "videos", 100, 50, 10)
 
-        items, _ = database.get_sync_runs(1, 25)
+        items, _ = _history(1, 25)
 
         by_id = {g["batch_id"]: g for g in items}
         self.assertEqual(by_id["batch-a"]["rows_fetched"], 10)
@@ -161,7 +189,7 @@ class BatchPaginationTest(SyncRunsTestCase):
                 self._seed(f"2024-05-{i + 1:02d}T{stage:02d}:00:00+00:00", f"batch-{i:02d}")
 
     def test_empty_history_returns_no_groups_and_a_zero_total(self) -> None:
-        items, total = database.get_sync_runs(1, 25)
+        items, total = _history(1, 25)
 
         self.assertEqual(items, [])
         self.assertEqual(total, 0)
@@ -169,14 +197,14 @@ class BatchPaginationTest(SyncRunsTestCase):
     def test_total_counts_distinct_batches_not_stage_rows(self) -> None:
         self._seed_batches(3, stages_each=7)
 
-        _, total = database.get_sync_runs(1, 25)
+        _, total = _history(1, 25)
 
         self.assertEqual(total, 3)
 
     def test_page_size_limits_batches_not_stage_rows(self) -> None:
         self._seed_batches(4, stages_each=5)
 
-        items, total = database.get_sync_runs(1, 2)
+        items, total = _history(1, 2)
 
         self.assertEqual(total, 4)
         self.assertEqual(len(items), 2)
@@ -185,8 +213,8 @@ class BatchPaginationTest(SyncRunsTestCase):
     def test_second_page_continues_without_overlapping_batches(self) -> None:
         self._seed_batches(30)
 
-        first, _ = database.get_sync_runs(1, 25)
-        second, total = database.get_sync_runs(2, 25)
+        first, _ = _history(1, 25)
+        second, total = _history(2, 25)
 
         self.assertEqual(total, 30)
         self.assertEqual(len(first), 25)
@@ -196,8 +224,8 @@ class BatchPaginationTest(SyncRunsTestCase):
     def test_a_multi_stage_batch_is_never_split_across_pages(self) -> None:
         self._seed_batches(4, stages_each=7)
 
-        first, _ = database.get_sync_runs(1, 2)
-        second, _ = database.get_sync_runs(2, 2)
+        first, _ = _history(1, 2)
+        second, _ = _history(2, 2)
 
         for group in first + second:
             self.assertEqual(group["run_count"], 7)
@@ -206,10 +234,25 @@ class BatchPaginationTest(SyncRunsTestCase):
     def test_page_beyond_the_end_is_empty_but_still_reports_the_total(self) -> None:
         self._seed_batches(3)
 
-        items, total = database.get_sync_runs(4, 25)
+        items, total = _history(4, 25)
 
         self.assertEqual(items, [])
         self.assertEqual(total, 3)
+
+    def test_a_page_reads_stages_in_one_query_regardless_of_batch_count(self) -> None:
+        self._seed_batches(5, stages_each=3)
+        statements: list[str] = []
+        open_connection = connection.get_connection
+
+        def traced() -> sqlite3.Connection:
+            conn = open_connection()
+            conn.set_trace_callback(statements.append)
+            return conn
+
+        with mock.patch("database.reader.get_connection", traced):
+            _history(1, 25)
+
+        self.assertEqual(len([sql for sql in statements if sql.lstrip().upper().startswith("SELECT")]), 3)
 
 
 class MarkIncompleteTest(SyncRunsTestCase):
@@ -221,7 +264,7 @@ class MarkIncompleteTest(SyncRunsTestCase):
     def test_a_stranded_running_row_becomes_incomplete(self) -> None:
         run_id = self._seed("2024-05-01T10:00:00+00:00")
 
-        changed = database.mark_incomplete_sync_runs()
+        changed = self._sweep()
 
         self.assertEqual(changed, 1)
         self.assertEqual(self._status(run_id), "incomplete")
@@ -229,7 +272,7 @@ class MarkIncompleteTest(SyncRunsTestCase):
     def test_an_incomplete_row_keeps_its_null_completion_time(self) -> None:
         run_id = self._seed("2024-05-01T10:00:00+00:00")
 
-        database.mark_incomplete_sync_runs()
+        self._sweep()
 
         with connection.get_connection() as conn:
             row = conn.execute(
@@ -239,10 +282,10 @@ class MarkIncompleteTest(SyncRunsTestCase):
     def test_terminal_rows_are_untouched(self) -> None:
         succeeded = self._seed("2024-05-01T10:00:00+00:00")
         failed = self._seed("2024-05-01T10:01:00+00:00")
-        database.complete_sync_run(succeeded, 1, 1, 0)
-        database.fail_sync_run(failed, "boom", 0, 0, 0)
+        self._finish(succeeded, "success", 1, 1, 0)
+        self._finish(failed, "failed", 0, 0, 0, "boom")
 
-        changed = database.mark_incomplete_sync_runs()
+        changed = self._sweep()
 
         self.assertEqual(changed, 0)
         self.assertEqual(self._status(succeeded), "success")
@@ -250,82 +293,96 @@ class MarkIncompleteTest(SyncRunsTestCase):
 
     def test_an_already_incomplete_row_is_not_swept_again(self) -> None:
         self._seed("2024-05-01T10:00:00+00:00")
-        database.mark_incomplete_sync_runs()
+        self._sweep()
 
-        self.assertEqual(database.mark_incomplete_sync_runs(), 0)
+        self.assertEqual(self._sweep(), 0)
 
     def test_every_stranded_row_across_batches_is_swept(self) -> None:
         self._seed("2024-05-01T10:00:00+00:00", "batch-a")
         self._seed("2024-05-01T10:01:00+00:00", "batch-a")
         self._seed("2024-05-02T10:00:00+00:00", "batch-b")
 
-        self.assertEqual(database.mark_incomplete_sync_runs(), 3)
+        self.assertEqual(self._sweep(), 3)
 
     def test_an_empty_history_sweeps_nothing(self) -> None:
-        self.assertEqual(database.mark_incomplete_sync_runs(), 0)
+        self.assertEqual(self._sweep(), 0)
 
 
 class BatchStatusTest(SyncRunsTestCase):
     def _status_of_only_batch(self) -> str:
-        items, _ = database.get_sync_runs(1, 25)
+        items, _ = _history(1, 25)
         return str(items[0]["status"])
 
     def test_all_successful_stages_report_success(self) -> None:
         for offset in range(3):
             run_id = self._seed(f"2024-05-01T10:0{offset}:00+00:00", "batch-a")
-            database.complete_sync_run(run_id, 1, 1, 0)
+            self._finish(run_id, "success", 1, 1, 0)
 
         self.assertEqual(self._status_of_only_batch(), "success")
 
     def test_an_in_flight_stage_reports_running(self) -> None:
         done = self._seed("2024-05-01T10:00:00+00:00", "batch-a")
-        database.complete_sync_run(done, 1, 1, 0)
+        self._finish(done, "success", 1, 1, 0)
         self._seed("2024-05-01T10:01:00+00:00", "batch-a")
 
         self.assertEqual(self._status_of_only_batch(), "running")
 
     def test_a_stranded_stage_reports_incomplete(self) -> None:
         done = self._seed("2024-05-01T10:00:00+00:00", "batch-a")
-        database.complete_sync_run(done, 1, 1, 0)
+        self._finish(done, "success", 1, 1, 0)
         self._seed("2024-05-01T10:01:00+00:00", "batch-a")
-        database.mark_incomplete_sync_runs()
+        self._sweep()
 
         self.assertEqual(self._status_of_only_batch(), "incomplete")
 
     def test_a_failed_stage_outranks_an_incomplete_one(self) -> None:
         failed = self._seed("2024-05-01T10:00:00+00:00", "batch-a")
         self._seed("2024-05-01T10:01:00+00:00", "batch-a")
-        database.mark_incomplete_sync_runs()
-        database.fail_sync_run(failed, "boom", 0, 0, 0)
+        self._sweep()
+        self._finish(failed, "failed", 0, 0, 0, "boom")
 
         self.assertEqual(self._status_of_only_batch(), "failed")
 
     def test_incomplete_outranks_running(self) -> None:
         self._seed("2024-05-01T10:00:00+00:00", "batch-a")
-        database.mark_incomplete_sync_runs()
+        self._sweep()
         self._seed("2024-05-01T10:01:00+00:00", "batch-a")
 
         self.assertEqual(self._status_of_only_batch(), "incomplete")
 
+    def test_only_unknown_statuses_never_report_success(self) -> None:
+        run_id = self._seed("2024-05-01T10:00:00+00:00", "batch-a")
+        self._finish(run_id, "mystery")
+
+        self.assertEqual(self._status_of_only_batch(), "mystery")
+
+    def test_a_known_status_outranks_an_unknown_one(self) -> None:
+        unknown = self._seed("2024-05-01T10:00:00+00:00", "batch-a")
+        self._finish(unknown, "mystery")
+        cancelled = self._seed("2024-05-01T10:01:00+00:00", "batch-a")
+        self._finish(cancelled, "cancelled")
+
+        self.assertEqual(self._status_of_only_batch(), "cancelled")
+
     def test_status_is_scoped_to_its_own_batch(self) -> None:
         healthy = self._seed("2024-05-01T10:00:00+00:00", "batch-a")
-        database.complete_sync_run(healthy, 1, 1, 0)
+        self._finish(healthy, "success", 1, 1, 0)
         broken = self._seed("2024-05-02T10:00:00+00:00", "batch-b")
-        database.fail_sync_run(broken, "boom", 0, 0, 0)
+        self._finish(broken, "failed", 0, 0, 0, "boom")
 
-        items, _ = database.get_sync_runs(1, 25)
+        items, _ = _history(1, 25)
 
         by_id = {g["batch_id"]: g["status"] for g in items}
         self.assertEqual(by_id, {"batch-a": "success", "batch-b": "failed"})
 
 
-class CancelSyncRunTest(SyncRunsTestCase):
+class CancelledStageTest(SyncRunsTestCase):
     def test_a_cancelled_run_records_partial_counters_and_no_error(self) -> None:
         run_id = self._seed("2024-05-01T10:00:00+00:00", "batch-a")
 
-        database.cancel_sync_run(run_id, 5, 3, 1)
+        self._finish(run_id, "cancelled", 5, 3, 1)
 
-        child = database.get_sync_runs(1, 25)[0][0]["runs"][0]
+        child = _history(1, 25)[0][0]["runs"][0]
         self.assertEqual(child["status"], "cancelled")
         self.assertIsNotNone(child["completed_at"])
         self.assertIsNone(child["error_message"])
@@ -335,36 +392,36 @@ class CancelSyncRunTest(SyncRunsTestCase):
 
 class BatchStatusCancelledPrecedenceTest(SyncRunsTestCase):
     def _status_of_only_batch(self) -> str:
-        items, _ = database.get_sync_runs(1, 25)
+        items, _ = _history(1, 25)
         return str(items[0]["status"])
 
     def test_a_cancelled_stage_alongside_successful_ones_reports_cancelled(self) -> None:
         done = self._seed("2024-05-01T10:00:00+00:00", "batch-a")
-        database.complete_sync_run(done, 1, 1, 0)
+        self._finish(done, "success", 1, 1, 0)
         cancelled = self._seed("2024-05-01T10:01:00+00:00", "batch-a")
-        database.cancel_sync_run(cancelled, 2, 1, 0)
+        self._finish(cancelled, "cancelled", 2, 1, 0)
 
         self.assertEqual(self._status_of_only_batch(), "cancelled")
 
     def test_failed_outranks_cancelled(self) -> None:
         failed = self._seed("2024-05-01T10:00:00+00:00", "batch-a")
         cancelled = self._seed("2024-05-01T10:01:00+00:00", "batch-a")
-        database.fail_sync_run(failed, "boom", 0, 0, 0)
-        database.cancel_sync_run(cancelled, 1, 0, 0)
+        self._finish(failed, "failed", 0, 0, 0, "boom")
+        self._finish(cancelled, "cancelled", 1, 0, 0)
 
         self.assertEqual(self._status_of_only_batch(), "failed")
 
     def test_incomplete_outranks_cancelled(self) -> None:
         self._seed("2024-05-01T10:00:00+00:00", "batch-a")
-        database.mark_incomplete_sync_runs()
+        self._sweep()
         cancelled = self._seed("2024-05-01T10:01:00+00:00", "batch-a")
-        database.cancel_sync_run(cancelled, 1, 0, 0)
+        self._finish(cancelled, "cancelled", 1, 0, 0)
 
         self.assertEqual(self._status_of_only_batch(), "incomplete")
 
     def test_running_outranks_cancelled(self) -> None:
         cancelled = self._seed("2024-05-01T10:00:00+00:00", "batch-a")
-        database.cancel_sync_run(cancelled, 1, 0, 0)
+        self._finish(cancelled, "cancelled", 1, 0, 0)
         self._seed("2024-05-01T10:01:00+00:00", "batch-a")
 
         self.assertEqual(self._status_of_only_batch(), "running")
@@ -372,8 +429,8 @@ class BatchStatusCancelledPrecedenceTest(SyncRunsTestCase):
     def test_cancelled_outranks_success(self) -> None:
         done = self._seed("2024-05-01T10:00:00+00:00", "batch-a")
         cancelled = self._seed("2024-05-01T10:01:00+00:00", "batch-a")
-        database.complete_sync_run(done, 1, 1, 0)
-        database.cancel_sync_run(cancelled, 1, 0, 0)
+        self._finish(done, "success", 1, 1, 0)
+        self._finish(cancelled, "cancelled", 1, 0, 0)
 
         self.assertEqual(self._status_of_only_batch(), "cancelled")
 
@@ -382,7 +439,7 @@ class ChildContentTest(SyncRunsTestCase):
     def test_children_keep_every_stored_field(self) -> None:
         self._seed("2024-05-01T10:00:00+00:00", "batch-a", "videos")
 
-        child = database.get_sync_runs(1, 25)[0][0]["runs"][0]
+        child = _history(1, 25)[0][0]["runs"][0]
 
         self.assertEqual(set(child), {
             "id", "batch_id", "sync_type", "scope", "year", "status", "started_at",
@@ -392,16 +449,16 @@ class ChildContentTest(SyncRunsTestCase):
     def test_a_running_child_keeps_a_null_completion_time(self) -> None:
         self._seed("2024-05-01T10:00:00+00:00", "batch-a")
 
-        child = database.get_sync_runs(1, 25)[0][0]["runs"][0]
+        child = _history(1, 25)[0][0]["runs"][0]
 
         self.assertEqual(child["status"], "running")
         self.assertIsNone(child["completed_at"])
 
     def test_a_completed_child_reports_its_counters_and_completion(self) -> None:
         run_id = self._seed("2024-05-01T10:00:00+00:00", "batch-a")
-        database.complete_sync_run(run_id, 10, 7, 2)
+        self._finish(run_id, "success", 10, 7, 2)
 
-        child = database.get_sync_runs(1, 25)[0][0]["runs"][0]
+        child = _history(1, 25)[0][0]["runs"][0]
 
         self.assertEqual(child["status"], "success")
         self.assertIsNotNone(child["completed_at"])
@@ -410,9 +467,9 @@ class ChildContentTest(SyncRunsTestCase):
 
     def test_a_failed_child_still_carries_its_stored_error(self) -> None:
         run_id = self._seed("2024-05-01T10:00:00+00:00", "batch-a")
-        database.fail_sync_run(run_id, "quota exceeded", 3, 0, 0)
+        self._finish(run_id, "failed", 3, 0, 0, "quota exceeded")
 
-        child = database.get_sync_runs(1, 25)[0][0]["runs"][0]
+        child = _history(1, 25)[0][0]["runs"][0]
 
         self.assertEqual(child["status"], "failed")
         self.assertEqual(child["error_message"], "quota exceeded")
@@ -429,8 +486,12 @@ class ConcurrentWorkerWritesTest(SyncRunsTestCase):
         def worker(sync_type: str) -> None:
             try:
                 barrier.wait(timeout=5)  # maximize actual write overlap
-                run_id = database.create_sync_run("batch-concurrent", sync_type, "incremental", None)
-                database.complete_sync_run(run_id, rows_fetched=3, rows_written=2, rows_deleted=0)
+                started = SyncRun(
+                    batch_id="batch-concurrent", sync_type=sync_type, scope="incremental", status="running",
+                    started_at=database.now(),
+                )
+                run_id = writer.write(started, returning=("id",)).id
+                self._finish(run_id, "success", rows_fetched=3, rows_written=2)
             except BaseException as exc:  # noqa: BLE001 - surfaced via assertion below
                 errors.append(exc)
 
@@ -444,7 +505,7 @@ class ConcurrentWorkerWritesTest(SyncRunsTestCase):
             t.join(timeout=10)
 
         self.assertEqual(errors, [])
-        items, total = database.get_sync_runs(1, 25)
+        items, total = _history(1, 25)
         self.assertEqual(total, 1)
         self.assertEqual(items[0]["run_count"], 2)
         self.assertEqual(
@@ -457,7 +518,10 @@ class ConcurrentWorkerWritesTest(SyncRunsTestCase):
 
         def worker(sync_type: str, scope: str, year: int | None) -> None:
             barrier.wait(timeout=5)
-            database.create_sync_run("batch-scoped", sync_type, scope, year)
+            writer.write(SyncRun(
+                batch_id="batch-scoped", sync_type=sync_type, scope=scope, year=year, status="running",
+                started_at=database.now(),
+            ))
 
         threads = [
             threading.Thread(target=worker, args=("video_analytics", "year", 2024)),
@@ -468,7 +532,7 @@ class ConcurrentWorkerWritesTest(SyncRunsTestCase):
         for t in threads:
             t.join(timeout=10)
 
-        items, _ = database.get_sync_runs(1, 25)
+        items, _ = _history(1, 25)
         by_stage = {r["sync_type"]: r for r in items[0]["runs"]}
         self.assertEqual((by_stage["video_analytics"]["scope"], by_stage["video_analytics"]["year"]), ("year", 2024))
         self.assertEqual((by_stage["video_traffic_sources"]["scope"], by_stage["video_traffic_sources"]["year"]), ("all", None))

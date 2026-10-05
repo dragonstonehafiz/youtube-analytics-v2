@@ -1,0 +1,154 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1104" height="786" viewBox="0 0 1104 786" role="img" aria-label="Video and playlist catalog: routes/videos.py and routes/playlists.py">
+<title>Video and playlist catalog: routes/videos.py and routes/playlists.py</title>
+<desc>Lanes from left to right: Frontend (api.ts), API routes, Reports, Reader, SQLite. GET /videos in API routes. getVideos in Frontend (api.ts) (Videos · Home · Analytics). GET /playlists/{id}/videos in API routes. getPlaylistVideos in Frontend (api.ts) (PlaylistAnalytics). scope_video_ids in API routes. GET /videos/published in API routes. getVideosPublished in Frontend (api.ts) (Analytics · PlaylistAnalytics). catalog.playlist_video_ids in Reports (owned members, or None). fetch_joined in Reader. playlists in SQLite. playlist_items in SQLite. videos in SQLite. fetch_scalar in Reader. videos in SQLite. fetch_joined in Reader. videos in SQLite. video_analytics in SQLite. catalog.video_listing in Reports (count + page, or all). GET /playlists in API routes. getPlaylists in Frontend (api.ts) (Playlists). fetch_joined in Reader. playlists in SQLite. playlist_items in SQLite. videos in SQLite. catalog.playlist_listing in Reports (page with its count). GET /videos/{id} in API routes (404 if missing). getVideo in Frontend (api.ts) (VideoAnalytics). fetch_joined in Reader. videos in SQLite. video_analytics in SQLite. catalog.video_detail in Reports. GET /playlists/{id} in API routes (404 if missing). getPlaylist in Frontend (api.ts) (PlaylistAnalytics). fetch_joined in Reader. playlists in SQLite. playlist_items in SQLite. videos in SQLite. catalog.playlist_detail in Reports. getVideos calls GET /videos: page, sort. getPlaylistVideos calls GET /playlists/{id}/videos: id, page. GET /playlists/{id}/videos calls scope_video_ids: playlist_id. getVideosPublished calls GET /videos/published: filters. GET /videos/published calls catalog.playlist_video_ids: playlist_id, if sent. scope_video_ids calls catalog.playlist_video_ids: playlist_id. catalog.playlist_video_ids calls fetch_joined: members. fetch_joined queries playlists: playlist row. fetch_joined queries playlist_items: members. fetch_joined queries videos: owned only. catalog.video_listing calls fetch_scalar: COUNT, paginated only. fetch_scalar queries videos: count. catalog.video_listing calls fetch_joined: rows. fetch_joined queries videos: video rows. fetch_joined queries video_analytics: if watch time. GET /videos calls catalog.video_listing: page, sort. GET /playlists/{id}/videos calls catalog.video_listing: video_ids. GET /videos/published calls catalog.video_listing: five fields. getPlaylists calls GET /playlists: page, sort. catalog.playlist_listing calls fetch_joined: page rows. fetch_joined queries playlists: playlists. fetch_joined queries playlist_items: members. fetch_joined queries videos: owned views. GET /playlists calls catalog.playlist_listing: page, sort. getVideo calls GET /videos/{id}: id. catalog.video_detail calls fetch_joined: one row. fetch_joined queries videos: video row. fetch_joined queries video_analytics: watch time. GET /videos/{id} calls catalog.video_detail: video_id. getPlaylist calls GET /playlists/{id}: id. catalog.playlist_detail calls fetch_joined: one row. fetch_joined queries playlists: playlists. fetch_joined queries playlist_items: members. fetch_joined queries videos: owned views. GET /playlists/{id} calls catalog.playlist_detail: playlist_id.</desc>
+<style>
+  .bg { fill: #ffffff; }
+  text { font-family: system-ui, -apple-system, "Segoe UI", Roboto, Arial, sans-serif; font-size: 14px; fill: #1c2330; }
+  .code, .code-line { font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, "Liberation Mono", monospace; font-size: 11.5px; }
+  .code { font-weight: 600; }
+  .sub { font-size: 12px; fill: #5b6475; }
+  .lane rect { fill: #f0f2f5; stroke: #d9dee6; stroke-width: 1; }
+  .lane text { font-size: 12px; font-weight: 700; letter-spacing: 0.04em; fill: #5b6475; }
+  .node rect { stroke-width: 1.5; }
+  .fe rect { fill: #efe9fa; stroke: #6a4bb3; }
+  .route rect { fill: #e6effa; stroke: #2f6fb3; }
+  .db rect { fill: #e4f4ec; stroke: #2c8a5a; }
+  .sync rect { fill: #f8eedd; stroke: #8a5a14; }
+  .yt rect { fill: #fbe6e4; stroke: #b3261e; }
+  .edge { fill: none; stroke: #5b6475; stroke-width: 1.6; }
+  .edge.dashed { stroke-dasharray: 6 5; }
+  .edge-label { font-size: 12px; fill: #5b6475; }
+  .arrowhead { fill: #5b6475; }
+  @media (prefers-color-scheme: dark) {
+    .bg { fill: #1a1f27; }
+    text { fill: #e6e9ef; }
+    .sub, .edge-label, .lane text { fill: #9aa3b2; }
+    .lane rect { fill: #222833; stroke: #2f3744; }
+    .fe rect { fill: #2a2340; stroke: #b9a2f5; }
+    .route rect { fill: #1b2a3d; stroke: #7db3ef; }
+    .db rect { fill: #183126; stroke: #6fd3a0; }
+    .sync rect { fill: #342816; stroke: #e7b56a; }
+    .yt rect { fill: #3a1d1b; stroke: #ff8a80; }
+    .edge { stroke: #9aa3b2; }
+    .arrowhead { fill: #9aa3b2; }
+  }
+</style>
+<rect class="bg" width="1104" height="786" rx="10"/>
+  <defs>
+    <marker id="arrow" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path class="arrowhead" d="M0,0 L10,5 L0,10 z"/></marker>
+  </defs>
+  <g class="lane"><rect x="12" y="8" width="207" height="770" rx="8"/><text x="115" y="28" text-anchor="middle">Frontend (api.ts)</text></g>
+  <g class="lane"><rect x="285" y="8" width="195" height="770" rx="8"/><text x="382" y="28" text-anchor="middle">API routes</text></g>
+  <g class="lane"><rect x="546" y="8" width="182" height="770" rx="8"/><text x="637" y="28" text-anchor="middle">Reports</text></g>
+  <g class="lane"><rect x="794" y="8" width="106" height="770" rx="8"/><text x="848" y="28" text-anchor="middle">Reader</text></g>
+  <g class="lane"><rect x="967" y="8" width="125" height="770" rx="8"/><text x="1029" y="28" text-anchor="middle">SQLite</text></g>
+  <g class="node route"><rect x="292" y="50" width="181" height="48" rx="7"/><text class="code" x="382" y="78" text-anchor="middle">GET /videos</text></g>
+  <g class="node fe"><rect x="19" y="50" width="193" height="48" rx="7"/><text class="code" x="115" y="71" text-anchor="middle">getVideos</text><text class="sub" x="115" y="86" text-anchor="middle">Videos · Home · Analytics</text></g>
+  <g class="node route"><rect x="292" y="112" width="181" height="48" rx="7"/><text class="code" x="382" y="140" text-anchor="middle">GET /playlists/{id}/videos</text></g>
+  <g class="node fe"><rect x="19" y="112" width="193" height="48" rx="7"/><text class="code" x="115" y="133" text-anchor="middle">getPlaylistVideos</text><text class="sub" x="115" y="148" text-anchor="middle">PlaylistAnalytics</text></g>
+  <g class="node route"><rect x="314" y="237" width="159" height="48" rx="7"/><text class="code" x="393" y="266" text-anchor="middle">GET /videos/published</text></g>
+  <g class="node fe"><rect x="19" y="237" width="193" height="48" rx="7"/><text class="code" x="115" y="258" text-anchor="middle">getVideosPublished</text><text class="sub" x="115" y="273" text-anchor="middle">Analytics · PlaylistAnalytics</text></g>
+  <g class="node db"><rect x="553" y="362" width="168" height="90" rx="7"/><text class="code" x="637" y="383" text-anchor="middle">catalog.playlist_video_ids</text><text class="sub" x="637" y="398" text-anchor="middle">owned members, or None</text></g>
+  <g class="node route"><rect x="292" y="384" width="181" height="33" rx="7"/><text class="code" x="382" y="405" text-anchor="middle">scope_video_ids</text></g>
+  <g class="node db"><rect x="801" y="362" width="92" height="90" rx="7"/><text class="code" x="848" y="383" text-anchor="middle">fetch_joined</text></g>
+  <g class="node db"><rect x="974" y="362" width="111" height="26" rx="7"/><text class="code" x="1029" y="380" text-anchor="middle">playlists</text></g>
+  <g class="node db"><rect x="974" y="394" width="111" height="26" rx="7"/><text class="code" x="1029" y="412" text-anchor="middle">playlist_items</text></g>
+  <g class="node db"><rect x="974" y="426" width="111" height="26" rx="7"/><text class="code" x="1029" y="444" text-anchor="middle">videos</text></g>
+  <g class="node db"><rect x="801" y="50" width="92" height="33" rx="7"/><text class="code" x="848" y="71" text-anchor="middle">fetch_scalar</text></g>
+  <g class="node db"><rect x="974" y="50" width="111" height="26" rx="7"/><text class="code" x="1029" y="68" text-anchor="middle">videos</text></g>
+  <g class="node db"><rect x="801" y="93" width="92" height="58" rx="7"/><text class="code" x="848" y="114" text-anchor="middle">fetch_joined</text></g>
+  <g class="node db"><rect x="974" y="93" width="111" height="26" rx="7"/><text class="code" x="1029" y="110" text-anchor="middle">videos</text></g>
+  <g class="node db"><rect x="974" y="125" width="111" height="26" rx="7"/><text class="code" x="1029" y="142" text-anchor="middle">video_analytics</text></g>
+  <g class="node db"><rect x="553" y="50" width="160" height="298" rx="7"/><text class="code" x="633" y="71" text-anchor="middle">catalog.video_listing</text><text class="sub" x="633" y="86" text-anchor="middle">count + page, or all</text></g>
+  <g class="node route"><rect x="292" y="476" width="181" height="48" rx="7"/><text class="code" x="382" y="504" text-anchor="middle">GET /playlists</text></g>
+  <g class="node fe"><rect x="19" y="476" width="193" height="48" rx="7"/><text class="code" x="115" y="497" text-anchor="middle">getPlaylists</text><text class="sub" x="115" y="512" text-anchor="middle">Playlists</text></g>
+  <g class="node db"><rect x="801" y="476" width="92" height="90" rx="7"/><text class="code" x="848" y="497" text-anchor="middle">fetch_joined</text></g>
+  <g class="node db"><rect x="974" y="476" width="111" height="26" rx="7"/><text class="code" x="1029" y="494" text-anchor="middle">playlists</text></g>
+  <g class="node db"><rect x="974" y="508" width="111" height="26" rx="7"/><text class="code" x="1029" y="526" text-anchor="middle">playlist_items</text></g>
+  <g class="node db"><rect x="974" y="540" width="111" height="26" rx="7"/><text class="code" x="1029" y="558" text-anchor="middle">videos</text></g>
+  <g class="node db"><rect x="553" y="476" width="168" height="90" rx="7"/><text class="code" x="637" y="497" text-anchor="middle">catalog.playlist_listing</text><text class="sub" x="637" y="512" text-anchor="middle">page with its count</text></g>
+  <g class="node route"><rect x="292" y="590" width="181" height="48" rx="7"/><text class="code" x="382" y="611" text-anchor="middle">GET /videos/{id}</text><text class="sub" x="382" y="626" text-anchor="middle">404 if missing</text></g>
+  <g class="node fe"><rect x="19" y="590" width="193" height="48" rx="7"/><text class="code" x="115" y="611" text-anchor="middle">getVideo</text><text class="sub" x="115" y="626" text-anchor="middle">VideoAnalytics</text></g>
+  <g class="node db"><rect x="801" y="590" width="92" height="58" rx="7"/><text class="code" x="848" y="611" text-anchor="middle">fetch_joined</text></g>
+  <g class="node db"><rect x="974" y="590" width="111" height="26" rx="7"/><text class="code" x="1029" y="608" text-anchor="middle">videos</text></g>
+  <g class="node db"><rect x="974" y="622" width="111" height="26" rx="7"/><text class="code" x="1029" y="640" text-anchor="middle">video_analytics</text></g>
+  <g class="node db"><rect x="553" y="590" width="168" height="58" rx="7"/><text class="code" x="637" y="611" text-anchor="middle">catalog.video_detail</text></g>
+  <g class="node route"><rect x="292" y="672" width="181" height="48" rx="7"/><text class="code" x="382" y="693" text-anchor="middle">GET /playlists/{id}</text><text class="sub" x="382" y="708" text-anchor="middle">404 if missing</text></g>
+  <g class="node fe"><rect x="19" y="672" width="193" height="48" rx="7"/><text class="code" x="115" y="693" text-anchor="middle">getPlaylist</text><text class="sub" x="115" y="708" text-anchor="middle">PlaylistAnalytics</text></g>
+  <g class="node db"><rect x="801" y="672" width="92" height="90" rx="7"/><text class="code" x="848" y="693" text-anchor="middle">fetch_joined</text></g>
+  <g class="node db"><rect x="974" y="672" width="111" height="26" rx="7"/><text class="code" x="1029" y="690" text-anchor="middle">playlists</text></g>
+  <g class="node db"><rect x="974" y="704" width="111" height="26" rx="7"/><text class="code" x="1029" y="722" text-anchor="middle">playlist_items</text></g>
+  <g class="node db"><rect x="974" y="736" width="111" height="26" rx="7"/><text class="code" x="1029" y="754" text-anchor="middle">videos</text></g>
+  <g class="node db"><rect x="553" y="672" width="168" height="90" rx="7"/><text class="code" x="637" y="693" text-anchor="middle">catalog.playlist_detail</text></g>
+  <path class="edge" d="M212,74 H291" marker-end="url(#arrow)"/>
+  <path class="edge" d="M212,136 H291" marker-end="url(#arrow)"/>
+  <path class="edge" d="M212,261 H313" marker-end="url(#arrow)"/>
+  <path class="edge" d="M473,277 H500 V372 H552" marker-end="url(#arrow)"/>
+  <path class="edge" d="M302,160 V383" marker-end="url(#arrow)"/>
+  <path class="edge" d="M473,400 H552" marker-end="url(#arrow)"/>
+  <path class="edge" d="M721,415 H800" marker-end="url(#arrow)"/>
+  <path class="edge" d="M894,375 H973" marker-end="url(#arrow)"/>
+  <path class="edge" d="M894,407 H973" marker-end="url(#arrow)"/>
+  <path class="edge" d="M894,439 H973" marker-end="url(#arrow)"/>
+  <path class="edge" d="M713,66 H800" marker-end="url(#arrow)"/>
+  <path class="edge" d="M894,63 H973" marker-end="url(#arrow)"/>
+  <path class="edge" d="M713,138 H800" marker-end="url(#arrow)"/>
+  <path class="edge" d="M894,106 H973" marker-end="url(#arrow)"/>
+  <path class="edge" d="M894,138 H973" marker-end="url(#arrow)"/>
+  <path class="edge" d="M473,74 H552" marker-end="url(#arrow)"/>
+  <path class="edge" d="M473,136 H552" marker-end="url(#arrow)"/>
+  <path class="edge" d="M473,261 H552" marker-end="url(#arrow)"/>
+  <path class="edge" d="M212,500 H291" marker-end="url(#arrow)"/>
+  <path class="edge" d="M721,521 H800" marker-end="url(#arrow)"/>
+  <path class="edge" d="M894,489 H973" marker-end="url(#arrow)"/>
+  <path class="edge" d="M894,521 H973" marker-end="url(#arrow)"/>
+  <path class="edge" d="M894,553 H973" marker-end="url(#arrow)"/>
+  <path class="edge" d="M473,500 H552" marker-end="url(#arrow)"/>
+  <path class="edge" d="M212,614 H291" marker-end="url(#arrow)"/>
+  <path class="edge" d="M721,619 H800" marker-end="url(#arrow)"/>
+  <path class="edge" d="M894,603 H973" marker-end="url(#arrow)"/>
+  <path class="edge" d="M894,635 H973" marker-end="url(#arrow)"/>
+  <path class="edge" d="M473,614 H552" marker-end="url(#arrow)"/>
+  <path class="edge" d="M212,696 H291" marker-end="url(#arrow)"/>
+  <path class="edge" d="M721,717 H800" marker-end="url(#arrow)"/>
+  <path class="edge" d="M894,685 H973" marker-end="url(#arrow)"/>
+  <path class="edge" d="M894,717 H973" marker-end="url(#arrow)"/>
+  <path class="edge" d="M894,749 H973" marker-end="url(#arrow)"/>
+  <path class="edge" d="M473,696 H552" marker-end="url(#arrow)"/>
+  <text class="edge-label" x="251" y="69" text-anchor="middle">page, sort</text>
+  <text class="edge-label" x="251" y="131" text-anchor="middle">id, page</text>
+  <text class="edge-label" x="262" y="256" text-anchor="middle">filters</text>
+  <text class="edge-label" x="494" y="330" text-anchor="end">playlist_id, if sent</text>
+  <text class="edge-label" x="308" y="178" text-anchor="start">playlist_id</text>
+  <text class="edge-label" x="512" y="395" text-anchor="middle">playlist_id</text>
+  <text class="edge-label" x="761" y="410" text-anchor="middle">members</text>
+  <text class="edge-label" x="933" y="370" text-anchor="middle">playlist row</text>
+  <text class="edge-label" x="933" y="402" text-anchor="middle">members</text>
+  <text class="edge-label" x="933" y="434" text-anchor="middle">owned only</text>
+  <text class="edge-label" x="757" y="62" text-anchor="middle">COUNT</text>
+  <text class="edge-label" x="757" y="80" text-anchor="middle">paginated only</text>
+  <text class="edge-label" x="933" y="58" text-anchor="middle">count</text>
+  <text class="edge-label" x="757" y="133" text-anchor="middle">rows</text>
+  <text class="edge-label" x="933" y="101" text-anchor="middle">video rows</text>
+  <text class="edge-label" x="933" y="133" text-anchor="middle">if watch time</text>
+  <text class="edge-label" x="512" y="69" text-anchor="middle">page, sort</text>
+  <text class="edge-label" x="512" y="131" text-anchor="middle">video_ids</text>
+  <text class="edge-label" x="512" y="256" text-anchor="middle">five fields</text>
+  <text class="edge-label" x="251" y="495" text-anchor="middle">page, sort</text>
+  <text class="edge-label" x="761" y="516" text-anchor="middle">page rows</text>
+  <text class="edge-label" x="933" y="484" text-anchor="middle">playlists</text>
+  <text class="edge-label" x="933" y="516" text-anchor="middle">members</text>
+  <text class="edge-label" x="933" y="548" text-anchor="middle">owned views</text>
+  <text class="edge-label" x="512" y="495" text-anchor="middle">page, sort</text>
+  <text class="edge-label" x="251" y="609" text-anchor="middle">id</text>
+  <text class="edge-label" x="761" y="614" text-anchor="middle">one row</text>
+  <text class="edge-label" x="933" y="598" text-anchor="middle">video row</text>
+  <text class="edge-label" x="933" y="630" text-anchor="middle">watch time</text>
+  <text class="edge-label" x="512" y="609" text-anchor="middle">video_id</text>
+  <text class="edge-label" x="251" y="691" text-anchor="middle">id</text>
+  <text class="edge-label" x="761" y="712" text-anchor="middle">one row</text>
+  <text class="edge-label" x="933" y="680" text-anchor="middle">playlists</text>
+  <text class="edge-label" x="933" y="712" text-anchor="middle">members</text>
+  <text class="edge-label" x="933" y="744" text-anchor="middle">owned views</text>
+  <text class="edge-label" x="512" y="691" text-anchor="middle">playlist_id</text>
+</svg>

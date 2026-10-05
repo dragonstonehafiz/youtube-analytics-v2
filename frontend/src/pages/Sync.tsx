@@ -1,6 +1,6 @@
 import { Fragment, useEffect, useRef, useState } from 'react'
 import type { MouseEvent } from 'react'
-import { getDateRange, getSyncRuns, getSyncStatus, stopSync, triggerSync } from '@/api'
+import { getSyncRuns, getSyncStatus, stopSync, triggerSync } from '@/api'
 import type {
   PeriodAwareSyncStage,
   ScopeAwareSyncScope,
@@ -14,7 +14,11 @@ import type {
   SyncStatusResponse,
 } from '@/types'
 import { useReplaceSearchParams } from '@/hooks/useReplaceSearchParams'
+import { useAvailableYears } from '@/hooks/useAvailableYears'
 import AsyncCard from '@/components/AsyncCard'
+import Pagination from '@/components/Pagination'
+import Tabs from '@/components/Tabs'
+import type { TabOption } from '@/components/Tabs'
 import SyncStatusBanner from '@/components/SyncStatusBanner'
 import { stageLabel } from '@/lib/syncStages'
 import './Sync.css'
@@ -26,6 +30,11 @@ const HISTORY_PAGE_SIZE = 25
 const EMPTY_CELL = '—'
 
 type Tab = 'sync' | 'history'
+
+const TABS: readonly TabOption<Tab>[] = [
+  { value: 'sync', label: 'Sync' },
+  { value: 'history', label: 'History' },
+]
 
 /** Period selector values: the two fixed scopes, or a year rendered as its own value. */
 const INCREMENTAL = 'incremental'
@@ -103,7 +112,7 @@ interface PeriodSelectProps {
 function StagePeriodSelect({ stage, label, value, years, disabled, onChange }: PeriodSelectProps) {
   return (
     <select
-      className="sync-period-select"
+      className="sync-period-select form-control"
       aria-label={`${label} period`}
       value={value}
       disabled={disabled}
@@ -134,7 +143,7 @@ interface ScopeSelectProps {
 function StageScopeSelect({ stage, label, value, disabled, onChange }: ScopeSelectProps) {
   return (
     <select
-      className="sync-period-select"
+      className="sync-period-select form-control"
       aria-label={`${label} scope`}
       value={value}
       disabled={disabled}
@@ -208,7 +217,7 @@ function parsePage(raw: string | null): number {
 }
 
 export default function Sync() {
-  const [searchParams, setSearchParams] = useReplaceSearchParams()
+  const [searchParams, setParams] = useReplaceSearchParams()
   const tab: Tab = searchParams.get('tab') === 'history' ? 'history' : 'sync'
   const historyPage = parsePage(searchParams.get('history_page'))
 
@@ -224,17 +233,13 @@ export default function Sync() {
   // A bare route has no explicit tab; write the derived default back so the URL matches what renders.
   useEffect(() => {
     if (searchParams.has('tab')) return
-    setSearchParams(prev => {
-      const next = new URLSearchParams(prev)
-      next.set('tab', 'sync')
-      return next
-    })
-  }, [searchParams, setSearchParams])
+    setParams({ tab: 'sync' })
+  }, [searchParams, setParams])
 
   const [included, setIncluded] = useState<IncludedMap>(ALL_INCLUDED)
   const [periods, setPeriods] = useState<PeriodMap>(DEFAULT_PERIODS)
   const [scopes, setScopes] = useState<ScopeMap>(DEFAULT_SCOPES)
-  const [earliestYear, setEarliestYear] = useState<number | null>(null)
+  const years = useAvailableYears()
   const [status, setStatus] = useState<SyncStatusResponse | null>(null)
   const [statusUnavailable, setStatusUnavailable] = useState(false)
   const [submitting, setSubmitting] = useState(false)
@@ -258,12 +263,6 @@ export default function Sync() {
     poll()
     const id = setInterval(poll, STATUS_POLL_MS)
     return () => clearInterval(id)
-  }, [])
-
-  useEffect(() => {
-    getDateRange()
-      .then((data: { earliest_year: number | null }) => setEarliestYear(data.earliest_year))
-      .catch(() => {})
   }, [])
 
   // History is fetched only while its tab is open, and a superseded request is discarded so
@@ -294,11 +293,6 @@ export default function Sync() {
       setHistory(PENDING_HISTORY)
     }
   }, [tab, historyPage, historyKey])
-
-  const currentYear = new Date().getFullYear()
-  const years = earliestYear && earliestYear <= currentYear
-    ? Array.from({ length: currentYear - earliestYear + 1 }, (_, i) => currentYear - i)
-    : []
 
   const isSyncing = status?.active === true && status.stop_requested !== true
   const isStopping = (status?.active === true && status.stop_requested === true) || stopRequested
@@ -389,23 +383,7 @@ export default function Sync() {
     setScopes(prev => ({ ...prev, [stage]: value }))
   }
 
-  /** Switching tabs changes only `tab`; a non-default history page is kept for the return trip. */
-  const handleTabChange = (next: Tab) => {
-    setSearchParams(prev => {
-      const params = new URLSearchParams(prev)
-      params.set('tab', next)
-      return params
-    })
-  }
-
-  const setHistoryPage = (page: number) => {
-    setSearchParams(prev => {
-      const params = new URLSearchParams(prev)
-      if (page > 1) params.set('history_page', String(page))
-      else params.delete('history_page')
-      return params
-    })
-  }
+  const setHistoryPage = (page: number) => setParams({ history_page: page > 1 ? String(page) : null })
 
   const toggleBatch = (batchId: string) => {
     setExpandedBatches(prev => {
@@ -435,22 +413,7 @@ export default function Sync() {
 
       <SyncStatusBanner status={status} unavailable={statusUnavailable} />
 
-      <div className="tabs">
-        <button
-          type="button"
-          className={`tab${tab === 'sync' ? ' active' : ''}`}
-          onClick={() => handleTabChange('sync')}
-        >
-          Sync
-        </button>
-        <button
-          type="button"
-          className={`tab${tab === 'history' ? ' active' : ''}`}
-          onClick={() => handleTabChange('history')}
-        >
-          History
-        </button>
-      </div>
+      <Tabs options={TABS} value={tab} onChange={t => setParams({ tab: t })} />
 
       {tab === 'sync' ? (
         <>
@@ -692,25 +655,7 @@ export default function Sync() {
               </tbody>
             </table>
           </div>
-          <div className="pagination">
-            <button
-              type="button"
-              className="btn-ghost"
-              onClick={() => setHistoryPage(historyPage - 1)}
-              disabled={historyPage <= 1}
-            >
-              Previous
-            </button>
-            <span className="pagination-info">Page {historyPage} of {historyTotalPages}</span>
-            <button
-              type="button"
-              className="btn-ghost"
-              onClick={() => setHistoryPage(historyPage + 1)}
-              disabled={historyPage >= historyTotalPages}
-            >
-              Next
-            </button>
-          </div>
+          <Pagination page={historyPage} totalPages={historyTotalPages} onChange={setHistoryPage} />
         </AsyncCard>
       )}
     </div>

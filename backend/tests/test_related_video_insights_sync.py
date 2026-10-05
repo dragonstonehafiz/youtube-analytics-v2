@@ -7,9 +7,12 @@ from unittest import mock
 
 from googleapiclient.errors import HttpError
 
+from database import RelatedVideo, SearchTerm, SyncCoverage, Video
+from database.reports import catalog
 from sync import stages
 from sync.monthly_insights import MonthlyWindow, monthly_windows_for_range
 from sync.stages import SyncCounts
+from tests.support import owned_videos, patch_stage_reads, patch_stage_writes
 from youtube import analytics_api
 
 
@@ -176,17 +179,16 @@ class SyncRelatedVideoInsightsStageTest(unittest.TestCase):
         # No published_at: these tests exercise the no-publish-date fallback (the fixed
         # previous+current windows), independent of coverage — the coverage-driven
         # incremental path has its own test class below.
-        mock.patch("sync.stages.database.get_owned_video", return_value={"title": "T"}).start()
+        self.reads = patch_stage_reads()
         mock.patch("sync.stages.status.update_sync_progress").start()
-        mock.patch("sync.stages.database.upsert_coverage").start()
+        self.writes = patch_stage_writes()
         # Metadata resolution is exercised by its own test class; keep it a no-op here.
-        mock.patch("sync.stages.database.get_all_video_ids", return_value=[]).start()
         self.fetch_channel_identity = mock.patch(
             "sync.stages.youtube.fetch_channel_identity", return_value=("UC1", "UU1")
         ).start()
 
     def test_windows_are_captured_once_for_the_whole_stage(self) -> None:
-        mock.patch("sync.stages.database.get_owned_video_ids", return_value=["v1", "v2"]).start()
+        self.reads.videos = owned_videos("v1", "v2")
         mock.patch(
             "sync.stages.youtube.fetch_video_related_videos",
             return_value=analytics_api.RelatedVideosResult(raw_row_count=0, referrers=[]),
@@ -197,7 +199,7 @@ class SyncRelatedVideoInsightsStageTest(unittest.TestCase):
         self.windows_mock.assert_called_once()
 
     def test_no_targets_makes_no_fetch_calls(self) -> None:
-        mock.patch("sync.stages.database.get_owned_video_ids", return_value=[]).start()
+        self.reads.videos = []
         fetch = mock.patch("sync.stages.youtube.fetch_video_related_videos").start()
         counts = SyncCounts()
 
@@ -208,7 +210,7 @@ class SyncRelatedVideoInsightsStageTest(unittest.TestCase):
         self.assertEqual(counts.rows_written, 0)
 
     def test_every_video_window_combination_is_requested(self) -> None:
-        mock.patch("sync.stages.database.get_owned_video_ids", return_value=["v1", "v2"]).start()
+        self.reads.videos = owned_videos("v1", "v2")
         fetch = mock.patch(
             "sync.stages.youtube.fetch_video_related_videos",
             return_value=analytics_api.RelatedVideosResult(raw_row_count=0, referrers=[]),
@@ -223,26 +225,29 @@ class SyncRelatedVideoInsightsStageTest(unittest.TestCase):
         )
 
     def test_never_reads_traffic_source_data(self) -> None:
-        mock.patch("sync.stages.database.get_owned_video_ids", return_value=["v1"]).start()
+        self.reads.videos = owned_videos("v1")
         mock.patch(
             "sync.stages.youtube.fetch_video_related_videos",
             return_value=analytics_api.RelatedVideosResult(raw_row_count=0, referrers=[]),
         ).start()
-        traffic = mock.patch("sync.stages.database.get_video_traffic_sources").start()
+        traffic = [
+            mock.patch(f"database.reports.traffic.{name}").start()
+            for name in ("daily_traffic_sources", "top_videos_by_traffic_source")
+        ]
 
         stages.sync_related_video_insights("incremental", None, SyncCounts())
 
-        traffic.assert_not_called()
+        for spec in traffic:
+            spec.assert_not_called()
 
     def test_counts_accumulate_across_videos_and_windows(self) -> None:
-        mock.patch("sync.stages.database.get_owned_video_ids", return_value=["v1"]).start()
+        self.reads.videos = owned_videos("v1")
         mock.patch(
             "sync.stages.youtube.fetch_video_related_videos",
             return_value=analytics_api.RelatedVideosResult(
                 raw_row_count=3, referrers=[{"referrer_video_id": "ref-1", "views": 5}]
             ),
         ).start()
-        mock.patch("sync.stages.database.upsert_related_videos", return_value=1).start()
         counts = SyncCounts()
 
         stages.sync_related_video_insights("incremental", None, counts)
@@ -255,22 +260,22 @@ class SyncRelatedVideoInsightsStageTest(unittest.TestCase):
     def test_one_call_per_month_passes_its_referrers_straight_through_to_upsert(self) -> None:
         # Only mock the March window so the assertion below stays exact.
         self.windows_mock.return_value = [MonthlyWindow("2024-03", "2024-03-01", "2024-03-14")]
-        mock.patch("sync.stages.database.get_owned_video_ids", return_value=["v1"]).start()
+        self.reads.videos = owned_videos("v1")
         mock.patch(
             "sync.stages.youtube.fetch_video_related_videos",
             return_value=analytics_api.RelatedVideosResult(
                 raw_row_count=1, referrers=[{"referrer_video_id": "ref-1", "views": 8}]
             ),
         ).start()
-        upsert = mock.patch("sync.stages.database.upsert_related_videos", return_value=1).start()
 
         stages.sync_related_video_insights("incremental", None, SyncCounts())
 
-        upsert.assert_called_once_with("v1", "2024-03", [{"referrer_video_id": "ref-1", "views": 8}])
+        self.assertEqual(self.writes.of(RelatedVideo), [
+            RelatedVideo(target_video_id="v1", month="2024-03", referrer_video_id="ref-1", views=8, updated_at=mock.ANY),
+        ])
 
     def test_a_failed_window_stops_the_stage_but_keeps_earlier_commits_and_partial_counts(self) -> None:
-        mock.patch("sync.stages.database.get_owned_video_ids", return_value=["v1", "v2"]).start()
-        mock.patch("sync.stages.database.upsert_related_videos", return_value=1).start()
+        self.reads.videos = owned_videos("v1", "v2")
 
         def fetch_side_effect(video_id: str, start: str, end: str, **kwargs: object) -> analytics_api.RelatedVideosResult:
             if video_id == "v2":
@@ -285,26 +290,59 @@ class SyncRelatedVideoInsightsStageTest(unittest.TestCase):
         with self.assertRaises(RuntimeError):
             stages.sync_related_video_insights("incremental", None, counts)
 
+        # v1's two months were written and covered before v2's first fetch failed.
+        self.assertEqual({row.target_video_id for row in self.writes.of(RelatedVideo)}, {"v1"})
+        self.assertEqual(len(self.writes.of(SyncCoverage)), len(self.windows))
+        self.assertEqual(counts.rows_written, len(self.windows))
+
+    def test_a_target_that_is_not_owned_stops_the_stage_before_writing(self) -> None:
+        self.reads.videos = owned_videos("v1")
+        mock.patch("sync.stages.reader.select_one", return_value=None).start()
+        mock.patch(
+            "sync.stages.youtube.fetch_video_related_videos",
+            return_value=analytics_api.RelatedVideosResult(
+                raw_row_count=1, referrers=[{"referrer_video_id": "ref-1", "views": 5}]
+            ),
+        ).start()
+
+        with self.assertRaises(ValueError):
+            stages.sync_related_video_insights("incremental", None, SyncCounts())
+
+        self.assertEqual(self.writes.rows, [])
+
+    def test_an_empty_month_skips_the_ownership_check_and_is_still_covered(self) -> None:
+        self.reads.videos = owned_videos("v1")
+        ownership = mock.patch("sync.stages.reader.select_one", return_value=None).start()
+        mock.patch(
+            "sync.stages.youtube.fetch_video_related_videos",
+            return_value=analytics_api.RelatedVideosResult(raw_row_count=0, referrers=[]),
+        ).start()
+
+        stages.sync_related_video_insights("incremental", None, SyncCounts())
+
+        ownership.assert_not_called()
+        self.assertEqual(self.writes.of(RelatedVideo), [])
+        self.assertEqual(len(self.writes.of(SyncCoverage)), len(self.windows))
+
     def test_does_not_affect_search_insights_state(self) -> None:
         """Verify Related Video failures do not alter Search Insights state."""
-        mock.patch("sync.stages.database.get_owned_video_ids", return_value=["v1"]).start()
+        self.reads.videos = owned_videos("v1")
         mock.patch(
             "sync.stages.youtube.fetch_video_related_videos", side_effect=RuntimeError("boom")
         ).start()
-        search_upsert = mock.patch("sync.stages.database.upsert_search_terms").start()
 
         with self.assertRaises(RuntimeError):
             stages.sync_related_video_insights("incremental", None, SyncCounts())
 
-        search_upsert.assert_not_called()
+        self.assertEqual(self.writes.of(SearchTerm), [])
 
 
 class SyncRelatedVideoInsightsScopeTest(unittest.TestCase):
     def setUp(self) -> None:
         self.addCleanup(mock.patch.stopall)
+        self.reads = patch_stage_reads()
         mock.patch("sync.stages.status.update_sync_progress").start()
-        mock.patch("sync.stages.database.upsert_coverage").start()
-        mock.patch("sync.stages.database.get_all_video_ids", return_value=[]).start()
+        self.writes = patch_stage_writes()
         mock.patch("sync.stages.youtube.fetch_channel_identity", return_value=("UC1", "UU1")).start()
         self.mock_date = mock.patch("sync.stages.date").start()
         self.mock_date.today.return_value = date(2024, 3, 15)
@@ -312,16 +350,11 @@ class SyncRelatedVideoInsightsScopeTest(unittest.TestCase):
         self.mock_date.side_effect = lambda *a, **k: date(*a, **k)
 
     def test_year_scope_requests_every_month_of_the_year_within_publish_and_yesterday(self) -> None:
-        mock.patch("sync.stages.database.get_owned_video_ids", return_value=["v1"]).start()
-        mock.patch(
-            "sync.stages.database.get_owned_video",
-            return_value={"title": "T", "published_at": "2024-02-10T00:00:00Z"},
-        ).start()
+        self.reads.videos = owned_videos("v1", published_at="2024-02-10T00:00:00Z")
         fetch = mock.patch(
             "sync.stages.youtube.fetch_video_related_videos",
             return_value=analytics_api.RelatedVideosResult(raw_row_count=0, referrers=[]),
         ).start()
-        mock.patch("sync.stages.database.upsert_related_videos", return_value=0).start()
 
         stages.sync_related_video_insights("year", 2024, SyncCounts())
 
@@ -333,16 +366,11 @@ class SyncRelatedVideoInsightsScopeTest(unittest.TestCase):
         self.assertEqual(calls, _monthly_calls("v1", *expected_months))
 
     def test_all_scope_requests_every_month_since_publish(self) -> None:
-        mock.patch("sync.stages.database.get_owned_video_ids", return_value=["v1"]).start()
-        mock.patch(
-            "sync.stages.database.get_owned_video",
-            return_value={"title": "T", "published_at": "2024-01-20T00:00:00Z"},
-        ).start()
+        self.reads.videos = owned_videos("v1", published_at="2024-01-20T00:00:00Z")
         fetch = mock.patch(
             "sync.stages.youtube.fetch_video_related_videos",
             return_value=analytics_api.RelatedVideosResult(raw_row_count=0, referrers=[]),
         ).start()
-        mock.patch("sync.stages.database.upsert_related_videos", return_value=0).start()
 
         stages.sync_related_video_insights("all", None, SyncCounts())
 
@@ -355,8 +383,7 @@ class SyncRelatedVideoInsightsScopeTest(unittest.TestCase):
         self.assertEqual(calls, _monthly_calls("v1", *expected_months))
 
     def test_year_and_all_scope_skip_videos_with_no_publish_date(self) -> None:
-        mock.patch("sync.stages.database.get_owned_video_ids", return_value=["v1"]).start()
-        mock.patch("sync.stages.database.get_owned_video", return_value={"title": "T"}).start()
+        self.reads.videos = owned_videos("v1")
         fetch = mock.patch("sync.stages.youtube.fetch_video_related_videos").start()
 
         stages.sync_related_video_insights("year", 2024, SyncCounts())
@@ -366,18 +393,16 @@ class SyncRelatedVideoInsightsScopeTest(unittest.TestCase):
 
     def test_a_video_published_after_the_effective_end_is_prefiltered_out(self) -> None:
         """Verify future videos are excluded before Related Video processing."""
-        worklist = mock.patch("sync.stages.database.get_owned_video_ids", return_value=[]).start()
-        get_video = mock.patch("sync.stages.database.get_owned_video").start()
+        worklist = mock.patch("sync.stages.catalog.owned_video_worklist", wraps=catalog.owned_video_worklist).start()
         fetch = mock.patch("sync.stages.youtube.fetch_video_related_videos").start()
 
         stages.sync_related_video_insights("all", None, SyncCounts())
 
         worklist.assert_called_once_with(published_through="2024-03-14")
-        get_video.assert_not_called()
         fetch.assert_not_called()
 
     def test_incremental_and_all_request_yesterday_as_the_effective_end(self) -> None:
-        worklist = mock.patch("sync.stages.database.get_owned_video_ids", return_value=[]).start()
+        worklist = mock.patch("sync.stages.catalog.owned_video_worklist", wraps=catalog.owned_video_worklist).start()
 
         stages.sync_related_video_insights("incremental", None, SyncCounts())
         worklist.assert_called_once_with(published_through="2024-03-14")
@@ -387,7 +412,7 @@ class SyncRelatedVideoInsightsScopeTest(unittest.TestCase):
         worklist.assert_called_once_with(published_through="2024-03-14")
 
     def test_year_scope_clamps_the_effective_end_to_the_earlier_of_year_end_and_yesterday(self) -> None:
-        worklist = mock.patch("sync.stages.database.get_owned_video_ids", return_value=[]).start()
+        worklist = mock.patch("sync.stages.catalog.owned_video_worklist", wraps=catalog.owned_video_worklist).start()
 
         stages.sync_related_video_insights("year", 2020, SyncCounts())
         worklist.assert_called_once_with(published_through="2020-12-31")
@@ -398,25 +423,21 @@ class SyncRelatedVideoInsightsScopeTest(unittest.TestCase):
         worklist.assert_called_once_with(published_through="2024-03-14")
 
     def test_an_empty_worklist_makes_no_per_video_calls(self) -> None:
-        mock.patch("sync.stages.database.get_owned_video_ids", return_value=[]).start()
-        get_video = mock.patch("sync.stages.database.get_owned_video").start()
+        self.reads.videos = []
         fetch = mock.patch("sync.stages.youtube.fetch_video_related_videos").start()
         counts = SyncCounts()
 
         stages.sync_related_video_insights("incremental", None, counts)
 
-        get_video.assert_not_called()
         fetch.assert_not_called()
         self.assertEqual((counts.rows_fetched, counts.rows_written), (0, 0))
 
     def test_incremental_scope_with_no_publish_date_uses_fixed_two_windows(self) -> None:
-        mock.patch("sync.stages.database.get_owned_video_ids", return_value=["v1"]).start()
-        mock.patch("sync.stages.database.get_owned_video", return_value={"title": "T"}).start()
+        self.reads.videos = owned_videos("v1")
         fetch = mock.patch(
             "sync.stages.youtube.fetch_video_related_videos",
             return_value=analytics_api.RelatedVideosResult(raw_row_count=0, referrers=[]),
         ).start()
-        mock.patch("sync.stages.database.upsert_related_videos", return_value=0).start()
 
         stages.sync_related_video_insights("incremental", None, SyncCounts())
 
@@ -428,17 +449,11 @@ class SyncRelatedVideoInsightsScopeTest(unittest.TestCase):
         self.assertEqual(calls, _monthly_calls("v1", *expected_months))
 
     def test_incremental_scope_backfills_from_publish_date_on_first_sync(self) -> None:
-        mock.patch("sync.stages.database.get_owned_video_ids", return_value=["v1"]).start()
-        mock.patch(
-            "sync.stages.database.get_owned_video",
-            return_value={"title": "T", "published_at": "2024-01-20T00:00:00Z"},
-        ).start()
-        mock.patch("sync.stages.database.get_covered_periods", return_value=set()).start()
+        self.reads.videos = owned_videos("v1", published_at="2024-01-20T00:00:00Z")
         fetch = mock.patch(
             "sync.stages.youtube.fetch_video_related_videos",
             return_value=analytics_api.RelatedVideosResult(raw_row_count=0, referrers=[]),
         ).start()
-        mock.patch("sync.stages.database.upsert_related_videos", return_value=0).start()
 
         stages.sync_related_video_insights("incremental", None, SyncCounts())
 
@@ -454,18 +469,13 @@ class SyncRelatedVideoInsightsScopeTest(unittest.TestCase):
         # "today" is frozen to 2024-03-15, so "already caught up" means every month
         # through last month (2024-02) is covered — leaving exactly the forced
         # previous+current refresh, same months re-fetched regardless of coverage.
-        mock.patch("sync.stages.database.get_owned_video_ids", return_value=["v1"]).start()
-        mock.patch(
-            "sync.stages.database.get_owned_video",
-            return_value={"title": "T", "published_at": "2020-01-01T00:00:00Z"},
-        ).start()
+        self.reads.videos = owned_videos("v1", published_at="2020-01-01T00:00:00Z")
         covered = {w.month for w in monthly_windows_for_range(date(2020, 1, 1), date(2024, 2, 29))}
-        mock.patch("sync.stages.database.get_covered_periods", return_value=covered).start()
+        self.reads.covered = covered
         fetch = mock.patch(
             "sync.stages.youtube.fetch_video_related_videos",
             return_value=analytics_api.RelatedVideosResult(raw_row_count=0, referrers=[]),
         ).start()
-        mock.patch("sync.stages.database.upsert_related_videos", return_value=0).start()
 
         stages.sync_related_video_insights("incremental", None, SyncCounts())
 
@@ -480,18 +490,13 @@ class SyncRelatedVideoInsightsScopeTest(unittest.TestCase):
         # A video whose backfill was interrupted after 2023-10 must not be treated as
         # "fully caught up" just because it has *some* coverage — it should resume from
         # the first uncovered month forward, not silently skip the months in between.
-        mock.patch("sync.stages.database.get_owned_video_ids", return_value=["v1"]).start()
-        mock.patch(
-            "sync.stages.database.get_owned_video",
-            return_value={"title": "T", "published_at": "2020-01-01T00:00:00Z"},
-        ).start()
+        self.reads.videos = owned_videos("v1", published_at="2020-01-01T00:00:00Z")
         covered = {w.month for w in monthly_windows_for_range(date(2020, 1, 1), date(2023, 10, 31))}
-        mock.patch("sync.stages.database.get_covered_periods", return_value=covered).start()
+        self.reads.covered = covered
         fetch = mock.patch(
             "sync.stages.youtube.fetch_video_related_videos",
             return_value=analytics_api.RelatedVideosResult(raw_row_count=0, referrers=[]),
         ).start()
-        mock.patch("sync.stages.database.upsert_related_videos", return_value=0).start()
 
         stages.sync_related_video_insights("incremental", None, SyncCounts())
 
@@ -512,9 +517,11 @@ class ResolveRelatedVideoMetadataTest(unittest.TestCase):
 
     def setUp(self) -> None:
         self.addCleanup(mock.patch.stopall)
+        self.reads = patch_stage_reads()
+        self.writes = patch_stage_writes()
 
     def test_no_new_ids_skips_channel_identity_and_fetch(self) -> None:
-        mock.patch("sync.stages.database.get_all_video_ids", return_value=["v1"]).start()
+        self.reads.stored_video_ids = ["v1"]
         identity = mock.patch("sync.stages.youtube.fetch_channel_identity").start()
         fetch = mock.patch("sync.stages.youtube.fetch_videos").start()
 
@@ -524,7 +531,6 @@ class ResolveRelatedVideoMetadataTest(unittest.TestCase):
         fetch.assert_not_called()
 
     def test_a_channel_identity_failure_is_logged_and_does_not_raise(self) -> None:
-        mock.patch("sync.stages.database.get_all_video_ids", return_value=[]).start()
         mock.patch(
             "sync.stages.youtube.fetch_channel_identity", side_effect=RuntimeError("quota exceeded")
         ).start()
@@ -536,7 +542,7 @@ class ResolveRelatedVideoMetadataTest(unittest.TestCase):
         fetch.assert_not_called()
 
     def test_already_known_ids_are_excluded_from_resolution(self) -> None:
-        mock.patch("sync.stages.database.get_all_video_ids", return_value=["ref-known"]).start()
+        self.reads.stored_video_ids = ["ref-known"]
         mock.patch("sync.stages.youtube.fetch_channel_identity", return_value=("UC1", "UU1")).start()
         fetch = mock.patch("sync.stages.youtube.fetch_videos", return_value=[]).start()
 
@@ -545,7 +551,6 @@ class ResolveRelatedVideoMetadataTest(unittest.TestCase):
         fetch.assert_called_once_with(["ref-new"])
 
     def test_batches_of_more_than_50_are_split_deterministically(self) -> None:
-        mock.patch("sync.stages.database.get_all_video_ids", return_value=[]).start()
         mock.patch("sync.stages.youtube.fetch_channel_identity", return_value=("UC1", "UU1")).start()
         fetch = mock.patch("sync.stages.youtube.fetch_videos", return_value=[]).start()
         ids = {f"ref-{i:03d}" for i in range(75)}
@@ -560,56 +565,51 @@ class ResolveRelatedVideoMetadataTest(unittest.TestCase):
         self.assertEqual(set(batches[0]) | set(batches[1]), ids)
 
     def test_owned_referrer_is_classified_true_on_channel_match(self) -> None:
-        mock.patch("sync.stages.database.get_all_video_ids", return_value=[]).start()
         mock.patch("sync.stages.youtube.fetch_channel_identity", return_value=("UC1", "UU1")).start()
         mock.patch(
             "sync.stages.youtube.fetch_videos",
             return_value=[{"id": "ref-mine", "channel_id": "UC1", "title": "Mine"}],
         ).start()
-        upsert = mock.patch("sync.stages.database.upsert_related_video").start()
 
         stages._resolve_related_video_metadata({"ref-mine"}, SyncCounts())
 
-        upsert.assert_called_once_with({"id": "ref-mine", "channel_id": "UC1", "title": "Mine"}, own=True)
+        self.assertEqual(self.writes.of(Video), [
+            Video(id="ref-mine", channel_id="UC1", title="Mine", own=True, updated_at=mock.ANY),
+        ])
 
     def test_external_referrer_is_classified_false_on_channel_mismatch(self) -> None:
-        mock.patch("sync.stages.database.get_all_video_ids", return_value=[]).start()
         mock.patch("sync.stages.youtube.fetch_channel_identity", return_value=("UC1", "UU1")).start()
         mock.patch(
             "sync.stages.youtube.fetch_videos",
             return_value=[{"id": "ref-ext", "channel_id": "UCother", "title": "Other"}],
         ).start()
-        upsert = mock.patch("sync.stages.database.upsert_related_video").start()
 
         stages._resolve_related_video_metadata({"ref-ext"}, SyncCounts())
 
-        upsert.assert_called_once_with({"id": "ref-ext", "channel_id": "UCother", "title": "Other"}, own=False)
+        self.assertEqual(self.writes.of(Video), [
+            Video(id="ref-ext", channel_id="UCother", title="Other", own=False, updated_at=mock.ANY),
+        ])
 
     def test_id_omitted_from_the_response_gets_no_upsert_call(self) -> None:
-        mock.patch("sync.stages.database.get_all_video_ids", return_value=[]).start()
         mock.patch("sync.stages.youtube.fetch_channel_identity", return_value=("UC1", "UU1")).start()
         mock.patch("sync.stages.youtube.fetch_videos", return_value=[]).start()
-        upsert = mock.patch("sync.stages.database.upsert_related_video").start()
 
         stages._resolve_related_video_metadata({"ref-unavailable"}, SyncCounts())
 
-        upsert.assert_not_called()
+        self.assertEqual(self.writes.of(Video), [])
 
     def test_a_batch_lookup_failure_is_logged_and_does_not_raise(self) -> None:
-        mock.patch("sync.stages.database.get_all_video_ids", return_value=[]).start()
         mock.patch("sync.stages.youtube.fetch_channel_identity", return_value=("UC1", "UU1")).start()
         mock.patch(
             "sync.stages.youtube.fetch_videos", side_effect=RuntimeError("quota exceeded")
         ).start()
-        upsert = mock.patch("sync.stages.database.upsert_related_video").start()
 
         with self.assertLogs("youtube_analytics.sync", level="WARNING"):
             stages._resolve_related_video_metadata({"ref-1"}, SyncCounts())
 
-        upsert.assert_not_called()
+        self.assertEqual(self.writes.of(Video), [])
 
     def test_a_failed_batch_does_not_stop_other_batches_from_resolving(self) -> None:
-        mock.patch("sync.stages.database.get_all_video_ids", return_value=[]).start()
         mock.patch("sync.stages.youtube.fetch_channel_identity", return_value=("UC1", "UU1")).start()
         first_batch = [f"ref-{i:03d}" for i in range(50)]
         second_batch = ["ref-zzz"]
@@ -620,15 +620,15 @@ class ResolveRelatedVideoMetadataTest(unittest.TestCase):
             return [{"id": "ref-zzz", "channel_id": "UCother", "title": "Other"}]
 
         mock.patch("sync.stages.youtube.fetch_videos", side_effect=fetch_side_effect).start()
-        upsert = mock.patch("sync.stages.database.upsert_related_video").start()
 
         with self.assertLogs("youtube_analytics.sync", level="WARNING"):
             stages._resolve_related_video_metadata(set(first_batch) | set(second_batch), SyncCounts())
 
-        upsert.assert_called_once_with({"id": "ref-zzz", "channel_id": "UCother", "title": "Other"}, own=False)
+        self.assertEqual(self.writes.of(Video), [
+            Video(id="ref-zzz", channel_id="UCother", title="Other", own=False, updated_at=mock.ANY),
+        ])
 
     def test_resolved_metadata_is_counted_in_stage_counters(self) -> None:
-        mock.patch("sync.stages.database.get_all_video_ids", return_value=[]).start()
         mock.patch("sync.stages.youtube.fetch_channel_identity", return_value=("UC1", "UU1")).start()
         mock.patch(
             "sync.stages.youtube.fetch_videos",
@@ -637,7 +637,6 @@ class ResolveRelatedVideoMetadataTest(unittest.TestCase):
                 {"id": "ref-2", "channel_id": "UCother", "title": "Other"},
             ],
         ).start()
-        mock.patch("sync.stages.database.upsert_related_video").start()
         counts = SyncCounts()
 
         stages._resolve_related_video_metadata({"ref-1", "ref-2"}, counts)
@@ -653,31 +652,30 @@ class SyncRelatedVideoInsightsMetadataIntegrationTest(unittest.TestCase):
     def setUp(self) -> None:
         self.addCleanup(mock.patch.stopall)
         mock.patch("sync.stages.status.update_sync_progress").start()
-        mock.patch("sync.stages.database.get_owned_video", return_value={"title": "T"}).start()
-        mock.patch("sync.stages.database.upsert_coverage").start()
+        self.reads = patch_stage_reads()
+        self.writes = patch_stage_writes()
         mock.patch(
             "sync.stages.monthly_insights.monthly_search_windows",
             return_value=[MonthlyWindow("2024-03", "2024-03-01", "2024-03-14")],
         ).start()
 
     def test_worklist_is_captured_once_and_metadata_never_becomes_a_target(self) -> None:
-        owned_ids = mock.patch("sync.stages.database.get_owned_video_ids", return_value=["v1"]).start()
+        worklist = mock.patch("sync.stages.catalog.owned_video_worklist", wraps=catalog.owned_video_worklist).start()
+        self.reads.videos = owned_videos("v1")
         mock.patch(
             "sync.stages.youtube.fetch_video_related_videos",
             return_value=analytics_api.RelatedVideosResult(
                 raw_row_count=1, referrers=[{"referrer_video_id": "v1", "views": 5}]
             ),
         ).start()
-        mock.patch("sync.stages.database.upsert_related_videos", return_value=1).start()
-        mock.patch("sync.stages.database.get_all_video_ids", return_value=[]).start()
         mock.patch("sync.stages.youtube.fetch_channel_identity", return_value=("UC1", "UU1")).start()
         mock.patch("sync.stages.youtube.fetch_videos", return_value=[]).start()
 
         stages.sync_related_video_insights("incremental", None, SyncCounts())
 
-        # The referrer happens to equal the only target ID; get_owned_video_ids() being
+        # The referrer happens to equal the only target ID; the worklist query being built
         # called exactly once proves the worklist can't have picked it up mid-run.
-        owned_ids.assert_called_once()
+        worklist.assert_called_once()
 
 
 if __name__ == "__main__":

@@ -5,6 +5,7 @@ from unittest import mock
 
 from sync import status
 from sync.stages import SyncCounts
+from tests.support import patch_stage_writes
 from youtube import analytics_api, data_api
 
 
@@ -178,8 +179,7 @@ class StageCheckpointWiringTest(unittest.TestCase):
         fetch_items = mock.patch(
             "sync.stages.youtube.fetch_playlist_items", return_value=([], False)
         ).start()
-        mock.patch("sync.stages.database.upsert_playlist").start()
-        mock.patch("sync.stages.database.delete_playlist_items", return_value=0).start()
+        patch_stage_writes()
 
         status.try_begin_sync(["playlists"])
         status.request_stop()
@@ -192,28 +192,29 @@ class StageCheckpointWiringTest(unittest.TestCase):
     def test_sync_pruning_checks_before_deleting(self) -> None:
         from sync import stages
 
-        delete = mock.patch("sync.stages.database.delete_videos_not_in").start()
+        writes = patch_stage_writes()
         status.try_begin_sync(["pruning"])
         status.request_stop()
 
         with self.assertRaises(status.SyncCancelled):
             stages.sync_pruning(SyncCounts(), {"v1"})
 
-        delete.assert_not_called()
+        self.assertEqual(writes.deletes, [])
 
     def test_sync_fx_rates_stops_between_days(self) -> None:
         from datetime import date, timedelta
 
+        from database import FxRate
         from sync import stages
 
         # A last-synced date three days ago gives exactly two days of work (yesterday
         # inclusive), regardless of when this test runs.
         last_synced = (date.today() - timedelta(days=3)).isoformat()
         mock.patch(
-            "sync.stages.database.get_last_fx_rate",
-            return_value={"date": last_synced, "usd_to_sgd": 1.35},
+            "sync.stages.reader.select_one",
+            return_value=FxRate(date=last_synced, usd_to_sgd=1.35),
         ).start()
-        upsert = mock.patch("sync.stages.database.upsert_fx_rate").start()
+        writes = patch_stage_writes()
 
         import pandas as pd
         mock.patch("yfinance.download", return_value=pd.DataFrame()).start()
@@ -225,7 +226,7 @@ class StageCheckpointWiringTest(unittest.TestCase):
             stages.sync_fx_rates(SyncCounts())
 
         # Day 1 (carried rate) is written before the checkpoint on day 2 raises.
-        self.assertEqual(upsert.call_count, 1)
+        self.assertEqual(len(writes.of(FxRate)), 1)
 
 
 if __name__ == "__main__":

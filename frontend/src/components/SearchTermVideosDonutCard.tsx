@@ -1,9 +1,9 @@
 import { Link } from 'react-router-dom'
 import { PieChart, Pie, Cell, ResponsiveContainer, Tooltip } from 'recharts'
 import type { SearchTermRow, SearchTermVideo } from '@/types'
-import { categoricalColorClass, CATEGORICAL_OTHER_CLASS } from '@/lib/categoricalColors'
+import { categoricalColorClass, CATEGORICAL_OTHER_CLASS, CATEGORICAL_SLOT_COUNT } from '@/lib/categoricalColors'
 import AsyncCard from '@/components/AsyncCard'
-import './SearchTermVideosDonutCard.css'
+import '@/components/DonutCard.css'
 
 interface Props {
   title: string
@@ -18,7 +18,6 @@ interface Props {
   error?: string | null
 }
 
-const TOP_N = 6
 const OTHER_ITEMIZE_N = 3
 const OTHER_KEY = '__other__'
 
@@ -26,8 +25,8 @@ export default function SearchTermVideosDonutCard({
   title, terms, termsLoading, selectedTerm, onSelectTerm, videos, loading, error = null,
 }: Props) {
   const totalViews = videos.reduce((s, v) => s + v.views, 0)
-  const topVideos = videos.slice(0, TOP_N)
-  const otherVideos = videos.slice(TOP_N)
+  const topVideos = videos.slice(0, CATEGORICAL_SLOT_COUNT)
+  const otherVideos = videos.slice(CATEGORICAL_SLOT_COUNT)
   const otherViews = otherVideos.reduce((s, v) => s + v.views, 0)
   const itemizedOtherVideos = otherVideos.slice(0, OTHER_ITEMIZE_N)
   const remainderVideos = otherVideos.slice(OTHER_ITEMIZE_N)
@@ -44,12 +43,12 @@ export default function SearchTermVideosDonutCard({
       error={error}
       empty={videos.length === 0 || totalViews === 0}
       emptyMessage="No videos for this term"
-      className="search-videos-donut"
+      className="search-videos-donut donut-card donut-card--picker"
       heading={
-        <div className="search-videos-donut-heading">
+        <div className="donut-card-heading">
           <div className="section-header">{title}</div>
           <select
-            className="search-videos-donut-select"
+            className="form-control"
             value={selectedTerm ?? ''}
             onChange={e => onSelectTerm(e.target.value)}
             disabled={termsLoading || terms.length === 0}
@@ -62,7 +61,7 @@ export default function SearchTermVideosDonutCard({
         </div>
       }
     >
-      <div className="search-videos-donut-chart-wrap">
+      <div className="donut-chart-wrap">
         <ResponsiveContainer width="100%" height={160}>
           <PieChart>
             <Pie data={slices} dataKey="views" nameKey="label" innerRadius="65%" outerRadius="100%" paddingAngle={1} stroke="none">
@@ -75,43 +74,43 @@ export default function SearchTermVideosDonutCard({
             />
           </PieChart>
         </ResponsiveContainer>
-        <div className="search-videos-donut-center">
-          <span className="search-videos-donut-center-value">{totalViews.toLocaleString()}</span>
-          <span className="search-videos-donut-center-label">Views</span>
+        <div className="donut-center">
+          <span className="donut-center-value">{totalViews.toLocaleString()}</span>
+          <span className="donut-center-label">Views</span>
         </div>
       </div>
 
-      <div className="search-videos-donut-legend">
+      <div className="donut-legend">
         {topVideos.map((v, i) => (
-          <div key={v.id} className="search-videos-donut-legend-item">
+          <div key={v.id} className="donut-legend-item">
             {v.thumbnail_url
-              ? <img src={v.thumbnail_url} alt="" className="search-videos-donut-thumb" />
-              : <div className="search-videos-donut-thumb search-videos-donut-thumb--placeholder" />}
-            <span className={`search-videos-donut-legend-swatch ${categoricalColorClass(i)}`} />
-            <span className="search-videos-donut-legend-label"><Link to={`/analytics/videos/${v.id}`}>{v.title}</Link></span>
-            <span className="search-videos-donut-legend-views">{v.views.toLocaleString()}</span>
+              ? <img src={v.thumbnail_url} alt="" className="thumb-small" />
+              : <div className="thumb-small thumb-placeholder" />}
+            <span className={`legend-swatch ${categoricalColorClass(i)}`} />
+            <span className="donut-legend-label"><Link to={`/analytics/videos/${v.id}`}>{v.title}</Link></span>
+            <span className="donut-legend-value">{v.views.toLocaleString()}</span>
           </div>
         ))}
 
         {otherVideos.length > 0 && (
           <>
-            <div className="search-videos-donut-legend-divider">Other includes:</div>
+            <div className="donut-legend-divider">Other includes:</div>
             {itemizedOtherVideos.map(v => (
-              <div key={v.id} className="search-videos-donut-legend-item search-videos-donut-legend-item--sub">
+              <div key={v.id} className="donut-legend-item donut-legend-item--sub">
                 {v.thumbnail_url
-                  ? <img src={v.thumbnail_url} alt="" className="search-videos-donut-thumb" />
-                  : <div className="search-videos-donut-thumb search-videos-donut-thumb--placeholder" />}
-                <span className={`search-videos-donut-legend-swatch ${CATEGORICAL_OTHER_CLASS}`} />
-                <span className="search-videos-donut-legend-label"><Link to={`/analytics/videos/${v.id}`}>{v.title}</Link></span>
-                <span className="search-videos-donut-legend-views">{v.views.toLocaleString()}</span>
+                  ? <img src={v.thumbnail_url} alt="" className="thumb-small" />
+                  : <div className="thumb-small thumb-placeholder" />}
+                <span className={`legend-swatch ${CATEGORICAL_OTHER_CLASS}`} />
+                <span className="donut-legend-label"><Link to={`/analytics/videos/${v.id}`}>{v.title}</Link></span>
+                <span className="donut-legend-value">{v.views.toLocaleString()}</span>
               </div>
             ))}
             {remainderVideos.length > 0 && (
-              <div className="search-videos-donut-legend-item search-videos-donut-legend-item--sub">
-                <div className="search-videos-donut-thumb search-videos-donut-thumb--placeholder" />
-                <span className={`search-videos-donut-legend-swatch ${CATEGORICAL_OTHER_CLASS}`} />
-                <span className="search-videos-donut-legend-label">{remainderVideos.length} more videos</span>
-                <span className="search-videos-donut-legend-views">{remainderViews.toLocaleString()}</span>
+              <div className="donut-legend-item donut-legend-item--sub">
+                <div className="thumb-small thumb-placeholder" />
+                <span className={`legend-swatch ${CATEGORICAL_OTHER_CLASS}`} />
+                <span className="donut-legend-label">{remainderVideos.length} more videos</span>
+                <span className="donut-legend-value">{remainderViews.toLocaleString()}</span>
               </div>
             )}
           </>

@@ -13,9 +13,9 @@ Coverage created here suppresses only historical backfill. Every Incremental syn
 still fetches its mandatory previous/current-month refresh regardless, since that
 refresh always overrides coverage state.
 
-Safe to run more than once: reruns produce the identical completion rows via the same
-conflict-upsert path normal sync uses. Aborts with no writes if any owned video lacks
-a valid published_at.
+Safe to run more than once: reruns update the same completion rows in place rather
+than adding new ones. Aborts with no writes if any owned video lacks a valid
+published_at.
 
 Usage:
     cd backend && .venv/Scripts/python.exe scripts/issue-62-migration.py

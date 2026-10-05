@@ -1,4 +1,5 @@
 import type { TrafficSourceRow } from '@/types'
+import type { TabOption } from '@/components/Tabs'
 
 const TRAFFIC_SOURCE_LABELS: Record<string, string> = {
   YT_SEARCH: 'YouTube Search',
@@ -72,4 +73,25 @@ export function aggregateTrafficSourceTotals(rows: TrafficSourceRow[]): TrafficS
     }
   }
   return [...byType.values()].sort((a, b) => b.views - a.views)
+}
+
+export type TrafficSourcesSubTab = 'sources' | 'top-videos' | 'search' | 'related'
+
+/** Sub-tabs of the channel and playlist Traffic Sources tab. */
+export const TRAFFIC_SOURCES_SUB_TABS: readonly TabOption<TrafficSourcesSubTab>[] = [
+  { value: 'sources', label: 'Traffic Sources' },
+  { value: 'top-videos', label: 'Top Videos by Traffic Source' },
+  { value: 'search', label: 'Search Insights' },
+  { value: 'related', label: 'Related Videos' },
+]
+
+/** A single video has no Top Videos by Traffic Source sub-tab. */
+export const VIDEO_TRAFFIC_SOURCES_SUB_TABS = TRAFFIC_SOURCES_SUB_TABS.filter(t => t.value !== 'top-videos')
+
+/** Reads `ts_tab`, falling back to `sources` for a missing value or one not in `options`. */
+export function toTrafficSourcesSubTab(
+  value: string | null,
+  options: readonly TabOption<TrafficSourcesSubTab>[],
+): TrafficSourcesSubTab {
+  return options.find(o => o.value === value)?.value ?? 'sources'
 }

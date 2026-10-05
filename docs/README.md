@@ -11,6 +11,8 @@ Visual overviews of the current system in [`human/`](human/), as HTML pages that
 | System data flow: user action → frontend → API route → database → response, and YouTube → sync → database, with the sync triggers actually wired | [`app-flow/overview.html`](human/app-flow/overview.html) |
 | What each backend part does, package dependencies, and call paths | [`architecture/backend-architecture.html`](human/architecture/backend-architecture.html) |
 | What every backend file does, and each route's call chain down to the database | [`architecture/backend-reference.html`](human/architecture/backend-reference.html) |
+| Where data is stored, how the reader and writer move table rows in and out of row objects, and how read results become API JSON | [`architecture/data-storage.html`](human/architecture/data-storage.html) |
+| What each reader and writer function does and where the app uses it | [`architecture/reader-writer.html`](human/architecture/reader-writer.html) |
 | Frontend routes, pages, component reuse, and unused components | [`architecture/frontend-components.html`](human/architecture/frontend-components.html) |
 | Code, markup, and CSS repeated across backend and frontend files, ranked by copy count | [`suggestions/repeated-code.html`](human/suggestions/repeated-code.html) |
 | Backend and frontend code that does more work than its result needs, ordered by how often it runs | [`suggestions/efficiency.html`](human/suggestions/efficiency.html) |
@@ -46,10 +48,14 @@ Load only the references relevant to the current task; expand to another referen
 | Implementation-planning procedure | [`implementation-planning.md`](programming-workflow/implementation-planning.md) |
 | Issue-drafting procedure | [`issue-authoring.md`](github-workflow/issue-authoring.md) |
 | PR-drafting procedure | [`pull-request-authoring.md`](github-workflow/pull-request-authoring.md) |
+| Commit-message drafting procedure | [`commit-message-authoring.md`](github-workflow/commit-message-authoring.md) |
 | Documentation maintenance procedure | [`documentation-maintenance.md`](documentation-workflow/documentation-maintenance.md) |
+| SVG figure procedure for `human/` pages | [`svg-figures.md`](documentation-workflow/svg-figures.md) |
 | Visual system data flow and wired sync triggers | [`human/app-flow/overview.html`](human/app-flow/overview.html) |
 | Backend part overview, package dependencies, call paths, and consolidation observations | [`human/architecture/backend-architecture.html`](human/architecture/backend-architecture.html) |
 | Per-file backend duties and route-to-database call chains | [`human/architecture/backend-reference.html`](human/architecture/backend-reference.html) |
+| Visual storage map, row-object, reader and writer walkthroughs, and the storage-to-response flow | [`human/architecture/data-storage.html`](human/architecture/data-storage.html) |
+| Reader and writer function guide with examples and uses | [`human/architecture/reader-writer.html`](human/architecture/reader-writer.html) |
 | Frontend component usage counts and unused components | [`human/architecture/frontend-components.html`](human/architecture/frontend-components.html) |
 | Repeated backend code, frontend code, and CSS | [`human/suggestions/repeated-code.html`](human/suggestions/repeated-code.html) |
 | Sync, API-read, and frontend efficiency observations | [`human/suggestions/efficiency.html`](human/suggestions/efficiency.html) |
@@ -67,5 +73,5 @@ Every fact has exactly one canonical home from this table. A file not listed her
 - Load only what the task requires — never all references by default.
 - Inspect current code before asserting behavior; do not draft from a reference alone.
 - Treat code as authoritative over any reference.
-- For writing or correcting documentation, follow [`documentation-maintenance.md`](documentation-workflow/documentation-maintenance.md).
+- For writing or correcting documentation, follow [`documentation-maintenance.md`](documentation-workflow/documentation-maintenance.md); for drawing or updating a `human/` figure, follow [`svg-figures.md`](documentation-workflow/svg-figures.md).
 - A code change that alters anything a `human/` page shows updates that page in the same change as the code and references.

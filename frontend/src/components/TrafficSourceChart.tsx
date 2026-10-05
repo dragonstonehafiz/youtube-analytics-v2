@@ -5,7 +5,6 @@ import { formatTrafficSource, aggregateTrafficSourceTotals, getTrafficSourceColo
 import { YAXIS_WIDTH, CHART_RIGHT, formatCompact, getMarks, computeUploadBuckets, UploadStrip } from '@/components/UploadStrip'
 import AsyncCard from '@/components/AsyncCard'
 import '@/components/AnalyticsChart.css'
-import './TrafficSourceChart.css'
 
 interface Props {
   rows: TrafficSourceRow[]
@@ -185,16 +184,16 @@ export default function TrafficSourceChart({ rows, uploadedVideos, loading, erro
         ))}
       </div>
 
-      <div className="traffic-source-legend">
+      <div className="analytics-chart-legend">
         {series.map(s => (
-          <div key={s.key} className="traffic-source-legend-item">
-            <span className="traffic-source-legend-swatch" style={{ background: s.color }} />
+          <div key={s.key} className="analytics-chart-legend-item">
+            <span className="analytics-chart-legend-swatch" style={{ background: s.color }} />
             {s.label}
           </div>
         ))}
         {hasOther && (
-          <div className="traffic-source-legend-item">
-            <span className="traffic-source-legend-swatch" style={{ background: TRAFFIC_SOURCE_OTHER_COLOR }} />
+          <div className="analytics-chart-legend-item">
+            <span className="analytics-chart-legend-swatch" style={{ background: TRAFFIC_SOURCE_OTHER_COLOR }} />
             Other
           </div>
         )}

@@ -1,30 +1,11 @@
-import { useEffect, useState } from 'react'
-import { getDateRange } from '@/api'
-
-function lastNDates(days: number): [string, string] {
-  const today = new Date()
-  const end = today.toISOString().slice(0, 10)
-  const start = new Date(today.getTime() - days * 24 * 60 * 60 * 1000).toISOString().slice(0, 10)
-  return [start, end]
-}
-
-export function last365Dates(): [string, string] {
-  return lastNDates(365)
-}
-
-export function last90Dates(): [string, string] {
-  return lastNDates(90)
-}
-
-export function last28Dates(): [string, string] {
-  return lastNDates(28)
-}
+import { lastNDates } from '@/lib/dates'
+import { useAvailableYears } from '@/hooks/useAvailableYears'
 
 function datesForPeriod(period: string): [string, string] {
   if (period === 'custom') return ['', '']
-  if (period === 'last365') return last365Dates()
-  if (period === 'last90') return last90Dates()
-  if (period === 'last28') return last28Dates()
+  if (period === 'last365') return lastNDates(365)
+  if (period === 'last90') return lastNDates(90)
+  if (period === 'last28') return lastNDates(28)
   return [`${period}-01-01`, `${period}-12-31`]
 }
 
@@ -32,11 +13,11 @@ function periodFromDates(start: string, end: string): string {
   if (!start && !end) return 'custom'
   const year = start.slice(0, 4)
   if (start === `${year}-01-01` && end === `${year}-12-31`) return year
-  const [l365start, l365end] = last365Dates()
+  const [l365start, l365end] = lastNDates(365)
   if (start === l365start && end === l365end) return 'last365'
-  const [l90start, l90end] = last90Dates()
+  const [l90start, l90end] = lastNDates(90)
   if (start === l90start && end === l90end) return 'last90'
-  const [l28start, l28end] = last28Dates()
+  const [l28start, l28end] = lastNDates(28)
   if (start === l28start && end === l28end) return 'last28'
   return 'custom'
 }
@@ -48,18 +29,7 @@ interface PeriodSelectProps {
 }
 
 export default function PeriodSelect({ startDate, endDate, onChange }: PeriodSelectProps) {
-  const [earliestYear, setEarliestYear] = useState<number | null>(null)
-
-  useEffect(() => {
-    getDateRange().then((data: { earliest_year: number | null }) => {
-      setEarliestYear(data.earliest_year)
-    })
-  }, [])
-
-  const currentYear = new Date().getFullYear()
-  const years = earliestYear
-    ? Array.from({ length: currentYear - earliestYear + 1 }, (_, i) => currentYear - i)
-    : []
+  const years = useAvailableYears()
 
   const value = periodFromDates(startDate, endDate)
 

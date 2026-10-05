@@ -24,6 +24,8 @@
       <div class="nav-menu-list">
         <a href="../architecture/backend-architecture.html">Backend architecture</a>
         <a href="../architecture/backend-reference.html">Backend reference</a>
+        <a href="../architecture/data-storage.html">Data storage and access</a>
+        <a href="../architecture/reader-writer.html">Reader and writer</a>
         <a href="../architecture/frontend-components.html">Frontend components</a>
       </div>
     </details>
@@ -57,7 +59,7 @@
       <h1>Overview</h1>
       <p>This page shows how data moves from the browser to the database, and from YouTube into the database.</p>
       <div class="meta-line">
-        <span>Source revision <code>8f69e1f</code></span>
+        <span>Source revision <code>820eb54</code></span>
       </div>
     </header>
 
@@ -70,7 +72,7 @@
             <tr><td><span class="tag fe">Browser UI</span></td><td>React + TypeScript single-page app served by Vite on <code>http://localhost:5173</code></td><td><code>frontend/src/</code></td></tr>
             <tr><td><span class="tag fe">API client</span></td><td>Plain <code>fetch</code> wrappers calling <code>http://localhost:8000</code></td><td><code>frontend/src/api.ts</code></td></tr>
             <tr><td><span class="tag route">HTTP API</span></td><td>FastAPI app; CORS allows only <code>http://localhost:5173</code></td><td><code>backend/server.py</code>, <code>backend/routes/</code></td></tr>
-            <tr><td><span class="tag db">Query layer</span></td><td>One module per data domain; every helper opens its own SQLite connection</td><td><code>backend/database/</code></td></tr>
+            <tr><td><span class="tag db">Query layer</span></td><td>Data classes, a shared reader and writer, and purpose-based reports</td><td><code>backend/database/</code></td></tr>
             <tr><td><span class="tag db">Storage</span></td><td>SQLite file <code>backend/data/youtube.db</code>, 12 tables</td><td><code>backend/schema.sql</code></td></tr>
             <tr><td><span class="tag sync">Sync engine</span></td><td>Stage plans on background threads inside the API process</td><td><code>backend/sync/</code></td></tr>
             <tr><td><span class="tag yt">External clients</span></td><td>YouTube Data API v3, YouTube Analytics API v2 (OAuth), Yahoo Finance via <code>yfinance</code></td><td><code>backend/youtube/</code>, <code>backend/sync/stages.py</code></td></tr>
@@ -83,7 +85,7 @@
     <section id="paths">
       <h2>Two independent paths</h2>
       <figure class="diagram">
-        <svg viewBox="0 0 980 480" role="img" aria-labelledby="paths-title">
+        <svg viewBox="0 0 980 530" role="img" aria-labelledby="paths-title">
           <title id="paths-title">Read path from user action to SQLite and back; write path from sync trigger through YouTube APIs into SQLite</title>
           <defs>
             <marker id="arrow" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse">
@@ -95,13 +97,13 @@
           <g class="node fe"><rect x="215" y="30" width="160" height="60" rx="8"/><text class="title" x="295" y="56" text-anchor="middle">Page effect</text><text class="sub" x="295" y="74" text-anchor="middle">useEffect + track()</text></g>
           <g class="node fe"><rect x="410" y="30" width="160" height="60" rx="8"/><text class="title" x="490" y="56" text-anchor="middle">api.ts</text><text class="sub" x="490" y="74" text-anchor="middle">fetch :8000</text></g>
           <g class="node route"><rect x="605" y="30" width="160" height="60" rx="8"/><text class="title" x="685" y="56" text-anchor="middle">routes/*.py</text><text class="sub" x="685" y="74" text-anchor="middle">38 endpoints</text></g>
-          <g class="node db"><rect x="800" y="30" width="160" height="60" rx="8"/><text class="title" x="880" y="56" text-anchor="middle">database/*.py</text><text class="sub" x="880" y="74" text-anchor="middle">parameterized SQL</text></g>
+          <g class="node db"><rect x="800" y="30" width="160" height="60" rx="8"/><text class="title" x="880" y="56" text-anchor="middle">database/*.py</text><text class="sub" x="880" y="74" text-anchor="middle">reports · reader · rows</text></g>
           <path class="edge" d="M180,60 L213,60" marker-end="url(#arrow)"/>
           <path class="edge" d="M375,60 L408,60" marker-end="url(#arrow)"/>
           <path class="edge" d="M570,60 L603,60" marker-end="url(#arrow)"/>
           <path class="edge" d="M765,60 L798,60" marker-end="url(#arrow)"/>
           <path class="edge dashed" d="M685,90 C685,140 295,140 295,92" marker-end="url(#arrow)"/>
-          <text class="edge-label" x="490" y="136" text-anchor="middle">JSON response → card re-renders</text>
+          <text class="edge-label" x="490" y="152" text-anchor="middle">JSON response → card re-renders</text>
 
           <g class="node db"><rect x="800" y="160" width="160" height="60" rx="8"/><text class="title" x="880" y="186" text-anchor="middle">SQLite</text><text class="sub" x="880" y="204" text-anchor="middle">data/youtube.db</text></g>
           <path class="edge" d="M880,90 L880,158" marker-end="url(#arrow)"/>
@@ -112,7 +114,7 @@
           <g class="node route"><rect x="215" y="280" width="160" height="60" rx="8"/><text class="title" x="295" y="306" text-anchor="middle">/sync/trigger</text><text class="sub" x="295" y="324" text-anchor="middle">validate + reserve</text></g>
           <g class="node sync"><rect x="410" y="280" width="160" height="60" rx="8"/><text class="title" x="490" y="306" text-anchor="middle">execute_plan</text><text class="sub" x="490" y="324" text-anchor="middle">background task</text></g>
           <g class="node sync"><rect x="605" y="280" width="160" height="60" rx="8"/><text class="title" x="685" y="306" text-anchor="middle">sync stages</text><text class="sub" x="685" y="324" text-anchor="middle">serial + 2 workers</text></g>
-          <g class="node db"><rect x="800" y="280" width="160" height="60" rx="8"/><text class="title" x="880" y="306" text-anchor="middle">database upserts</text><text class="sub" x="880" y="324" text-anchor="middle">+ sync_runs, coverage</text></g>
+          <g class="node db"><rect x="800" y="280" width="160" height="60" rx="8"/><text class="title" x="880" y="306" text-anchor="middle">database writer</text><text class="sub" x="880" y="324" text-anchor="middle">+ sync_runs, coverage</text></g>
           <path class="edge" d="M180,310 L213,310" marker-end="url(#arrow)"/>
           <path class="edge" d="M375,310 L408,310" marker-end="url(#arrow)"/>
           <path class="edge" d="M570,310 L603,310" marker-end="url(#arrow)"/>
@@ -120,6 +122,16 @@
 
           <g class="node yt"><rect x="560" y="400" width="250" height="60" rx="8"/><text class="title" x="685" y="426" text-anchor="middle">YouTube APIs · Yahoo Finance</text><text class="sub" x="685" y="444" text-anchor="middle">via backend/youtube/ and yfinance</text></g>
           <path class="edge" d="M685,340 L685,398" marker-end="url(#arrow)" marker-start="url(#arrow)"/>
+
+          <g aria-hidden="true">
+            <g class="node fe"><rect x="20" y="502" width="16" height="16" rx="3"/></g><text class="edge-label" x="42" y="514">Frontend</text>
+            <g class="node route"><rect x="120" y="502" width="16" height="16" rx="3"/></g><text class="edge-label" x="142" y="514">Backend API</text>
+            <g class="node db"><rect x="240" y="502" width="16" height="16" rx="3"/></g><text class="edge-label" x="262" y="514">Database</text>
+            <g class="node sync"><rect x="340" y="502" width="16" height="16" rx="3"/></g><text class="edge-label" x="362" y="514">Sync</text>
+            <g class="node yt"><rect x="420" y="502" width="16" height="16" rx="3"/></g><text class="edge-label" x="442" y="514">External service</text>
+            <path class="edge" d="M570,510 L610,510" marker-end="url(#arrow)"/><text class="edge-label" x="618" y="514">calls</text>
+            <path class="edge dashed" d="M680,510 L720,510" marker-end="url(#arrow)"/><text class="edge-label" x="728" y="514">response</text>
+          </g>
         </svg>
         <figcaption>The two paths share only SQLite (and the in-memory sync status read by <code>GET /sync/status</code>).</figcaption>
       </figure>
@@ -128,19 +140,19 @@
     <section id="read-path">
       <h2>Path 1: user action → response</h2>
       <div class="flow">
-        <div class="flow-step fe"><strong>1 · User action</strong><small>Filter, tab, sort and page values are URL query params, written with <code>useReplaceSearchParams()</code>. Typed search commits after 300 ms idle.</small></div>
+        <div class="flow-step fe"><strong>1 · User action</strong><small>A filter, tab, sort or page change updates the URL.</small></div>
         <div class="flow-arrow" aria-hidden="true"></div>
-        <div class="flow-step fe"><strong>2 · Effect runs</strong><small>A <code>useEffect</code> whose dependencies changed calls <code>api.ts</code>. <code>track()</code> marks the card loading and drops superseded responses.</small></div>
+        <div class="flow-step fe"><strong>2 · Effect runs</strong><small>The card's <code>useEffect</code> re-runs and calls <code>api.ts</code>.</small></div>
         <div class="flow-arrow" aria-hidden="true"></div>
-        <div class="flow-step fe"><strong>3 · api.ts</strong><small>Builds <code>http://localhost:8000&lt;path&gt;?&lt;params&gt;</code>, omitting empty params.</small></div>
+        <div class="flow-step fe"><strong>3 · api.ts</strong><small>Sends the request to the backend.</small></div>
         <div class="flow-arrow" aria-hidden="true"></div>
-        <div class="flow-step route"><strong>4 · Route</strong><small>Thin handler: checks a parent video/playlist exists (404), then calls one helper.</small></div>
+        <div class="flow-step route"><strong>4 · Route</strong><small>Checks the video or playlist exists, then calls a report for data.</small></div>
         <div class="flow-arrow" aria-hidden="true"></div>
-        <div class="flow-step db"><strong>5 · Query</strong><small>Helper opens its own connection, runs parameterized SQL, returns dicts.</small></div>
+        <div class="flow-step db"><strong>5 · Report</strong><small>The report runs its SQL through the reader and returns a finished result.</small></div>
         <div class="flow-arrow" aria-hidden="true"></div>
-        <div class="flow-step fe"><strong>6 · Render</strong><small>JSON lands in the card's <code>RequestState</code>; the card re-renders.</small></div>
+        <div class="flow-step fe"><strong>6 · Render</strong><small>The card re-renders with the JSON.</small></div>
       </div>
-      <p>Playlist-scoped analytics routes first resolve the playlist's member video IDs, then pass them to the same helper the channel-wide route uses. Every trigger per page is in <a href="requests.html">Requests</a>.</p>
+      <p>Playlist-scoped analytics routes first resolve the playlist's member video IDs, then pass them to the same report the channel-wide route uses. Every trigger per page is in <a href="requests.html">Requests</a>.</p>
 
       <h3 id="example">Worked example: changing the date range on <code>/analytics</code></h3>
       <div class="table-wrap">
@@ -148,10 +160,10 @@
           <thead><tr><th class="num">#</th><th>What happens</th><th>Source</th></tr></thead>
           <tbody>
             <tr><td class="num">1</td><td>User picks "Last 90 days" in the Period dropdown</td><td><code>components/PeriodSelect.tsx</code></td></tr>
-            <tr><td class="num">2</td><td><code>start_date</code>/<code>end_date</code> are written to the URL</td><td><code>pages/Analytics.tsx</code> (<code>updateDateParams</code>)</td></tr>
-            <tr><td class="num">3</td><td>Date-dependent effects re-run: stats, chart rows, uploads, traffic sources, top-by-source, search terms ×3, term videos ×2, top-videos table</td><td><code>pages/Analytics.tsx</code></td></tr>
+            <tr><td class="num">2</td><td><code>start_date</code>/<code>end_date</code> are written to the URL</td><td><code>pages/Analytics.tsx</code> (<code>setParams</code> from <code>useReplaceSearchParams</code>)</td></tr>
+            <tr><td class="num">3</td><td>The open tab's date-dependent effects re-run. On the Analytics tab: stats, uploads, chart rows and the top-videos table</td><td><code>hooks/useCollectionAnalytics.ts</code>, called by <code>components/AnalyticsTab.tsx</code></td></tr>
             <tr><td class="num">4</td><td>e.g. <code>getChannelAnalytics()</code> → <code>GET /analytics/videos?start_date=…&amp;end_date=…</code></td><td><code>frontend/src/api.ts</code></td></tr>
-            <tr><td class="num">5</td><td>Route → <code>database.get_aggregated_analytics()</code></td><td><code>routes/analytics.py</code>, <code>database/analytics.py</code></td></tr>
+            <tr><td class="num">5</td><td>Route → <code>analytics.daily_analytics(…)</code>, which runs its query through the reader with <code>fill_dates=…</code>; the reader fills days with no data for videos and Shorts</td><td><code>routes/analytics.py</code>, <code>database/reports/analytics.py</code>, <code>database/reader.py</code></td></tr>
             <tr><td class="num">6</td><td>Daily rows grouped by date and content type return; the chart re-renders</td><td><code>components/AnalyticsChart.tsx</code></td></tr>
           </tbody>
         </table>
@@ -161,22 +173,22 @@
     <section id="write-path">
       <h2>Path 2: YouTube → database</h2>
       <div class="flow">
-        <div class="flow-step fe"><strong>1 · Plan</strong><small>Sync page builds a plan from checked stages and their period/scope selectors.</small></div>
+        <div class="flow-step fe"><strong>1 · Plan</strong><small>The Sync page builds a plan from the checked stages.</small></div>
         <div class="flow-arrow" aria-hidden="true"></div>
-        <div class="flow-step route"><strong>2 · Accept</strong><small><code>POST /sync/trigger</code>: <code>validate_plan</code> (400), <code>try_begin_sync</code> (409), schedule <code>execute_plan</code>, reply <code>{queued: true}</code>.</small></div>
+        <div class="flow-step route"><strong>2 · Accept</strong><small><code>POST /sync/trigger</code> validates the plan and starts it in the background.</small></div>
         <div class="flow-arrow" aria-hidden="true"></div>
-        <div class="flow-step sync"><strong>3 · Serial stages</strong><small>playlists → videos → pruning → comments → fx_rates, fail-fast.</small></div>
+        <div class="flow-step sync"><strong>3 · Serial stages</strong><small>playlists → videos → pruning → comments → fx_rates, stopping at the first failure.</small></div>
         <div class="flow-arrow" aria-hidden="true"></div>
-        <div class="flow-step sync"><strong>4 · Analytics workers</strong><small>video_analytics, video_traffic_sources, search_insights, related_video_insights on ≤ 2 threads.</small></div>
+        <div class="flow-step sync"><strong>4 · Analytics workers</strong><small>The four Analytics API stages run on up to 2 threads.</small></div>
         <div class="flow-arrow" aria-hidden="true"></div>
-        <div class="flow-step yt"><strong>5 · Fetch</strong><small>Data API v3, Analytics API v2, or <code>yfinance</code> for FX.</small></div>
+        <div class="flow-step yt"><strong>5 · Fetch</strong><small>Each stage calls YouTube or Yahoo Finance.</small></div>
         <div class="flow-arrow" aria-hidden="true"></div>
-        <div class="flow-step db"><strong>6 · Write</strong><small>Upserts, one <code>sync_runs</code> row per started stage, <code>sync_coverage</code> months.</small></div>
+        <div class="flow-step db"><strong>6 · Write</strong><small>Each fetched record becomes a data class and is saved through the writer.</small></div>
       </div>
       <div class="card-grid">
-        <div class="card"><h3>Live status</h3><p>Held in memory in <code>sync/status.py</code>, served by <code>GET /sync/status</code>, polled every 5 s by the top navigation and the Sync page.</p></div>
-        <div class="card"><h3>Stop</h3><p><code>POST /sync/stop</code> sets a flag checked at safe checkpoints; in-flight requests and writes finish first.</p></div>
-        <div class="card"><h3>History</h3><p>Finished stages are read back with <code>GET /sync/runs</code> on the Sync page's History tab.</p></div>
+        <div class="card"><h3>Live status</h3><p>Kept in memory and polled through <code>GET /sync/status</code>.</p></div>
+        <div class="card"><h3>Stop</h3><p><code>POST /sync/stop</code> stops the sync at the next safe point.</p></div>
+        <div class="card"><h3>History</h3><p>Past syncs are listed through <code>GET /sync/runs</code>.</p></div>
       </div>
       <p>Stage semantics, scopes, coverage, and failure handling: <code>docs/references/sync.md</code>.</p>
     </section>
@@ -201,7 +213,7 @@
       <ol class="phases">
         <li><span class="phase-title">Log "Application startup"</span></li>
         <li><span class="phase-title"><code>database.init_db()</code></span> — creates any missing tables from <code>schema.sql</code>.</li>
-        <li><span class="phase-title"><code>database.mark_incomplete_sync_runs()</code></span> — marks rows left <code>running</code> by a killed process as <code>incomplete</code>.</li>
+        <li><span class="phase-title"><code>database.writer.update(SyncRun(status="incomplete"), where=…running…)</code></span> — marks rows left <code>running</code> by a killed process as <code>incomplete</code>.</li>
         <li><span class="phase-title">Serve requests</span></li>
         <li><span class="phase-title">Log "Application shutdown"</span> — in a <code>finally</code> block.</li>
       </ol>

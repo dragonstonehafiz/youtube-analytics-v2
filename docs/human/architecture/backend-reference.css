@@ -4,10 +4,9 @@
 
 dl.file-list {
   display: grid;
-  grid-template-columns: max-content 1fr;
+  grid-template-columns: max-content minmax(0, 1fr);
   gap: 6px 20px;
   margin: 8px 0 20px;
-  max-width: 80ch;
 }
 dl.file-list dt { font-weight: 600; }
 dl.file-list dd { margin: 0; color: var(--text); }
@@ -27,8 +26,9 @@ dl.returns-list dd.used-by { color: var(--text-muted); font-size: 0.88rem; line-
 .file-group > p { color: var(--text-muted); margin: 4px 0 12px; }
 .file-group dl.file-list { margin-bottom: 0; }
 
-/* ---------- Route call lines ---------- */
+/* ---------- Call-chain figures ---------- */
 
-ul.route-lines { list-style: none; padding: 0; margin: 8px 0 0; max-width: none; }
-ul.route-lines li { padding: 5px 0; border-bottom: 1px solid var(--border); }
-ul.route-lines li:last-child { border-bottom: none; }
+#call-chains h3 { margin-top: 28px; }
+#call-chains h3 small { font-weight: 400; margin-left: 6px; }
+.call-figure { margin: 12px 0 16px; background: var(--surface); border: 1px solid var(--border); border-radius: var(--radius); box-shadow: var(--shadow); padding: 14px 16px; overflow-x: auto; }
+.call-figure img { display: block; max-width: none; height: auto; }

@@ -1,0 +1,107 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1125" height="604" viewBox="0 0 1125 604" role="img" aria-label="Traffic sources: routes/analytics.py and routes/videos.py">
+<title>Traffic sources: routes/analytics.py and routes/videos.py</title>
+<desc>Lanes from left to right: Frontend (api.ts), API routes, Reports, Reader, SQLite. GET /analytics/traffic-sources in API routes. getChannelTrafficSources in Frontend (api.ts) (Analytics · Home). GET /analytics/playlists/{id}/traffic-sources in API routes. getPlaylistTrafficSources in Frontend (api.ts) (PlaylistAnalytics). scope_video_ids in API routes. GET /videos/{id}/traffic-sources in API routes. getVideoTrafficSources in Frontend (api.ts) (VideoAnalytics). require_owned_video in API routes. fetch in Reader (fills days). video_traffic_sources in SQLite. videos in SQLite. traffic.daily_traffic_sources in Reports. GET /analytics/traffic-sources/top in API routes. getTopVideosByTrafficSource in Frontend (api.ts) (Analytics). GET /analytics/playlists/{id}/traffic-sources/top in API routes. getPlaylistTopVideosByTrafficSource in Frontend (api.ts) (PlaylistAnalytics). scope_video_ids in API routes. fetch_joined in Reader. video_traffic_sources in SQLite. videos in SQLite. group_by in Reader (in memory). traffic.top_videos_by_traffic_source in Reports. getChannelTrafficSources calls GET /analytics/traffic-sources: filters. getPlaylistTrafficSources calls GET /analytics/playlists/{id}/traffic-sources: id, filters. GET /analytics/playlists/{id}/traffic-sources calls scope_video_ids: playlist_id. getVideoTrafficSources calls GET /videos/{id}/traffic-sources: id, dates. GET /videos/{id}/traffic-sources calls require_owned_video: video_id. traffic.daily_traffic_sources calls fetch: daily rows. fetch queries video_traffic_sources: views. fetch queries videos: filters. GET /analytics/traffic-sources calls traffic.daily_traffic_sources: filters. GET /analytics/playlists/{id}/traffic-sources calls traffic.daily_traffic_sources: video_ids. GET /videos/{id}/traffic-sources calls traffic.daily_traffic_sources: [video_id]. getTopVideosByTrafficSource calls GET /analytics/traffic-sources/top: filters. getPlaylistTopVideosByTrafficSource calls GET /analytics/playlists/{id}/traffic-sources/top: id, filters. GET /analytics/playlists/{id}/traffic-sources/top calls scope_video_ids: playlist_id. traffic.top_videos_by_traffic_source calls fetch_joined: ranked. fetch_joined queries video_traffic_sources: views. fetch_joined queries videos: fields. traffic.top_videos_by_traffic_source calls group_by: per source. GET /analytics/traffic-sources/top calls traffic.top_videos_by_traffic_source: filters. GET /analytics/playlists/{id}/traffic-sources/top calls traffic.top_videos_by_traffic_source: video_ids.</desc>
+<style>
+  .bg { fill: #ffffff; }
+  text { font-family: system-ui, -apple-system, "Segoe UI", Roboto, Arial, sans-serif; font-size: 14px; fill: #1c2330; }
+  .code, .code-line { font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, "Liberation Mono", monospace; font-size: 11.5px; }
+  .code { font-weight: 600; }
+  .sub { font-size: 12px; fill: #5b6475; }
+  .lane rect { fill: #f0f2f5; stroke: #d9dee6; stroke-width: 1; }
+  .lane text { font-size: 12px; font-weight: 700; letter-spacing: 0.04em; fill: #5b6475; }
+  .node rect { stroke-width: 1.5; }
+  .fe rect { fill: #efe9fa; stroke: #6a4bb3; }
+  .route rect { fill: #e6effa; stroke: #2f6fb3; }
+  .db rect { fill: #e4f4ec; stroke: #2c8a5a; }
+  .sync rect { fill: #f8eedd; stroke: #8a5a14; }
+  .yt rect { fill: #fbe6e4; stroke: #b3261e; }
+  .edge { fill: none; stroke: #5b6475; stroke-width: 1.6; }
+  .edge.dashed { stroke-dasharray: 6 5; }
+  .edge-label { font-size: 12px; fill: #5b6475; }
+  .arrowhead { fill: #5b6475; }
+  @media (prefers-color-scheme: dark) {
+    .bg { fill: #1a1f27; }
+    text { fill: #e6e9ef; }
+    .sub, .edge-label, .lane text { fill: #9aa3b2; }
+    .lane rect { fill: #222833; stroke: #2f3744; }
+    .fe rect { fill: #2a2340; stroke: #b9a2f5; }
+    .route rect { fill: #1b2a3d; stroke: #7db3ef; }
+    .db rect { fill: #183126; stroke: #6fd3a0; }
+    .sync rect { fill: #342816; stroke: #e7b56a; }
+    .yt rect { fill: #3a1d1b; stroke: #ff8a80; }
+    .edge { stroke: #9aa3b2; }
+    .arrowhead { fill: #9aa3b2; }
+  }
+</style>
+<rect class="bg" width="1125" height="604" rx="10"/>
+  <defs>
+    <marker id="arrow" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path class="arrowhead" d="M0,0 L10,5 L0,10 z"/></marker>
+  </defs>
+  <g class="lane"><rect x="12" y="8" width="189" height="588" rx="8"/><text x="106" y="28" text-anchor="middle">Frontend (api.ts)</text></g>
+  <g class="lane"><rect x="261" y="8" width="195" height="588" rx="8"/><text x="358" y="28" text-anchor="middle">API routes</text></g>
+  <g class="lane"><rect x="516" y="8" width="208" height="588" rx="8"/><text x="620" y="28" text-anchor="middle">Reports</text></g>
+  <g class="lane"><rect x="784" y="8" width="106" height="588" rx="8"/><text x="837" y="28" text-anchor="middle">Reader</text></g>
+  <g class="lane"><rect x="950" y="8" width="163" height="588" rx="8"/><text x="1032" y="28" text-anchor="middle">SQLite</text></g>
+  <g class="node route"><rect x="268" y="50" width="181" height="49" rx="7"/><text class="code" x="358" y="71" text-anchor="middle">GET /analytics/</text><text class="code" x="358" y="87" text-anchor="middle">traffic-sources</text></g>
+  <g class="node fe"><rect x="19" y="50" width="175" height="49" rx="7"/><text class="code" x="106" y="72" text-anchor="middle">getChannelTrafficSources</text><text class="sub" x="106" y="86" text-anchor="middle">Analytics · Home</text></g>
+  <g class="node route"><rect x="268" y="113" width="181" height="49" rx="7"/><text class="code" x="358" y="134" text-anchor="middle">GET /analytics/playlists/</text><text class="code" x="358" y="150" text-anchor="middle">{id}/traffic-sources</text></g>
+  <g class="node fe"><rect x="19" y="113" width="175" height="49" rx="7"/><text class="code" x="106" y="134" text-anchor="middle">getPlaylistTrafficSources</text><text class="sub" x="106" y="150" text-anchor="middle">PlaylistAnalytics</text></g>
+  <g class="node route"><rect x="268" y="192" width="181" height="33" rx="7"/><text class="code" x="358" y="213" text-anchor="middle">scope_video_ids</text></g>
+  <g class="node route"><rect x="268" y="239" width="181" height="49" rx="7"/><text class="code" x="358" y="260" text-anchor="middle">GET /videos/{id}/</text><text class="code" x="358" y="276" text-anchor="middle">traffic-sources</text></g>
+  <g class="node fe"><rect x="19" y="239" width="175" height="49" rx="7"/><text class="code" x="106" y="260" text-anchor="middle">getVideoTrafficSources</text><text class="sub" x="106" y="276" text-anchor="middle">VideoAnalytics</text></g>
+  <g class="node route"><rect x="268" y="318" width="181" height="33" rx="7"/><text class="code" x="358" y="339" text-anchor="middle">require_owned_video</text></g>
+  <g class="node db"><rect x="791" y="50" width="92" height="58" rx="7"/><text class="code" x="837" y="76" text-anchor="middle">fetch</text><text class="sub" x="837" y="91" text-anchor="middle">fills days</text></g>
+  <g class="node db"><rect x="957" y="50" width="149" height="26" rx="7"/><text class="code" x="1032" y="68" text-anchor="middle">video_traffic_sources</text></g>
+  <g class="node db"><rect x="957" y="82" width="149" height="26" rx="7"/><text class="code" x="1032" y="100" text-anchor="middle">videos</text></g>
+  <g class="node db"><rect x="523" y="50" width="194" height="301" rx="7"/><text class="code" x="620" y="71" text-anchor="middle">traffic.</text><text class="code" x="620" y="87" text-anchor="middle">daily_traffic_sources</text></g>
+  <g class="node route"><rect x="268" y="375" width="181" height="64" rx="7"/><text class="code" x="358" y="404" text-anchor="middle">GET /analytics/</text><text class="code" x="358" y="420" text-anchor="middle">traffic-sources/top</text></g>
+  <g class="node fe"><rect x="19" y="375" width="175" height="64" rx="7"/><text class="code" x="106" y="396" text-anchor="middle">getTopVideosBy</text><text class="code" x="106" y="412" text-anchor="middle">TrafficSource</text><text class="sub" x="106" y="427" text-anchor="middle">Analytics</text></g>
+  <g class="node route"><rect x="268" y="453" width="181" height="64" rx="7"/><text class="code" x="358" y="482" text-anchor="middle">GET /analytics/playlists/</text><text class="code" x="358" y="498" text-anchor="middle">{id}/traffic-sources/top</text></g>
+  <g class="node fe"><rect x="19" y="453" width="175" height="64" rx="7"/><text class="code" x="106" y="474" text-anchor="middle">getPlaylistTopVideos</text><text class="code" x="106" y="490" text-anchor="middle">ByTrafficSource</text><text class="sub" x="106" y="505" text-anchor="middle">PlaylistAnalytics</text></g>
+  <g class="node route"><rect x="268" y="547" width="181" height="33" rx="7"/><text class="code" x="358" y="568" text-anchor="middle">scope_video_ids</text></g>
+  <g class="node db"><rect x="791" y="375" width="92" height="58" rx="7"/><text class="code" x="837" y="408" text-anchor="middle">fetch_joined</text></g>
+  <g class="node db"><rect x="957" y="375" width="149" height="26" rx="7"/><text class="code" x="1032" y="392" text-anchor="middle">video_traffic_sources</text></g>
+  <g class="node db"><rect x="957" y="407" width="149" height="26" rx="7"/><text class="code" x="1032" y="424" text-anchor="middle">videos</text></g>
+  <g class="node db"><rect x="791" y="443" width="92" height="48" rx="7"/><text class="code" x="837" y="464" text-anchor="middle">group_by</text><text class="sub" x="837" y="479" text-anchor="middle">in memory</text></g>
+  <g class="node db"><rect x="523" y="375" width="194" height="205" rx="7"/><text class="code" x="620" y="396" text-anchor="middle">traffic.</text><text class="code" x="620" y="412" text-anchor="middle">top_videos_by_traffic_source</text></g>
+  <path class="edge" d="M194,74 H267" marker-end="url(#arrow)"/>
+  <path class="edge" d="M194,138 H267" marker-end="url(#arrow)"/>
+  <path class="edge" d="M296,162 V191" marker-end="url(#arrow)"/>
+  <path class="edge" d="M194,264 H267" marker-end="url(#arrow)"/>
+  <path class="edge" d="M296,288 V317" marker-end="url(#arrow)"/>
+  <path class="edge" d="M717,79 H790" marker-end="url(#arrow)"/>
+  <path class="edge" d="M883,63 H956" marker-end="url(#arrow)"/>
+  <path class="edge" d="M883,95 H956" marker-end="url(#arrow)"/>
+  <path class="edge" d="M449,74 H522" marker-end="url(#arrow)"/>
+  <path class="edge" d="M449,138 H522" marker-end="url(#arrow)"/>
+  <path class="edge" d="M449,264 H522" marker-end="url(#arrow)"/>
+  <path class="edge" d="M194,407 H267" marker-end="url(#arrow)"/>
+  <path class="edge" d="M194,485 H267" marker-end="url(#arrow)"/>
+  <path class="edge" d="M296,517 V546" marker-end="url(#arrow)"/>
+  <path class="edge" d="M717,404 H790" marker-end="url(#arrow)"/>
+  <path class="edge" d="M883,388 H956" marker-end="url(#arrow)"/>
+  <path class="edge" d="M883,420 H956" marker-end="url(#arrow)"/>
+  <path class="edge" d="M717,467 H790" marker-end="url(#arrow)"/>
+  <path class="edge" d="M449,407 H522" marker-end="url(#arrow)"/>
+  <path class="edge" d="M449,485 H522" marker-end="url(#arrow)"/>
+  <text class="edge-label" x="230" y="70" text-anchor="middle">filters</text>
+  <text class="edge-label" x="230" y="132" text-anchor="middle">id, filters</text>
+  <text class="edge-label" x="304" y="180" text-anchor="start">playlist_id</text>
+  <text class="edge-label" x="230" y="258" text-anchor="middle">id, dates</text>
+  <text class="edge-label" x="304" y="306" text-anchor="start">video_id</text>
+  <text class="edge-label" x="753" y="74" text-anchor="middle">daily rows</text>
+  <text class="edge-label" x="919" y="58" text-anchor="middle">views</text>
+  <text class="edge-label" x="919" y="90" text-anchor="middle">filters</text>
+  <text class="edge-label" x="485" y="70" text-anchor="middle">filters</text>
+  <text class="edge-label" x="485" y="132" text-anchor="middle">video_ids</text>
+  <text class="edge-label" x="485" y="258" text-anchor="middle">[video_id]</text>
+  <text class="edge-label" x="230" y="402" text-anchor="middle">filters</text>
+  <text class="edge-label" x="230" y="480" text-anchor="middle">id, filters</text>
+  <text class="edge-label" x="304" y="536" text-anchor="start">playlist_id</text>
+  <text class="edge-label" x="753" y="399" text-anchor="middle">ranked</text>
+  <text class="edge-label" x="919" y="383" text-anchor="middle">views</text>
+  <text class="edge-label" x="919" y="415" text-anchor="middle">fields</text>
+  <text class="edge-label" x="753" y="462" text-anchor="middle">per source</text>
+  <text class="edge-label" x="485" y="402" text-anchor="middle">filters</text>
+  <text class="edge-label" x="485" y="480" text-anchor="middle">video_ids</text>
+</svg>

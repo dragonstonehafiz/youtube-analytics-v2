@@ -4,9 +4,10 @@ from datetime import date
 from unittest import mock
 
 import database
+from database import writer
 from sync import stages
 from sync.stages import SyncCounts
-from tests.support import IsolatedDatabaseTestCase, make_video
+from tests.support import IsolatedDatabaseTestCase, covered_periods, make_coverage, make_video
 
 
 class VideoAnalyticsCoverageTestCase(IsolatedDatabaseTestCase):
@@ -22,7 +23,7 @@ class VideoAnalyticsCoverageTestCase(IsolatedDatabaseTestCase):
         mock_date.today.return_value = date(2024, 3, 15)
         mock_date.fromisoformat = date.fromisoformat
         mock_date.side_effect = lambda *a, **k: date(*a, **k)
-        database.upsert_own_video(make_video("v1", "Alpha", published_at="2023-10-01T00:00:00Z"))
+        writer.write(make_video("v1", "Alpha", published_at="2023-10-01T00:00:00Z"))
 
     def _iter_mock(self, results: list) -> mock.Mock:
         return mock.patch("sync.stages.youtube.iter_video_analytics", side_effect=results).start()
@@ -33,22 +34,20 @@ class FirstSyncTest(VideoAnalyticsCoverageTestCase):
         # Nothing covered yet, so publish-through-yesterday is one contiguous gap: the
         # historical sweep and the forced previous/current pair merge into one range.
         fetch = self._iter_mock([iter([])])
-        mock.patch("sync.stages.database.upsert_video_analytics").start()
 
         stages.sync_video_analytics("incremental", None, SyncCounts())
 
         calls = [(c.args[1], c.args[2]) for c in fetch.call_args_list]
         self.assertEqual(calls, [("2023-10-01", "2024-03-14")])
-        covered = database.get_covered_periods("video_analytics", "v1", "2023-01", "2024-12")
+        covered = covered_periods("video_analytics", "v1", "2023-01", "2024-12")
         self.assertEqual(covered, {"2023-10", "2023-11", "2023-12", "2024-01", "2024-02", "2024-03"})
 
 
 class SteadyStateTest(VideoAnalyticsCoverageTestCase):
     def test_covered_history_is_skipped_but_the_forced_pair_still_runs(self) -> None:
-        database.upsert_coverage("video_analytics", "v1", ["2023-10", "2023-11", "2023-12", "2024-01"])
+        writer.write_many(make_coverage("video_analytics", "v1", ["2023-10", "2023-11", "2023-12", "2024-01"]))
         # Feb and Mar are adjacent months, so the forced pair coalesces into one range.
         fetch = self._iter_mock([iter([])])
-        mock.patch("sync.stages.database.upsert_video_analytics").start()
 
         stages.sync_video_analytics("incremental", None, SyncCounts())
 
@@ -59,15 +58,14 @@ class SteadyStateTest(VideoAnalyticsCoverageTestCase):
         # Feb (already covered) sorts chronologically before Mar (the only genuine
         # gap) — a regression test that appending Feb after Mar doesn't break
         # coalescing into one adjacent range.
-        database.upsert_coverage("video_analytics", "v1", ["2023-10", "2023-11", "2023-12", "2024-01", "2024-02"])
+        writer.write_many(make_coverage("video_analytics", "v1", ["2023-10", "2023-11", "2023-12", "2024-01", "2024-02"]))
         fetch = self._iter_mock([iter([])])
-        mock.patch("sync.stages.database.upsert_video_analytics").start()
 
         stages.sync_video_analytics("incremental", None, SyncCounts())
 
         calls = [(c.args[1], c.args[2]) for c in fetch.call_args_list]
         self.assertEqual(calls, [("2024-02-01", "2024-03-14")])
-        covered = database.get_covered_periods("video_analytics", "v1", "2024-02", "2024-03")
+        covered = covered_periods("video_analytics", "v1", "2024-02", "2024-03")
         self.assertEqual(covered, {"2024-02", "2024-03"})
 
 
@@ -76,9 +74,8 @@ class InternalGapTest(VideoAnalyticsCoverageTestCase):
         # Oct and Dec covered, Nov not: Nov is an isolated single-month range. Jan
         # through Mar are all uncovered/forced and mutually adjacent, so they coalesce
         # into one range.
-        database.upsert_coverage("video_analytics", "v1", ["2023-10", "2023-12"])
+        writer.write_many(make_coverage("video_analytics", "v1", ["2023-10", "2023-12"]))
         fetch = self._iter_mock([iter([]), iter([])])
-        mock.patch("sync.stages.database.upsert_video_analytics").start()
 
         stages.sync_video_analytics("incremental", None, SyncCounts())
 
@@ -87,20 +84,19 @@ class InternalGapTest(VideoAnalyticsCoverageTestCase):
             ("2023-11-01", "2023-11-30"),
             ("2024-01-01", "2024-03-14"),
         ])
-        covered = database.get_covered_periods("video_analytics", "v1", "2023-01", "2024-12")
+        covered = covered_periods("video_analytics", "v1", "2023-01", "2024-12")
         self.assertEqual(covered, {"2023-10", "2023-11", "2023-12", "2024-01", "2024-02", "2024-03"})
 
 
 class FailureLeavesRangeUncoveredTest(VideoAnalyticsCoverageTestCase):
     def test_a_later_range_failing_does_not_uncover_an_earlier_successful_one(self) -> None:
-        database.upsert_coverage("video_analytics", "v1", ["2023-10", "2023-12"])
+        writer.write_many(make_coverage("video_analytics", "v1", ["2023-10", "2023-12"]))
         self._iter_mock([iter([]), RuntimeError("quota exceeded")])
-        mock.patch("sync.stages.database.upsert_video_analytics").start()
 
         with self.assertRaises(RuntimeError):
             stages.sync_video_analytics("incremental", None, SyncCounts())
 
-        covered = database.get_covered_periods("video_analytics", "v1", "2023-01", "2024-12")
+        covered = covered_periods("video_analytics", "v1", "2023-01", "2024-12")
         self.assertEqual(covered, {"2023-10", "2023-11", "2023-12"})
         self.assertNotIn("2024-01", covered)
         self.assertNotIn("2024-02", covered)
@@ -118,7 +114,7 @@ class MultiYearBacklogTest(VideoAnalyticsCoverageTestCase):
         # about one video's request shape.
         with database.get_connection() as conn:
             conn.execute("DELETE FROM videos WHERE id = 'v1'")
-        database.upsert_own_video(make_video("v-old", "Old Video", published_at="2015-01-01T00:00:00Z"))
+        writer.write(make_video("v-old", "Old Video", published_at="2015-01-01T00:00:00Z"))
 
         def always_fails_after_first_chunk(video_id, start, range_end, **kwargs):
             if start == "2015-01-01":
@@ -128,11 +124,10 @@ class MultiYearBacklogTest(VideoAnalyticsCoverageTestCase):
         fetch = mock.patch(
             "sync.stages.youtube.iter_video_analytics", side_effect=always_fails_after_first_chunk
         ).start()
-        mock.patch("sync.stages.database.upsert_video_analytics").start()
 
         with self.assertRaises(RuntimeError):
             stages.sync_video_analytics("incremental", None, SyncCounts())
-        first_attempt = database.get_covered_periods("video_analytics", "v-old", "2015-01", "2015-12")
+        first_attempt = covered_periods("video_analytics", "v-old", "2015-01", "2015-12")
         self.assertEqual(first_attempt, {f"2015-{m:02d}" for m in range(1, 13)})
 
         # Retrying (e.g. next Incremental run) must not re-request 2015 at all, since
@@ -146,22 +141,20 @@ class MultiYearBacklogTest(VideoAnalyticsCoverageTestCase):
 
 class YearScopeTest(VideoAnalyticsCoverageTestCase):
     def test_year_scope_marks_every_month_it_spans_including_the_current_one(self) -> None:
-        database.upsert_own_video(make_video("v2", "Beta", published_at="2018-01-01T00:00:00Z"))
+        writer.write(make_video("v2", "Beta", published_at="2018-01-01T00:00:00Z"))
         self._iter_mock([iter([])])
-        mock.patch("sync.stages.database.upsert_video_analytics").start()
 
         stages.sync_video_analytics("year", 2019, SyncCounts())
 
-        covered = database.get_covered_periods("video_analytics", "v2", "2019-01", "2019-12")
+        covered = covered_periods("video_analytics", "v2", "2019-01", "2019-12")
         self.assertEqual(len(covered), 12)
 
     def test_all_scope_marks_the_still_open_current_month_too(self) -> None:
         self._iter_mock([iter([])])
-        mock.patch("sync.stages.database.upsert_video_analytics").start()
 
         stages.sync_video_analytics("all", None, SyncCounts())
 
-        covered = database.get_covered_periods("video_analytics", "v1", "2023-01", "2024-12")
+        covered = covered_periods("video_analytics", "v1", "2023-01", "2024-12")
         self.assertEqual(covered, {"2023-10", "2023-11", "2023-12", "2024-01", "2024-02", "2024-03"})
 
 
@@ -170,12 +163,11 @@ class TrafficSourcesParityTest(VideoAnalyticsCoverageTestCase):
         fetch = mock.patch(
             "sync.stages.youtube.iter_video_traffic_sources", side_effect=[iter([])]
         ).start()
-        mock.patch("sync.stages.database.upsert_video_traffic_source").start()
 
         stages.sync_video_traffic_sources("incremental", None, SyncCounts())
 
         self.assertEqual(fetch.call_count, 1)
-        covered = database.get_covered_periods("video_traffic_sources", "v1", "2023-01", "2024-12")
+        covered = covered_periods("video_traffic_sources", "v1", "2023-01", "2024-12")
         self.assertEqual(covered, {"2023-10", "2023-11", "2023-12", "2024-01", "2024-02", "2024-03"})
         # video_analytics coverage is untouched by the traffic-sources sync.
-        self.assertEqual(database.get_covered_periods("video_analytics", "v1", "2023-01", "2024-12"), set())
+        self.assertEqual(covered_periods("video_analytics", "v1", "2023-01", "2024-12"), set())

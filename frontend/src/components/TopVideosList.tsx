@@ -66,11 +66,11 @@ export default function TopVideosList({ videos, sortBy, onSort, loading, error =
                 <tr key={v.id}>
                   <td>
                     {v.thumbnail_url
-                      ? <img src={v.thumbnail_url} alt="" className="top-videos-thumb" />
-                      : <div className="top-videos-thumb top-videos-thumb--placeholder">{i + 1}</div>
+                      ? <img src={v.thumbnail_url} alt="" className="thumb-large" />
+                      : <div className="thumb-large thumb-placeholder top-videos-thumb-rank">{i + 1}</div>
                     }
                   </td>
-                  <td className="top-videos-title"><Link to={`/analytics/videos/${v.id}`}>{v.title}</Link></td>
+                  <td className="cell-title"><Link to={`/analytics/videos/${v.id}`}>{v.title}</Link></td>
                   <td>{v.published_at.slice(0, 10)}</td>
                   <td>{v.period_views.toLocaleString()}</td>
                   <td>{v.period_watch_time_hours.toLocaleString(undefined, { maximumFractionDigits: 0 })}</td>

@@ -170,8 +170,8 @@ describe('top videos by search term', () => {
     renderHome()
 
     await waitFor(() => expect(mockGetVideosBySearchTerm).toHaveBeenCalled())
-    const [term, query] = mockGetVideosBySearchTerm.mock.calls[0]
-    expect(term).toBe('cats')
+    const [query] = mockGetVideosBySearchTerm.mock.calls[0]
+    expect(query.searchTerm).toBe('cats')
     expect(query).not.toHaveProperty('contentType')
 
     const shell = cardFor(VIDEO_BY_TERM_HEADING)

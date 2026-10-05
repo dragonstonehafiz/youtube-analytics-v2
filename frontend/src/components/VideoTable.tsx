@@ -1,6 +1,7 @@
 import { Link } from 'react-router-dom'
 import type { Video } from '@/types'
-import PeriodSelect from '@/components/PeriodSelect'
+import FilterBar from '@/components/FilterBar'
+import Pagination from '@/components/Pagination'
 import AsyncCard from '@/components/AsyncCard'
 import { useDebouncedInput } from '@/hooks/useDebouncedInput'
 import '@/components/VideoTable.css'
@@ -55,50 +56,16 @@ export default function VideoTable({
 
   return (
     <>
-      <div className="filter-bar">
-        <PeriodSelect
-          startDate={startDate}
-          endDate={endDate}
-          onChange={(sd, ed) => onFilterChange(title, sd, ed, contentType, privacyStatus)}
-        />
-        <label>
-          From
-          <input type="date" value={startDate} onChange={e => onFilterChange(title, e.target.value, endDate, contentType, privacyStatus)} />
-        </label>
-        <label>
-          To
-          <input type="date" value={endDate} onChange={e => onFilterChange(title, startDate, e.target.value, contentType, privacyStatus)} />
-        </label>
-        <div className="filter-bar-sep" />
-        <label>
-          Title
-          <input
-            type="text"
-            placeholder="Search…"
-            value={titleDraft}
-            onChange={e => setTitleDraft(e.target.value)}
-          />
-        </label>
-        <div className="filter-bar-sep" />
-        <label>
-          Type
-          <select value={contentType} onChange={e => onFilterChange(title, startDate, endDate, e.target.value, privacyStatus)}>
-            <option value="">All</option>
-            <option value="video">Video</option>
-            <option value="short">Short</option>
-          </select>
-        </label>
-        <div className="filter-bar-sep" />
-        <label>
-          Privacy
-          <select value={privacyStatus} onChange={e => onFilterChange(title, startDate, endDate, contentType, e.target.value)}>
-            <option value="">All</option>
-            <option value="public">Public</option>
-            <option value="private">Private</option>
-            <option value="unlisted">Unlisted</option>
-          </select>
-        </label>
-      </div>
+      <FilterBar
+        dates={{
+          startDate: { value: startDate, onChange: v => onFilterChange(title, v, endDate, contentType, privacyStatus) },
+          endDate: { value: endDate, onChange: v => onFilterChange(title, startDate, v, contentType, privacyStatus) },
+          onPeriodChange: (sd, ed) => onFilterChange(title, sd, ed, contentType, privacyStatus),
+        }}
+        title={{ value: titleDraft, onChange: setTitleDraft }}
+        contentType={{ value: contentType, onChange: v => onFilterChange(title, startDate, endDate, v, privacyStatus) }}
+        privacyStatus={{ value: privacyStatus, onChange: v => onFilterChange(title, startDate, endDate, contentType, v) }}
+      />
 
       <AsyncCard variant="table" loading={loading} error={error} className="video-table-card">
         <div className="table-overflow-wrap">
@@ -154,15 +121,7 @@ export default function VideoTable({
           </table>
         </div>
         {totalPages > 1 && (
-          <div className="pagination">
-            <button type="button" className="btn-ghost" onClick={() => onPageChange(page - 1)} disabled={page <= 1}>
-              Previous
-            </button>
-            <span className="pagination-info">Page {page} of {totalPages}</span>
-            <button type="button" className="btn-ghost" onClick={() => onPageChange(page + 1)} disabled={page >= totalPages}>
-              Next
-            </button>
-          </div>
+          <Pagination page={page} totalPages={totalPages} onChange={onPageChange} />
         )}
       </AsyncCard>
     </>

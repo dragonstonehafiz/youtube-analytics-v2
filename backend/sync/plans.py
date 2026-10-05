@@ -4,7 +4,7 @@ from collections.abc import Sequence
 from dataclasses import dataclass
 from datetime import date
 
-import database
+from database import Video, reader
 
 # The selected serial stages that must finish, in this order, before any selected
 # Analytics API stage begins. `pruning` sits after both discovery stages it depends on;
@@ -89,7 +89,8 @@ class PlanStage:
 
 def available_years() -> tuple[int, ...]:
     """Return selectable analytics years from newest to oldest."""
-    earliest = database.get_earliest_published_year()
+    earliest_published = reader.scalar(Video, "MIN", "published_at", where=[("own", "=", True)])
+    earliest = int(earliest_published[:4]) if earliest_published else None
     current_year = date.today().year
     if earliest is None or earliest > current_year:
         return ()

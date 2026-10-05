@@ -12,6 +12,8 @@ from googleapiclient.errors import HttpError
 from logging_config import configure_logging, reset_logging
 from sync import stages
 from sync.stages import COMMENT_INCREMENTAL_OVERLAP, SyncCounts
+from database import Comment, CommentAuthor, NotExists
+from tests.support import owned_videos, patch_stage_reads, patch_stage_writes
 from youtube import data_api
 
 # These tests drive the comments stage and fetcher, both of which log through the real
@@ -76,26 +78,19 @@ class CommentStageTestCase(unittest.TestCase):
 
     def setUp(self) -> None:
         self.addCleanup(mock.patch.stopall)
-        mock.patch("sync.stages.database.get_owned_video_ids", return_value=["v1"]).start()
-        mock.patch("sync.stages.database.get_owned_video", return_value={"title": "A video"}).start()
-        self.known = mock.patch(
-            "sync.stages.database.get_comment_ids_for_video", return_value=set()
-        ).start()
-        self.upsert_author = mock.patch("sync.stages.database.upsert_comment_author").start()
-        self.upsert_comment = mock.patch("sync.stages.database.upsert_comment").start()
-        self.cleanup = mock.patch(
-            "sync.stages.database.delete_orphan_comment_authors", return_value=0
-        ).start()
+        self.reads = patch_stage_reads()
+        self.reads.videos = owned_videos("v1", title="A video")
+        self.writes = patch_stage_writes()
         self.iter_threads = mock.patch("sync.stages.youtube.iter_comment_threads").start()
 
     @property
     def written_ids(self) -> list[str]:
-        return [call.args[0]["id"] for call in self.upsert_comment.call_args_list]
+        return [comment.id for comment in self.writes.of(Comment)]
 
 
 class IncrementalBoundaryTest(CommentStageTestCase):
     def test_stops_one_overlap_past_the_first_known_comment(self) -> None:
-        self.known.return_value = {"c50"}
+        self.reads.comment_ids = {"c50"}
         self.iter_threads.return_value = iter(
             [_normalized(f"c{n}") for n in range(1, 301)]
         )
@@ -109,7 +104,7 @@ class IncrementalBoundaryTest(CommentStageTestCase):
         self.assertEqual(self.written_ids[-1], f"c{50 + COMMENT_INCREMENTAL_OVERLAP}")
 
     def test_counts_the_boundary_item_it_stopped_on_as_fetched(self) -> None:
-        self.known.return_value = {"c1"}
+        self.reads.comment_ids = {"c1"}
         self.iter_threads.return_value = iter(
             [_normalized(f"c{n}") for n in range(1, 301)]
         )
@@ -139,7 +134,7 @@ class IncrementalBoundaryTest(CommentStageTestCase):
         self.assertEqual(self.written_ids, ["recent-1", "recent-2"])
 
     def test_never_deletes_comments(self) -> None:
-        self.known.return_value = {"c1"}
+        self.reads.comment_ids = {"c1"}
         self.iter_threads.return_value = iter([_normalized("c1")])
         counts = SyncCounts()
 
@@ -150,7 +145,7 @@ class IncrementalBoundaryTest(CommentStageTestCase):
 
 class FullDataScanTest(CommentStageTestCase):
     def test_reads_past_known_comments_and_the_cutoff(self) -> None:
-        self.known.return_value = {"c1"}
+        self.reads.comment_ids = {"c1"}
         self.iter_threads.return_value = iter([
             _normalized("c1"),
             _normalized("c2"),
@@ -173,33 +168,39 @@ class FullDataScanTest(CommentStageTestCase):
 
 class CommentStageBehaviourTest(CommentStageTestCase):
     def test_writes_the_author_before_its_comment(self) -> None:
-        order: list[str] = []
-        self.upsert_author.side_effect = lambda author: order.append("author")
-        self.upsert_comment.side_effect = lambda comment: order.append("comment")
         self.iter_threads.return_value = iter([_normalized("c1")])
 
         stages.sync_comments("incremental", SyncCounts())
 
-        self.assertEqual(order, ["author", "comment"])
+        self.assertEqual([type(row) for row in self.writes.rows], [CommentAuthor, Comment])
+        (comment,) = self.writes.of(Comment)
+        self.assertEqual(comment, Comment.from_dict({**_normalized("c1")["comment"], "updated_at": comment.updated_at}))
 
     def test_one_failed_item_does_not_stop_the_others(self) -> None:
-        self.upsert_comment.side_effect = [RuntimeError("constraint"), None]
+        def fail_bad_comment(row: object) -> None:
+            if isinstance(row, Comment) and row.id == "bad":
+                raise RuntimeError("constraint")
+
+        self.writes.fail = fail_bad_comment
         self.iter_threads.return_value = iter([_normalized("bad"), _normalized("good")])
         counts = SyncCounts()
 
         stages.sync_comments("incremental", counts)
 
-        self.assertEqual(self.written_ids, ["bad", "good"])
+        self.assertEqual(self.written_ids, ["good"])
         # The failed comment's author write still counted; its comment write did not.
         self.assertEqual(counts.rows_written, 3)
 
     def test_orphan_author_cleanup_counts_as_deletions(self) -> None:
-        self.cleanup.return_value = 4
+        self.writes.deleted[CommentAuthor] = 4
         self.iter_threads.return_value = iter([])
         counts = SyncCounts()
 
         stages.sync_comments("incremental", counts)
 
+        self.assertEqual(
+            self.writes.deletes, [(CommentAuthor, [NotExists(Comment, (("author_id", "id"),))])]
+        )
         self.assertEqual(counts.rows_deleted, 4)
 
     def test_takes_its_worklist_from_the_database_only(self) -> None:

@@ -109,9 +109,9 @@ The last command should produce no output when the change is genuinely docs-only
 ## Adding a backend route
 
 1. Add the handler in the matching `backend/routes/<resource>.py` (`videos.py`, `playlists.py`, `analytics.py`, `comments.py`, `synchronization.py`, or `metadata.py`).
-2. Add the corresponding DB helper in the matching `backend/database/<domain>.py` if the query doesn't already exist — follow the parameterized-query and table-alias conventions in `database.md`.
+2. Read through `database.reader` directly only for a simple one-table check (`reader.select()`/`select_one()`/`scalar()`). A join, aggregate, ranking, or paged list belongs in a report function under `backend/database/reports/` (in the module for its purpose) that runs its SQL with `reader.fetch()`/`fetch_joined()`, fills daily series with `fill_dates=reader.DateFill(...)`, applies per-group top-N with `reader.group_by(..., limit=N)`, serializes, and returns the finished result; the handler returns that result, adding only an envelope, validation, and 404s. Follow the reports' parameterized-query and table-alias conventions and the shared fragments in `reports/_conditions.py`.
 3. Update `api.md` with the new route's method, path, params, and response shape.
-4. Run `.venv/Scripts/python.exe -m mypy routes/<resource>.py database/<domain>.py` (from `backend/`, using the venv interpreter — see [Backend verification](#backend-verification)).
+4. Run `.venv/Scripts/python.exe -m mypy routes/<resource>.py` plus every changed `database/` file (from `backend/`, using the venv interpreter — see [Backend verification](#backend-verification)).
 
 ## Adding a frontend page
 

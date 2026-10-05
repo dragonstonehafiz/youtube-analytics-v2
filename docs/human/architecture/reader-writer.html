@@ -1,0 +1,200 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Reader and Writer</title>
+<link rel="stylesheet" href="../human-docs.css">
+<link rel="stylesheet" href="reader-writer.css">
+<script src="../human-docs.js" defer></script>
+</head>
+<body>
+<nav class="site-nav" aria-label="Human documentation">
+  <div class="site-nav-inner">
+    <span class="site-nav-brand">YouTube Analytics <span>docs</span></span>
+    <details class="nav-menu">
+      <summary>App flow</summary>
+      <div class="nav-menu-list">
+        <a href="../app-flow/overview.html">Overview</a>
+        <a href="../app-flow/requests.html">Requests</a>
+      </div>
+    </details>
+    <details class="nav-menu current">
+      <summary>Architecture</summary>
+      <div class="nav-menu-list">
+        <a href="backend-architecture.html">Backend architecture</a>
+        <a href="backend-reference.html">Backend reference</a>
+        <a href="data-storage.html">Data storage and access</a>
+        <a href="reader-writer.html" aria-current="page">Reader and writer</a>
+        <a href="frontend-components.html">Frontend components</a>
+      </div>
+    </details>
+    <details class="nav-menu">
+      <summary>Suggestions</summary>
+      <div class="nav-menu-list">
+        <a href="../suggestions/repeated-code.html">Repeated code</a>
+        <a href="../suggestions/efficiency.html">Efficiency</a>
+        <a href="../suggestions/dead-code.html">Dead code</a>
+      </div>
+    </details>
+  </div>
+</nav>
+
+<div class="page">
+  <aside class="toc" aria-label="On this page">
+    <h2>On this page</h2>
+    <ol>
+      <li><a href="#reader">Reader</a></li>
+      <li><a href="#writer">Writer</a></li>
+    </ol>
+  </aside>
+
+  <main>
+    <header class="hero">
+      <h1>Reader and writer</h1>
+      <p>This page explains the functions in <code>database/reader.py</code> and <code>database/writer.py</code>.</p>
+    </header>
+
+    <section id="reader">
+      <h2>Reader</h2>
+      <div class="table-wrap">
+        <table>
+          <thead><tr><th>Function</th><th>What it does</th></tr></thead>
+          <tbody>
+            <tr><td><code>select</code></td><td>Returns rows from one table</td></tr>
+            <tr><td><code>select_one</code></td><td>Returns the first matching row from one table, or <code>None</code></td></tr>
+            <tr><td><code>fetch</code></td><td>Runs a prepared query and returns one data class per row</td></tr>
+            <tr><td><code>fetch_joined</code></td><td>Runs a prepared query that joins tables and returns each row split into data classes and totals</td></tr>
+            <tr><td><code>scalar</code></td><td>Returns the <code>MIN</code>, <code>MAX</code>, <code>SUM</code> or <code>COUNT</code> of one column in one table</td></tr>
+            <tr><td><code>fetch_scalar</code></td><td>Runs a prepared query and returns its single value</td></tr>
+            <tr><td><code>group_by</code></td><td>Splits rows that were already read into lists by one field</td></tr>
+            <tr><td><code>connect</code></td><td>Opens one connection for several reads</td></tr>
+          </tbody>
+        </table>
+      </div>
+
+      <h3>SELECT</h3>
+      <div class="fn-list">
+        <div class="card fn-card">
+          <h3><code>select(Model, fields, where=, order_by=, limit=, offset=)</code></h3>
+          <p>Returns the rows of one table that match <code>where</code>, reading only the listed columns.</p>
+<pre class="code"><code>reader.select(Comment, ("id",), where=[("video_id", "=", "v-1")])
+# [Comment(id="c-1"), Comment(id="c-2")]</code></pre>
+        </div>
+        <div class="card fn-card">
+          <h3><code>select_one(Model, fields, where=, order_by=)</code></h3>
+          <p>Returns the first matching row, or <code>None</code> when nothing matches.</p>
+<pre class="code"><code>reader.select_one(FxRate, ("date", "usd_to_sgd"), order_by=("-date",))
+# FxRate(date="2024-06-01", usd_to_sgd=1.35)</code></pre>
+        </div>
+        <div class="card fn-card">
+          <h3><code>fetch(Model, query)</code></h3>
+          <p>Runs a prepared query and returns one data class per row. Every column the query returns must be a field of that class.</p>
+<pre class="code"><code>reader.fetch(SearchTerm, query)
+# [SearchTerm(search_term="cats", views=17), SearchTerm(search_term="dogs", views=9)]</code></pre>
+        </div>
+        <div class="card fn-card">
+          <h3><code>fetch_joined(query, models, values)</code></h3>
+          <p>Runs a prepared query that joins tables. Each row comes back with one data class per table, plus any calculated totals in <code>row.values</code>.</p>
+<pre class="code"><code>rows = reader.fetch_joined(query, (Video,), ("period_views",))
+rows[0][Video]    # Video(id="v-1", title="Alpha Video")
+rows[0].values    # {"period_views": 120}</code></pre>
+        </div>
+      </div>
+
+      <h3>Aggregates</h3>
+      <div class="fn-list">
+        <div class="card fn-card">
+          <h3><code>scalar(Model, aggregate, column, where=)</code></h3>
+          <p>Returns one value: the <code>MIN</code>, <code>MAX</code>, <code>SUM</code> or <code>COUNT</code> of a column over the matching rows.</p>
+<pre class="code"><code>reader.scalar(Video, "MIN", "published_at", where=[("own", "=", True)])
+# "2019-03-02T10:00:00Z"</code></pre>
+        </div>
+        <div class="card fn-card">
+          <h3><code>fetch_scalar(query)</code></h3>
+          <p>Runs a prepared query and returns the first column of its first row.</p>
+<pre class="code"><code>reader.fetch_scalar(count_query)
+# 342</code></pre>
+        </div>
+      </div>
+
+      <h3>GROUP BY</h3>
+      <div class="fn-list">
+        <div class="card fn-card">
+          <h3><code>group_by(rows, field, limit=)</code></h3>
+          <p>Splits rows that were already read into lists by one field, keeping their order. <code>limit</code> keeps only the first rows of each list.</p>
+<pre class="code"><code>reader.group_by(rows, (VideoTrafficSource, "traffic_source_type"), limit=10)
+# {"SEARCH": [first 10 rows], "SUGGESTED": [first 10 rows]}</code></pre>
+        </div>
+      </div>
+
+      <h3>Connections</h3>
+      <div class="fn-list">
+        <div class="card fn-card">
+          <h3><code>connect()</code></h3>
+          <p>Opens one connection, passed to each read as <code>conn=</code>, and closes it at the end of the block.</p>
+<pre class="code"><code>with reader.connect() as conn:
+    total = reader.fetch_scalar(count_query, conn=conn)
+    rows = reader.fetch_joined(page_query, (Video,), conn=conn)</code></pre>
+        </div>
+      </div>
+    </section>
+
+    <section id="writer">
+      <h2>Writer</h2>
+      <div class="table-wrap">
+        <table>
+          <thead><tr><th>Function</th><th>What it does</th></tr></thead>
+          <tbody>
+            <tr><td><code>write</code></td><td>Updates the row with the same key, or inserts it</td></tr>
+            <tr><td><code>write_many</code></td><td>Does the same for a batch of rows, all or none</td></tr>
+            <tr><td><code>update</code></td><td>Changes every row matching a condition</td></tr>
+            <tr><td><code>delete</code></td><td>Deletes every row matching a condition</td></tr>
+          </tbody>
+        </table>
+      </div>
+
+      <h3>INSERT or UPDATE</h3>
+      <div class="fn-list">
+        <div class="card fn-card">
+          <h3><code>write(row, returning=)</code></h3>
+          <p>Updates the row with the same key, or inserts it if there is none. Fields set to <code>None</code> are not written. <code>returning</code> gives back fields as stored, such as an ID SQLite generated.</p>
+<pre class="code"><code>writer.write(Video(id="v-1", title="Alpha Video", view_count=120))
+# 1
+
+writer.write(SyncRun(batch_id="b-1", sync_type="videos", status="running", started_at=now()), returning=("id",))
+# SyncRun(id=42)</code></pre>
+        </div>
+        <div class="card fn-card">
+          <h3><code>write_many(rows)</code></h3>
+          <p>Writes a batch of rows of one class the same way as <code>write</code>, in one transaction: if one row fails, none are saved.</p>
+<pre class="code"><code>writer.write_many([SearchTerm(video_id="v-1", month="2024-03", search_term="cats", views=17), ...])
+# 12</code></pre>
+        </div>
+      </div>
+
+      <h3>UPDATE</h3>
+      <div class="fn-list">
+        <div class="card fn-card">
+          <h3><code>update(row, where=)</code></h3>
+          <p>Sets the row's fields on every row matching <code>where</code> and returns how many changed. It never inserts.</p>
+<pre class="code"><code>writer.update(SyncRun(status="incomplete"), where=[("status", "=", "running")])
+# 2</code></pre>
+        </div>
+      </div>
+
+      <h3>DELETE</h3>
+      <div class="fn-list">
+        <div class="card fn-card">
+          <h3><code>delete(Model, where=)</code></h3>
+          <p>Deletes every row matching <code>where</code> and returns how many were deleted. A condition is required.</p>
+<pre class="code"><code>writer.delete(Video, where=[("own", "=", True), ("id", "NOT IN", ["v-1", "v-2"])])
+# 1</code></pre>
+        </div>
+      </div>
+    </section>
+
+  </main>
+</div>
+</body>
+</html>

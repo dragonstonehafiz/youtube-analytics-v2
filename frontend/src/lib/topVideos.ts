@@ -13,11 +13,3 @@ export function toTopVideoShape(v: Video): TopVideo {
     period_earnings_sgd: v.total_revenue_sgd,
   }
 }
-
-/** Returns [start, end] ISO dates for the rolling last-7-days window, inclusive of today. */
-export function last7Dates(): [string, string] {
-  const end = new Date()
-  const start = new Date()
-  start.setDate(start.getDate() - 6)
-  return [start.toISOString().slice(0, 10), end.toISOString().slice(0, 10)]
-}

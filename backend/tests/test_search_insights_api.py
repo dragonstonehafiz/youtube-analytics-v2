@@ -3,8 +3,10 @@ from __future__ import annotations
 import unittest
 
 import database
+from database import Playlist, PlaylistItem, writer
+from sync.write_preparation import search_term_rows
 from routes.analytics import router as analytics_router
-from tests.support import IsolatedDatabaseTestCase, create_test_client, make_video
+from tests.support import FIXED_NOW, IsolatedDatabaseTestCase, create_test_client, make_video
 
 
 class SearchInsightsApiTestCase(IsolatedDatabaseTestCase):
@@ -17,22 +19,22 @@ class SearchInsightsApiTestCase(IsolatedDatabaseTestCase):
 
     def _seed(self) -> None:
         """Seed playlist and channel videos for Search Insights tests."""
-        database.upsert_own_video(make_video("v-in", "My SERIES Episode 1", content_type="video", privacy_status="public"))
-        database.upsert_own_video(make_video("v-out", "Unrelated Vlog", content_type="short", privacy_status="private"))
+        writer.write(make_video("v-in", "My SERIES Episode 1", content_type="video", privacy_status="public"))
+        writer.write(make_video("v-out", "Unrelated Vlog", content_type="short", privacy_status="private"))
 
-        database.upsert_search_terms("v-in", "2024-01", [
+        writer.write_many(search_term_rows("v-in", "2024-01", [
             {"search_term": "cats", "views": 10},
             {"search_term": "dogs", "views": 5},
-        ])
-        database.upsert_search_terms("v-out", "2024-01", [{"search_term": "cats", "views": 3}])
+        ], updated_at=FIXED_NOW))
+        writer.write_many(search_term_rows("v-out", "2024-01", [{"search_term": "cats", "views": 3}], updated_at=FIXED_NOW))
 
-        database.upsert_playlist({
+        writer.write(Playlist.from_dict({**{
             "id": "p1", "title": "Playlist", "description": "",
             "published_at": "2024-01-01T00:00:00Z", "thumbnail_url": "", "item_count": 1,
-        })
-        database.upsert_playlist_item({"id": "pi1", "playlist_id": "p1", "video_id": "v-in", "position": 0})
-        database.upsert_playlist_item({"id": "pi2", "playlist_id": "p1", "video_id": "v-in", "position": 1})
-        database.upsert_playlist_item({"id": "pi3", "playlist_id": "p1", "video_id": "missing-video", "position": 2})
+        }, "updated_at": FIXED_NOW}))
+        writer.write(PlaylistItem.from_dict({**{"id": "pi1", "playlist_id": "p1", "video_id": "v-in", "position": 0}, "updated_at": FIXED_NOW}))
+        writer.write(PlaylistItem.from_dict({**{"id": "pi2", "playlist_id": "p1", "video_id": "v-in", "position": 1}, "updated_at": FIXED_NOW}))
+        writer.write(PlaylistItem.from_dict({**{"id": "pi3", "playlist_id": "p1", "video_id": "missing-video", "position": 2}, "updated_at": FIXED_NOW}))
 
     def _get(self, path: str, **params: str) -> dict:
         response = self.client.get(path, params=params)
@@ -49,9 +51,10 @@ class ChannelSearchInsightsTest(SearchInsightsApiTestCase):
         self.assertEqual(by_term["cats"], 13)
         self.assertEqual(by_term["dogs"], 5)
 
-    def test_top_endpoint_caps_at_ten(self) -> None:
-        body = self._get("/analytics/search-insights/top", **self.DATE_RANGE)
-        self.assertLessEqual(len(body["items"]), 10)
+    def test_top_endpoints_are_not_registered(self) -> None:
+        for path in ("/analytics/search-insights/top", "/analytics/playlists/p1/search-insights/top"):
+            with self.subTest(path=path):
+                self.assertEqual(self.client.get(path, params=self.DATE_RANGE).status_code, 404)
 
     def test_videos_by_search_term_returns_only_matching_videos(self) -> None:
         body = self._get("/analytics/search-insights/videos", **self.DATE_RANGE, search_term="cats")
@@ -87,10 +90,10 @@ class PlaylistSearchInsightsTest(SearchInsightsApiTestCase):
         self.assertEqual(response.status_code, 404)
 
     def test_empty_playlist_returns_no_items(self) -> None:
-        database.upsert_playlist({
+        writer.write(Playlist.from_dict({**{
             "id": "p-empty", "title": "Empty", "description": "",
             "published_at": "2024-01-01T00:00:00Z", "thumbnail_url": "", "item_count": 0,
-        })
+        }, "updated_at": FIXED_NOW}))
         body = self._get("/analytics/playlists/p-empty/search-insights", **self.DATE_RANGE)
         self.assertEqual(body["items"], [])
 

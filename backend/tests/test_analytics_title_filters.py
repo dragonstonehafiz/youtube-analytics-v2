@@ -3,10 +3,11 @@ from __future__ import annotations
 import unittest
 
 import database
+from database import Playlist, PlaylistItem, Video, VideoAnalytics, VideoTrafficSource, writer
 from routes.analytics import router as analytics_router
 from routes.playlists import router as playlists_router
 from routes.videos import router as videos_router
-from tests.support import IsolatedDatabaseTestCase, create_test_client
+from tests.support import FIXED_NOW, IsolatedDatabaseTestCase, create_test_client
 
 
 class TitleFilterTestCase(IsolatedDatabaseTestCase):
@@ -19,42 +20,42 @@ class TitleFilterTestCase(IsolatedDatabaseTestCase):
 
     def _seed(self) -> None:
         """Seed videos that exercise title filtering inside and outside a playlist."""
-        database.upsert_own_video({
+        writer.write(Video.from_dict({**{
             "id": "v-in", "channel_id": "c1", "title": "My SERIES Episode 1",
             "description": "", "published_at": "2024-01-01T00:00:00Z", "duration_seconds": 100,
             "thumbnail_url": "", "content_type": "video", "privacy_status": "public",
             "view_count": 10, "like_count": 1, "comment_count": 0,
-        })
-        database.upsert_own_video({
+        }, "own": True, "updated_at": FIXED_NOW}))
+        writer.write(Video.from_dict({**{
             "id": "v-out", "channel_id": "c1", "title": "My series Episode 2",
             "description": "", "published_at": "2024-01-02T00:00:00Z", "duration_seconds": 100,
             "thumbnail_url": "", "content_type": "video", "privacy_status": "public",
             "view_count": 20, "like_count": 1, "comment_count": 0,
-        })
-        database.upsert_own_video({
+        }, "own": True, "updated_at": FIXED_NOW}))
+        writer.write(Video.from_dict({**{
             "id": "v-other", "channel_id": "c1", "title": "Unrelated Vlog",
             "description": "", "published_at": "2024-01-03T00:00:00Z", "duration_seconds": 100,
             "thumbnail_url": "", "content_type": "short", "privacy_status": "private",
             "view_count": 30, "like_count": 1, "comment_count": 0,
-        })
+        }, "own": True, "updated_at": FIXED_NOW}))
 
         for video_id, views in (("v-in", 100), ("v-out", 200), ("v-other", 300)):
-            database.upsert_video_analytics({
+            writer.write(VideoAnalytics.from_dict({**{
                 "video_id": video_id, "date": "2024-01-05", "views": views,
                 "watch_time_minutes": 10, "estimated_revenue": 1.0,
                 "average_view_duration_seconds": 5, "average_view_percentage": 50.0,
                 "likes": 1, "subscribers_gained": 0, "subscribers_lost": 0,
-            })
-            database.upsert_video_traffic_source({
+            }, "updated_at": FIXED_NOW}))
+            writer.write(VideoTrafficSource.from_dict({**{
                 "video_id": video_id, "date": "2024-01-05", "traffic_source_type": "SEARCH",
                 "views": views, "watch_time_minutes": 10,
-            })
+            }, "updated_at": FIXED_NOW}))
 
-        database.upsert_playlist({
+        writer.write(Playlist.from_dict({**{
             "id": "p1", "title": "Playlist", "description": "",
             "published_at": "2024-01-01T00:00:00Z", "thumbnail_url": "", "item_count": 1,
-        })
-        database.upsert_playlist_item({"id": "pi1", "playlist_id": "p1", "video_id": "v-in", "position": 0})
+        }, "updated_at": FIXED_NOW}))
+        writer.write(PlaylistItem.from_dict({**{"id": "pi1", "playlist_id": "p1", "video_id": "v-in", "position": 0}, "updated_at": FIXED_NOW}))
 
     def _get(self, path: str, **params: str) -> dict:
         response = self.client.get(path, params=params)
