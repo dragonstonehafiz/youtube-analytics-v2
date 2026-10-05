@@ -109,8 +109,6 @@ export type IncrementalOnlySyncStage = 'videos' | 'playlists' | 'pruning' | 'fx_
 
 export type SyncStage = PeriodAwareSyncStage | ScopeAwareSyncStage | IncrementalOnlySyncStage
 
-export type SyncScope = 'incremental' | 'year' | 'all'
-
 /** A year is required for — and only allowed with — the 'year' scope. */
 export type SyncPeriod =
   | { scope: 'incremental' }

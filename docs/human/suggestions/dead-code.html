@@ -44,7 +44,6 @@
     <h2>On this page</h2>
     <ol>
       <li><a href="#backend">Backend</a></li>
-      <li><a href="#frontend">Frontend code</a></li>
     </ol>
   </aside>
 
@@ -69,24 +68,6 @@
             <dt>Does</dt><dd>Runs the call inside the caller's open transaction using a savepoint.</dd>
             <dt>Meant for</dt><dd>Writing several tables in one transaction.</dd>
             <dt>Why kept</dt><dd>It is intentionally retained for future use.</dd>
-          </dl>
-        </article>
-
-      </div>
-    </section>
-
-    <section id="frontend">
-      <h2>Frontend code</h2>
-      <div class="dup-list">
-
-        <article class="dup">
-          <div class="dup-head"><h3><code>SyncScope</code> type</h3><span class="dup-count">1 type</span></div>
-          <p>The scopes a sync stage can run with.</p>
-          <dl>
-            <dt>Where</dt><dd><code>types/index.ts</code>: <code>'incremental' | 'year' | 'all'</code></dd>
-            <dt>Does</dt><dd>Restricts a value to one of the three backend sync scopes.</dd>
-            <dt>Meant for</dt><dd>Typing the scope chosen for each stage on the Sync page and sent in a sync request.</dd>
-            <dt>Why kept</dt><dd>It is intentionally disabled.</dd>
           </dl>
         </article>
 
