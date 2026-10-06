@@ -13,6 +13,7 @@ from googleapiclient.errors import HttpError
 from logging_config import get_logger
 
 from .auth import get_credentials
+from .retries import MAX_ATTEMPTS, NUM_RETRIES
 
 _logger = get_logger("sync")
 
@@ -93,12 +94,12 @@ def _log_page(
 
 
 def _analytics_query(
-    service: Any, params: dict, max_attempts: int = 5, checkpoint: Callable[[], None] = _noop_checkpoint
+    service: Any, params: dict, max_attempts: int = MAX_ATTEMPTS, checkpoint: Callable[[], None] = _noop_checkpoint
 ) -> dict:
     """Run an Analytics API query with retry and cancellation checkpoints."""
     for attempt in range(1, max_attempts + 1):
         try:
-            return service.reports().query(**params).execute()
+            return service.reports().query(**params).execute(num_retries=NUM_RETRIES)
         except HttpError as exc:
             status_code = int(exc.resp.status)
             error_text = exc.content.decode("utf-8") if exc.content else str(exc)
