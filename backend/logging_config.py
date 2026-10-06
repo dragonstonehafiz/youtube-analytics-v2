@@ -33,6 +33,9 @@ _configured_paths: tuple[Path, Path] | None = None
 _current_app_handler: logging.Handler | None = None
 _current_sync_handler: logging.Handler | None = None
 
+# The Google API client logs each connection/HTTP retry here before sleeping.
+_CLIENT_RETRY_LOGGER_NAME = "googleapiclient.http"
+
 
 class TimezoneAwareFormatter(logging.Formatter):
     """Formatter that renders `%(asctime)s` as a UTC ISO 8601 timestamp with `+00:00`.
@@ -49,6 +52,11 @@ class TimezoneAwareFormatter(logging.Formatter):
 def _logger_name(area: str) -> str:
     """Return the fully qualified logger name for an application area."""
     return f"{_PARENT_LOGGER_NAME}.{area}"
+
+
+def _is_client_retry(record: logging.LogRecord) -> bool:
+    """Pass only the client's "Sleeping ... before retry" records; its other warnings can carry response bodies."""
+    return str(record.msg).startswith("Sleeping ")
 
 
 def _reset_logger(name: str) -> None:
@@ -99,6 +107,7 @@ def configure_logging(app_path: Path | str | None = None, sync_path: Path | str 
     # a now-stale path.
     for area in _KNOWN_AREAS | {"lifecycle", "sync"}:
         _reset_logger(_logger_name(area))
+    _reset_logger(_CLIENT_RETRY_LOGGER_NAME)
 
     lifecycle_logger = logging.getLogger(_logger_name("lifecycle"))
     lifecycle_logger.setLevel(logging.INFO)
@@ -114,6 +123,13 @@ def configure_logging(app_path: Path | str | None = None, sync_path: Path | str 
     # both handlers on this one logger is what produces that routing.
     sync_logger.addHandler(sync_handler)
     sync_logger.addHandler(app_handler)
+
+    # Client retries are sync detail: sync.log only.
+    client_retry_logger = logging.getLogger(_CLIENT_RETRY_LOGGER_NAME)
+    client_retry_logger.setLevel(logging.WARNING)
+    client_retry_logger.propagate = False
+    client_retry_logger.addFilter(_is_client_retry)
+    client_retry_logger.addHandler(sync_handler)
 
     for area in _KNOWN_AREAS - {"lifecycle", "sync"}:
         other_logger = logging.getLogger(_logger_name(area))
@@ -133,6 +149,7 @@ def reset_logging() -> None:
 
     for area in _KNOWN_AREAS:
         _reset_logger(_logger_name(area))
+    _reset_logger(_CLIENT_RETRY_LOGGER_NAME)
     _KNOWN_AREAS.clear()
     _configured_paths = None
     _current_app_handler = None

@@ -212,6 +212,33 @@ class RoutingTest(_TempLoggingMixin, unittest.TestCase):
         self.assertIn("metadata info marker", self._app_content())
         self.assertNotIn("metadata info marker", self._sync_content())
 
+    def test_client_retry_records_reach_sync_file_only_once(self) -> None:
+        client = logging.getLogger("googleapiclient.http")
+        client.warning(
+            "Sleeping %.2f seconds before retry %d of %d for %s: %s %s, after %s",
+            1.5, 1, 4, "request", "GET", "https://example.test/v2/reports", "timed out",
+        )
+
+        self.assertEqual(self._sync_content().count("before retry 1 of 4"), 1)
+        self.assertNotIn("before retry", self._app_content())
+
+    def test_other_client_warnings_reach_neither_file(self) -> None:
+        # Its other warnings can carry a response body, so only retry records are kept.
+        logging.getLogger("googleapiclient.http").warning("Invalid JSON content from response: %s", "BODY-SENTINEL")
+
+        self.assertNotIn("BODY-SENTINEL", self._sync_content())
+        self.assertNotIn("BODY-SENTINEL", self._app_content())
+
+    def test_reconfiguring_and_resetting_leave_no_stale_client_handler(self) -> None:
+        client = logging.getLogger("googleapiclient.http")
+        self.assertEqual(len(client.handlers), 1)
+
+        self._configure_temp_logging()
+        self.assertEqual(len(client.handlers), 1)
+
+        reset_logging()
+        self.assertEqual(client.handlers, [])
+
     def test_no_handler_is_attached_to_the_shared_parent_logger(self) -> None:
         get_logger("lifecycle")
         get_logger("sync")

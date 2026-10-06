@@ -163,7 +163,8 @@ Routing: the `youtube_analytics.lifecycle` logger (application startup/shutdown)
 to `application.log` only. The `youtube_analytics.sync` logger writes `INFO`+ records
 (plan starts and per-stage start/success/failure) to both files, and `DEBUG`
 detail records only to `sync.log`. Any other application area writes `INFO`+ to
-`application.log` only. All application modules acquire their logger through
+`application.log` only. The Google API client's retry warnings (`googleapiclient.http`,
+"Sleeping … before retry N of M") go to `sync.log` only. All application modules acquire their logger through
 `get_logger(area)` rather than the standard library's `logging.getLogger()` directly,
 so configuration happens once regardless of which module is imported first.
 

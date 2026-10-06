@@ -78,6 +78,9 @@ test suite without importing `server.py`).
 Routing: the `youtube_analytics.lifecycle` logger writes `INFO`+ to `application.log`
 only; the `youtube_analytics.sync` logger writes `INFO`+ to both files and `DEBUG`
 detail only to `sync.log`; every other area writes `INFO`+ to `application.log` only.
+`configure_logging()` also routes the Google API client's `googleapiclient.http` retry
+records (only those starting "Sleeping ") to `sync.log`, with `propagate = False`, so
+its other warnings — which can carry a response body — reach no file.
 See `sync.md` for the per-stage records and the six sync-only `DEBUG` detail events.
 
 `APP_LOG_PATH`/`SYNC_LOG_PATH` in `backend/.env.example` document the defaults but are

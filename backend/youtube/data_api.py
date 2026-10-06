@@ -11,6 +11,7 @@ from googleapiclient.errors import HttpError
 from logging_config import get_logger
 
 from .auth import get_credentials
+from .retries import NUM_RETRIES
 
 _DURATION_RE = re.compile(
     r"^PT(?:(?P<hours>\d+)H)?(?:(?P<minutes>\d+)M)?(?:(?P<seconds>\d+)S)?$"
@@ -112,7 +113,7 @@ def _parse_duration(value: str | None) -> int | None:
 def fetch_channel_identity() -> tuple[str, str]:
     """Return the authenticated channel and uploads-playlist IDs."""
     yt = _data_client()
-    response = yt.channels().list(part="contentDetails", mine=True, maxResults=1).execute()
+    response = yt.channels().list(part="contentDetails", mine=True, maxResults=1).execute(num_retries=NUM_RETRIES)
     items = response.get("items", [])
     if not items:
         raise RuntimeError("No channel found for the authenticated user.")
@@ -143,7 +144,7 @@ def fetch_shorts_video_ids(
                 playlistId=shorts_playlist_id,
                 maxResults=50,
                 pageToken=page_token,
-            ).execute()
+            ).execute(num_retries=NUM_RETRIES)
         except HttpError as exc:
             if int(exc.resp.status) == 404:
                 raise RuntimeError(f"Shorts playlist {shorts_playlist_id} not found.") from exc
@@ -183,7 +184,7 @@ def fetch_all_video_ids(
             playlistId=uploads_playlist_id,
             maxResults=50,
             pageToken=page_token,
-        ).execute()
+        ).execute(num_retries=NUM_RETRIES)
         page += 1
         items = response.get("items", [])
         for item in items:
@@ -209,7 +210,7 @@ def fetch_videos(video_ids: list[str]) -> list[dict]:
         part="snippet,contentDetails,statistics,status",
         id=",".join(video_ids),
         maxResults=50,
-    ).execute()
+    ).execute(num_retries=NUM_RETRIES)
 
     results: list[dict] = []
     for item in response.get("items", []):
@@ -258,7 +259,7 @@ def fetch_playlists(checkpoint: Callable[[], None] = _noop_checkpoint) -> tuple[
             mine=True,
             maxResults=50,
             pageToken=page_token,
-        ).execute()
+        ).execute(num_retries=NUM_RETRIES)
         page += 1
         items = response.get("items", [])
         for item in items:
@@ -309,7 +310,7 @@ def fetch_playlist_items(
             playlistId=playlist_id,
             maxResults=50,
             pageToken=page_token,
-        ).execute()
+        ).execute(num_retries=NUM_RETRIES)
         page += 1
         page_items = response.get("items", [])
         for item in page_items:
@@ -404,7 +405,7 @@ def iter_comment_threads(
                 order="time",
                 textFormat="plainText",
                 pageToken=page_token,
-            ).execute()
+            ).execute(num_retries=NUM_RETRIES)
         except HttpError as exc:
             reason = _http_error_reason(exc)
             if reason in _RECOVERABLE_COMMENT_REASONS:
